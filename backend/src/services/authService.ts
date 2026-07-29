@@ -18,7 +18,7 @@ export function gerarToken(usuarioId: number): string {
 
 export async function obterUsuarioAutenticado(token: string): Promise<UsuarioComPermissoes | null> {
   try {
-    const payload = jwt.verify(token, env.jwtSecret) as { sub: number };
+    const payload = jwt.verify(token, env.jwtSecret) as unknown as { sub: number };
     return await buscarUsuarioComPermissoes(payload.sub);
   } catch {
     return null;

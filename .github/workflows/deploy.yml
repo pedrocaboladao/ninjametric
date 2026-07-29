@@ -22,6 +22,7 @@ jobs:
           key_path: /tmp/deploy_key
           command_timeout: 15m
           script: |
+            set -e
             cd ~/ninjametric
             git pull
             docker compose up -d --build
