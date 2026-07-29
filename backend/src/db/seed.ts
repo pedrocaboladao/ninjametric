@@ -1,4 +1,5 @@
 import { pool } from "./pool";
+import { env } from "../config/env";
 
 const LOJAS = ["Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua", "Cores Certas"];
 
@@ -12,6 +13,12 @@ async function seed() {
     );
   }
   console.log("Lojas base inseridas.");
+
+  await pool.query(
+    "INSERT INTO usuarios (username, senha_hash, nome, admin) VALUES ($1, $2, $3, true) ON CONFLICT (username) DO NOTHING",
+    [env.authUsername, env.authPasswordHash, "Pedro Dantas"]
+  );
+  console.log("Usuário administrador base garantido.");
 
   const { rows } = await pool.query("SELECT COUNT(*)::int AS total FROM tarefas_colunas");
   if (rows[0].total === 0) {

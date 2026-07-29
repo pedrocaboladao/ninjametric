@@ -10,7 +10,8 @@ import { clonarAnuncioRouter } from "./routes/clonarAnuncio";
 import { lojasRouter } from "./routes/lojas";
 import { tarefasRouter } from "./routes/tarefas";
 import { empacotadoresRouter } from "./routes/empacotadores";
-import { requireAuth } from "./middleware/requireAuth";
+import { usuariosRouter } from "./routes/usuarios";
+import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 
 const app = express();
 
@@ -24,12 +25,13 @@ app.use("/auth", authRouter);
 // Login/logout/checagem de sessão também são públicos.
 app.use("/api/session", sessionRouter);
 
-app.use("/api/dashboard", requireAuth, dashboardRouter);
-app.use("/api/perguntas", requireAuth, perguntasRouter);
-app.use("/api/clonar-anuncio", requireAuth, clonarAnuncioRouter);
+app.use("/api/dashboard", requireAuth, requirePermissao("dashboard"), dashboardRouter);
+app.use("/api/perguntas", requireAuth, requirePermissao("perguntas"), perguntasRouter);
+app.use("/api/clonar-anuncio", requireAuth, requirePermissao("clonar"), clonarAnuncioRouter);
 app.use("/api/lojas", requireAuth, lojasRouter);
-app.use("/api/tarefas", requireAuth, tarefasRouter);
-app.use("/api/empacotadores", requireAuth, empacotadoresRouter);
+app.use("/api/tarefas", requireAuth, requirePermissao("tarefas"), tarefasRouter);
+app.use("/api/empacotadores", requireAuth, requirePermissao("funcionarios"), empacotadoresRouter);
+app.use("/api/usuarios", requireAuth, requireAdmin, usuariosRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

@@ -1,3 +1,5 @@
+import type { Usuario } from "../types/usuarios";
+
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
 export async function login(username: string, password: string): Promise<void> {
@@ -20,9 +22,9 @@ export async function logout(): Promise<void> {
   });
 }
 
-export async function checarSessao(): Promise<boolean> {
+export async function checarSessao(): Promise<Usuario | null> {
   const res = await fetch(`${API_BASE}/api/session/me`, { credentials: "include" });
-  if (!res.ok) return false;
+  if (!res.ok) return null;
   const data = await res.json();
-  return Boolean(data.autenticado);
+  return data.autenticado ? (data.usuario as Usuario) : null;
 }

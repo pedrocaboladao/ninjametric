@@ -106,3 +106,19 @@ CREATE TABLE IF NOT EXISTS empacotadores_pacotes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_empacotadores_pacotes_data ON empacotadores_pacotes (data);
+
+-- Usuários e permissões por módulo
+CREATE TABLE IF NOT EXISTS usuarios (
+  id SERIAL PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  senha_hash TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  admin BOOLEAN NOT NULL DEFAULT false,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS usuarios_permissoes (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  modulo TEXT NOT NULL,
+  PRIMARY KEY (usuario_id, modulo)
+);

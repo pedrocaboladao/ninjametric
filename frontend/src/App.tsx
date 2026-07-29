@@ -5,19 +5,34 @@ import { Perguntas } from "./components/Perguntas";
 import { ClonarAnuncio } from "./components/ClonarAnuncio";
 import { Tarefas } from "./components/Tarefas";
 import { Funcionarios } from "./components/Funcionarios";
+import { Usuarios } from "./components/Usuarios";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { checarSessao, logout } from "./api/session";
+import { temPermissao } from "./constants/modulos";
+import type { Usuario } from "./types/usuarios";
 import "./App.css";
 
-function AppAutenticado({ onSair }: { onSair: () => void }) {
-  const [view, setView] = useState<View>("dashboard");
-  const perguntas = usePerguntas();
+function primeiraViewPermitida(usuario: Usuario): View {
+  if (temPermissao(usuario, "dashboard")) return "dashboard";
+  if (temPermissao(usuario, "perguntas")) return "perguntas";
+  if (temPermissao(usuario, "clonar")) return "clonar";
+  if (temPermissao(usuario, "tarefas")) return "tarefas";
+  if (temPermissao(usuario, "funcionarios")) return "funcionarios";
+  if (usuario.admin) return "usuarios";
+  return "dashboard";
+}
+
+function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => void }) {
+  const [view, setView] = useState<View>(() => primeiraViewPermitida(usuario));
+  const perguntas = usePerguntas(temPermissao(usuario, "perguntas"));
 
   async function handleSair() {
     await logout();
     onSair();
   }
+
+  const semAcesso = !temPermissao(usuario, view);
 
   return (
     <div className="app-shell">
@@ -25,11 +40,15 @@ function AppAutenticado({ onSair }: { onSair: () => void }) {
         view={view}
         onChangeView={setView}
         perguntasPendentes={perguntas.perguntas?.length ?? 0}
+        usuario={usuario}
         onSair={handleSair}
       />
       <main className="app-main">
-        {view === "dashboard" && <Dashboard />}
-        {view === "perguntas" && (
+        {semAcesso && (
+          <div className="state-message">Nenhum acesso liberado. Fale com o administrador da conta.</div>
+        )}
+        {view === "dashboard" && temPermissao(usuario, "dashboard") && <Dashboard />}
+        {view === "perguntas" && temPermissao(usuario, "perguntas") && (
           <Perguntas
             perguntas={perguntas.perguntas}
             error={perguntas.error}
@@ -38,30 +57,35 @@ function AppAutenticado({ onSair }: { onSair: () => void }) {
             excluir={perguntas.excluir}
           />
         )}
-        {view === "clonar" && <ClonarAnuncio />}
-        {view === "tarefas" && <Tarefas />}
-        {view === "funcionarios" && <Funcionarios />}
+        {view === "clonar" && temPermissao(usuario, "clonar") && <ClonarAnuncio />}
+        {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
+        {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
+        {view === "usuarios" && usuario.admin && <Usuarios />}
       </main>
     </div>
   );
 }
 
 function App() {
-  const [autenticado, setAutenticado] = useState<boolean | null>(null);
+  const [usuario, setUsuario] = useState<Usuario | null | undefined>(undefined);
+
+  async function atualizarSessao() {
+    setUsuario(await checarSessao());
+  }
 
   useEffect(() => {
-    checarSessao().then(setAutenticado);
+    atualizarSessao();
   }, []);
 
-  if (autenticado === null) {
+  if (usuario === undefined) {
     return <div className="state-message">Carregando...</div>;
   }
 
-  if (!autenticado) {
-    return <Login onEntrar={() => setAutenticado(true)} />;
+  if (!usuario) {
+    return <Login onEntrar={atualizarSessao} />;
   }
 
-  return <AppAutenticado onSair={() => setAutenticado(false)} />;
+  return <AppAutenticado usuario={usuario} onSair={() => setUsuario(null)} />;
 }
 
 export default App;

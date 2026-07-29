@@ -2309,3 +2309,87 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+/* Usuários */
+.usuarios-novo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.usuarios-novo-linha {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.usuarios-novo-linha .clonar-campo {
+  flex: 1;
+  min-width: 200px;
+}
+
+.usuarios-permissoes-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.usuarios-permissoes-lista {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+}
+
+.usuarios-permissao-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.usuarios-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.usuarios-item-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.usuarios-item-nome {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.usuarios-item-username {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.usuarios-item-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.usuarios-senha-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.usuarios-senha-form input {
+  max-width: 240px;
+}

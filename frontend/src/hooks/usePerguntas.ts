@@ -4,7 +4,7 @@ import type { PerguntaPendente } from "../types/perguntas";
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 
-export function usePerguntas() {
+export function usePerguntas(ativo = true) {
   const [perguntas, setPerguntas] = useState<PerguntaPendente[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -23,12 +23,16 @@ export function usePerguntas() {
   }, []);
 
   useEffect(() => {
+    if (!ativo) {
+      setLoading(false);
+      return;
+    }
     carregar();
     timerRef.current = setInterval(carregar, POLL_INTERVAL_MS);
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [carregar]);
+  }, [carregar, ativo]);
 
   async function responder(lojaId: number, questionId: number, texto: string) {
     await responderPergunta(lojaId, questionId, texto);

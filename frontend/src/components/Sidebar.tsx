@@ -12,25 +12,43 @@ import {
   IconChevron,
   IconLogout,
 } from "./icons";
+import type { Usuario } from "../types/usuarios";
+import { temPermissao } from "../constants/modulos";
 
-export type View = "dashboard" | "perguntas" | "clonar" | "tarefas" | "funcionarios";
+export type View = "dashboard" | "perguntas" | "clonar" | "tarefas" | "funcionarios" | "usuarios";
 
 interface Props {
   view: View;
   onChangeView: (view: View) => void;
   perguntasPendentes: number;
+  usuario: Usuario;
   onSair: () => void;
 }
 
 const INERTES = [
   { label: "Produtos", Icon: IconBox },
   { label: "Criação", Icon: IconWand },
-  { label: "Conta", Icon: IconGear },
 ];
 
-export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Props) {
+export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
   const [equipeAberta, setEquipeAberta] = useState(true);
+
+  const podeDashboard = temPermissao(usuario, "dashboard");
+  const podePerguntas = temPermissao(usuario, "perguntas");
+  const podeClonar = temPermissao(usuario, "clonar");
+  const podeTarefas = temPermissao(usuario, "tarefas");
+  const podeFuncionarios = temPermissao(usuario, "funcionarios");
+  const mostrarLojas = podeDashboard || podePerguntas || podeClonar;
+
+  const iniciais =
+    usuario.nome
+      .split(" ")
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0])
+      .join("")
+      .toUpperCase() || "?";
 
   return (
     <aside className="sidebar">
@@ -40,70 +58,100 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Prop
       </div>
 
       <nav className="sidebar-nav">
-        <button
-          className={`sidebar-item ${view === "tarefas" ? "sidebar-item-ativo" : ""}`}
-          onClick={() => onChangeView("tarefas")}
-        >
-          <IconTasks size={16} />
-          <span>Tarefas</span>
-        </button>
-
-        <div className="sidebar-divider" />
-
-        <button className="sidebar-group-toggle" onClick={() => setLojasAberta((v) => !v)}>
-          <IconStore />
-          <span>Lojas</span>
-          <IconChevron open={lojasAberta} />
-        </button>
-
-        {lojasAberta && (
-          <div className="sidebar-subitems">
+        {podeTarefas && (
+          <>
             <button
-              className={`sidebar-item ${view === "dashboard" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("dashboard")}
+              className={`sidebar-item ${view === "tarefas" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("tarefas")}
             >
-              <IconChart size={16} />
-              <span>Painel ao vivo</span>
+              <IconTasks size={16} />
+              <span>Tarefas</span>
             </button>
-            <button
-              className={`sidebar-item ${view === "perguntas" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("perguntas")}
-            >
-              <IconQuestion size={16} />
-              <span>Perguntas</span>
-              {perguntasPendentes > 0 && <span className="sidebar-badge">{perguntasPendentes}</span>}
-            </button>
-            <button
-              className={`sidebar-item ${view === "clonar" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("clonar")}
-            >
-              <IconCopy size={16} />
-              <span>Clonar Anúncio</span>
-            </button>
-          </div>
+            <div className="sidebar-divider" />
+          </>
         )}
 
-        <div className="sidebar-divider" />
-
-        <button className="sidebar-group-toggle" onClick={() => setEquipeAberta((v) => !v)}>
-          <IconUsers />
-          <span>Equipe</span>
-          <IconChevron open={equipeAberta} />
-        </button>
-
-        {equipeAberta && (
-          <div className="sidebar-subitems">
-            <button
-              className={`sidebar-item ${view === "funcionarios" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("funcionarios")}
-            >
-              <IconUsers size={16} />
-              <span>Funcionários</span>
+        {mostrarLojas && (
+          <>
+            <button className="sidebar-group-toggle" onClick={() => setLojasAberta((v) => !v)}>
+              <IconStore />
+              <span>Lojas</span>
+              <IconChevron open={lojasAberta} />
             </button>
-          </div>
+
+            {lojasAberta && (
+              <div className="sidebar-subitems">
+                {podeDashboard && (
+                  <button
+                    className={`sidebar-item ${view === "dashboard" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => onChangeView("dashboard")}
+                  >
+                    <IconChart size={16} />
+                    <span>Painel ao vivo</span>
+                  </button>
+                )}
+                {podePerguntas && (
+                  <button
+                    className={`sidebar-item ${view === "perguntas" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => onChangeView("perguntas")}
+                  >
+                    <IconQuestion size={16} />
+                    <span>Perguntas</span>
+                    {perguntasPendentes > 0 && <span className="sidebar-badge">{perguntasPendentes}</span>}
+                  </button>
+                )}
+                {podeClonar && (
+                  <button
+                    className={`sidebar-item ${view === "clonar" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => onChangeView("clonar")}
+                  >
+                    <IconCopy size={16} />
+                    <span>Clonar Anúncio</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="sidebar-divider" />
+          </>
         )}
 
-        <div className="sidebar-divider" />
+        {podeFuncionarios && (
+          <>
+            <button className="sidebar-group-toggle" onClick={() => setEquipeAberta((v) => !v)}>
+              <IconUsers />
+              <span>Equipe</span>
+              <IconChevron open={equipeAberta} />
+            </button>
+
+            {equipeAberta && (
+              <div className="sidebar-subitems">
+                <button
+                  className={`sidebar-item ${view === "funcionarios" ? "sidebar-item-ativo" : ""}`}
+                  onClick={() => onChangeView("funcionarios")}
+                >
+                  <IconUsers size={16} />
+                  <span>Funcionários</span>
+                </button>
+              </div>
+            )}
+
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {usuario.admin && (
+          <>
+            <button
+              className={`sidebar-item ${view === "usuarios" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("usuarios")}
+            >
+              <IconGear size={16} />
+              <span>Usuários</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
 
         {INERTES.map(({ label, Icon }) => (
           <div key={label} className="sidebar-group-toggle sidebar-group-inerte">
@@ -115,12 +163,12 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Prop
       </nav>
 
       <div className="sidebar-user">
-        <div className="sidebar-user-avatar">PD</div>
+        <div className="sidebar-user-avatar">{iniciais}</div>
         <div className="sidebar-user-info">
-          <div className="sidebar-user-nome">Pedro Dantas</div>
-          <div className="sidebar-user-email">pedroroteirista@gmail.com</div>
+          <div className="sidebar-user-nome">{usuario.nome}</div>
+          <div className="sidebar-user-email">@{usuario.username}</div>
         </div>
-        <span className="sidebar-user-badge">DIRETOR</span>
+        <span className="sidebar-user-badge">{usuario.admin ? "DIRETOR" : "EQUIPE"}</span>
         <button className="sidebar-sair" onClick={onSair} title="Sair">
           <IconLogout size={15} />
         </button>
