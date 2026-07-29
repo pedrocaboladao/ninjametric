@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { listarPerguntasPendentes } from "../services/perguntasService";
 import { answerQuestion, deleteQuestion } from "../services/mercadoLivreQuestions";
+import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const perguntasRouter = Router();
 
 perguntasRouter.get("/", async (req, res) => {
   try {
     const usuario = req.usuario!;
-    const perguntas = await listarPerguntasPendentes(usuario.admin ? undefined : usuario.lojas);
+    const perguntas = await listarPerguntasPendentes(lojasEfetivas(usuario));
     res.json({ perguntas });
   } catch (err) {
     console.error("Erro ao listar perguntas:", err);
@@ -25,7 +26,7 @@ perguntasRouter.post("/:lojaId/:questionId/responder", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  if (!usuario.admin && !usuario.lojas.includes(lojaId)) {
+  if (!temAcessoLoja(usuario, lojaId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja." });
     return;
   }
@@ -48,7 +49,7 @@ perguntasRouter.delete("/:lojaId/:questionId", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  if (!usuario.admin && !usuario.lojas.includes(lojaId)) {
+  if (!temAcessoLoja(usuario, lojaId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja." });
     return;
   }

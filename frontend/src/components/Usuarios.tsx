@@ -16,6 +16,7 @@ export function Usuarios() {
   const [novaSenha, setNovaSenha] = useState("");
   const [novasPermissoes, setNovasPermissoes] = useState<string[]>([]);
   const [novasLojas, setNovasLojas] = useState<number[]>([]);
+  const [novasTodasLojas, setNovasTodasLojas] = useState(false);
   const [criando, setCriando] = useState(false);
 
   const [senhaAbertaId, setSenhaAbertaId] = useState<number | null>(null);
@@ -57,12 +58,13 @@ export function Usuarios() {
     setCriando(true);
     setErro(null);
     try {
-      await criarUsuario(novoUsername.trim(), novaSenha, novoNome.trim(), novasPermissoes, novasLojas);
+      await criarUsuario(novoUsername.trim(), novaSenha, novoNome.trim(), novasPermissoes, novasLojas, novasTodasLojas);
       setNovoUsername("");
       setNovoNome("");
       setNovaSenha("");
       setNovasPermissoes([]);
       setNovasLojas([]);
+      setNovasTodasLojas(false);
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar usuário.");
@@ -89,6 +91,15 @@ export function Usuarios() {
       : [...usuario.lojas, lojaId];
     try {
       await atualizarUsuario(usuario.id, { lojas: novas });
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao atualizar lojas.");
+    }
+  }
+
+  async function alternarTodasLojas(usuario: Usuario) {
+    try {
+      await atualizarUsuario(usuario.id, { todasLojas: !usuario.todasLojas });
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao atualizar lojas.");
@@ -178,18 +189,28 @@ export function Usuarios() {
 
           <div className="usuarios-permissoes-campo">
             <label>Lojas com acesso</label>
-            <div className="usuarios-permissoes-lista">
-              {lojas.map((l) => (
-                <label key={l.id} className="usuarios-permissao-item">
-                  <input
-                    type="checkbox"
-                    checked={novasLojas.includes(l.id)}
-                    onChange={() => alternarNovaLoja(l.id)}
-                  />
-                  {l.nome}
-                </label>
-              ))}
-            </div>
+            <label className="usuarios-permissao-item usuarios-todas-lojas">
+              <input
+                type="checkbox"
+                checked={novasTodasLojas}
+                onChange={(e) => setNovasTodasLojas(e.target.checked)}
+              />
+              Todas as lojas (inclusive as que forem cadastradas no futuro)
+            </label>
+            {!novasTodasLojas && (
+              <div className="usuarios-permissoes-lista">
+                {lojas.map((l) => (
+                  <label key={l.id} className="usuarios-permissao-item">
+                    <input
+                      type="checkbox"
+                      checked={novasLojas.includes(l.id)}
+                      onChange={() => alternarNovaLoja(l.id)}
+                    />
+                    {l.nome}
+                  </label>
+                ))}
+              </div>
+            )}
           </div>
 
           <button type="submit" className="btn-responder" disabled={criando}>
@@ -278,17 +299,29 @@ export function Usuarios() {
                       </label>
                     ))}
                   </div>
-                  <div className="usuarios-permissoes-lista usuarios-lojas-lista">
-                    {lojas.map((l) => (
-                      <label key={l.id} className="usuarios-permissao-item">
-                        <input
-                          type="checkbox"
-                          checked={u.lojas.includes(l.id)}
-                          onChange={() => alternarLoja(u, l.id)}
-                        />
-                        {l.nome}
-                      </label>
-                    ))}
+                  <div className="usuarios-lojas-lista">
+                    <label className="usuarios-permissao-item usuarios-todas-lojas">
+                      <input
+                        type="checkbox"
+                        checked={u.todasLojas}
+                        onChange={() => alternarTodasLojas(u)}
+                      />
+                      Todas as lojas (inclusive as que forem cadastradas no futuro)
+                    </label>
+                    {!u.todasLojas && (
+                      <div className="usuarios-permissoes-lista">
+                        {lojas.map((l) => (
+                          <label key={l.id} className="usuarios-permissao-item">
+                            <input
+                              type="checkbox"
+                              checked={u.lojas.includes(l.id)}
+                              onChange={() => alternarLoja(u, l.id)}
+                            />
+                            {l.nome}
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}

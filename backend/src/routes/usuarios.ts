@@ -21,7 +21,7 @@ usuariosRouter.get("/", async (_req, res) => {
 });
 
 usuariosRouter.post("/", async (req, res) => {
-  const { username, senha, nome, permissoes, lojas } = req.body;
+  const { username, senha, nome, permissoes, lojas, todasLojas } = req.body;
   if (
     typeof username !== "string" ||
     !username.trim() ||
@@ -30,13 +30,16 @@ usuariosRouter.post("/", async (req, res) => {
     typeof nome !== "string" ||
     !nome.trim() ||
     !permissoesValidas(permissoes ?? []) ||
-    !lojasValidas(lojas ?? [])
+    !lojasValidas(lojas ?? []) ||
+    (todasLojas !== undefined && typeof todasLojas !== "boolean")
   ) {
     res.status(400).json({ error: "Dados inválidos. A senha precisa ter ao menos 6 caracteres." });
     return;
   }
   try {
-    res.json(await criarUsuario(username.trim(), senha, nome.trim(), permissoes ?? [], lojas ?? []));
+    res.json(
+      await criarUsuario(username.trim(), senha, nome.trim(), permissoes ?? [], lojas ?? [], Boolean(todasLojas))
+    );
   } catch (err) {
     console.error("Erro ao criar usuário:", err);
     const duplicado = err instanceof Error && /duplicate|unique/i.test(err.message);
@@ -46,7 +49,7 @@ usuariosRouter.post("/", async (req, res) => {
 
 usuariosRouter.patch("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { nome, senha, permissoes, lojas } = req.body;
+  const { nome, senha, permissoes, lojas, todasLojas } = req.body;
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
@@ -63,8 +66,12 @@ usuariosRouter.patch("/:id", async (req, res) => {
     res.status(400).json({ error: "Lojas inválidas." });
     return;
   }
+  if (todasLojas !== undefined && typeof todasLojas !== "boolean") {
+    res.status(400).json({ error: "Parâmetro todasLojas inválido." });
+    return;
+  }
   try {
-    await atualizarUsuario(id, { nome, senha, permissoes, lojas });
+    await atualizarUsuario(id, { nome, senha, permissoes, lojas, todasLojas });
     res.json({ ok: true });
   } catch (err) {
     console.error("Erro ao atualizar usuário:", err);

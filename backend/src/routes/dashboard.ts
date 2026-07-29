@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDashboardData } from "../services/dashboardService";
+import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const dashboardRouter = Router();
 
@@ -9,13 +10,13 @@ dashboardRouter.get("/", async (req, res) => {
     typeof lojaIdParam === "string" && Number.isInteger(Number(lojaIdParam)) ? Number(lojaIdParam) : undefined;
   const usuario = req.usuario!;
 
-  if (lojaId !== undefined && !usuario.admin && !usuario.lojas.includes(lojaId)) {
+  if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja." });
     return;
   }
 
   try {
-    const data = await getDashboardData(lojaId, usuario.admin ? undefined : usuario.lojas);
+    const data = await getDashboardData(lojaId, lojasEfetivas(usuario));
     res.json(data);
   } catch (err) {
     console.error("Erro ao montar dashboard:", err);

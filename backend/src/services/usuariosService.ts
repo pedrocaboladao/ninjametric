@@ -13,10 +13,22 @@ export interface Usuario {
 export interface UsuarioComPermissoes extends Usuario {
   permissoes: string[];
   lojas: number[];
+  todasLojas: boolean;
 }
 
-export function temAcessoLoja(usuario: { admin: boolean; lojas: number[] }, lojaId: number): boolean {
-  return usuario.admin || usuario.lojas.includes(lojaId);
+export function temAcessoLoja(
+  usuario: { admin: boolean; todasLojas: boolean; lojas: number[] },
+  lojaId: number
+): boolean {
+  return usuario.admin || usuario.todasLojas || usuario.lojas.includes(lojaId);
+}
+
+export function lojasEfetivas(usuario: {
+  admin: boolean;
+  todasLojas: boolean;
+  lojas: number[];
+}): number[] | undefined {
+  return usuario.admin || usuario.todasLojas ? undefined : usuario.lojas;
 }
 
 async function obterPermissoes(usuarioId: number): Promise<string[]> {
@@ -30,11 +42,15 @@ async function obterLojasPermitidas(usuarioId: number): Promise<number[]> {
 }
 
 export async function listarUsuarios(): Promise<UsuarioComPermissoes[]> {
-  const { rows } = await pool.query("SELECT id, username, nome, admin FROM usuarios ORDER BY id");
+  const { rows } = await pool.query("SELECT id, username, nome, admin, todas_lojas FROM usuarios ORDER BY id");
   const usuarios: UsuarioComPermissoes[] = [];
   for (const u of rows) {
     usuarios.push({
-      ...u,
+      id: u.id,
+      username: u.username,
+      nome: u.nome,
+      admin: u.admin,
+      todasLojas: u.todas_lojas,
       permissoes: u.admin ? [] : await obterPermissoes(u.id),
       lojas: u.admin ? [] : await obterLojasPermitidas(u.id),
     });
@@ -60,12 +76,22 @@ export async function buscarUsuarioPorUsername(
 }
 
 export async function buscarUsuarioComPermissoes(id: number): Promise<UsuarioComPermissoes | null> {
-  const { rows } = await pool.query("SELECT id, username, nome, admin FROM usuarios WHERE id = $1", [id]);
+  const { rows } = await pool.query("SELECT id, username, nome, admin, todas_lojas FROM usuarios WHERE id = $1", [
+    id,
+  ]);
   if (!rows[0]) return null;
   const admin = rows[0].admin;
   const permissoes = admin ? [] : await obterPermissoes(id);
   const lojas = admin ? [] : await obterLojasPermitidas(id);
-  return { ...rows[0], permissoes, lojas };
+  return {
+    id: rows[0].id,
+    username: rows[0].username,
+    nome: rows[0].nome,
+    admin,
+    todasLojas: rows[0].todas_lojas,
+    permissoes,
+    lojas,
+  };
 }
 
 export async function definirPermissoes(usuarioId: number, permissoes: string[]): Promise<void> {
@@ -93,17 +119,18 @@ export async function criarUsuario(
   senha: string,
   nome: string,
   permissoes: string[],
-  lojas: number[]
+  lojas: number[],
+  todasLojas: boolean
 ): Promise<UsuarioComPermissoes> {
   const senhaHash = bcrypt.hashSync(senha, 10);
   const { rows } = await pool.query(
-    "INSERT INTO usuarios (username, senha_hash, nome, admin) VALUES ($1, $2, $3, false) RETURNING id, username, nome, admin",
-    [username, senhaHash, nome]
+    "INSERT INTO usuarios (username, senha_hash, nome, admin, todas_lojas) VALUES ($1, $2, $3, false, $4) RETURNING id, username, nome, admin, todas_lojas",
+    [username, senhaHash, nome, todasLojas]
   );
   const usuario = rows[0];
   await definirPermissoes(usuario.id, permissoes);
   await definirLojas(usuario.id, lojas);
-  return { ...usuario, permissoes, lojas };
+  return { id: usuario.id, username: usuario.username, nome: usuario.nome, admin: usuario.admin, todasLojas: usuario.todas_lojas, permissoes, lojas };
 }
 
 export interface AtualizacaoUsuario {
@@ -111,6 +138,7 @@ export interface AtualizacaoUsuario {
   senha?: string;
   permissoes?: string[];
   lojas?: number[];
+  todasLojas?: boolean;
 }
 
 export async function atualizarUsuario(id: number, dados: AtualizacaoUsuario): Promise<void> {
@@ -120,6 +148,9 @@ export async function atualizarUsuario(id: number, dados: AtualizacaoUsuario): P
   if (dados.senha !== undefined) {
     const senhaHash = bcrypt.hashSync(dados.senha, 10);
     await pool.query("UPDATE usuarios SET senha_hash = $1 WHERE id = $2", [senhaHash, id]);
+  }
+  if (dados.todasLojas !== undefined) {
+    await pool.query("UPDATE usuarios SET todas_lojas = $1 WHERE id = $2", [dados.todasLojas, id]);
   }
   if (dados.permissoes !== undefined) {
     await definirPermissoes(id, dados.permissoes);

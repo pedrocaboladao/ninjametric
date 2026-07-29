@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
+import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const clonarAnuncioRouter = Router();
 
@@ -11,13 +12,13 @@ clonarAnuncioRouter.post("/preview", async (req, res) => {
     res.status(400).json({ error: "Informe a URL do anúncio e a loja de destino." });
     return;
   }
-  if (!usuario.admin && !usuario.lojas.includes(lojaDestinoId)) {
+  if (!temAcessoLoja(usuario, lojaDestinoId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja de destino." });
     return;
   }
 
   try {
-    const preview = await montarPreview(url.trim(), usuario.admin ? undefined : usuario.lojas);
+    const preview = await montarPreview(url.trim(), lojasEfetivas(usuario));
     res.json(preview);
   } catch (err) {
     console.error("Erro ao montar preview do clone:", err);
@@ -43,7 +44,7 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos para publicar o clone." });
     return;
   }
-  if (!usuario.admin && !usuario.lojas.includes(lojaDestinoId)) {
+  if (!temAcessoLoja(usuario, lojaDestinoId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja de destino." });
     return;
   }
@@ -60,7 +61,7 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
         imagensPorVariacao:
           imagensPorVariacao && typeof imagensPorVariacao === "object" ? imagensPorVariacao : undefined,
       },
-      usuario.admin ? undefined : usuario.lojas
+      lojasEfetivas(usuario)
     );
     res.json({ resultados });
   } catch (err) {
