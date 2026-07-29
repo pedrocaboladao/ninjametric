@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS tarefas_colunas (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tarefas_colunas_especial ON tarefas_colunas (especial) WHERE especial IS NOT NULL;
 
+ALTER TABLE tarefas_colunas ADD COLUMN IF NOT EXISTS cor TEXT;
+
 CREATE TABLE IF NOT EXISTS tarefas_cartoes (
   id SERIAL PRIMARY KEY,
   coluna_id INTEGER NOT NULL REFERENCES tarefas_colunas(id) ON DELETE CASCADE,

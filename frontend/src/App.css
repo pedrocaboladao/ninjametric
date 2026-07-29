@@ -1592,9 +1592,10 @@
 .tarefas-quadro {
   display: flex;
   gap: 16px;
-  align-items: flex-start;
+  align-items: stretch;
   overflow-x: auto;
   padding-bottom: 12px;
+  height: calc(100svh - 220px);
 }
 
 .tarefa-coluna {
@@ -1607,7 +1608,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: calc(100svh - 220px);
+  height: 100%;
 }
 
 .tarefa-coluna-topo {
@@ -1710,6 +1711,31 @@
 
 .tarefa-coluna-menu-excluir:hover {
   color: var(--critical-text) !important;
+}
+
+.tarefa-coluna-cores {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 8px;
+}
+
+.tarefa-coluna-cor-opcao {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.tarefa-coluna-cor-nenhuma {
+  background: var(--bg-panel);
+  border: 1.5px dashed var(--border-strong);
+}
+
+.tarefa-coluna-cor-ativa {
+  border-color: var(--text-primary);
 }
 
 .tarefa-coluna-lista {
@@ -1857,6 +1883,7 @@
 .tarefa-nova-coluna {
   flex-shrink: 0;
   width: 220px;
+  align-self: flex-start;
 }
 
 .tarefa-adicionar-coluna {

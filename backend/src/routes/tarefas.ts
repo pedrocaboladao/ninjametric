@@ -4,6 +4,7 @@ import {
   criarColuna,
   renomearColuna,
   excluirColuna,
+  mudarCorColuna,
   criarCartao,
   atualizarCartao,
   reindexarColuna,
@@ -12,6 +13,8 @@ import {
   listarArquivados,
   restaurarCartao,
 } from "../services/tarefasService";
+
+const REGEX_COR_HEX = /^#[0-9a-fA-F]{6}$/;
 
 export const tarefasRouter = Router();
 
@@ -44,16 +47,29 @@ tarefasRouter.post("/colunas", async (req, res) => {
 
 tarefasRouter.patch("/colunas/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { nome } = req.body;
-  if (!Number.isInteger(id) || typeof nome !== "string" || !nome.trim()) {
+  const { nome, cor } = req.body;
+  if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
+  if (cor !== undefined && cor !== null && !REGEX_COR_HEX.test(cor)) {
+    res.status(400).json({ error: "Cor inválida." });
+    return;
+  }
   try {
-    await renomearColuna(id, nome.trim());
+    if (nome !== undefined) {
+      if (typeof nome !== "string" || !nome.trim()) {
+        res.status(400).json({ error: "Informe o nome da coluna." });
+        return;
+      }
+      await renomearColuna(id, nome.trim());
+    }
+    if (cor !== undefined) {
+      await mudarCorColuna(id, cor);
+    }
     res.json({ ok: true });
   } catch (err) {
-    erro(res, err, "Falha ao renomear coluna.");
+    erro(res, err, "Falha ao atualizar coluna.");
   }
 });
 

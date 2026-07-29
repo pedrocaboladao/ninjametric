@@ -12,6 +12,7 @@ export interface Coluna {
   id: number;
   nome: string;
   especial: string | null;
+  cor: string | null;
   ordem: number;
   cartoes: Cartao[];
 }
@@ -30,7 +31,7 @@ function linhaParaCartao(r: LinhaCartao): Cartao {
 
 export async function listarQuadro(): Promise<Coluna[]> {
   const { rows: colunasRows } = await pool.query(
-    "SELECT id, nome, especial, ordem FROM tarefas_colunas ORDER BY ordem, id"
+    "SELECT id, nome, especial, cor, ordem FROM tarefas_colunas ORDER BY ordem, id"
   );
   const { rows: cartoesRows } = await pool.query(
     "SELECT id, coluna_id, titulo, concluido, ordem FROM tarefas_cartoes WHERE arquivado = false ORDER BY ordem, id"
@@ -48,6 +49,7 @@ export async function listarQuadro(): Promise<Coluna[]> {
     id: c.id,
     nome: c.nome,
     especial: c.especial,
+    cor: c.cor,
     ordem: c.ordem,
     cartoes: cartoesPorColuna.get(c.id) ?? [],
   }));
@@ -59,7 +61,7 @@ export async function criarColuna(nome: string): Promise<Coluna> {
   );
   const ordem = rows[0].proxima;
   const { rows: inseridas } = await pool.query(
-    "INSERT INTO tarefas_colunas (nome, ordem) VALUES ($1, $2) RETURNING id, nome, especial, ordem",
+    "INSERT INTO tarefas_colunas (nome, ordem) VALUES ($1, $2) RETURNING id, nome, especial, cor, ordem",
     [nome, ordem]
   );
   return { ...inseridas[0], cartoes: [] };
@@ -80,6 +82,10 @@ export async function renomearColuna(id: number, nome: string): Promise<void> {
 export async function excluirColuna(id: number): Promise<void> {
   await garantirColunaNaoEspecial(id, "excluir");
   await pool.query("DELETE FROM tarefas_colunas WHERE id = $1", [id]);
+}
+
+export async function mudarCorColuna(id: number, cor: string | null): Promise<void> {
+  await pool.query("UPDATE tarefas_colunas SET cor = $1 WHERE id = $2", [cor, id]);
 }
 
 export async function criarCartao(colunaId: number, titulo: string): Promise<Cartao> {

@@ -10,6 +10,7 @@ export interface Coluna {
   id: number;
   nome: string;
   especial: string | null;
+  cor: string | null;
   ordem: number;
   cartoes: Cartao[];
 }

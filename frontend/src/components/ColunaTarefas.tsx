@@ -5,6 +5,17 @@ import type { Coluna, Cartao } from "../types/tarefas";
 import { CartaoTarefa } from "./CartaoTarefa";
 import { IconPlus, IconMore, IconLock, IconArchiveBox } from "./icons";
 
+const CORES_PRESET = [
+  "#ef4444",
+  "#f97316",
+  "#eab308",
+  "#22c55e",
+  "#14b8a6",
+  "#3b82f6",
+  "#8b5cf6",
+  "#ec4899",
+];
+
 interface Props {
   coluna: Coluna;
   onConcluirCartao: (cartao: Cartao, concluido: boolean) => void;
@@ -12,6 +23,7 @@ interface Props {
   onAdicionarCartao: (colunaId: number, titulo: string) => void;
   onRenomear: (id: number, nome: string) => void;
   onExcluirColuna: (id: number) => void;
+  onMudarCor: (id: number, cor: string | null) => void;
   onArquivarConcluidos: () => void;
 }
 
@@ -22,6 +34,7 @@ export function ColunaTarefas({
   onAdicionarCartao,
   onRenomear,
   onExcluirColuna,
+  onMudarCor,
   onArquivarConcluidos,
 }: Props) {
   const [menuAberto, setMenuAberto] = useState(false);
@@ -49,7 +62,10 @@ export function ColunaTarefas({
   }
 
   return (
-    <div className="tarefa-coluna">
+    <div
+      className="tarefa-coluna"
+      style={coluna.cor ? { borderTopColor: coluna.cor, borderTopWidth: "3px" } : undefined}
+    >
       <div className="tarefa-coluna-topo">
         {editandoNome ? (
           <input
@@ -87,6 +103,32 @@ export function ColunaTarefas({
                 >
                   Renomear
                 </button>
+                <div className="tarefa-coluna-cores">
+                  <button
+                    className={`tarefa-coluna-cor-opcao tarefa-coluna-cor-nenhuma ${
+                      !coluna.cor ? "tarefa-coluna-cor-ativa" : ""
+                    }`}
+                    onClick={() => {
+                      onMudarCor(coluna.id, null);
+                      setMenuAberto(false);
+                    }}
+                    title="Sem cor"
+                  />
+                  {CORES_PRESET.map((cor) => (
+                    <button
+                      key={cor}
+                      className={`tarefa-coluna-cor-opcao ${
+                        coluna.cor === cor ? "tarefa-coluna-cor-ativa" : ""
+                      }`}
+                      style={{ background: cor }}
+                      onClick={() => {
+                        onMudarCor(coluna.id, cor);
+                        setMenuAberto(false);
+                      }}
+                      title={cor}
+                    />
+                  ))}
+                </div>
                 <button
                   className="tarefa-coluna-menu-excluir"
                   onClick={() => {

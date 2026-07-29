@@ -34,6 +34,10 @@ export async function excluirColuna(id: number): Promise<void> {
   await chamar(`/api/tarefas/colunas/${id}`, { method: "DELETE" });
 }
 
+export async function mudarCorColuna(id: number, cor: string | null): Promise<void> {
+  await chamar(`/api/tarefas/colunas/${id}`, { method: "PATCH", body: JSON.stringify({ cor }) });
+}
+
 export async function criarCartao(colunaId: number, titulo: string): Promise<Cartao> {
   return chamar("/api/tarefas/cartoes", { method: "POST", body: JSON.stringify({ colunaId, titulo }) });
 }

@@ -17,6 +17,7 @@ import {
   criarColuna,
   renomearColuna,
   excluirColuna,
+  mudarCorColuna,
   criarCartao,
   atualizarCartao,
   excluirCartao,
@@ -195,6 +196,11 @@ export function Tarefas() {
     carregarQuadro();
   }
 
+  async function handleMudarCor(id: number, cor: string | null) {
+    await mudarCorColuna(id, cor);
+    carregarQuadro();
+  }
+
   async function handleArquivarConcluidos() {
     await arquivarConcluidos();
     carregarQuadro();
@@ -276,6 +282,7 @@ export function Tarefas() {
                 onAdicionarCartao={handleAdicionarCartao}
                 onRenomear={handleRenomearColuna}
                 onExcluirColuna={handleExcluirColuna}
+                onMudarCor={handleMudarCor}
                 onArquivarConcluidos={handleArquivarConcluidos}
               />
             ))}
