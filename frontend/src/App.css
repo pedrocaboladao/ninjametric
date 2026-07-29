@@ -218,6 +218,26 @@
   padding: 2px 6px;
   border-radius: 5px;
   flex-shrink: 0;
+  display: none;
+}
+
+.sidebar-sair {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.sidebar-sair:hover {
+  color: var(--critical-text);
+  border-color: var(--critical-text);
 }
 
 /* Dashboard: cabeçalho ao vivo */
@@ -1254,4 +1274,48 @@
 .clonar-sucesso .btn-responder {
   text-decoration: none;
   margin-top: 12px;
+}
+
+/* Login */
+.login-tela {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-page);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-logo {
+  width: 100%;
+  max-width: 200px;
+  height: auto;
+  margin-bottom: 12px;
+}
+
+.login-card h1 {
+  font-size: 19px;
+  margin-bottom: 16px;
+}
+
+.login-card .clonar-campo {
+  width: 100%;
+}
+
+.login-botao {
+  width: 100%;
+  justify-content: center;
+  margin-top: 8px;
 }

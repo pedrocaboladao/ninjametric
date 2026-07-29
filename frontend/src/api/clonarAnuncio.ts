@@ -13,6 +13,7 @@ export async function buscarPreview(url: string, lojaDestinoId: number): Promise
   const res = await fetch(`${API_BASE}/api/clonar-anuncio/preview`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ url, lojaDestinoId }),
   });
   if (!res.ok) return tratarErro(res);
@@ -32,6 +33,7 @@ export async function publicarClone(params: PublicarParams): Promise<ResultadoCl
   const res = await fetch(`${API_BASE}/api/clonar-anuncio/publicar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify(params),
   });
   if (!res.ok) return tratarErro(res);

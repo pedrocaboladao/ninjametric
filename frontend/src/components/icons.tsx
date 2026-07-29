@@ -140,6 +140,15 @@ export function IconExpand({ size = 16 }: IconProps) {
   );
 }
 
+export function IconLogout({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M9 4H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h3" />
+      <path d="M14 8l4 4-4 4M18 12H9" />
+    </svg>
+  );
+}
+
 export function IconExternalLink({ size = 14 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

@@ -16,4 +16,7 @@ export const env = {
   mlClientId: process.env.ML_CLIENT_ID ?? "",
   mlClientSecret: process.env.ML_CLIENT_SECRET ?? "",
   mlRedirectUri: process.env.ML_REDIRECT_URI ?? "",
+  authUsername: required("AUTH_USERNAME"),
+  authPasswordHash: required("AUTH_PASSWORD_HASH"),
+  jwtSecret: required("JWT_SECRET"),
 };

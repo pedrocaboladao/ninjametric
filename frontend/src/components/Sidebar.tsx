@@ -10,6 +10,7 @@ import {
   IconUsers,
   IconGear,
   IconChevron,
+  IconLogout,
 } from "./icons";
 
 export type View = "dashboard" | "perguntas" | "clonar";
@@ -18,6 +19,7 @@ interface Props {
   view: View;
   onChangeView: (view: View) => void;
   perguntasPendentes: number;
+  onSair: () => void;
 }
 
 const INERTES = [
@@ -28,7 +30,7 @@ const INERTES = [
   { label: "Conta", Icon: IconGear },
 ];
 
-export function Sidebar({ view, onChangeView, perguntasPendentes }: Props) {
+export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
 
   return (
@@ -90,6 +92,9 @@ export function Sidebar({ view, onChangeView, perguntasPendentes }: Props) {
           <div className="sidebar-user-email">pedroroteirista@gmail.com</div>
         </div>
         <span className="sidebar-user-badge">DIRETOR</span>
+        <button className="sidebar-sair" onClick={onSair} title="Sair">
+          <IconLogout size={15} />
+        </button>
       </div>
     </aside>
   );
