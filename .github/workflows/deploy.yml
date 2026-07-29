@@ -25,3 +25,5 @@ jobs:
             cd ~/ninjametric
             git pull
             docker compose up -d --build
+            docker compose exec -T backend node dist/db/migrate.js
+            docker compose exec -T backend node dist/db/seed.js
