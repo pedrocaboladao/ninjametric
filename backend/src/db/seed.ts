@@ -8,6 +8,7 @@ const LOJAS = [
   "Perpétua",
   "Cores Certas",
   "Mestre do Impermeabilizante",
+  "Cidade Canção",
 ];
 
 const COLUNAS_PADRAO = ["Em andamento", "Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
