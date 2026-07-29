@@ -26,10 +26,12 @@ export interface PublicarParams {
   tituloFinal: string;
   listingType: string;
   ativarFlex: boolean;
+  quantidadeClones: number;
   imagensPersonalizadas?: string[];
+  imagensPorVariacao?: Record<number, string[]>;
 }
 
-export async function publicarClone(params: PublicarParams): Promise<ResultadoClone> {
+export async function publicarClone(params: PublicarParams): Promise<ResultadoClone[]> {
   const res = await fetch(`${API_BASE}/api/clonar-anuncio/publicar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -37,5 +39,6 @@ export async function publicarClone(params: PublicarParams): Promise<ResultadoCl
     body: JSON.stringify(params),
   });
   if (!res.ok) return tratarErro(res);
-  return res.json();
+  const data = await res.json();
+  return data.resultados;
 }

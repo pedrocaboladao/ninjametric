@@ -22,7 +22,16 @@ clonarAnuncioRouter.post("/preview", async (req, res) => {
 });
 
 clonarAnuncioRouter.post("/publicar", async (req, res) => {
-  const { url, lojaDestinoId, tituloFinal, listingType, ativarFlex, imagensPersonalizadas } = req.body;
+  const {
+    url,
+    lojaDestinoId,
+    tituloFinal,
+    listingType,
+    ativarFlex,
+    quantidadeClones,
+    imagensPersonalizadas,
+    imagensPorVariacao,
+  } = req.body;
 
   if (
     typeof url !== "string" ||
@@ -37,13 +46,16 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
   }
 
   try {
-    const resultado = await publicarClone(url.trim(), lojaDestinoId, {
+    const resultados = await publicarClone(url.trim(), lojaDestinoId, {
       tituloFinal: tituloFinal.trim(),
       listingType,
       ativarFlex: Boolean(ativarFlex),
+      quantidadeClones: Number.isInteger(quantidadeClones) ? quantidadeClones : 1,
       imagensPersonalizadas: Array.isArray(imagensPersonalizadas) ? imagensPersonalizadas : undefined,
+      imagensPorVariacao:
+        imagensPorVariacao && typeof imagensPorVariacao === "object" ? imagensPorVariacao : undefined,
     });
-    res.json(resultado);
+    res.json({ resultados });
   } catch (err) {
     console.error("Erro ao publicar clone:", err);
     const mensagem = err instanceof Error ? err.message : "Falha ao publicar o anúncio clonado.";

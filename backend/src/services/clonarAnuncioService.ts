@@ -6,6 +6,7 @@ import {
   createItem,
   setItemDescription,
   ativarEnviosFlex,
+  atualizarFotosDasVariacoes,
   MlItemFull,
   NovoItemPayload,
 } from "./mercadoLivreItems";
@@ -30,6 +31,10 @@ async function encontrarLojaDonaEItem(itemId: string): Promise<{ lojaId: number;
   );
 }
 
+function resumoVariacao(atributos: MlItemFull["variations"][number]["attribute_combinations"]): string {
+  return atributos.map((a) => `${a.name ?? a.id}: ${a.value_name ?? a.value_id ?? "-"}`).join(" · ");
+}
+
 export interface PreviewAnuncio {
   itemOriginalId: string;
   tituloOriginal: string;
@@ -43,6 +48,7 @@ export interface PreviewAnuncio {
   fotos: string[];
   numAtributos: number;
   numVariacoes: number;
+  variacoes: Array<{ index: number; resumo: string }>;
   frete: { modo: string; freteGratis: boolean; retiradaLocal: boolean };
   descricao: string;
   linkOriginal: string;
@@ -70,6 +76,7 @@ export async function montarPreview(url: string): Promise<PreviewAnuncio> {
     fotos: item.pictures.map((p) => p.secure_url),
     numAtributos: item.attributes.length,
     numVariacoes: item.variations?.length ?? 0,
+    variacoes: (item.variations ?? []).map((v, index) => ({ index, resumo: resumoVariacao(v.attribute_combinations) })),
     frete: {
       modo: item.shipping.mode,
       freteGratis: item.shipping.free_shipping,
@@ -85,7 +92,9 @@ export interface OpcoesClone {
   tituloFinal: string;
   listingType: string;
   ativarFlex: boolean;
+  quantidadeClones: number;
   imagensPersonalizadas?: string[];
+  imagensPorVariacao?: Record<number, string[]>;
 }
 
 export interface ResultadoClone {
@@ -93,18 +102,35 @@ export interface ResultadoClone {
   permalink: string;
 }
 
-export async function publicarClone(
-  url: string,
+async function publicarUmaCopia(
+  original: MlItemFull,
+  descricao: string,
   lojaDestinoId: number,
   opcoes: OpcoesClone
 ): Promise<ResultadoClone> {
-  const itemId = await extrairItemIdDaUrl(url);
-  const { lojaId: lojaOrigemId, item: original } = await encontrarLojaDonaEItem(itemId);
-  const descricao = await getItemDescriptionComToken(lojaOrigemId, itemId);
+  const temVariacoes = original.variations && original.variations.length > 0;
+  const usaFotosPorVariacao = temVariacoes && opcoes.imagensPorVariacao && Object.keys(opcoes.imagensPorVariacao).length > 0;
 
-  const fotos = opcoes.imagensPersonalizadas?.length
-    ? opcoes.imagensPersonalizadas
-    : original.pictures.map((p) => p.secure_url);
+  let fotosGerais: string[];
+  const faixaPorVariacao: number[][] = [];
+
+  if (usaFotosPorVariacao) {
+    // fotos gerais do item = a primeira foto de cada variação (capa), e o restante fica só na variação
+    const combinadas: string[] = [];
+    original.variations.forEach((_, index) => {
+      const fotosDaVariacao = opcoes.imagensPorVariacao?.[index]?.length
+        ? opcoes.imagensPorVariacao[index]
+        : original.pictures.map((p) => p.secure_url);
+      const inicio = combinadas.length;
+      combinadas.push(...fotosDaVariacao);
+      faixaPorVariacao.push(Array.from({ length: fotosDaVariacao.length }, (_, i) => inicio + i));
+    });
+    fotosGerais = combinadas;
+  } else {
+    fotosGerais = opcoes.imagensPersonalizadas?.length
+      ? opcoes.imagensPersonalizadas
+      : original.pictures.map((p) => p.secure_url);
+  }
 
   const payload: NovoItemPayload = {
     title: opcoes.tituloFinal,
@@ -115,7 +141,7 @@ export async function publicarClone(
     buying_mode: original.buying_mode,
     condition: original.condition,
     listing_type_id: opcoes.listingType,
-    pictures: fotos.map((source) => ({ source })),
+    pictures: fotosGerais.map((source) => ({ source })),
     attributes: original.attributes,
     shipping: {
       mode: original.shipping.mode,
@@ -124,7 +150,7 @@ export async function publicarClone(
     },
   };
 
-  if (original.variations && original.variations.length > 0) {
+  if (temVariacoes) {
     payload.variations = original.variations.map((v) => ({
       attribute_combinations: v.attribute_combinations,
       price: v.price,
@@ -142,5 +168,31 @@ export async function publicarClone(
     await ativarEnviosFlex(lojaDestinoId, original.site_id, novoItem.id);
   }
 
+  if (usaFotosPorVariacao && novoItem.variations && novoItem.variations.length === faixaPorVariacao.length) {
+    const idsDasFotosNovas = novoItem.pictures.map((p) => p.id);
+    const variacoesComFotos = novoItem.variations.map((v, index) => ({
+      id: v.id,
+      picture_ids: faixaPorVariacao[index].map((i) => idsDasFotosNovas[i]).filter(Boolean),
+    }));
+    await atualizarFotosDasVariacoes(lojaDestinoId, novoItem.id, variacoesComFotos);
+  }
+
   return { novoItemId: novoItem.id, permalink: novoItem.permalink };
+}
+
+export async function publicarClone(
+  url: string,
+  lojaDestinoId: number,
+  opcoes: OpcoesClone
+): Promise<ResultadoClone[]> {
+  const itemId = await extrairItemIdDaUrl(url);
+  const { lojaId: lojaOrigemId, item: original } = await encontrarLojaDonaEItem(itemId);
+  const descricao = await getItemDescriptionComToken(lojaOrigemId, itemId);
+
+  const quantidade = Math.max(1, Math.min(20, opcoes.quantidadeClones || 1));
+  const resultados: ResultadoClone[] = [];
+  for (let i = 0; i < quantidade; i++) {
+    resultados.push(await publicarUmaCopia(original, descricao, lojaDestinoId, opcoes));
+  }
+  return resultados;
 }

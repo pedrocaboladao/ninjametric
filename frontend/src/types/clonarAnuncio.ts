@@ -16,6 +16,7 @@ export interface PreviewAnuncio {
   fotos: string[];
   numAtributos: number;
   numVariacoes: number;
+  variacoes: Array<{ index: number; resumo: string }>;
   frete: { modo: string; freteGratis: boolean; retiradaLocal: boolean };
   descricao: string;
   linkOriginal: string;

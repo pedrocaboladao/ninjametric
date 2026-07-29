@@ -153,3 +153,16 @@ export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: s
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 }
+
+export async function atualizarFotosDasVariacoes(
+  lojaId: number,
+  itemId: string,
+  variacoes: Array<{ id: number; picture_ids: string[] }>
+): Promise<void> {
+  const accessToken = await getValidAccessToken(lojaId);
+  await axios.put(
+    `${ML_API_BASE}/items/${itemId}`,
+    { variations: variacoes },
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+}

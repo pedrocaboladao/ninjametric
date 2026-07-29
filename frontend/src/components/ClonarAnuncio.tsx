@@ -1,14 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Loja, PreviewAnuncio, ResultadoClone } from "../types/clonarAnuncio";
 import { TIPOS_ANUNCIO } from "../types/clonarAnuncio";
 import { fetchLojas, buscarPreview, publicarClone } from "../api/clonarAnuncio";
 import { formatCurrency } from "../utils/format";
 
 const CONDICAO_LABEL: Record<string, string> = { new: "Novo", used: "Usado" };
-
-function passosLabel(step: number) {
-  return ["Link", "Título", "Confirmação"][step - 1];
-}
+const PASSOS = ["Link", "Título", "Confirmação"];
 
 export function ClonarAnuncio() {
   const [step, setStep] = useState(1);
@@ -16,10 +13,12 @@ export function ClonarAnuncio() {
 
   const [url, setUrl] = useState("");
   const [lojaDestinoId, setLojaDestinoId] = useState<number | "">("");
+  const [quantidadeClones, setQuantidadeClones] = useState(1);
   const [listingType, setListingType] = useState<string>(TIPOS_ANUNCIO[0].value);
   const [ativarFlex, setAtivarFlex] = useState(false);
   const [usarImagensPersonalizadas, setUsarImagensPersonalizadas] = useState(false);
   const [imagensTexto, setImagensTexto] = useState("");
+  const [imagensPorVariacaoTexto, setImagensPorVariacaoTexto] = useState<Record<number, string>>({});
 
   const [tituloFinal, setTituloFinal] = useState("");
   const [preview, setPreview] = useState<PreviewAnuncio | null>(null);
@@ -28,7 +27,9 @@ export function ClonarAnuncio() {
   const [erro, setErro] = useState<string | null>(null);
   const [confirmado, setConfirmado] = useState(false);
   const [publicando, setPublicando] = useState(false);
-  const [resultado, setResultado] = useState<ResultadoClone | null>(null);
+  const [resultados, setResultados] = useState<ResultadoClone[] | null>(null);
+
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchLojas()
@@ -36,38 +37,54 @@ export function ClonarAnuncio() {
       .catch(() => setErro("Não foi possível carregar a lista de lojas."));
   }, []);
 
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setPreview(null);
+
+    if (url.trim().length < 15 || lojaDestinoId === "") return;
+
+    debounceRef.current = setTimeout(async () => {
+      setLoadingPreview(true);
+      setErro(null);
+      try {
+        const dados = await buscarPreview(url.trim(), Number(lojaDestinoId));
+        setPreview(dados);
+        setTituloFinal(dados.tituloOriginal);
+      } catch (err) {
+        setErro(err instanceof Error ? err.message : "Erro ao buscar anúncio.");
+      } finally {
+        setLoadingPreview(false);
+      }
+    }, 700);
+
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [url, lojaDestinoId]);
+
   function resetar() {
     setStep(1);
     setUrl("");
     setLojaDestinoId("");
+    setQuantidadeClones(1);
     setListingType(TIPOS_ANUNCIO[0].value);
     setAtivarFlex(false);
     setUsarImagensPersonalizadas(false);
     setImagensTexto("");
+    setImagensPorVariacaoTexto({});
     setTituloFinal("");
     setPreview(null);
     setErro(null);
     setConfirmado(false);
-    setResultado(null);
+    setResultados(null);
   }
 
-  async function handleBuscarAnuncio() {
-    if (!url.trim() || lojaDestinoId === "") {
-      setErro("Cole a URL do anúncio e escolha a loja de destino.");
-      return;
-    }
-    setLoadingPreview(true);
-    setErro(null);
-    try {
-      const dados = await buscarPreview(url.trim(), Number(lojaDestinoId));
-      setPreview(dados);
-      setTituloFinal(dados.tituloOriginal);
-      setStep(2);
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao buscar anúncio.");
-    } finally {
-      setLoadingPreview(false);
-    }
+  function textoParaLista(texto: string): string[] {
+    return texto
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
 
   async function handlePublicar() {
@@ -75,12 +92,17 @@ export function ClonarAnuncio() {
     setPublicando(true);
     setErro(null);
     try {
-      const imagensPersonalizadas = usarImagensPersonalizadas
-        ? imagensTexto
-            .split("\n")
-            .map((s) => s.trim())
-            .filter(Boolean)
+      const temFotosPorVariacao = usarImagensPersonalizadas && preview.numVariacoes > 0;
+      const imagensPorVariacao = temFotosPorVariacao
+        ? Object.fromEntries(
+            Object.entries(imagensPorVariacaoTexto)
+              .map(([idx, texto]) => [Number(idx), textoParaLista(texto)])
+              .filter(([, lista]) => (lista as string[]).length > 0)
+          )
         : undefined;
+
+      const imagensPersonalizadas =
+        usarImagensPersonalizadas && preview.numVariacoes === 0 ? textoParaLista(imagensTexto) : undefined;
 
       const resultado = await publicarClone({
         url: url.trim(),
@@ -88,9 +110,11 @@ export function ClonarAnuncio() {
         tituloFinal: tituloFinal.trim(),
         listingType,
         ativarFlex,
+        quantidadeClones,
         imagensPersonalizadas,
+        imagensPorVariacao,
       });
-      setResultado(resultado);
+      setResultados(resultado);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao publicar anúncio.");
     } finally {
@@ -98,16 +122,23 @@ export function ClonarAnuncio() {
     }
   }
 
-  if (resultado) {
+  if (resultados) {
     return (
       <div className="clonar">
         <div className="painel clonar-sucesso">
           <span className="painel-eyebrow">Anúncio criado</span>
-          <h2>Publicado com sucesso!</h2>
-          <p className="painel-sub">O novo anúncio já está ativo no Mercado Livre.</p>
-          <a className="btn-responder" href={resultado.permalink} target="_blank" rel="noreferrer">
-            Abrir anúncio no Mercado Livre
-          </a>
+          <h2>{resultados.length > 1 ? `${resultados.length} anúncios publicados!` : "Publicado com sucesso!"}</h2>
+          <p className="painel-sub">
+            {resultados.length > 1 ? "Os novos anúncios já estão ativos" : "O novo anúncio já está ativo"} no Mercado
+            Livre.
+          </p>
+          <div className="clonar-lista-resultados">
+            {resultados.map((r, i) => (
+              <a key={r.novoItemId} className="btn-responder" href={r.permalink} target="_blank" rel="noreferrer">
+                Abrir anúncio {resultados.length > 1 ? `#${i + 1}` : ""} no Mercado Livre
+              </a>
+            ))}
+          </div>
           <button className="btn-excluir" style={{ marginTop: 10 }} onClick={resetar}>
             Clonar outro anúncio
           </button>
@@ -118,80 +149,131 @@ export function ClonarAnuncio() {
 
   return (
     <div className="clonar">
-      <div className="clonar-header">
-        <div>
-          <h1>Clonar Anúncio</h1>
-          <p className="painel-sub">Recria um anúncio existente em outra loja das 4.</p>
+      <div className="clonar-topo">
+        <div className="clonar-breadcrumb">
+          <span className="clonar-breadcrumb-linha" />
+          Criação
         </div>
-        <div className="clonar-passos">
-          {[1, 2, 3].map((n) => (
-            <span key={n} className={`clonar-passo ${step === n ? "clonar-passo-ativo" : ""} ${step > n ? "clonar-passo-feito" : ""}`}>
-              {n}. {passosLabel(n)}
-            </span>
-          ))}
-        </div>
+        <h1>Clonar Anúncio</h1>
+        <p className="painel-sub">
+          Cole o link de um anúncio do Mercado Livre e clone-o para a loja de destino com fotos, atributos e preço
+          originais.
+        </p>
+      </div>
+
+      <div className="clonar-passos-novo">
+        {PASSOS.map((label, i) => {
+          const n = i + 1;
+          return (
+            <div className="clonar-passo-item" key={n}>
+              <span
+                className={`clonar-passo-circulo ${step === n ? "clonar-passo-circulo-ativo" : ""} ${
+                  step > n ? "clonar-passo-circulo-feito" : ""
+                }`}
+              >
+                {n}
+              </span>
+              <span className={`clonar-passo-texto ${step === n ? "clonar-passo-texto-ativo" : ""}`}>{label}</span>
+              {n < PASSOS.length && <span className="clonar-passo-linha" />}
+            </div>
+          );
+        })}
       </div>
 
       {erro && <div className="clonar-erro">{erro}</div>}
 
       {step === 1 && (
         <div className="painel">
-          <h2>1. Link do anúncio</h2>
-          <p className="painel-sub">
-            Só é possível clonar anúncios que já pertencem a uma das suas 4 lojas — o Mercado Livre não deixa ler os
-            detalhes completos de anúncios de outras contas.
-          </p>
           <div className="clonar-campo">
-            <label>URL do anúncio original</label>
+            <label>Loja de destino</label>
+            <select
+              className="clonar-input"
+              value={lojaDestinoId}
+              onChange={(e) => setLojaDestinoId(e.target.value ? Number(e.target.value) : "")}
+            >
+              <option value="">Selecione...</option>
+              {lojas.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nome.toUpperCase()}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="clonar-campo">
+            <label>Link do anúncio</label>
             <input
               className="clonar-input"
-              placeholder="https://produto.mercadolivre.com.br/MLB-..."
+              placeholder="https://www.mercadolivre.com.br/..."
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />
           </div>
-          <div className="clonar-linha">
-            <div className="clonar-campo">
-              <label>Loja de destino</label>
-              <select
-                className="clonar-input"
-                value={lojaDestinoId}
-                onChange={(e) => setLojaDestinoId(e.target.value ? Number(e.target.value) : "")}
-              >
-                <option value="">Selecione...</option>
-                {lojas.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.nome}
-                  </option>
-                ))}
-              </select>
+
+          {loadingPreview && <div className="clonar-preview-carregando">Buscando anúncio...</div>}
+
+          {preview && !loadingPreview && (
+            <div className="clonar-preview-inline">
+              {preview.fotos[0] && <img src={preview.fotos[0]} alt="" className="clonar-preview-foto" />}
+              <div className="clonar-preview-info">
+                <div className="clonar-preview-titulo">{preview.tituloOriginal}</div>
+                <div className="clonar-preview-meta">
+                  {formatCurrency(preview.preco)} · {preview.categoriaNome}
+                  {preview.numVariacoes > 0 ? ` · ${preview.numVariacoes} variações` : ""}
+                </div>
+              </div>
             </div>
-            <div className="clonar-campo">
-              <label>Tipo de anúncio</label>
-              <select className="clonar-input" value={listingType} onChange={(e) => setListingType(e.target.value)}>
-                {TIPOS_ANUNCIO.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
+          )}
+
+          <div className="clonar-campo">
+            <label>Quantidade de clones</label>
+            <input
+              className="clonar-input"
+              type="number"
+              min={1}
+              max={20}
+              value={quantidadeClones}
+              onChange={(e) => setQuantidadeClones(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
+            />
+          </div>
+
+          <div className="clonar-campo">
+            <label>Tipo de anúncio</label>
+            <select className="clonar-input" value={listingType} onChange={(e) => setListingType(e.target.value)}>
+              {TIPOS_ANUNCIO.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <label className="clonar-checkbox-bloco">
+            <input type="checkbox" checked={ativarFlex} onChange={(e) => setAtivarFlex(e.target.checked)} />
+            <div>
+              <div className="clonar-checkbox-titulo">Ativar Envio Flex</div>
+              <div className="clonar-checkbox-desc">
+                Marque pra publicar com Flex ativo no Mercado Livre. Desmarcado, o anúncio sai sem tag de Flex.
+              </div>
             </div>
-          </div>
-          <div className="clonar-checkbox-linha">
-            <label className="clonar-checkbox">
-              <input type="checkbox" checked={ativarFlex} onChange={(e) => setAtivarFlex(e.target.checked)} />
-              Ativar Mercado Envios Flex
-            </label>
-            <label className="clonar-checkbox">
-              <input
-                type="checkbox"
-                checked={usarImagensPersonalizadas}
-                onChange={(e) => setUsarImagensPersonalizadas(e.target.checked)}
-              />
-              Usar imagens personalizadas
-            </label>
-          </div>
-          {usarImagensPersonalizadas && (
+          </label>
+
+          <label className="clonar-checkbox-bloco">
+            <input
+              type="checkbox"
+              checked={usarImagensPersonalizadas}
+              onChange={(e) => setUsarImagensPersonalizadas(e.target.checked)}
+            />
+            <div>
+              <div className="clonar-checkbox-titulo">Usar imagens personalizadas</div>
+              <div className="clonar-checkbox-desc">
+                Clona toda a estrutura do anúncio (título, atributos, variações, preço, frete, descrição), mas
+                substitui as fotos pelas que você subir — 1 conjunto por variação.
+              </div>
+            </div>
+          </label>
+
+          {usarImagensPersonalizadas && (!preview || preview.numVariacoes === 0) && (
             <div className="clonar-campo">
               <label>URLs das imagens (uma por linha)</label>
               <textarea
@@ -203,9 +285,10 @@ export function ClonarAnuncio() {
               />
             </div>
           )}
+
           <div className="clonar-acoes">
-            <button className="btn-responder" onClick={handleBuscarAnuncio} disabled={loadingPreview}>
-              {loadingPreview ? "Buscando..." : "Buscar anúncio"}
+            <button className="btn-responder" onClick={() => setStep(2)} disabled={!preview}>
+              Continuar →
             </button>
           </div>
         </div>
@@ -213,12 +296,33 @@ export function ClonarAnuncio() {
 
       {step === 2 && preview && (
         <div className="painel">
-          <h2>2. Ajustar título</h2>
+          <h2>Ajustar título</h2>
           <p className="painel-sub">Título original: {preview.tituloOriginal}</p>
           <div className="clonar-campo">
             <label>Título do novo anúncio</label>
             <input className="clonar-input" value={tituloFinal} onChange={(e) => setTituloFinal(e.target.value)} />
           </div>
+
+          {usarImagensPersonalizadas && preview.numVariacoes > 0 && (
+            <div className="clonar-campo">
+              <label>Fotos por variação (uma URL por linha, em cada campo)</label>
+              {preview.variacoes.map((v) => (
+                <div key={v.index} className="clonar-variacao-foto">
+                  <span className="clonar-variacao-nome">{v.resumo}</span>
+                  <textarea
+                    className="clonar-input clonar-textarea"
+                    rows={2}
+                    placeholder={"https://...\nhttps://..."}
+                    value={imagensPorVariacaoTexto[v.index] ?? ""}
+                    onChange={(e) =>
+                      setImagensPorVariacaoTexto((atual) => ({ ...atual, [v.index]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="clonar-acoes">
             <button className="btn-excluir" onClick={() => setStep(1)}>
               Voltar
@@ -232,7 +336,7 @@ export function ClonarAnuncio() {
 
       {step === 3 && preview && (
         <div className="painel">
-          <h2>3. Confirmação</h2>
+          <h2>Confirmação</h2>
           <div className="clonar-resumo">
             <div className="clonar-resumo-linha">
               <span>Título</span>
@@ -244,6 +348,10 @@ export function ClonarAnuncio() {
                 {lojas.find((l) => l.id === preview.lojaOrigemId)?.nome ?? preview.lojaOrigemId} →{" "}
                 {lojas.find((l) => l.id === lojaDestinoId)?.nome}
               </b>
+            </div>
+            <div className="clonar-resumo-linha">
+              <span>Quantidade de clones</span>
+              <b>{quantidadeClones}</b>
             </div>
             <div className="clonar-resumo-linha">
               <span>Categoria</span>
@@ -279,23 +387,26 @@ export function ClonarAnuncio() {
             </div>
           </div>
 
-          {preview.numVariacoes > 0 && (
+          {preview.numVariacoes > 0 && !usarImagensPersonalizadas && (
             <p className="clonar-aviso">
-              Este anúncio tem variações — elas serão recriadas com preço e estoque, mas usando as fotos gerais do
-              anúncio (não é possível reaproveitar uma foto específica por variação).
+              Este anúncio tem variações — elas serão recriadas com preço e estoque, usando as fotos gerais do
+              anúncio original.
+            </p>
+          )}
+          {preview.numVariacoes > 0 && usarImagensPersonalizadas && (
+            <p className="clonar-aviso">
+              Cada variação vai usar as fotos personalizadas que você definiu (ou as fotos originais, para as
+              variações que você deixou em branco).
             </p>
           )}
 
-          <div className="clonar-fotos">
-            {(usarImagensPersonalizadas
-              ? imagensTexto.split("\n").map((s) => s.trim()).filter(Boolean)
-              : preview.fotos
-            )
-              .slice(0, 6)
-              .map((src) => (
+          {!usarImagensPersonalizadas && (
+            <div className="clonar-fotos">
+              {preview.fotos.slice(0, 6).map((src) => (
                 <img key={src} src={src} alt="" className="clonar-foto" />
               ))}
-          </div>
+            </div>
+          )}
 
           {preview.descricao && <p className="clonar-descricao">{preview.descricao.slice(0, 300)}...</p>}
 
