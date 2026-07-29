@@ -4,6 +4,13 @@ Guia para colocar o Painel de Vendas no ar num VPS (ex: Hostinger KVM 1), usando
 Docker para a aplicação (Postgres + backend + frontend) e Nginx do próprio
 servidor só para HTTPS e roteamento do domínio.
 
+> **Deploy automático já configurado:** depois do setup inicial abaixo, todo
+> push na branch `master` atualiza o VPS sozinho via GitHub Actions
+> (`.github/workflows/deploy.yml`, usando uma chave SSH cadastrada nos
+> secrets do repositório). Não precisa mais repetir os passos manuais de
+> `git pull` / `docker compose up` a cada mudança — só em caso de problema
+> com o workflow.
+
 ## 1. Pré-requisitos no VPS
 
 - Ubuntu 22.04 (ou similar)
