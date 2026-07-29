@@ -20,6 +20,7 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key_path: /tmp/deploy_key
+          command_timeout: 15m
           script: |
             cd ~/ninjametric
             git pull
