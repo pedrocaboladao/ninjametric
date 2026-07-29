@@ -128,3 +128,14 @@ CREATE TABLE IF NOT EXISTS usuarios_lojas (
   loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
   PRIMARY KEY (usuario_id, loja_id)
 );
+
+-- Torna o quadro de Tarefas exclusivo por usuário (cada login tem seu próprio
+-- quadro). As colunas já existentes (do usuário admin original) são migradas
+-- para a conta admin.
+ALTER TABLE tarefas_colunas ADD COLUMN IF NOT EXISTS usuario_id INTEGER REFERENCES usuarios(id) ON DELETE CASCADE;
+UPDATE tarefas_colunas SET usuario_id = (SELECT id FROM usuarios WHERE admin = true ORDER BY id LIMIT 1)
+  WHERE usuario_id IS NULL;
+ALTER TABLE tarefas_colunas ALTER COLUMN usuario_id SET NOT NULL;
+DROP INDEX IF EXISTS idx_tarefas_colunas_especial;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tarefas_colunas_usuario_especial
+  ON tarefas_colunas (usuario_id, especial) WHERE especial IS NOT NULL;

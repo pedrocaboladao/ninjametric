@@ -24,9 +24,9 @@ function erro(res: Response, err: unknown, fallback: string) {
   res.status(400).json({ error: mensagem });
 }
 
-tarefasRouter.get("/quadro", async (_req, res) => {
+tarefasRouter.get("/quadro", async (req, res) => {
   try {
-    res.json({ colunas: await listarQuadro() });
+    res.json({ colunas: await listarQuadro(req.usuario!.id) });
   } catch (err) {
     erro(res, err, "Falha ao carregar quadro de tarefas.");
   }
@@ -39,7 +39,7 @@ tarefasRouter.post("/colunas", async (req, res) => {
     return;
   }
   try {
-    res.json(await criarColuna(nome.trim()));
+    res.json(await criarColuna(req.usuario!.id, nome.trim()));
   } catch (err) {
     erro(res, err, "Falha ao criar coluna.");
   }
@@ -48,6 +48,7 @@ tarefasRouter.post("/colunas", async (req, res) => {
 tarefasRouter.patch("/colunas/:id", async (req, res) => {
   const id = Number(req.params.id);
   const { nome, cor } = req.body;
+  const usuarioId = req.usuario!.id;
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
@@ -62,10 +63,10 @@ tarefasRouter.patch("/colunas/:id", async (req, res) => {
         res.status(400).json({ error: "Informe o nome da coluna." });
         return;
       }
-      await renomearColuna(id, nome.trim());
+      await renomearColuna(id, usuarioId, nome.trim());
     }
     if (cor !== undefined) {
-      await mudarCorColuna(id, cor);
+      await mudarCorColuna(id, usuarioId, cor);
     }
     res.json({ ok: true });
   } catch (err) {
@@ -80,7 +81,7 @@ tarefasRouter.delete("/colunas/:id", async (req, res) => {
     return;
   }
   try {
-    await excluirColuna(id);
+    await excluirColuna(id, req.usuario!.id);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao excluir coluna.");
@@ -94,7 +95,7 @@ tarefasRouter.post("/cartoes", async (req, res) => {
     return;
   }
   try {
-    res.json(await criarCartao(colunaId, titulo.trim()));
+    res.json(await criarCartao(req.usuario!.id, colunaId, titulo.trim()));
   } catch (err) {
     erro(res, err, "Falha ao criar cartão.");
   }
@@ -107,7 +108,7 @@ tarefasRouter.patch("/cartoes/:id", async (req, res) => {
     return;
   }
   try {
-    await atualizarCartao(id, req.body ?? {});
+    await atualizarCartao(id, req.usuario!.id, req.body ?? {});
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao atualizar cartão.");
@@ -121,7 +122,7 @@ tarefasRouter.delete("/cartoes/:id", async (req, res) => {
     return;
   }
   try {
-    await excluirCartao(id);
+    await excluirCartao(id, req.usuario!.id);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao excluir cartão.");
@@ -136,25 +137,25 @@ tarefasRouter.post("/colunas/:id/reindexar", async (req, res) => {
     return;
   }
   try {
-    await reindexarColuna(colunaId, ids);
+    await reindexarColuna(colunaId, req.usuario!.id, ids);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao reordenar coluna.");
   }
 });
 
-tarefasRouter.post("/concluidos/arquivar", async (_req, res) => {
+tarefasRouter.post("/concluidos/arquivar", async (req, res) => {
   try {
-    await arquivarTodosConcluidos();
+    await arquivarTodosConcluidos(req.usuario!.id);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao arquivar concluídos.");
   }
 });
 
-tarefasRouter.get("/arquivados", async (_req, res) => {
+tarefasRouter.get("/arquivados", async (req, res) => {
   try {
-    res.json({ cartoes: await listarArquivados() });
+    res.json({ cartoes: await listarArquivados(req.usuario!.id) });
   } catch (err) {
     erro(res, err, "Falha ao carregar arquivados.");
   }
@@ -168,7 +169,7 @@ tarefasRouter.post("/cartoes/:id/restaurar", async (req, res) => {
     return;
   }
   try {
-    await restaurarCartao(id, colunaId);
+    await restaurarCartao(id, req.usuario!.id, colunaId);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao restaurar cartão.");
