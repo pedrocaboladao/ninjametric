@@ -28,11 +28,12 @@ export async function criarUsuario(
   nome: string,
   permissoes: string[],
   lojas: number[],
-  todasLojas: boolean
+  todasLojas: boolean,
+  clonarTodasLojas: boolean
 ): Promise<Usuario> {
   return chamar("/api/usuarios", {
     method: "POST",
-    body: JSON.stringify({ username, senha, nome, permissoes, lojas, todasLojas }),
+    body: JSON.stringify({ username, senha, nome, permissoes, lojas, todasLojas, clonarTodasLojas }),
   });
 }
 
@@ -42,6 +43,7 @@ export interface AtualizacaoUsuario {
   permissoes?: string[];
   lojas?: number[];
   todasLojas?: boolean;
+  clonarTodasLojas?: boolean;
 }
 
 export async function atualizarUsuario(id: number, dados: AtualizacaoUsuario): Promise<void> {

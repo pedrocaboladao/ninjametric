@@ -1,12 +1,18 @@
 import type { PreviewAnuncio, ResultadoClone } from "../types/clonarAnuncio";
+import type { Loja } from "./lojas";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
-
-export { fetchLojas } from "./lojas";
 
 async function tratarErro(res: Response): Promise<never> {
   const data = await res.json().catch(() => null);
   throw new Error(data?.error ?? `Erro ${res.status}`);
+}
+
+export async function fetchLojas(): Promise<Loja[]> {
+  const res = await fetch(`${API_BASE}/api/clonar-anuncio/lojas`, { credentials: "include" });
+  if (!res.ok) return tratarErro(res);
+  const data = await res.json();
+  return data.lojas;
 }
 
 export async function buscarPreview(url: string, lojaDestinoId: number): Promise<PreviewAnuncio> {

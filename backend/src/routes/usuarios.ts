@@ -21,7 +21,7 @@ usuariosRouter.get("/", async (_req, res) => {
 });
 
 usuariosRouter.post("/", async (req, res) => {
-  const { username, senha, nome, permissoes, lojas, todasLojas } = req.body;
+  const { username, senha, nome, permissoes, lojas, todasLojas, clonarTodasLojas } = req.body;
   if (
     typeof username !== "string" ||
     !username.trim() ||
@@ -31,14 +31,23 @@ usuariosRouter.post("/", async (req, res) => {
     !nome.trim() ||
     !permissoesValidas(permissoes ?? []) ||
     !lojasValidas(lojas ?? []) ||
-    (todasLojas !== undefined && typeof todasLojas !== "boolean")
+    (todasLojas !== undefined && typeof todasLojas !== "boolean") ||
+    (clonarTodasLojas !== undefined && typeof clonarTodasLojas !== "boolean")
   ) {
     res.status(400).json({ error: "Dados inválidos. A senha precisa ter ao menos 6 caracteres." });
     return;
   }
   try {
     res.json(
-      await criarUsuario(username.trim(), senha, nome.trim(), permissoes ?? [], lojas ?? [], Boolean(todasLojas))
+      await criarUsuario(
+        username.trim(),
+        senha,
+        nome.trim(),
+        permissoes ?? [],
+        lojas ?? [],
+        Boolean(todasLojas),
+        Boolean(clonarTodasLojas)
+      )
     );
   } catch (err) {
     console.error("Erro ao criar usuário:", err);
@@ -49,7 +58,7 @@ usuariosRouter.post("/", async (req, res) => {
 
 usuariosRouter.patch("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { nome, senha, permissoes, lojas, todasLojas } = req.body;
+  const { nome, senha, permissoes, lojas, todasLojas, clonarTodasLojas } = req.body;
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
@@ -70,8 +79,12 @@ usuariosRouter.patch("/:id", async (req, res) => {
     res.status(400).json({ error: "Parâmetro todasLojas inválido." });
     return;
   }
+  if (clonarTodasLojas !== undefined && typeof clonarTodasLojas !== "boolean") {
+    res.status(400).json({ error: "Parâmetro clonarTodasLojas inválido." });
+    return;
+  }
   try {
-    await atualizarUsuario(id, { nome, senha, permissoes, lojas, todasLojas });
+    await atualizarUsuario(id, { nome, senha, permissoes, lojas, todasLojas, clonarTodasLojas });
     res.json({ ok: true });
   } catch (err) {
     console.error("Erro ao atualizar usuário:", err);

@@ -6,4 +6,5 @@ export interface Usuario {
   permissoes: string[];
   lojas: number[];
   todasLojas: boolean;
+  clonarTodasLojas: boolean;
 }

@@ -1,8 +1,25 @@
 import { Router } from "express";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
-import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
+import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
+import { listLojas } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// Lista de lojas disponíveis como destino do clone — usa a regra específica de
+// clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
+// geral de "lojas com acesso" usada pelo Dashboard/Perguntas.
+clonarAnuncioRouter.get("/lojas", async (req, res) => {
+  try {
+    const usuario = req.usuario!;
+    const lojas = (await listLojas()).filter(
+      (l) => l.ml_user_id !== null && temAcessoLojaParaClonagem(usuario, l.id)
+    );
+    res.json({ lojas: lojas.map((l) => ({ id: l.id, nome: l.nome })) });
+  } catch (err) {
+    console.error("Erro ao listar lojas para clonagem:", err);
+    res.status(500).json({ error: "Falha ao listar lojas." });
+  }
+});
 
 clonarAnuncioRouter.post("/preview", async (req, res) => {
   const { url, lojaDestinoId } = req.body;
@@ -12,13 +29,13 @@ clonarAnuncioRouter.post("/preview", async (req, res) => {
     res.status(400).json({ error: "Informe a URL do anúncio e a loja de destino." });
     return;
   }
-  if (!temAcessoLoja(usuario, lojaDestinoId)) {
+  if (!temAcessoLojaParaClonagem(usuario, lojaDestinoId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja de destino." });
     return;
   }
 
   try {
-    const preview = await montarPreview(url.trim(), lojasEfetivas(usuario));
+    const preview = await montarPreview(url.trim(), lojasEfetivasParaClonagem(usuario));
     res.json(preview);
   } catch (err) {
     console.error("Erro ao montar preview do clone:", err);
@@ -44,7 +61,7 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos para publicar o clone." });
     return;
   }
-  if (!temAcessoLoja(usuario, lojaDestinoId)) {
+  if (!temAcessoLojaParaClonagem(usuario, lojaDestinoId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja de destino." });
     return;
   }
@@ -61,7 +78,7 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
         imagensPorVariacao:
           imagensPorVariacao && typeof imagensPorVariacao === "object" ? imagensPorVariacao : undefined,
       },
-      lojasEfetivas(usuario)
+      lojasEfetivasParaClonagem(usuario)
     );
     res.json({ resultados });
   } catch (err) {

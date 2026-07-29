@@ -119,6 +119,10 @@ CREATE TABLE IF NOT EXISTS usuarios (
 
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS todas_lojas BOOLEAN NOT NULL DEFAULT false;
 
+-- Permite liberar o Clonar Anúncio para todas as lojas independentemente da
+-- lista de "lojas com acesso" (usada pelo Dashboard/Perguntas/Tarefas).
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS clonar_todas_lojas BOOLEAN NOT NULL DEFAULT false;
+
 CREATE TABLE IF NOT EXISTS usuarios_permissoes (
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   modulo TEXT NOT NULL,

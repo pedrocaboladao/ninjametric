@@ -2354,6 +2354,12 @@
   margin-bottom: 8px;
 }
 
+.usuarios-clonar-todas-lojas {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 .usuarios-permissao-item {
   display: flex;
   align-items: center;

@@ -17,6 +17,7 @@ export function Usuarios() {
   const [novasPermissoes, setNovasPermissoes] = useState<string[]>([]);
   const [novasLojas, setNovasLojas] = useState<number[]>([]);
   const [novasTodasLojas, setNovasTodasLojas] = useState(false);
+  const [novasClonarTodasLojas, setNovasClonarTodasLojas] = useState(false);
   const [criando, setCriando] = useState(false);
 
   const [senhaAbertaId, setSenhaAbertaId] = useState<number | null>(null);
@@ -58,13 +59,22 @@ export function Usuarios() {
     setCriando(true);
     setErro(null);
     try {
-      await criarUsuario(novoUsername.trim(), novaSenha, novoNome.trim(), novasPermissoes, novasLojas, novasTodasLojas);
+      await criarUsuario(
+        novoUsername.trim(),
+        novaSenha,
+        novoNome.trim(),
+        novasPermissoes,
+        novasLojas,
+        novasTodasLojas,
+        novasClonarTodasLojas
+      );
       setNovoUsername("");
       setNovoNome("");
       setNovaSenha("");
       setNovasPermissoes([]);
       setNovasLojas([]);
       setNovasTodasLojas(false);
+      setNovasClonarTodasLojas(false);
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar usuário.");
@@ -100,6 +110,15 @@ export function Usuarios() {
   async function alternarTodasLojas(usuario: Usuario) {
     try {
       await atualizarUsuario(usuario.id, { todasLojas: !usuario.todasLojas });
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao atualizar lojas.");
+    }
+  }
+
+  async function alternarClonarTodasLojas(usuario: Usuario) {
+    try {
+      await atualizarUsuario(usuario.id, { clonarTodasLojas: !usuario.clonarTodasLojas });
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao atualizar lojas.");
@@ -198,18 +217,28 @@ export function Usuarios() {
               Todas as lojas (inclusive as que forem cadastradas no futuro)
             </label>
             {!novasTodasLojas && (
-              <div className="usuarios-permissoes-lista">
-                {lojas.map((l) => (
-                  <label key={l.id} className="usuarios-permissao-item">
-                    <input
-                      type="checkbox"
-                      checked={novasLojas.includes(l.id)}
-                      onChange={() => alternarNovaLoja(l.id)}
-                    />
-                    {l.nome}
-                  </label>
-                ))}
-              </div>
+              <>
+                <div className="usuarios-permissoes-lista">
+                  {lojas.map((l) => (
+                    <label key={l.id} className="usuarios-permissao-item">
+                      <input
+                        type="checkbox"
+                        checked={novasLojas.includes(l.id)}
+                        onChange={() => alternarNovaLoja(l.id)}
+                      />
+                      {l.nome}
+                    </label>
+                  ))}
+                </div>
+                <label className="usuarios-permissao-item usuarios-clonar-todas-lojas">
+                  <input
+                    type="checkbox"
+                    checked={novasClonarTodasLojas}
+                    onChange={(e) => setNovasClonarTodasLojas(e.target.checked)}
+                  />
+                  Mesmo assim, pode clonar de/para qualquer loja (só vale pro Clonar Anúncio)
+                </label>
+              </>
             )}
           </div>
 
@@ -309,18 +338,28 @@ export function Usuarios() {
                       Todas as lojas (inclusive as que forem cadastradas no futuro)
                     </label>
                     {!u.todasLojas && (
-                      <div className="usuarios-permissoes-lista">
-                        {lojas.map((l) => (
-                          <label key={l.id} className="usuarios-permissao-item">
-                            <input
-                              type="checkbox"
-                              checked={u.lojas.includes(l.id)}
-                              onChange={() => alternarLoja(u, l.id)}
-                            />
-                            {l.nome}
-                          </label>
-                        ))}
-                      </div>
+                      <>
+                        <div className="usuarios-permissoes-lista">
+                          {lojas.map((l) => (
+                            <label key={l.id} className="usuarios-permissao-item">
+                              <input
+                                type="checkbox"
+                                checked={u.lojas.includes(l.id)}
+                                onChange={() => alternarLoja(u, l.id)}
+                              />
+                              {l.nome}
+                            </label>
+                          ))}
+                        </div>
+                        <label className="usuarios-permissao-item usuarios-clonar-todas-lojas">
+                          <input
+                            type="checkbox"
+                            checked={u.clonarTodasLojas}
+                            onChange={() => alternarClonarTodasLojas(u)}
+                          />
+                          Mesmo assim, pode clonar de/para qualquer loja (só vale pro Clonar Anúncio)
+                        </label>
+                      </>
                     )}
                   </div>
                 </>
