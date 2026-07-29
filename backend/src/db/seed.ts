@@ -1,6 +1,6 @@
 import { pool } from "./pool";
 
-const LOJAS = ["Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
+const LOJAS = ["Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua", "Cores Certas"];
 
 const COLUNAS_PADRAO = ["Em andamento", "Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
 
