@@ -12,6 +12,11 @@ export interface Usuario {
 
 export interface UsuarioComPermissoes extends Usuario {
   permissoes: string[];
+  lojas: number[];
+}
+
+export function temAcessoLoja(usuario: { admin: boolean; lojas: number[] }, lojaId: number): boolean {
+  return usuario.admin || usuario.lojas.includes(lojaId);
 }
 
 async function obterPermissoes(usuarioId: number): Promise<string[]> {
@@ -19,11 +24,20 @@ async function obterPermissoes(usuarioId: number): Promise<string[]> {
   return rows.map((r) => r.modulo);
 }
 
+async function obterLojasPermitidas(usuarioId: number): Promise<number[]> {
+  const { rows } = await pool.query("SELECT loja_id FROM usuarios_lojas WHERE usuario_id = $1", [usuarioId]);
+  return rows.map((r) => r.loja_id);
+}
+
 export async function listarUsuarios(): Promise<UsuarioComPermissoes[]> {
   const { rows } = await pool.query("SELECT id, username, nome, admin FROM usuarios ORDER BY id");
   const usuarios: UsuarioComPermissoes[] = [];
   for (const u of rows) {
-    usuarios.push({ ...u, permissoes: u.admin ? [] : await obterPermissoes(u.id) });
+    usuarios.push({
+      ...u,
+      permissoes: u.admin ? [] : await obterPermissoes(u.id),
+      lojas: u.admin ? [] : await obterLojasPermitidas(u.id),
+    });
   }
   return usuarios;
 }
@@ -48,8 +62,10 @@ export async function buscarUsuarioPorUsername(
 export async function buscarUsuarioComPermissoes(id: number): Promise<UsuarioComPermissoes | null> {
   const { rows } = await pool.query("SELECT id, username, nome, admin FROM usuarios WHERE id = $1", [id]);
   if (!rows[0]) return null;
-  const permissoes = rows[0].admin ? [] : await obterPermissoes(id);
-  return { ...rows[0], permissoes };
+  const admin = rows[0].admin;
+  const permissoes = admin ? [] : await obterPermissoes(id);
+  const lojas = admin ? [] : await obterLojasPermitidas(id);
+  return { ...rows[0], permissoes, lojas };
 }
 
 export async function definirPermissoes(usuarioId: number, permissoes: string[]): Promise<void> {
@@ -62,11 +78,22 @@ export async function definirPermissoes(usuarioId: number, permissoes: string[])
   }
 }
 
+export async function definirLojas(usuarioId: number, lojaIds: number[]): Promise<void> {
+  await pool.query("DELETE FROM usuarios_lojas WHERE usuario_id = $1", [usuarioId]);
+  for (const lojaId of lojaIds) {
+    await pool.query("INSERT INTO usuarios_lojas (usuario_id, loja_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [
+      usuarioId,
+      lojaId,
+    ]);
+  }
+}
+
 export async function criarUsuario(
   username: string,
   senha: string,
   nome: string,
-  permissoes: string[]
+  permissoes: string[],
+  lojas: number[]
 ): Promise<UsuarioComPermissoes> {
   const senhaHash = bcrypt.hashSync(senha, 10);
   const { rows } = await pool.query(
@@ -75,13 +102,15 @@ export async function criarUsuario(
   );
   const usuario = rows[0];
   await definirPermissoes(usuario.id, permissoes);
-  return { ...usuario, permissoes };
+  await definirLojas(usuario.id, lojas);
+  return { ...usuario, permissoes, lojas };
 }
 
 export interface AtualizacaoUsuario {
   nome?: string;
   senha?: string;
   permissoes?: string[];
+  lojas?: number[];
 }
 
 export async function atualizarUsuario(id: number, dados: AtualizacaoUsuario): Promise<void> {
@@ -94,6 +123,9 @@ export async function atualizarUsuario(id: number, dados: AtualizacaoUsuario): P
   }
   if (dados.permissoes !== undefined) {
     await definirPermissoes(id, dados.permissoes);
+  }
+  if (dados.lojas !== undefined) {
+    await definirLojas(id, dados.lojas);
   }
 }
 

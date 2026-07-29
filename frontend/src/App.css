@@ -2342,6 +2342,12 @@
   gap: 10px 20px;
 }
 
+.usuarios-lojas-lista {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
 .usuarios-permissao-item {
   display: flex;
   align-items: center;

@@ -4,4 +4,5 @@ export interface Usuario {
   nome: string;
   admin: boolean;
   permissoes: string[];
+  lojas: number[];
 }

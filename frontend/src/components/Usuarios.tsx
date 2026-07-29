@@ -1,17 +1,21 @@
 import { useEffect, useState } from "react";
 import { fetchUsuarios, criarUsuario, atualizarUsuario, excluirUsuario } from "../api/usuarios";
+import { fetchLojasTodas } from "../api/lojas";
 import type { Usuario } from "../types/usuarios";
+import type { LojaTodas } from "../api/lojas";
 import { MODULOS } from "../constants/modulos";
 import { IconTrash } from "./icons";
 
 export function Usuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[] | null>(null);
+  const [lojas, setLojas] = useState<LojaTodas[]>([]);
   const [erro, setErro] = useState<string | null>(null);
 
   const [novoUsername, setNovoUsername] = useState("");
   const [novoNome, setNovoNome] = useState("");
   const [novaSenha, setNovaSenha] = useState("");
   const [novasPermissoes, setNovasPermissoes] = useState<string[]>([]);
+  const [novasLojas, setNovasLojas] = useState<number[]>([]);
   const [criando, setCriando] = useState(false);
 
   const [senhaAbertaId, setSenhaAbertaId] = useState<number | null>(null);
@@ -20,6 +24,7 @@ export function Usuarios() {
 
   useEffect(() => {
     carregar();
+    carregarLojas();
   }, []);
 
   async function carregar() {
@@ -30,8 +35,20 @@ export function Usuarios() {
     }
   }
 
+  async function carregarLojas() {
+    try {
+      setLojas(await fetchLojasTodas());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar lojas.");
+    }
+  }
+
   function alternarNovaPermissao(chave: string) {
     setNovasPermissoes((atual) => (atual.includes(chave) ? atual.filter((m) => m !== chave) : [...atual, chave]));
+  }
+
+  function alternarNovaLoja(lojaId: number) {
+    setNovasLojas((atual) => (atual.includes(lojaId) ? atual.filter((id) => id !== lojaId) : [...atual, lojaId]));
   }
 
   async function handleCriarUsuario(e: React.FormEvent) {
@@ -40,11 +57,12 @@ export function Usuarios() {
     setCriando(true);
     setErro(null);
     try {
-      await criarUsuario(novoUsername.trim(), novaSenha, novoNome.trim(), novasPermissoes);
+      await criarUsuario(novoUsername.trim(), novaSenha, novoNome.trim(), novasPermissoes, novasLojas);
       setNovoUsername("");
       setNovoNome("");
       setNovaSenha("");
       setNovasPermissoes([]);
+      setNovasLojas([]);
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar usuário.");
@@ -62,6 +80,18 @@ export function Usuarios() {
       carregar();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao atualizar permissões.");
+    }
+  }
+
+  async function alternarLoja(usuario: Usuario, lojaId: number) {
+    const novas = usuario.lojas.includes(lojaId)
+      ? usuario.lojas.filter((id) => id !== lojaId)
+      : [...usuario.lojas, lojaId];
+    try {
+      await atualizarUsuario(usuario.id, { lojas: novas });
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao atualizar lojas.");
     }
   }
 
@@ -146,6 +176,22 @@ export function Usuarios() {
             </div>
           </div>
 
+          <div className="usuarios-permissoes-campo">
+            <label>Lojas com acesso</label>
+            <div className="usuarios-permissoes-lista">
+              {lojas.map((l) => (
+                <label key={l.id} className="usuarios-permissao-item">
+                  <input
+                    type="checkbox"
+                    checked={novasLojas.includes(l.id)}
+                    onChange={() => alternarNovaLoja(l.id)}
+                  />
+                  {l.nome}
+                </label>
+              ))}
+            </div>
+          </div>
+
           <button type="submit" className="btn-responder" disabled={criando}>
             {criando ? "Criando..." : "Criar usuário"}
           </button>
@@ -219,18 +265,32 @@ export function Usuarios() {
               )}
 
               {!u.admin && (
-                <div className="usuarios-permissoes-lista">
-                  {MODULOS.map((m) => (
-                    <label key={m.chave} className="usuarios-permissao-item">
-                      <input
-                        type="checkbox"
-                        checked={u.permissoes.includes(m.chave)}
-                        onChange={() => alternarPermissao(u, m.chave)}
-                      />
-                      {m.label}
-                    </label>
-                  ))}
-                </div>
+                <>
+                  <div className="usuarios-permissoes-lista">
+                    {MODULOS.map((m) => (
+                      <label key={m.chave} className="usuarios-permissao-item">
+                        <input
+                          type="checkbox"
+                          checked={u.permissoes.includes(m.chave)}
+                          onChange={() => alternarPermissao(u, m.chave)}
+                        />
+                        {m.label}
+                      </label>
+                    ))}
+                  </div>
+                  <div className="usuarios-permissoes-lista usuarios-lojas-lista">
+                    {lojas.map((l) => (
+                      <label key={l.id} className="usuarios-permissao-item">
+                        <input
+                          type="checkbox"
+                          checked={u.lojas.includes(l.id)}
+                          onChange={() => alternarLoja(u, l.id)}
+                        />
+                        {l.nome}
+                      </label>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           ))}

@@ -12,8 +12,13 @@ import {
 } from "./mercadoLivreItems";
 import { listLojas } from "./tokenStore";
 
-async function encontrarLojaDonaEItem(itemId: string): Promise<{ lojaId: number; item: MlItemFull }> {
-  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+async function encontrarLojaDonaEItem(
+  itemId: string,
+  lojasPermitidas?: number[]
+): Promise<{ lojaId: number; item: MlItemFull }> {
+  const lojas = (await listLojas()).filter(
+    (l) => l.ml_user_id !== null && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
 
   for (const loja of lojas) {
     try {
@@ -25,7 +30,7 @@ async function encontrarLojaDonaEItem(itemId: string): Promise<{ lojaId: number;
   }
 
   throw new Error(
-    "Esse anúncio não pertence a nenhuma das suas 4 lojas cadastradas. O Mercado Livre só permite " +
+    "Esse anúncio não pertence a nenhuma das lojas às quais você tem acesso. O Mercado Livre só permite " +
       "ler os detalhes completos de um anúncio usando o token da própria conta dona dele, então só é " +
       "possível clonar anúncios que já são de uma das suas lojas."
   );
@@ -55,9 +60,9 @@ export interface PreviewAnuncio {
   lojaOrigemId: number;
 }
 
-export async function montarPreview(url: string): Promise<PreviewAnuncio> {
+export async function montarPreview(url: string, lojasPermitidas?: number[]): Promise<PreviewAnuncio> {
   const itemId = await extrairItemIdDaUrl(url);
-  const { lojaId, item } = await encontrarLojaDonaEItem(itemId);
+  const { lojaId, item } = await encontrarLojaDonaEItem(itemId, lojasPermitidas);
   const [descricao, categoriaNome] = await Promise.all([
     getItemDescriptionComToken(lojaId, itemId),
     getCategoryName(item.category_id),
@@ -183,10 +188,11 @@ async function publicarUmaCopia(
 export async function publicarClone(
   url: string,
   lojaDestinoId: number,
-  opcoes: OpcoesClone
+  opcoes: OpcoesClone,
+  lojasPermitidas?: number[]
 ): Promise<ResultadoClone[]> {
   const itemId = await extrairItemIdDaUrl(url);
-  const { lojaId: lojaOrigemId, item: original } = await encontrarLojaDonaEItem(itemId);
+  const { lojaId: lojaOrigemId, item: original } = await encontrarLojaDonaEItem(itemId, lojasPermitidas);
   const descricao = await getItemDescriptionComToken(lojaOrigemId, itemId);
 
   const titulos = opcoes.titulos.slice(0, 20);

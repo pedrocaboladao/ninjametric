@@ -4,9 +4,10 @@ import { answerQuestion, deleteQuestion } from "../services/mercadoLivreQuestion
 
 export const perguntasRouter = Router();
 
-perguntasRouter.get("/", async (_req, res) => {
+perguntasRouter.get("/", async (req, res) => {
   try {
-    const perguntas = await listarPerguntasPendentes();
+    const usuario = req.usuario!;
+    const perguntas = await listarPerguntasPendentes(usuario.admin ? undefined : usuario.lojas);
     res.json({ perguntas });
   } catch (err) {
     console.error("Erro ao listar perguntas:", err);
@@ -18,9 +19,14 @@ perguntasRouter.post("/:lojaId/:questionId/responder", async (req, res) => {
   const lojaId = Number(req.params.lojaId);
   const questionId = Number(req.params.questionId);
   const { texto } = req.body;
+  const usuario = req.usuario!;
 
   if (!Number.isInteger(lojaId) || !Number.isInteger(questionId) || typeof texto !== "string" || !texto.trim()) {
     res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  if (!usuario.admin && !usuario.lojas.includes(lojaId)) {
+    res.status(403).json({ error: "Você não tem acesso a essa loja." });
     return;
   }
 
@@ -36,9 +42,14 @@ perguntasRouter.post("/:lojaId/:questionId/responder", async (req, res) => {
 perguntasRouter.delete("/:lojaId/:questionId", async (req, res) => {
   const lojaId = Number(req.params.lojaId);
   const questionId = Number(req.params.questionId);
+  const usuario = req.usuario!;
 
   if (!Number.isInteger(lojaId) || !Number.isInteger(questionId)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  if (!usuario.admin && !usuario.lojas.includes(lojaId)) {
+    res.status(403).json({ error: "Você não tem acesso a essa loja." });
     return;
   }
 

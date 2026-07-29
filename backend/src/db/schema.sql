@@ -122,3 +122,9 @@ CREATE TABLE IF NOT EXISTS usuarios_permissoes (
   modulo TEXT NOT NULL,
   PRIMARY KEY (usuario_id, modulo)
 );
+
+CREATE TABLE IF NOT EXISTS usuarios_lojas (
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
+  PRIMARY KEY (usuario_id, loja_id)
+);

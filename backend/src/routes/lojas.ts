@@ -1,11 +1,16 @@
 import { Router } from "express";
 import { listLojas } from "../services/tokenStore";
+import { temAcessoLoja } from "../services/usuariosService";
+import { requireAdmin } from "../middleware/requireAuth";
 
 export const lojasRouter = Router();
 
-lojasRouter.get("/", async (_req, res) => {
+lojasRouter.get("/", async (req, res) => {
   try {
-    const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+    const usuario = req.usuario!;
+    const lojas = (await listLojas()).filter(
+      (l) => l.ml_user_id !== null && temAcessoLoja(usuario, l.id)
+    );
     res.json({ lojas: lojas.map((l) => ({ id: l.id, nome: l.nome })) });
   } catch (err) {
     console.error("Erro ao listar lojas:", err);
@@ -15,8 +20,9 @@ lojasRouter.get("/", async (_req, res) => {
 
 // Lista todas as lojas cadastradas, incluindo as que ainda não autorizaram o
 // Mercado Livre — usado para descobrir o id de uma loja recém-criada e montar
-// o link de autorização (/auth/:lojaId/authorize).
-lojasRouter.get("/todas", async (_req, res) => {
+// o link de autorização (/auth/:lojaId/authorize), e para o gerenciador de
+// usuários escolher quais lojas cada pessoa pode acessar.
+lojasRouter.get("/todas", requireAdmin, async (_req, res) => {
   try {
     const lojas = await listLojas();
     res.json({ lojas: lojas.map((l) => ({ id: l.id, nome: l.nome, autorizada: l.ml_user_id !== null })) });

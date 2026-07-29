@@ -26,15 +26,20 @@ export async function criarUsuario(
   username: string,
   senha: string,
   nome: string,
-  permissoes: string[]
+  permissoes: string[],
+  lojas: number[]
 ): Promise<Usuario> {
-  return chamar("/api/usuarios", { method: "POST", body: JSON.stringify({ username, senha, nome, permissoes }) });
+  return chamar("/api/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ username, senha, nome, permissoes, lojas }),
+  });
 }
 
 export interface AtualizacaoUsuario {
   nome?: string;
   senha?: string;
   permissoes?: string[];
+  lojas?: number[];
 }
 
 export async function atualizarUsuario(id: number, dados: AtualizacaoUsuario): Promise<void> {

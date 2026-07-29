@@ -15,9 +15,12 @@ interface OrdersPorLoja {
   ontem: MlOrder[];
 }
 
-async function buscarOrdersDeTodasLojas(lojaIdFiltro?: number): Promise<OrdersPorLoja[]> {
+async function buscarOrdersDeTodasLojas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<OrdersPorLoja[]> {
   const lojas = (await listLojas()).filter(
-    (l) => l.ml_user_id !== null && (lojaIdFiltro === undefined || l.id === lojaIdFiltro)
+    (l) =>
+      l.ml_user_id !== null &&
+      (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
+      (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
   const hoje = janelaHoje();
   const ontem = janelaOntemMesmoHorario();
@@ -60,8 +63,8 @@ export interface DashboardData {
   ultimaVendaEm: string | null;
 }
 
-export async function getDashboardData(lojaIdFiltro?: number): Promise<DashboardData> {
-  const porLoja = await buscarOrdersDeTodasLojas(lojaIdFiltro);
+export async function getDashboardData(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<DashboardData> {
+  const porLoja = await buscarOrdersDeTodasLojas(lojaIdFiltro, lojasPermitidas);
 
   const faturamentoHoje = porLoja.reduce(
     (soma, l) => soma + l.hoje.reduce((s, o) => s + valorOrder(o), 0),

@@ -18,8 +18,10 @@ export interface PerguntaPendente {
   } | null;
 }
 
-export async function listarPerguntasPendentes(): Promise<PerguntaPendente[]> {
-  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+export async function listarPerguntasPendentes(lojasPermitidas?: number[]): Promise<PerguntaPendente[]> {
+  const lojas = (await listLojas()).filter(
+    (l) => l.ml_user_id !== null && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
 
   const porLoja = await Promise.all(
     lojas.map(async (loja) => {
