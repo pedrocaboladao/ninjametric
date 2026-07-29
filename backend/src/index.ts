@@ -9,6 +9,7 @@ import { perguntasRouter } from "./routes/perguntas";
 import { clonarAnuncioRouter } from "./routes/clonarAnuncio";
 import { lojasRouter } from "./routes/lojas";
 import { tarefasRouter } from "./routes/tarefas";
+import { empacotadoresRouter } from "./routes/empacotadores";
 import { requireAuth } from "./middleware/requireAuth";
 
 const app = express();
@@ -28,6 +29,7 @@ app.use("/api/perguntas", requireAuth, perguntasRouter);
 app.use("/api/clonar-anuncio", requireAuth, clonarAnuncioRouter);
 app.use("/api/lojas", requireAuth, lojasRouter);
 app.use("/api/tarefas", requireAuth, tarefasRouter);
+app.use("/api/empacotadores", requireAuth, empacotadoresRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

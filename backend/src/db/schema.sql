@@ -87,3 +87,22 @@ CREATE TABLE IF NOT EXISTS tarefas_cartoes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_tarefas_cartoes_coluna ON tarefas_cartoes (coluna_id, ordem);
+
+-- Módulo Funcionários (ranking gamificado de empacotadores)
+CREATE TABLE IF NOT EXISTS empacotadores (
+  id SERIAL PRIMARY KEY,
+  numero INTEGER NOT NULL UNIQUE,
+  nome TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS empacotadores_pacotes (
+  id SERIAL PRIMARY KEY,
+  empacotador_id INTEGER NOT NULL REFERENCES empacotadores(id) ON DELETE CASCADE,
+  data DATE NOT NULL,
+  pacotes INTEGER NOT NULL DEFAULT 0,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (empacotador_id, data)
+);
+
+CREATE INDEX IF NOT EXISTS idx_empacotadores_pacotes_data ON empacotadores_pacotes (data);

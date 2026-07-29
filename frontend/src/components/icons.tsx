@@ -194,6 +194,27 @@ export function IconX({ size = 14 }: IconProps) {
   );
 }
 
+export function IconCrown({ size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M3 8l3.5 3L12 5l5.5 6L21 8l-2 10H5L3 8Z" />
+      <path d="M5 21h14" />
+    </svg>
+  );
+}
+
+export function IconWreath({ size = 60, dourado }: IconProps & { dourado?: boolean }) {
+  const cor = dourado ? "#d9b23a" : "currentColor";
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 60" fill="none" stroke={cor} strokeWidth="2.2" strokeLinecap="round">
+      <path d="M18 12C8 22 8 42 24 52" />
+      <path d="M18 14c-3 6-3 14 1 22M14 22c-2 5-2 11 1 17M12 32c-1 4-1 8 1 12" />
+      <path d="M82 12c10 10 10 30-6 40" />
+      <path d="M82 14c3 6 3 14-1 22M86 22c2 5 2 11-1 17M88 32c1 4 1 8-1 12" />
+    </svg>
+  );
+}
+
 export function IconExternalLink({ size = 14 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

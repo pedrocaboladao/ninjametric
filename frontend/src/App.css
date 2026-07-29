@@ -1948,3 +1948,364 @@
   width: auto;
   flex-shrink: 0;
 }
+
+/* Funcionários */
+.func {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.func-topo h1 {
+  font-size: 24px;
+  margin: 4px 0 6px;
+}
+
+.func-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  padding: 6px 14px;
+  border-radius: 999px;
+}
+
+.func-badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.func-secao-titulo {
+  margin-top: 6px;
+}
+
+.func-filtro-linha {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.func-filtro-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  background: var(--bg-panel);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: 12px;
+  padding: 16px 20px;
+  flex: 1;
+  min-width: 280px;
+}
+
+.func-filtro-campo,
+.func-mes-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.func-filtro-campo {
+  flex: 1;
+  min-width: 200px;
+}
+
+.func-filtro-campo select {
+  min-width: 220px;
+}
+
+/* Pódio Top 3 */
+.func-podio {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.func-podio-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 24px 16px 20px;
+}
+
+.func-podio-card-1 {
+  background: linear-gradient(180deg, rgba(217, 178, 58, 0.22) 0%, var(--bg-panel) 70%);
+  border-color: rgba(217, 178, 58, 0.5);
+  padding-top: 32px;
+  padding-bottom: 28px;
+  transform: translateY(-10px);
+}
+
+.func-podio-card-2 {
+  background: var(--bg-panel);
+}
+
+.func-podio-card-3 {
+  background: linear-gradient(180deg, rgba(217, 122, 58, 0.18) 0%, var(--bg-panel) 70%);
+  border-color: rgba(217, 122, 58, 0.4);
+}
+
+.func-podio-medalha {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.func-podio-card-1 .func-podio-medalha {
+  color: #d9b23a;
+}
+
+.func-podio-card-3 .func-podio-medalha {
+  color: #d97a3a;
+}
+
+.func-podio-coroa {
+  position: absolute;
+  top: -22px;
+  color: #d9b23a;
+}
+
+.func-podio-numero {
+  position: absolute;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.func-podio-nome {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.func-podio-valor {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.func-podio-card-1 .func-podio-valor {
+  color: #eac86a;
+}
+
+.func-podio-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Ranking 4º em diante */
+.func-ranking-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.func-ranking-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.func-ranking-posicao {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.func-ranking-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.func-ranking-nome {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.func-ranking-barra-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--bg-panel-alt);
+  overflow: hidden;
+}
+
+.func-ranking-barra-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+}
+
+.func-ranking-valores {
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.func-ranking-valor {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.func-ranking-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Detalhe do funcionário filtrado */
+.func-historico-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.func-historico-item {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Lançar pacotes */
+.func-lancar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.func-lancar-topo {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 220px;
+}
+
+.func-lancar-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.func-lancar-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+}
+
+.func-lancar-nome {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.func-lancar-input {
+  width: 120px;
+  text-align: right;
+}
+
+.func-lancar-acoes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.func-lancar-salvo {
+  font-size: 13px;
+  color: var(--good-text);
+  font-weight: 600;
+}
+
+/* Gerenciar equipe */
+.func-gerenciar {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.func-gerenciar-novo {
+  display: flex;
+  gap: 10px;
+}
+
+.func-gerenciar-input-numero {
+  width: 80px;
+  flex-shrink: 0;
+}
+
+.func-gerenciar-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.func-gerenciar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 16px;
+}
+
+.func-gerenciar-numero {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-muted);
+  width: 32px;
+  flex-shrink: 0;
+}
+
+.func-gerenciar-nome {
+  flex: 1;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+}

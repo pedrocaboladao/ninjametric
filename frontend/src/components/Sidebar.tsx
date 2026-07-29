@@ -13,7 +13,7 @@ import {
   IconLogout,
 } from "./icons";
 
-export type View = "dashboard" | "perguntas" | "clonar" | "tarefas";
+export type View = "dashboard" | "perguntas" | "clonar" | "tarefas" | "funcionarios";
 
 interface Props {
   view: View;
@@ -25,12 +25,12 @@ interface Props {
 const INERTES = [
   { label: "Produtos", Icon: IconBox },
   { label: "Criação", Icon: IconWand },
-  { label: "Equipe", Icon: IconUsers },
   { label: "Conta", Icon: IconGear },
 ];
 
 export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
+  const [equipeAberta, setEquipeAberta] = useState(true);
 
   return (
     <aside className="sidebar">
@@ -79,6 +79,26 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Prop
             >
               <IconCopy size={16} />
               <span>Clonar Anúncio</span>
+            </button>
+          </div>
+        )}
+
+        <div className="sidebar-divider" />
+
+        <button className="sidebar-group-toggle" onClick={() => setEquipeAberta((v) => !v)}>
+          <IconUsers />
+          <span>Equipe</span>
+          <IconChevron open={equipeAberta} />
+        </button>
+
+        {equipeAberta && (
+          <div className="sidebar-subitems">
+            <button
+              className={`sidebar-item ${view === "funcionarios" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("funcionarios")}
+            >
+              <IconUsers size={16} />
+              <span>Funcionários</span>
             </button>
           </div>
         )}

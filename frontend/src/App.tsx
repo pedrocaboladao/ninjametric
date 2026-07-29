@@ -4,6 +4,7 @@ import { Dashboard } from "./components/Dashboard";
 import { Perguntas } from "./components/Perguntas";
 import { ClonarAnuncio } from "./components/ClonarAnuncio";
 import { Tarefas } from "./components/Tarefas";
+import { Funcionarios } from "./components/Funcionarios";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { checarSessao, logout } from "./api/session";
@@ -39,6 +40,7 @@ function AppAutenticado({ onSair }: { onSair: () => void }) {
         )}
         {view === "clonar" && <ClonarAnuncio />}
         {view === "tarefas" && <Tarefas />}
+        {view === "funcionarios" && <Funcionarios />}
       </main>
     </div>
   );
