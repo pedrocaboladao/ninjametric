@@ -13,7 +13,7 @@ import {
   IconLogout,
 } from "./icons";
 
-export type View = "dashboard" | "perguntas" | "clonar";
+export type View = "dashboard" | "perguntas" | "clonar" | "tarefas";
 
 interface Props {
   view: View;
@@ -23,7 +23,6 @@ interface Props {
 }
 
 const INERTES = [
-  { label: "Tarefas", Icon: IconTasks },
   { label: "Produtos", Icon: IconBox },
   { label: "Criação", Icon: IconWand },
   { label: "Equipe", Icon: IconUsers },
@@ -41,6 +40,16 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, onSair }: Prop
       </div>
 
       <nav className="sidebar-nav">
+        <button
+          className={`sidebar-item ${view === "tarefas" ? "sidebar-item-ativo" : ""}`}
+          onClick={() => onChangeView("tarefas")}
+        >
+          <IconTasks size={16} />
+          <span>Tarefas</span>
+        </button>
+
+        <div className="sidebar-divider" />
+
         <button className="sidebar-group-toggle" onClick={() => setLojasAberta((v) => !v)}>
           <IconStore />
           <span>Lojas</span>

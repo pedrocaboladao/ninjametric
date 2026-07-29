@@ -3,6 +3,7 @@ import { Sidebar, type View } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { Perguntas } from "./components/Perguntas";
 import { ClonarAnuncio } from "./components/ClonarAnuncio";
+import { Tarefas } from "./components/Tarefas";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { checarSessao, logout } from "./api/session";
@@ -37,6 +38,7 @@ function AppAutenticado({ onSair }: { onSair: () => void }) {
           />
         )}
         {view === "clonar" && <ClonarAnuncio />}
+        {view === "tarefas" && <Tarefas />}
       </main>
     </div>
   );

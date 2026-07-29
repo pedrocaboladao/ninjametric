@@ -2,6 +2,8 @@ import { pool } from "./pool";
 
 const LOJAS = ["Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
 
+const COLUNAS_PADRAO = ["Em andamento", "Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
+
 async function seed() {
   for (const nome of LOJAS) {
     await pool.query(
@@ -10,6 +12,19 @@ async function seed() {
     );
   }
   console.log("Lojas base inseridas.");
+
+  const { rows } = await pool.query("SELECT COUNT(*)::int AS total FROM tarefas_colunas");
+  if (rows[0].total === 0) {
+    for (let i = 0; i < COLUNAS_PADRAO.length; i++) {
+      await pool.query("INSERT INTO tarefas_colunas (nome, ordem) VALUES ($1, $2)", [COLUNAS_PADRAO[i], i]);
+    }
+    await pool.query(
+      "INSERT INTO tarefas_colunas (nome, especial, ordem) VALUES ('Concluídos', 'concluidos', $1) ON CONFLICT (especial) WHERE especial IS NOT NULL DO NOTHING",
+      [COLUNAS_PADRAO.length]
+    );
+    console.log("Colunas padrão do quadro de tarefas inseridas.");
+  }
+
   await pool.end();
 }
 

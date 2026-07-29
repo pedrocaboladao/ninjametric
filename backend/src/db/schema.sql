@@ -61,3 +61,27 @@ CREATE TABLE IF NOT EXISTS anuncios (
   raw JSONB,
   UNIQUE (loja_id, ml_item_id)
 );
+
+-- Módulo Tarefas (quadro estilo Trello)
+CREATE TABLE IF NOT EXISTS tarefas_colunas (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  especial TEXT, -- 'concluidos' marca a coluna fixa; NULL para colunas normais
+  ordem INTEGER NOT NULL DEFAULT 0,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tarefas_colunas_especial ON tarefas_colunas (especial) WHERE especial IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS tarefas_cartoes (
+  id SERIAL PRIMARY KEY,
+  coluna_id INTEGER NOT NULL REFERENCES tarefas_colunas(id) ON DELETE CASCADE,
+  titulo TEXT NOT NULL,
+  concluido BOOLEAN NOT NULL DEFAULT false,
+  arquivado BOOLEAN NOT NULL DEFAULT false,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tarefas_cartoes_coluna ON tarefas_cartoes (coluna_id, ordem);
