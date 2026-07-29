@@ -5,7 +5,8 @@ import { fetchLojas, buscarPreview, publicarClone } from "../api/clonarAnuncio";
 import { formatCurrency } from "../utils/format";
 
 const CONDICAO_LABEL: Record<string, string> = { new: "Novo", used: "Usado" };
-const PASSOS = ["Link", "Título", "Confirmação"];
+const PASSOS = ["Link", "Títulos", "Confirmação"];
+const LIMITE_TITULO = 60;
 
 export function ClonarAnuncio() {
   const [step, setStep] = useState(1);
@@ -20,12 +21,11 @@ export function ClonarAnuncio() {
   const [imagensTexto, setImagensTexto] = useState("");
   const [imagensPorVariacaoTexto, setImagensPorVariacaoTexto] = useState<Record<number, string>>({});
 
-  const [tituloFinal, setTituloFinal] = useState("");
+  const [titulosClones, setTitulosClones] = useState<string[]>([]);
   const [preview, setPreview] = useState<PreviewAnuncio | null>(null);
 
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [confirmado, setConfirmado] = useState(false);
   const [publicando, setPublicando] = useState(false);
   const [resultados, setResultados] = useState<ResultadoClone[] | null>(null);
 
@@ -49,7 +49,6 @@ export function ClonarAnuncio() {
       try {
         const dados = await buscarPreview(url.trim(), Number(lojaDestinoId));
         setPreview(dados);
-        setTituloFinal(dados.tituloOriginal);
       } catch (err) {
         setErro(err instanceof Error ? err.message : "Erro ao buscar anúncio.");
       } finally {
@@ -73,10 +72,9 @@ export function ClonarAnuncio() {
     setUsarImagensPersonalizadas(false);
     setImagensTexto("");
     setImagensPorVariacaoTexto({});
-    setTituloFinal("");
+    setTitulosClones([]);
     setPreview(null);
     setErro(null);
-    setConfirmado(false);
     setResultados(null);
   }
 
@@ -85,6 +83,22 @@ export function ClonarAnuncio() {
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
+  }
+
+  function avancarParaTitulos() {
+    if (!preview) return;
+    setTitulosClones((atual) =>
+      Array.from({ length: quantidadeClones }, (_, i) => atual[i] ?? preview.tituloOriginal)
+    );
+    setStep(2);
+  }
+
+  function atualizarTitulo(index: number, valor: string) {
+    setTitulosClones((atual) => {
+      const novo = [...atual];
+      novo[index] = valor;
+      return novo;
+    });
   }
 
   async function handlePublicar() {
@@ -107,10 +121,9 @@ export function ClonarAnuncio() {
       const resultado = await publicarClone({
         url: url.trim(),
         lojaDestinoId: Number(lojaDestinoId),
-        tituloFinal: tituloFinal.trim(),
+        titulos: titulosClones,
         listingType,
         ativarFlex,
-        quantidadeClones,
         imagensPersonalizadas,
         imagensPorVariacao,
       });
@@ -146,6 +159,8 @@ export function ClonarAnuncio() {
       </div>
     );
   }
+
+  const todosOsTitulosPreenchidos = titulosClones.length > 0 && titulosClones.every((t) => t.trim());
 
   return (
     <div className="clonar">
@@ -287,7 +302,7 @@ export function ClonarAnuncio() {
           )}
 
           <div className="clonar-acoes">
-            <button className="btn-responder" onClick={() => setStep(2)} disabled={!preview}>
+            <button className="btn-responder" onClick={avancarParaTitulos} disabled={!preview}>
               Continuar →
             </button>
           </div>
@@ -296,12 +311,28 @@ export function ClonarAnuncio() {
 
       {step === 2 && preview && (
         <div className="painel">
-          <h2>Ajustar título</h2>
-          <p className="painel-sub">Título original: {preview.tituloOriginal}</p>
-          <div className="clonar-campo">
-            <label>Título do novo anúncio</label>
-            <input className="clonar-input" value={tituloFinal} onChange={(e) => setTituloFinal(e.target.value)} />
-          </div>
+          <button className="clonar-voltar-topo" onClick={() => setStep(1)}>
+            ← Voltar
+          </button>
+          <p className="painel-sub clonar-titulos-instrucao">
+            Inclua marca, modelo ou tipo do produto. Títulos muito curtos são rejeitados pelo Mercado Livre.
+          </p>
+
+          {titulosClones.map((titulo, index) => (
+            <div className="clonar-campo" key={index}>
+              <label>
+                Clone {index + 1} de {titulosClones.length}
+              </label>
+              <input
+                className="clonar-input"
+                value={titulo}
+                onChange={(e) => atualizarTitulo(index, e.target.value)}
+              />
+              <span className={`clonar-contador ${titulo.length > LIMITE_TITULO ? "clonar-contador-excedido" : ""}`}>
+                {titulo.length}/{LIMITE_TITULO}
+              </span>
+            </div>
+          ))}
 
           {usarImagensPersonalizadas && preview.numVariacoes > 0 && (
             <div className="clonar-campo">
@@ -324,11 +355,8 @@ export function ClonarAnuncio() {
           )}
 
           <div className="clonar-acoes">
-            <button className="btn-excluir" onClick={() => setStep(1)}>
-              Voltar
-            </button>
-            <button className="btn-responder" onClick={() => setStep(3)} disabled={!tituloFinal.trim()}>
-              Avançar
+            <button className="btn-responder" onClick={() => setStep(3)} disabled={!todosOsTitulosPreenchidos}>
+              Avançar →
             </button>
           </div>
         </div>
@@ -336,40 +364,47 @@ export function ClonarAnuncio() {
 
       {step === 3 && preview && (
         <div className="painel">
-          <h2>Confirmação</h2>
+          <button className="clonar-voltar-topo" onClick={() => setStep(2)}>
+            ← Voltar
+          </button>
+
+          <span className="clonar-resumo-titulo">Resumo</span>
           <div className="clonar-resumo">
             <div className="clonar-resumo-linha">
-              <span>Título</span>
-              <b>{tituloFinal}</b>
+              <span>Anúncio origem</span>
+              <b>{preview.tituloOriginal}</b>
             </div>
             <div className="clonar-resumo-linha">
-              <span>Loja de origem → destino</span>
+              <span>Loja destino</span>
+              <b>{lojas.find((l) => l.id === lojaDestinoId)?.nome.toUpperCase()}</b>
+            </div>
+            <div className="clonar-resumo-linha">
+              <span>Tipo</span>
               <b>
-                {lojas.find((l) => l.id === preview.lojaOrigemId)?.nome ?? preview.lojaOrigemId} →{" "}
-                {lojas.find((l) => l.id === lojaDestinoId)?.nome}
+                {TIPOS_ANUNCIO.find((t) => t.value === listingType)?.label} ({listingType})
               </b>
             </div>
-            <div className="clonar-resumo-linha">
-              <span>Quantidade de clones</span>
-              <b>{quantidadeClones}</b>
+            <div className="clonar-resumo-linha clonar-resumo-linha-clones">
+              <span>Clones</span>
+              <div className="clonar-resumo-clones-lista">
+                {titulosClones.map((t, i) => (
+                  <b key={i}>{t}</b>
+                ))}
+              </div>
             </div>
+          </div>
+
+          <div className="clonar-resumo-extra">
             <div className="clonar-resumo-linha">
               <span>Categoria</span>
               <b>{preview.categoriaNome}</b>
             </div>
             <div className="clonar-resumo-linha">
-              <span>Preço</span>
-              <b>{formatCurrency(preview.preco)}</b>
-            </div>
-            <div className="clonar-resumo-linha">
-              <span>Condição / Estoque</span>
+              <span>Preço / Estoque</span>
               <b>
-                {CONDICAO_LABEL[preview.condicao] ?? preview.condicao} · {preview.quantidadeDisponivel} un.
+                {formatCurrency(preview.preco)} · {CONDICAO_LABEL[preview.condicao] ?? preview.condicao} ·{" "}
+                {preview.quantidadeDisponivel} un.
               </b>
-            </div>
-            <div className="clonar-resumo-linha">
-              <span>Tipo de anúncio</span>
-              <b>{TIPOS_ANUNCIO.find((t) => t.value === listingType)?.label}</b>
             </div>
             <div className="clonar-resumo-linha">
               <span>Frete</span>
@@ -377,12 +412,6 @@ export function ClonarAnuncio() {
                 {preview.frete.freteGratis ? "Grátis" : "Pago pelo comprador"}
                 {preview.frete.retiradaLocal ? " · Retirada local" : ""}
                 {ativarFlex ? " · Flex ativado" : ""}
-              </b>
-            </div>
-            <div className="clonar-resumo-linha">
-              <span>Atributos / Variações</span>
-              <b>
-                {preview.numAtributos} atributos · {preview.numVariacoes} variações
               </b>
             </div>
           </div>
@@ -408,23 +437,19 @@ export function ClonarAnuncio() {
             </div>
           )}
 
-          {preview.descricao && <p className="clonar-descricao">{preview.descricao.slice(0, 300)}...</p>}
-
           <a className="clonar-link-original" href={preview.linkOriginal} target="_blank" rel="noreferrer">
             Abrir anúncio original no Mercado Livre
           </a>
 
-          <label className="clonar-checkbox clonar-confirmacao">
-            <input type="checkbox" checked={confirmado} onChange={(e) => setConfirmado(e.target.checked)} />
-            Revisei todos os dados acima e quero publicar este anúncio de verdade no Mercado Livre.
-          </label>
+          <div className="clonar-alerta-publicacao">
+            ⚠ Os anúncios serão publicados <b>ATIVOS</b> no Mercado Livre em poucos segundos após a confirmação.
+          </div>
 
           <div className="clonar-acoes">
-            <button className="btn-excluir" onClick={() => setStep(2)}>
-              Voltar
-            </button>
-            <button className="btn-responder" onClick={handlePublicar} disabled={!confirmado || publicando}>
-              {publicando ? "Publicando..." : "Publicar anúncio"}
+            <button className="btn-responder" onClick={handlePublicar} disabled={publicando}>
+              {publicando
+                ? "Publicando..."
+                : `Clonar ${titulosClones.length > 1 ? `${titulosClones.length} anúncios` : "anúncio"}`}
             </button>
           </div>
         </div>

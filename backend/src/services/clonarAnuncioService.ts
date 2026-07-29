@@ -89,10 +89,9 @@ export async function montarPreview(url: string): Promise<PreviewAnuncio> {
 }
 
 export interface OpcoesClone {
-  tituloFinal: string;
+  titulos: string[];
   listingType: string;
   ativarFlex: boolean;
-  quantidadeClones: number;
   imagensPersonalizadas?: string[];
   imagensPorVariacao?: Record<number, string[]>;
 }
@@ -106,6 +105,7 @@ async function publicarUmaCopia(
   original: MlItemFull,
   descricao: string,
   lojaDestinoId: number,
+  titulo: string,
   opcoes: OpcoesClone
 ): Promise<ResultadoClone> {
   const temVariacoes = original.variations && original.variations.length > 0;
@@ -133,7 +133,7 @@ async function publicarUmaCopia(
   }
 
   const payload: NovoItemPayload = {
-    title: opcoes.tituloFinal,
+    title: titulo,
     category_id: original.category_id,
     price: original.price,
     currency_id: original.currency_id,
@@ -189,10 +189,10 @@ export async function publicarClone(
   const { lojaId: lojaOrigemId, item: original } = await encontrarLojaDonaEItem(itemId);
   const descricao = await getItemDescriptionComToken(lojaOrigemId, itemId);
 
-  const quantidade = Math.max(1, Math.min(20, opcoes.quantidadeClones || 1));
+  const titulos = opcoes.titulos.slice(0, 20);
   const resultados: ResultadoClone[] = [];
-  for (let i = 0; i < quantidade; i++) {
-    resultados.push(await publicarUmaCopia(original, descricao, lojaDestinoId, opcoes));
+  for (const titulo of titulos) {
+    resultados.push(await publicarUmaCopia(original, descricao, lojaDestinoId, titulo, opcoes));
   }
   return resultados;
 }

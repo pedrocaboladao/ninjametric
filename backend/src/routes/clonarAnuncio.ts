@@ -22,23 +22,16 @@ clonarAnuncioRouter.post("/preview", async (req, res) => {
 });
 
 clonarAnuncioRouter.post("/publicar", async (req, res) => {
-  const {
-    url,
-    lojaDestinoId,
-    tituloFinal,
-    listingType,
-    ativarFlex,
-    quantidadeClones,
-    imagensPersonalizadas,
-    imagensPorVariacao,
-  } = req.body;
+  const { url, lojaDestinoId, titulos, listingType, ativarFlex, imagensPersonalizadas, imagensPorVariacao } =
+    req.body;
 
   if (
     typeof url !== "string" ||
     !url.trim() ||
     !Number.isInteger(lojaDestinoId) ||
-    typeof tituloFinal !== "string" ||
-    !tituloFinal.trim() ||
+    !Array.isArray(titulos) ||
+    titulos.length === 0 ||
+    titulos.some((t) => typeof t !== "string" || !t.trim()) ||
     typeof listingType !== "string"
   ) {
     res.status(400).json({ error: "Parâmetros inválidos para publicar o clone." });
@@ -47,10 +40,9 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
 
   try {
     const resultados = await publicarClone(url.trim(), lojaDestinoId, {
-      tituloFinal: tituloFinal.trim(),
+      titulos: titulos.map((t: string) => t.trim()),
       listingType,
       ativarFlex: Boolean(ativarFlex),
-      quantidadeClones: Number.isInteger(quantidadeClones) ? quantidadeClones : 1,
       imagensPersonalizadas: Array.isArray(imagensPersonalizadas) ? imagensPersonalizadas : undefined,
       imagensPorVariacao:
         imagensPorVariacao && typeof imagensPorVariacao === "object" ? imagensPorVariacao : undefined,

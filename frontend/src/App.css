@@ -1326,6 +1326,89 @@
   margin-top: 6px;
 }
 
+.clonar-voltar-topo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  margin-bottom: 18px;
+}
+
+.clonar-voltar-topo:hover {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.clonar-titulos-instrucao {
+  margin-bottom: 18px;
+}
+
+.clonar-contador {
+  align-self: flex-end;
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: -2px;
+}
+
+.clonar-contador-excedido {
+  color: var(--critical-text);
+  font-weight: 600;
+}
+
+.clonar-resumo-titulo {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 10px;
+}
+
+.clonar-resumo-linha-clones {
+  align-items: flex-start;
+}
+
+.clonar-resumo-clones-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: right;
+}
+
+.clonar-resumo-clones-lista b {
+  color: var(--text-primary);
+}
+
+.clonar-resumo-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-top: 4px;
+}
+
+.clonar-alerta-publicacao {
+  font-size: 13px;
+  color: #d9b23a;
+  background: rgba(217, 178, 58, 0.12);
+  border: 1px solid rgba(217, 178, 58, 0.3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin: 16px 0;
+}
+
+.clonar-alerta-publicacao b {
+  color: #d9b23a;
+}
+
 .clonar-resumo {
   display: flex;
   flex-direction: column;

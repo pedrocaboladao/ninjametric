@@ -23,10 +23,9 @@ export async function buscarPreview(url: string, lojaDestinoId: number): Promise
 export interface PublicarParams {
   url: string;
   lojaDestinoId: number;
-  tituloFinal: string;
+  titulos: string[];
   listingType: string;
   ativarFlex: boolean;
-  quantidadeClones: number;
   imagensPersonalizadas?: string[];
   imagensPorVariacao?: Record<number, string[]>;
 }
