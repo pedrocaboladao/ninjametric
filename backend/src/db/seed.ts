@@ -1,7 +1,14 @@
 import { pool } from "./pool";
 import { env } from "../config/env";
 
-const LOJAS = ["Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua", "Cores Certas"];
+const LOJAS = [
+  "Hangar",
+  "Catedral Impermeabilizantes",
+  "Inga Collors",
+  "Perpétua",
+  "Cores Certas",
+  "Mestre do Impermeabilizante",
+];
 
 const COLUNAS_PADRAO = ["Em andamento", "Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
 
