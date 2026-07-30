@@ -11,6 +11,7 @@ const LOJAS = [
   "Cidade Canção",
   "Pinta e Constrói",
   "Rosário Express",
+  "Comercial Soares Baleeiro",
 ];
 
 async function seed() {
