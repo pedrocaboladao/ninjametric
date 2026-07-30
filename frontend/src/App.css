@@ -832,7 +832,7 @@
 .produto-info {
   flex: 1;
   min-width: 0;
-  max-width: 240px;
+  max-width: 280px;
 }
 
 .produto-titulo {
@@ -861,9 +861,9 @@
 
 .produto-valores {
   display: flex;
-  align-items: baseline;
-  justify-content: flex-end;
-  gap: 6px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
   margin-top: 4px;
 }
 
