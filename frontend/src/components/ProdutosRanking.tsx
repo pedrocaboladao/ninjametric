@@ -36,8 +36,8 @@ export function ProdutosRanking({ produtos }: Props) {
                 {p.lojaNome}
               </div>
               <div className="produto-valores">
-                <span className="produto-preco">{formatCurrency(p.precoTotal)}</span>
                 <span className="produto-qtd">{p.quantidade} un.</span>
+                <span className="produto-preco">{formatCurrency(p.precoTotal)}</span>
               </div>
             </div>
           </a>

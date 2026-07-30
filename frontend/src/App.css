@@ -839,9 +839,10 @@
   font-size: 13.5px;
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .produto-mlb {
@@ -861,9 +862,9 @@
 
 .produto-valores {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
   margin-top: 4px;
 }
 
