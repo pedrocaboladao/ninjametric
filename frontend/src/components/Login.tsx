@@ -29,7 +29,7 @@ export function Login({ onEntrar }: Props) {
   return (
     <div className="login-tela">
       <form className="login-card" onSubmit={handleSubmit}>
-        <img src="/logo-ninja-metrics-transparente.png" alt="Ninja Metrics" className="login-logo" />
+        <img src="/logo-vertical.png" alt="Impetrus Vision" className="login-logo" />
         <h1>Entrar no painel</h1>
         <div className="clonar-campo">
           <label>Usuário</label>

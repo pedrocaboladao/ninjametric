@@ -53,7 +53,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <img src="/logo-ninja-metrics-transparente.png" alt="Ninja Metrics" className="sidebar-logo" />
+        <img src="/logo-horizontal.png" alt="Impetrus Vision" className="sidebar-logo" />
         <div className="sidebar-brand-sub">4 lojas · Mercado Livre</div>
       </div>
 
