@@ -9,6 +9,8 @@ const LOJAS = [
   "Cores Certas",
   "Mestre do Impermeabilizante",
   "Cidade Canção",
+  "Pinta e Constrói",
+  "Rosário Express",
 ];
 
 async function seed() {
