@@ -1,8 +1,26 @@
 import { Router } from "express";
+import axios from "axios";
 import { getDashboardData } from "../services/dashboardService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
+import { getValidAccessToken } from "../services/tokenStore";
 
 export const dashboardRouter = Router();
+
+// TEMP: rota de depuração para inspecionar o formato real da API de promoções do ML.
+dashboardRouter.get("/debug-promo", async (req, res) => {
+  try {
+    const lojaId = Number(req.query.lojaId);
+    const itemId = String(req.query.itemId);
+    const token = await getValidAccessToken(lojaId);
+    const { data } = await axios.get(`https://api.mercadolibre.com/seller-promotions/items/${itemId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      params: { app_version: "v2" },
+    });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message, resposta: err.response?.data });
+  }
+});
 
 dashboardRouter.get("/", async (req, res) => {
   const lojaIdParam = req.query.lojaId;
