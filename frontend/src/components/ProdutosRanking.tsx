@@ -27,16 +27,18 @@ export function ProdutosRanking({ produtos }: Props) {
               <div className="produto-foto produto-foto-vazia" />
             )}
             <div className="produto-info">
-              <div className="produto-titulo">{p.titulo}</div>
+              <div className="produto-titulo" title={p.titulo}>
+                {p.titulo}
+              </div>
               <div className="produto-mlb">{p.mlItemId}</div>
               <div className="produto-loja">
                 <i className="ranking-dot" style={{ background: corDaLoja(p.lojaId) }} />
                 {p.lojaNome}
               </div>
-            </div>
-            <div className="produto-valores">
-              <div className="produto-preco">{formatCurrency(p.precoTotal)}</div>
-              <div className="produto-qtd">{p.quantidade} un.</div>
+              <div className="produto-valores">
+                <span className="produto-preco">{formatCurrency(p.precoTotal)}</span>
+                <span className="produto-qtd">{p.quantidade} un.</span>
+              </div>
             </div>
           </a>
         ))}
