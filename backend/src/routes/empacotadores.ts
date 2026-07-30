@@ -9,6 +9,13 @@ import {
   obterRankingMensal,
   obterHistoricoEmpacotador,
 } from "../services/empacotadoresService";
+import {
+  listarResumoBonus,
+  obterDetalheDiarioBonus,
+  registrarPagamentoAvulso,
+  fecharBonusEmLote,
+  listarFechamentos,
+} from "../services/bonusService";
 
 export const empacotadoresRouter = Router();
 
@@ -43,7 +50,7 @@ empacotadoresRouter.post("/", async (req, res) => {
 
 empacotadoresRouter.patch("/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { numero, nome } = req.body;
+  const { numero, nome, metaDiaria } = req.body;
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
@@ -56,8 +63,12 @@ empacotadoresRouter.patch("/:id", async (req, res) => {
     res.status(400).json({ error: "Nome inválido." });
     return;
   }
+  if (metaDiaria !== undefined && metaDiaria !== null && (!Number.isInteger(metaDiaria) || metaDiaria < 0)) {
+    res.status(400).json({ error: "Meta diária inválida." });
+    return;
+  }
   try {
-    await atualizarEmpacotador(id, { numero, nome: nome?.trim() });
+    await atualizarEmpacotador(id, { numero, nome: nome?.trim(), metaDiaria });
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao atualizar empacotador.");
@@ -123,6 +134,58 @@ empacotadoresRouter.get("/ranking", async (req, res) => {
     res.json({ ranking: await obterRankingMensal(ano, mes) });
   } catch (err) {
     erro(res, err, "Falha ao carregar ranking.");
+  }
+});
+
+empacotadoresRouter.get("/bonus/resumo", async (_req, res) => {
+  try {
+    res.json({ resumo: await listarResumoBonus() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar resumo de bônus.");
+  }
+});
+
+empacotadoresRouter.get("/bonus/fechamentos", async (_req, res) => {
+  try {
+    res.json({ fechamentos: await listarFechamentos() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar fechamentos.");
+  }
+});
+
+empacotadoresRouter.post("/bonus/fechar", async (_req, res) => {
+  try {
+    res.json(await fecharBonusEmLote());
+  } catch (err) {
+    erro(res, err, "Falha ao fechar bônus.");
+  }
+});
+
+empacotadoresRouter.get("/:id/bonus/detalhe", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    res.json({ dias: await obterDetalheDiarioBonus(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar detalhe de bônus.");
+  }
+});
+
+empacotadoresRouter.post("/:id/bonus/avulso", async (req, res) => {
+  const id = Number(req.params.id);
+  const { valor } = req.body;
+  if (!Number.isInteger(id) || typeof valor !== "number" || !(valor > 0)) {
+    res.status(400).json({ error: "Informe um valor válido." });
+    return;
+  }
+  try {
+    await registrarPagamentoAvulso(id, valor);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao registrar pagamento avulso.");
   }
 });
 

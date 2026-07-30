@@ -4,24 +4,26 @@ export interface Empacotador {
   id: number;
   numero: number;
   nome: string;
+  metaDiaria: number | null;
 }
 
 export async function listarEmpacotadores(): Promise<Empacotador[]> {
-  const { rows } = await pool.query("SELECT id, numero, nome FROM empacotadores ORDER BY numero");
-  return rows;
+  const { rows } = await pool.query("SELECT id, numero, nome, meta_diaria FROM empacotadores ORDER BY numero");
+  return rows.map((r) => ({ id: r.id, numero: r.numero, nome: r.nome, metaDiaria: r.meta_diaria }));
 }
 
 export async function criarEmpacotador(numero: number, nome: string): Promise<Empacotador> {
   const { rows } = await pool.query(
-    "INSERT INTO empacotadores (numero, nome) VALUES ($1, $2) RETURNING id, numero, nome",
+    "INSERT INTO empacotadores (numero, nome) VALUES ($1, $2) RETURNING id, numero, nome, meta_diaria",
     [numero, nome]
   );
-  return rows[0];
+  return { id: rows[0].id, numero: rows[0].numero, nome: rows[0].nome, metaDiaria: rows[0].meta_diaria };
 }
 
 export interface AtualizacaoEmpacotador {
   numero?: number;
   nome?: string;
+  metaDiaria?: number | null;
 }
 
 export async function atualizarEmpacotador(id: number, dados: AtualizacaoEmpacotador): Promise<void> {
@@ -36,6 +38,10 @@ export async function atualizarEmpacotador(id: number, dados: AtualizacaoEmpacot
   if (dados.nome !== undefined) {
     campos.push(`nome = $${i++}`);
     valores.push(dados.nome);
+  }
+  if (dados.metaDiaria !== undefined) {
+    campos.push(`meta_diaria = $${i++}`);
+    valores.push(dados.metaDiaria);
   }
 
   if (campos.length === 0) return;

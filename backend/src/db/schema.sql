@@ -105,6 +105,26 @@ CREATE TABLE IF NOT EXISTS empacotadores_pacotes (
 
 CREATE INDEX IF NOT EXISTS idx_empacotadores_pacotes_data ON empacotadores_pacotes (data);
 
+-- Meta diária e bonificação por pacote excedente
+ALTER TABLE empacotadores ADD COLUMN IF NOT EXISTS meta_diaria INTEGER;
+
+CREATE TABLE IF NOT EXISTS empacotadores_bonus_fechamentos (
+  id SERIAL PRIMARY KEY,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS empacotadores_bonus_pagamentos (
+  id SERIAL PRIMARY KEY,
+  empacotador_id INTEGER NOT NULL REFERENCES empacotadores(id) ON DELETE CASCADE,
+  valor NUMERIC(10, 2) NOT NULL,
+  origem TEXT NOT NULL, -- 'fechamento' ou 'avulso'
+  fechamento_id INTEGER REFERENCES empacotadores_bonus_fechamentos(id) ON DELETE SET NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_empacotadores_bonus_pagamentos_empacotador
+  ON empacotadores_bonus_pagamentos (empacotador_id);
+
 -- Usuários e permissões por módulo
 CREATE TABLE IF NOT EXISTS usuarios (
   id SERIAL PRIMARY KEY,

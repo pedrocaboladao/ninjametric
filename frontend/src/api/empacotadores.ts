@@ -1,4 +1,12 @@
-import type { Empacotador, ItemRanking, LancamentoDia, HistoricoDia } from "../types/empacotadores";
+import type {
+  Empacotador,
+  ItemRanking,
+  LancamentoDia,
+  HistoricoDia,
+  ResumoBonus,
+  DetalheDiaBonus,
+  Fechamento,
+} from "../types/empacotadores";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -26,7 +34,10 @@ export async function criarEmpacotador(numero: number, nome: string): Promise<Em
   return chamar("/api/empacotadores", { method: "POST", body: JSON.stringify({ numero, nome }) });
 }
 
-export async function atualizarEmpacotador(id: number, dados: { numero?: number; nome?: string }): Promise<void> {
+export async function atualizarEmpacotador(
+  id: number,
+  dados: { numero?: number; nome?: string; metaDiaria?: number | null }
+): Promise<void> {
   await chamar(`/api/empacotadores/${id}`, { method: "PATCH", body: JSON.stringify(dados) });
 }
 
@@ -56,4 +67,27 @@ export async function fetchRankingMensal(ano: number, mes: number): Promise<Item
 export async function fetchHistoricoEmpacotador(id: number, ano: number, mes: number): Promise<HistoricoDia[]> {
   const res = await chamar<{ historico: HistoricoDia[] }>(`/api/empacotadores/${id}/historico?ano=${ano}&mes=${mes}`);
   return res.historico;
+}
+
+export async function fetchResumoBonus(): Promise<ResumoBonus[]> {
+  const res = await chamar<{ resumo: ResumoBonus[] }>("/api/empacotadores/bonus/resumo");
+  return res.resumo;
+}
+
+export async function fetchDetalheBonus(id: number): Promise<DetalheDiaBonus[]> {
+  const res = await chamar<{ dias: DetalheDiaBonus[] }>(`/api/empacotadores/${id}/bonus/detalhe`);
+  return res.dias;
+}
+
+export async function registrarPagamentoAvulso(id: number, valor: number): Promise<void> {
+  await chamar(`/api/empacotadores/${id}/bonus/avulso`, { method: "POST", body: JSON.stringify({ valor }) });
+}
+
+export async function fecharBonusEmLote(): Promise<Fechamento> {
+  return chamar("/api/empacotadores/bonus/fechar", { method: "POST" });
+}
+
+export async function fetchFechamentos(): Promise<Fechamento[]> {
+  const res = await chamar<{ fechamentos: Fechamento[] }>("/api/empacotadores/bonus/fechamentos");
+  return res.fechamentos;
 }

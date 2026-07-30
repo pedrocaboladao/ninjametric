@@ -8,8 +8,21 @@ import {
   salvarLancamentos,
   fetchRankingMensal,
   fetchHistoricoEmpacotador,
+  fetchResumoBonus,
+  fetchDetalheBonus,
+  registrarPagamentoAvulso,
+  fecharBonusEmLote,
+  fetchFechamentos,
 } from "../api/empacotadores";
-import type { Empacotador, ItemRanking, HistoricoDia } from "../types/empacotadores";
+import type {
+  Empacotador,
+  ItemRanking,
+  HistoricoDia,
+  ResumoBonus,
+  DetalheDiaBonus,
+  Fechamento,
+} from "../types/empacotadores";
+import { formatCurrency } from "../utils/format";
 import { IconCrown, IconWreath, IconPlus, IconTrash } from "./icons";
 
 const MESES = [
@@ -48,7 +61,7 @@ function opcoesDeMeses(): { ano: number; mes: number }[] {
 
 export function Funcionarios() {
   const hoje = new Date();
-  const [aba, setAba] = useState<"ranking" | "lancar" | "gerenciar">("ranking");
+  const [aba, setAba] = useState<"ranking" | "lancar" | "gerenciar" | "bonus">("ranking");
   const [empacotadores, setEmpacotadores] = useState<Empacotador[]>([]);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -66,10 +79,21 @@ export function Funcionarios() {
 
   const [novoNumero, setNovoNumero] = useState("");
   const [novoNome, setNovoNome] = useState("");
+  const [novaMeta, setNovaMeta] = useState("");
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [editNumero, setEditNumero] = useState("");
   const [editNome, setEditNome] = useState("");
+  const [editMeta, setEditMeta] = useState("");
   const [confirmandoExcluir, setConfirmandoExcluir] = useState<number | null>(null);
+
+  const [resumoBonus, setResumoBonus] = useState<ResumoBonus[] | null>(null);
+  const [fechamentos, setFechamentos] = useState<Fechamento[] | null>(null);
+  const [detalheAbertoId, setDetalheAbertoId] = useState<number | null>(null);
+  const [detalheDias, setDetalheDias] = useState<DetalheDiaBonus[] | null>(null);
+  const [avulsoAbertoId, setAvulsoAbertoId] = useState<number | null>(null);
+  const [avulsoValor, setAvulsoValor] = useState("");
+  const [confirmandoFechamento, setConfirmandoFechamento] = useState(false);
+  const [fechando, setFechando] = useState(false);
 
   useEffect(() => {
     carregarEmpacotadores();
@@ -82,6 +106,13 @@ export function Funcionarios() {
   useEffect(() => {
     if (aba === "lancar") carregarLancamentos();
   }, [aba, dataLancamento]);
+
+  useEffect(() => {
+    if (aba === "bonus") {
+      carregarResumoBonus();
+      carregarFechamentos();
+    }
+  }, [aba]);
 
   async function carregarEmpacotadores() {
     try {
@@ -148,9 +179,13 @@ export function Funcionarios() {
     e.preventDefault();
     if (!novoNumero.trim() || !novoNome.trim()) return;
     try {
-      await criarEmpacotador(Number(novoNumero), novoNome.trim());
+      const criado = await criarEmpacotador(Number(novoNumero), novoNome.trim());
+      if (novaMeta.trim()) {
+        await atualizarEmpacotador(criado.id, { metaDiaria: Number(novaMeta) });
+      }
       setNovoNumero("");
       setNovoNome("");
+      setNovaMeta("");
       carregarEmpacotadores();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao criar empacotador.");
@@ -161,11 +196,16 @@ export function Funcionarios() {
     setEditandoId(emp.id);
     setEditNumero(String(emp.numero));
     setEditNome(emp.nome);
+    setEditMeta(emp.metaDiaria !== null ? String(emp.metaDiaria) : "");
   }
 
   async function confirmarEdicao(id: number) {
     try {
-      await atualizarEmpacotador(id, { numero: Number(editNumero), nome: editNome.trim() });
+      await atualizarEmpacotador(id, {
+        numero: Number(editNumero),
+        nome: editNome.trim(),
+        metaDiaria: editMeta.trim() ? Number(editMeta) : null,
+      });
       setEditandoId(null);
       carregarEmpacotadores();
       carregarRanking();
@@ -182,6 +222,64 @@ export function Funcionarios() {
       carregarRanking();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao excluir empacotador.");
+    }
+  }
+
+  async function carregarResumoBonus() {
+    try {
+      setResumoBonus(await fetchResumoBonus());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar resumo de bônus.");
+    }
+  }
+
+  async function carregarFechamentos() {
+    try {
+      setFechamentos(await fetchFechamentos());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar fechamentos.");
+    }
+  }
+
+  async function toggleDetalhe(empacotadorId: number) {
+    if (detalheAbertoId === empacotadorId) {
+      setDetalheAbertoId(null);
+      setDetalheDias(null);
+      return;
+    }
+    setDetalheAbertoId(empacotadorId);
+    setDetalheDias(null);
+    try {
+      setDetalheDias(await fetchDetalheBonus(empacotadorId));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar detalhe.");
+    }
+  }
+
+  async function handlePagarAvulso(empacotadorId: number) {
+    const valor = Number(avulsoValor);
+    if (!(valor > 0)) return;
+    try {
+      await registrarPagamentoAvulso(empacotadorId, valor);
+      setAvulsoAbertoId(null);
+      setAvulsoValor("");
+      carregarResumoBonus();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao registrar pagamento.");
+    }
+  }
+
+  async function handleFecharBonus() {
+    setFechando(true);
+    try {
+      await fecharBonusEmLote();
+      setConfirmandoFechamento(false);
+      carregarResumoBonus();
+      carregarFechamentos();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao fechar bônus.");
+    } finally {
+      setFechando(false);
     }
   }
 
@@ -219,6 +317,12 @@ export function Funcionarios() {
           onClick={() => setAba("gerenciar")}
         >
           Gerenciar equipe
+        </button>
+        <button
+          className={`tarefas-aba ${aba === "bonus" ? "tarefas-aba-ativa" : ""}`}
+          onClick={() => setAba("bonus")}
+        >
+          Bônus
         </button>
       </div>
 
@@ -401,6 +505,14 @@ export function Funcionarios() {
               value={novoNome}
               onChange={(e) => setNovoNome(e.target.value)}
             />
+            <input
+              type="number"
+              min={0}
+              className="clonar-input func-gerenciar-input-meta"
+              placeholder="Meta/dia"
+              value={novaMeta}
+              onChange={(e) => setNovaMeta(e.target.value)}
+            />
             <button type="submit" className="btn-responder">
               <IconPlus size={15} /> Adicionar
             </button>
@@ -417,6 +529,14 @@ export function Funcionarios() {
                       onChange={(e) => setEditNumero(e.target.value)}
                     />
                     <input className="clonar-input" value={editNome} onChange={(e) => setEditNome(e.target.value)} />
+                    <input
+                      type="number"
+                      min={0}
+                      className="clonar-input func-gerenciar-input-meta"
+                      placeholder="Meta/dia"
+                      value={editMeta}
+                      onChange={(e) => setEditMeta(e.target.value)}
+                    />
                     <button className="btn-responder" onClick={() => confirmarEdicao(emp.id)} type="button">
                       Salvar
                     </button>
@@ -428,6 +548,9 @@ export function Funcionarios() {
                   <>
                     <span className="func-gerenciar-numero">{numeroFormatado(emp.numero)}</span>
                     <span className="func-gerenciar-nome">{emp.nome}</span>
+                    <span className="func-gerenciar-meta">
+                      {emp.metaDiaria !== null ? `Meta: ${emp.metaDiaria}/dia` : "Sem meta"}
+                    </span>
                     <button className="btn-excluir" onClick={() => iniciarEdicao(emp)} type="button">
                       Editar
                     </button>
@@ -460,6 +583,165 @@ export function Funcionarios() {
             ))}
             {empacotadores.length === 0 && <div className="state-message">Nenhum empacotador cadastrado ainda.</div>}
           </div>
+        </div>
+      )}
+
+      {aba === "bonus" && (
+        <div className="func-bonus">
+          <div className="func-bonus-topo">
+            <p className="painel-sub">
+              Bônus de R$ 0,50 por pacote acima da meta diária, apurado dia a dia. Configure a meta em "Gerenciar
+              equipe".
+            </p>
+            {confirmandoFechamento ? (
+              <div className="func-bonus-confirmar">
+                <span>Fechar o bônus pendente de todo mundo?</span>
+                <button className="btn-responder" type="button" onClick={handleFecharBonus} disabled={fechando}>
+                  {fechando ? "Fechando..." : "Confirmar"}
+                </button>
+                <button className="btn-excluir" type="button" onClick={() => setConfirmandoFechamento(false)}>
+                  Cancelar
+                </button>
+              </div>
+            ) : (
+              <button className="btn-responder" type="button" onClick={() => setConfirmandoFechamento(true)}>
+                Fechar bônus em lote
+              </button>
+            )}
+          </div>
+
+          {!resumoBonus && <div className="state-message">Carregando resumo de bônus...</div>}
+
+          {resumoBonus && resumoBonus.length === 0 && (
+            <div className="state-message">Nenhum empacotador cadastrado ainda.</div>
+          )}
+
+          {resumoBonus && resumoBonus.length > 0 && (
+            <div className="func-bonus-lista">
+              {resumoBonus.map((r) => (
+                <div key={r.empacotadorId} className="painel func-bonus-item">
+                  <div className="func-bonus-item-topo">
+                    <div>
+                      <div className="func-bonus-nome">
+                        {numeroFormatado(r.numero)} - {r.nome.toUpperCase()}
+                      </div>
+                      <div className="func-bonus-meta">
+                        {r.metaDiaria !== null ? `Meta: ${r.metaDiaria} pacotes/dia` : "Sem meta definida"}
+                      </div>
+                    </div>
+                    <button className="btn-excluir" type="button" onClick={() => toggleDetalhe(r.empacotadorId)}>
+                      {detalheAbertoId === r.empacotadorId ? "Fechar detalhe" : "Ver detalhe"}
+                    </button>
+                  </div>
+
+                  <div className="func-bonus-valores">
+                    <div className="func-bonus-valor-item">
+                      <span className="func-bonus-valor-label">Gerado</span>
+                      <span className="func-bonus-valor-numero">{formatCurrency(r.bonusGerado)}</span>
+                    </div>
+                    <div className="func-bonus-valor-item">
+                      <span className="func-bonus-valor-label">Pago</span>
+                      <span className="func-bonus-valor-numero func-bonus-valor-pago">
+                        {formatCurrency(r.bonusPago)}
+                      </span>
+                    </div>
+                    <div className="func-bonus-valor-item">
+                      <span className="func-bonus-valor-label">Pendente</span>
+                      <span className="func-bonus-valor-numero func-bonus-valor-pendente">
+                        {formatCurrency(r.bonusPendente)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {r.bonusPendente > 0 &&
+                    (avulsoAbertoId === r.empacotadorId ? (
+                      <div className="func-bonus-avulso-form">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          className="clonar-input"
+                          value={avulsoValor}
+                          onChange={(e) => setAvulsoValor(e.target.value)}
+                        />
+                        <button
+                          className="btn-responder"
+                          type="button"
+                          onClick={() => handlePagarAvulso(r.empacotadorId)}
+                        >
+                          Confirmar
+                        </button>
+                        <button className="btn-excluir" type="button" onClick={() => setAvulsoAbertoId(null)}>
+                          Cancelar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="btn-excluir func-bonus-avulso-btn"
+                        type="button"
+                        onClick={() => {
+                          setAvulsoAbertoId(r.empacotadorId);
+                          setAvulsoValor(r.bonusPendente.toFixed(2));
+                        }}
+                      >
+                        Pagamento avulso
+                      </button>
+                    ))}
+
+                  {detalheAbertoId === r.empacotadorId && (
+                    <div className="func-bonus-detalhe">
+                      {!detalheDias && <div className="state-message">Carregando detalhe...</div>}
+                      {detalheDias && detalheDias.filter((d) => d.excedente > 0).length === 0 && (
+                        <p className="painel-sub">Nenhum dia com excedente ainda.</p>
+                      )}
+                      {detalheDias && detalheDias.filter((d) => d.excedente > 0).length > 0 && (
+                        <div className="func-bonus-detalhe-lista">
+                          {detalheDias
+                            .filter((d) => d.excedente > 0)
+                            .map((d) => (
+                              <div key={d.data} className="func-bonus-detalhe-item">
+                                <span>{new Date(`${d.data}T00:00:00`).toLocaleDateString("pt-BR")}</span>
+                                <span>
+                                  {d.pacotes} pacotes (meta {d.meta})
+                                </span>
+                                <span>+{d.excedente} excedente</span>
+                                <span className="func-bonus-detalhe-valor">{formatCurrency(d.bonusDoDia)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {fechamentos && fechamentos.length > 0 && (
+            <>
+              <span className="painel-eyebrow func-secao-titulo">Histórico de fechamentos</span>
+              <div className="func-bonus-lista">
+                {fechamentos.map((f) => (
+                  <div key={f.id} className="painel func-bonus-item">
+                    <div className="func-bonus-item-topo">
+                      <span>{new Date(f.criadoEm).toLocaleString("pt-BR")}</span>
+                      <span className="func-bonus-valor-numero">{formatCurrency(f.total)}</span>
+                    </div>
+                    <div className="func-bonus-detalhe-lista">
+                      {f.itens.map((it) => (
+                        <div key={it.empacotadorId} className="func-bonus-detalhe-item">
+                          <span>
+                            {numeroFormatado(it.numero)} - {it.nome}
+                          </span>
+                          <span className="func-bonus-detalhe-valor">{formatCurrency(it.valor)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

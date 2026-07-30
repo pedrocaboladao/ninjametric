@@ -2315,6 +2315,147 @@
   color: var(--text-primary);
 }
 
+.func-gerenciar-input-meta {
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.func-gerenciar-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+
+/* Funcionários: Bônus */
+.func-bonus {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.func-bonus-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.func-bonus-topo .painel-sub {
+  margin: 0;
+  max-width: 520px;
+}
+
+.func-bonus-confirmar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.func-bonus-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.func-bonus-item-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.func-bonus-nome {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.func-bonus-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.func-bonus-valores {
+  display: flex;
+  gap: 24px;
+}
+
+.func-bonus-valor-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.func-bonus-valor-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.func-bonus-valor-numero {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+
+.func-bonus-valor-pago {
+  color: var(--good-text);
+}
+
+.func-bonus-valor-pendente {
+  color: var(--accent);
+}
+
+.func-bonus-avulso-btn {
+  margin-top: 12px;
+}
+
+.func-bonus-avulso-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.func-bonus-avulso-form input {
+  max-width: 140px;
+}
+
+.func-bonus-detalhe {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.func-bonus-detalhe-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.func-bonus-detalhe-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.func-bonus-detalhe-valor {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
 /* Usuários */
 .usuarios-novo-form {
   display: flex;
