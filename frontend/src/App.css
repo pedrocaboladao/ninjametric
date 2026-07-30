@@ -2365,6 +2365,12 @@
   font-style: italic;
 }
 
+.usuarios-minhas-lojas-dica {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+
 .usuarios-permissao-item {
   display: flex;
   align-items: center;

@@ -4,8 +4,8 @@ import { IconClock, IconRefresh, IconExpand } from "./icons";
 
 interface Props {
   lojas: Loja[];
-  lojaFiltro: number | "todas";
-  onChangeLojaFiltro: (valor: number | "todas") => void;
+  lojaFiltro: number | "todas" | "minhas";
+  onChangeLojaFiltro: (valor: number | "todas" | "minhas") => void;
   atualizadoEm: Date | null;
   atualizando: boolean;
   onExpandir: () => void;
@@ -46,9 +46,13 @@ export function DashboardHeader({
           <select
             className="dashboard-select"
             value={lojaFiltro}
-            onChange={(e) => onChangeLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+            onChange={(e) => {
+              const valor = e.target.value;
+              onChangeLojaFiltro(valor === "todas" || valor === "minhas" ? valor : Number(valor));
+            }}
           >
             <option value="todas">Todas as lojas</option>
+            <option value="minhas">Minhas lojas</option>
             {lojas.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.nome}

@@ -9,7 +9,7 @@ import { ProdutosRanking } from "./ProdutosRanking";
 
 export function Dashboard() {
   const [lojas, setLojas] = useState<Loja[]>([]);
-  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -32,7 +32,11 @@ export function Dashboard() {
   }
 
   const nomeLojaFiltro =
-    lojaFiltro === "todas" ? "Todas as lojas" : lojas.find((l) => l.id === lojaFiltro)?.nome ?? "Todas as lojas";
+    lojaFiltro === "todas"
+      ? "Todas as lojas"
+      : lojaFiltro === "minhas"
+      ? "Minhas lojas"
+      : lojas.find((l) => l.id === lojaFiltro)?.nome ?? "Todas as lojas";
 
   return (
     <div className="dashboard" ref={containerRef}>

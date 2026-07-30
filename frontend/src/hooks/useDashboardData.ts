@@ -4,7 +4,7 @@ import type { DashboardData } from "../types/dashboard";
 
 const POLL_INTERVAL_MS = 2 * 60 * 1000;
 
-export function useDashboardData(lojaId?: number) {
+export function useDashboardData(lojaId?: number | "minhas") {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

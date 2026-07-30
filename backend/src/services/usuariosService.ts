@@ -75,7 +75,7 @@ export async function listarUsuarios(): Promise<UsuarioComPermissoes[]> {
       todasLojas: u.todas_lojas,
       clonarTodasLojas: u.clonar_todas_lojas,
       permissoes: u.admin ? [] : await obterPermissoes(u.id),
-      lojas: u.admin ? [] : await obterLojasPermitidas(u.id),
+      lojas: await obterLojasPermitidas(u.id),
     });
   }
   return usuarios;
@@ -106,7 +106,7 @@ export async function buscarUsuarioComPermissoes(id: number): Promise<UsuarioCom
   if (!rows[0]) return null;
   const admin = rows[0].admin;
   const permissoes = admin ? [] : await obterPermissoes(id);
-  const lojas = admin ? [] : await obterLojasPermitidas(id);
+  const lojas = await obterLojasPermitidas(id);
   return {
     id: rows[0].id,
     username: rows[0].username,

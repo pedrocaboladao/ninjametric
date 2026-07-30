@@ -314,6 +314,24 @@ export function Usuarios() {
                 </div>
               )}
 
+              {u.admin && (
+                <div className="usuarios-lojas-lista">
+                  <label className="usuarios-permissao-item usuarios-todas-lojas">Minhas lojas</label>
+                  <p className="usuarios-minhas-lojas-dica">
+                    Atalho pessoal para o filtro "Minhas lojas" no Painel ao vivo — não afeta permissões, já
+                    que sua conta enxerga tudo.
+                  </p>
+                  <div className="usuarios-permissoes-lista">
+                    {lojas.map((l) => (
+                      <label key={l.id} className="usuarios-permissao-item">
+                        <input type="checkbox" checked={u.lojas.includes(l.id)} onChange={() => alternarLoja(u, l.id)} />
+                        {l.nome}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {!u.admin && (
                 <>
                   <div className="usuarios-permissoes-lista">
