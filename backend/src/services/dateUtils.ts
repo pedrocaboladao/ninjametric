@@ -67,6 +67,28 @@ export function janelaUltimosDias(dias: number): DiaJanela {
   };
 }
 
+// Retorna uma chave estável que só muda quando o horário local cruza um dos
+// horários-âncora informados (ex.: [8, 15] -> muda às 8h e às 15h). Serve para
+// um cache que atualiza só algumas vezes por dia em horários fixos, em vez de
+// usar um TTL corrido. Antes da primeira âncora do dia, usa a última âncora
+// do dia anterior (ex.: às 3h da manhã, ainda vale a janela das 15h de ontem).
+export function chaveJanelaDoDia(horariosAncora: number[]): string {
+  const now = brNowParts();
+  const ancoras = [...horariosAncora].sort((a, b) => a - b);
+  const data = new Date(Date.UTC(now.year, now.month - 1, now.day));
+
+  let escolhida = -1;
+  for (const h of ancoras) {
+    if (now.hour >= h) escolhida = h;
+  }
+  if (escolhida === -1) {
+    data.setUTCDate(data.getUTCDate() - 1);
+    escolhida = ancoras[ancoras.length - 1];
+  }
+
+  return `${data.getUTCFullYear()}-${pad(data.getUTCMonth() + 1)}-${pad(data.getUTCDate())}T${pad(escolhida)}`;
+}
+
 export function horaLocal(dateIso: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",

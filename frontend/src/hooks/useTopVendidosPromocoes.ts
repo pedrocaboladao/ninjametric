@@ -2,7 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { fetchTopVendidosPromocoes } from "../api/dashboard";
 import type { TopVendidoPromocao } from "../types/dashboard";
 
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
+// O backend só recalcula de verdade perto das 8h e das 15h (ver
+// chaveJanelaDoDia em dateUtils.ts) — não faz sentido o navegador consultar
+// de 5 em 5 minutos. 30 minutos garante pegar a atualização pouco depois de
+// cada horário-âncora sem gerar tráfego à toa o resto do dia.
+const POLL_INTERVAL_MS = 30 * 60 * 1000;
 
 export function useTopVendidosPromocoes(lojaId?: number | "minhas") {
   const [produtos, setProdutos] = useState<TopVendidoPromocao[] | null>(null);

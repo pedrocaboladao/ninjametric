@@ -1,6 +1,6 @@
 import { listLojas } from "./tokenStore";
 import { searchOrders, getItemsBasicInfo, getPromocaoStatus, MlOrder, PromocaoStatus } from "./mercadoLivreApi";
-import { janelaHoje, janelaOntemMesmoHorario, janelaUltimosDias, horaLocal } from "./dateUtils";
+import { janelaHoje, janelaOntemMesmoHorario, janelaUltimosDias, horaLocal, chaveJanelaDoDia } from "./dateUtils";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 
@@ -223,12 +223,13 @@ async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (it
 
 // Buscar 60 dias de pedidos em várias lojas + checar promoção item a item é
 // lento (pode passar de 20s com várias lojas). Como esse painel é um
-// diagnóstico, não uma métrica ao vivo, cacheamos o resultado por loja/escopo
-// por mais tempo do que o intervalo de atualização do frontend — assim a
-// maioria das atualizações automáticas (e trocas de filtro repetidas) usam o
-// resultado recente em vez de refazer a busca inteira.
-const TOP_VENDIDOS_CACHE_TTL_MS = 10 * 60 * 1000;
-const cacheTopVendidos = new Map<string, { data: TopVendidoPromocao[]; expiraEm: number }>();
+// diagnóstico (não uma métrica ao vivo) e o pedido foi de no máximo 2
+// atualizações por dia, o cache não usa TTL corrido — a chave inclui a
+// "janela do dia" (ver chaveJanelaDoDia), que só muda nos horários-âncora.
+// Assim só a primeira requisição depois de cada âncora refaz a busca; o
+// resto do dia (e trocas de filtro repetidas) usam o resultado guardado.
+const HORARIOS_ATUALIZACAO_PROMOCOES = [8, 15];
+const cacheTopVendidos = new Map<string, TopVendidoPromocao[]>();
 
 export async function getTopVendidosPromocoes(
   lojaIdFiltro?: number,
@@ -241,13 +242,14 @@ export async function getTopVendidosPromocoes(
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
 
-  const chaveCache = lojas
+  const escopoLojas = lojas
     .map((l) => l.id)
     .sort((a, b) => a - b)
     .join(",");
+  const chaveCache = `${escopoLojas}|${chaveJanelaDoDia(HORARIOS_ATUALIZACAO_PROMOCOES)}`;
   const emCache = cacheTopVendidos.get(chaveCache);
-  if (emCache && emCache.expiraEm > Date.now()) {
-    return emCache.data;
+  if (emCache) {
+    return emCache;
   }
 
   const janela = janelaUltimosDias(60);
@@ -317,6 +319,6 @@ export async function getTopVendidosPromocoes(
     };
   });
 
-  cacheTopVendidos.set(chaveCache, { data: resultado, expiraEm: Date.now() + TOP_VENDIDOS_CACHE_TTL_MS });
+  cacheTopVendidos.set(chaveCache, resultado);
   return resultado;
 }
