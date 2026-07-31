@@ -12,6 +12,7 @@ import { tarefasRouter } from "./routes/tarefas";
 import { empacotadoresRouter } from "./routes/empacotadores";
 import { usuariosRouter } from "./routes/usuarios";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
+import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 
 const app = express();
 
@@ -40,3 +41,5 @@ app.get("/health", (_req, res) => {
 app.listen(env.port, () => {
   console.log(`Backend rodando em http://localhost:${env.port}`);
 });
+
+iniciarPrewarmPromocoes();
