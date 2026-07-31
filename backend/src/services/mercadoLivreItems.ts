@@ -54,6 +54,16 @@ export function requerModeloUserProduct(err: unknown): boolean {
   );
 }
 
+// Algumas categorias recusam reaproveitar o GTIN do anúncio original (código
+// já usado em outra categoria/anúncio) — mas outras categorias EXIGEM o
+// GTIN, então não dá pra simplesmente nunca enviar. A estratégia é: tentar
+// com o GTIN normal e, só se vier esse erro específico, tentar de novo sem
+// o atributo.
+export function requerRemoverGtin(err: unknown): boolean {
+  if (!(err instanceof ErroMercadoLivre)) return false;
+  return err.causas.some((c) => c.code === "item.attribute.invalid_product_identifier");
+}
+
 export interface MlAttribute {
   id: string;
   name?: string;

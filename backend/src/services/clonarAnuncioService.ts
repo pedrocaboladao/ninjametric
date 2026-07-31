@@ -8,6 +8,7 @@ import {
   ativarEnviosFlex,
   atualizarFotosDasVariacoes,
   requerModeloUserProduct,
+  requerRemoverGtin,
   resolverItemIdPorUserProduct,
   listarFamiliaUserProducts,
   MlItemFull,
@@ -70,14 +71,17 @@ async function buscarItensDaFamilia(lojaId: number, mlUserId: number, item: MlIt
   return validos.length > 0 ? validos : [item];
 }
 
-// GTIN (código de barras) identifica um produto específico globalmente — o
-// Mercado Livre recusa a criação se o mesmo código já estiver em uso em
-// outro anúncio/categoria. Um clone é um anúncio novo e independente, então
-// não faz sentido reaproveitar esse código do original.
-const ATRIBUTOS_A_NAO_CLONAR = new Set(["GTIN"]);
-
-function filtrarAtributosParaClone(atributos: MlAttribute[]): MlAttribute[] {
-  return atributos.filter((a) => !ATRIBUTOS_A_NAO_CLONAR.has(a.id));
+// Algumas categorias exigem o atributo GTIN (código de barras); outras
+// recusam se o mesmo código já estiver em uso em outro anúncio/categoria.
+// Não dá pra saber de antemão qual é o caso, então tenta criar com o GTIN
+// normal e, só se der esse conflito específico, tenta de novo sem ele.
+async function criarItemComFallbackGtin(lojaId: number, payload: NovoItemPayload): Promise<MlItemFull> {
+  try {
+    return await createItem(lojaId, payload);
+  } catch (err) {
+    if (!requerRemoverGtin(err)) throw err;
+    return createItem(lojaId, { ...payload, attributes: payload.attributes.filter((a) => a.id !== "GTIN") });
+  }
 }
 
 function resumoVariacao(atributos: MlAttribute[]): string {
@@ -202,7 +206,7 @@ async function publicarUmaCopia(
     condition: original.condition,
     listing_type_id: opcoes.listingType,
     pictures: fotosGerais.map((source) => ({ source })),
-    attributes: filtrarAtributosParaClone(original.attributes),
+    attributes: original.attributes,
     shipping: {
       mode: original.shipping.mode,
       local_pick_up: original.shipping.local_pick_up,
@@ -220,7 +224,7 @@ async function publicarUmaCopia(
 
   let novoItem: MlItemFull;
   try {
-    novoItem = await createItem(lojaDestinoId, payload);
+    novoItem = await criarItemComFallbackGtin(lojaDestinoId, payload);
   } catch (err) {
     if (!requerModeloUserProduct(err)) {
       throw err;
@@ -239,7 +243,7 @@ async function publicarUmaCopia(
         currency_id: original.currency_id,
         buying_mode: original.buying_mode,
         condition: original.condition,
-        attributes: filtrarAtributosParaClone([...original.attributes, ...v.attribute_combinations]),
+        attributes: [...original.attributes, ...v.attribute_combinations],
         pictures: opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
           : opcoes.imagensPersonalizadas?.length
@@ -251,7 +255,7 @@ async function publicarUmaCopia(
       return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
     const { title: _titulo, ...payloadSemTitulo } = payload;
-    novoItem = await createItem(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
+    novoItem = await criarItemComFallbackGtin(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
   }
 
   if (descricao) {
@@ -336,7 +340,7 @@ async function publicarFamiliaDeItens(
         shipping: fonte.shipping,
       };
 
-      const novoItem = await createItem(lojaDestinoId, payloadItem);
+      const novoItem = await criarItemComFallbackGtin(lojaDestinoId, payloadItem);
       criados.push(novoItem.id);
 
       if (descricao) {
@@ -396,7 +400,7 @@ export async function publicarClone(
         currency_id: it.currency_id,
         buying_mode: it.buying_mode,
         condition: it.condition,
-        attributes: filtrarAtributosParaClone(it.attributes),
+        attributes: it.attributes,
         pictures: opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
           : it.pictures.map((p) => p.secure_url),
