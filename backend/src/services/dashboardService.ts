@@ -1,6 +1,6 @@
 import { listLojas } from "./tokenStore";
-import { searchOrders, getItemsBasicInfo, MlOrder } from "./mercadoLivreApi";
-import { janelaHoje, janelaOntemMesmoHorario, horaLocal } from "./dateUtils";
+import { searchOrders, getItemsBasicInfo, getPromocaoStatus, MlOrder, PromocaoStatus } from "./mercadoLivreApi";
+import { janelaHoje, janelaOntemMesmoHorario, janelaUltimosDias, horaLocal } from "./dateUtils";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 
@@ -194,4 +194,107 @@ export async function getDashboardData(lojaIdFiltro?: number, lojasPermitidas?: 
     produtosMaisVendidos,
     ultimaVendaEm,
   };
+}
+
+export interface TopVendidoPromocao {
+  mlItemId: string;
+  titulo: string;
+  lojaId: number;
+  lojaNome: string;
+  precoTotal: number;
+  quantidade: number;
+  foto: string | null;
+  linkMl: string | null;
+  promocao: PromocaoStatus;
+}
+
+async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const resultados: R[] = new Array(itens.length);
+  let indice = 0;
+  async function worker() {
+    while (indice < itens.length) {
+      const i = indice++;
+      resultados[i] = await fn(itens[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
+  return resultados;
+}
+
+export async function getTopVendidosPromocoes(
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<TopVendidoPromocao[]> {
+  const lojas = (await listLojas()).filter(
+    (l) =>
+      l.ml_user_id !== null &&
+      (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
+      (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+  const janela = janelaUltimosDias(60);
+
+  const ordersPorLoja = await Promise.all(
+    lojas.map(async (loja) => ({
+      lojaId: loja.id,
+      lojaNome: loja.nome,
+      orders: await searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora),
+    }))
+  );
+
+  const produtosMap = new Map<
+    string,
+    { lojaId: number; mlItemId: string; titulo: string; lojaNome: string; precoTotal: number; quantidade: number }
+  >();
+  for (const l of ordersPorLoja) {
+    for (const o of l.orders.filter((x) => STATUS_VALIDOS.has(x.status))) {
+      for (const item of o.order_items) {
+        const chave = `${l.lojaId}:${item.item.id}`;
+        const atual = produtosMap.get(chave) ?? {
+          lojaId: l.lojaId,
+          mlItemId: item.item.id,
+          titulo: item.item.title,
+          lojaNome: l.lojaNome,
+          precoTotal: 0,
+          quantidade: 0,
+        };
+        atual.precoTotal += item.unit_price * item.quantity;
+        atual.quantidade += item.quantity;
+        produtosMap.set(chave, atual);
+      }
+    }
+  }
+
+  const top20 = Array.from(produtosMap.values())
+    .sort((a, b) => b.quantidade - a.quantidade)
+    .slice(0, 20);
+
+  const idsPorLoja = new Map<number, string[]>();
+  for (const p of top20) {
+    const lista = idsPorLoja.get(p.lojaId) ?? [];
+    lista.push(p.mlItemId);
+    idsPorLoja.set(p.lojaId, lista);
+  }
+  const itensPorLoja = new Map<number, Awaited<ReturnType<typeof getItemsBasicInfo>>>();
+  await Promise.all(
+    Array.from(idsPorLoja.entries()).map(async ([lojaId, ids]) => {
+      itensPorLoja.set(lojaId, await getItemsBasicInfo(lojaId, ids));
+    })
+  );
+
+  const promocoes = await comConcorrenciaLimitada(top20, 5, async (p) => getPromocaoStatus(p.lojaId, p.mlItemId));
+
+  return top20.map((p, i) => {
+    const item = itensPorLoja.get(p.lojaId)?.get(p.mlItemId);
+    return {
+      mlItemId: p.mlItemId,
+      titulo: p.titulo,
+      lojaId: p.lojaId,
+      lojaNome: p.lojaNome,
+      precoTotal: p.precoTotal,
+      quantidade: p.quantidade,
+      foto: item?.thumbnail ?? null,
+      linkMl: item?.permalink ?? null,
+      promocao: promocoes[i],
+    };
+  });
 }

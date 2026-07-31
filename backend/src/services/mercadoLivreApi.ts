@@ -62,6 +62,31 @@ export async function searchOrders(
   return orders;
 }
 
+export type PromocaoStatus = "com_promocao" | "sem_promocao" | "nao_verificado";
+
+interface MlPromotionEntry {
+  status: string;
+}
+
+// Consulta a Central de Promoções do ML para um anúncio. Requer a permissão
+// de "Preços e promoções" habilitada no app e a conta reautorizada depois
+// disso (mudar permissão não atualiza tokens já emitidos) — sem isso, a API
+// responde 403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES, e nesse caso tratamos
+// como "não verificado" em vez de quebrar o restante do painel.
+export async function getPromocaoStatus(lojaId: number, itemId: string): Promise<PromocaoStatus> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<MlPromotionEntry[]>(
+      `${ML_API_BASE}/seller-promotions/items/${itemId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
+    );
+    const emPromocao = data.some((p) => p.status === "started");
+    return emPromocao ? "com_promocao" : "sem_promocao";
+  } catch {
+    return "nao_verificado";
+  }
+}
+
 export interface MlItemBasicInfo {
   id: string;
   title: string;

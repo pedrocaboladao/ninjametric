@@ -34,3 +34,17 @@ export interface DashboardData {
   produtosMaisVendidos: ProdutoMaisVendido[];
   ultimaVendaEm: string | null;
 }
+
+export type PromocaoStatus = "com_promocao" | "sem_promocao" | "nao_verificado";
+
+export interface TopVendidoPromocao {
+  mlItemId: string;
+  titulo: string;
+  lojaId: number;
+  lojaNome: string;
+  precoTotal: number;
+  quantidade: number;
+  foto: string | null;
+  linkMl: string | null;
+  promocao: PromocaoStatus;
+}

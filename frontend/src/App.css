@@ -879,6 +879,94 @@
   color: var(--text-muted);
 }
 
+/* Top vendidos + promoções */
+.painel-top-vendidos {
+  margin-top: 18px;
+}
+
+.top-vendidos-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.promo-resumo-alerta {
+  flex-shrink: 0;
+}
+
+.top-vendidos-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.top-vendido-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--border);
+}
+
+.top-vendido-item:last-child {
+  border-bottom: none;
+}
+
+.top-vendido-item:hover {
+  background: var(--bg-hover);
+}
+
+.top-vendido-alerta {
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.top-vendido-alerta:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.top-vendido-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.top-vendido-valores {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+  width: 100px;
+}
+
+.promo-badge {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 5px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.promo-badge-ativa {
+  background: var(--good-bg);
+  color: var(--good-text);
+}
+
+.promo-badge-alerta {
+  background: var(--critical-bg);
+  color: var(--critical-text);
+}
+
+.promo-badge-neutro {
+  background: var(--bg-panel-alt);
+  color: var(--text-muted);
+}
+
 /* Perguntas */
 .perguntas-header {
   display: flex;

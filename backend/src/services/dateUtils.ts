@@ -57,6 +57,16 @@ export function janelaOntemMesmoHorario(): DiaJanela {
   };
 }
 
+export function janelaUltimosDias(dias: number): DiaJanela {
+  const now = brNowParts();
+  const inicio = new Date(Date.UTC(now.year, now.month - 1, now.day));
+  inicio.setUTCDate(inicio.getUTCDate() - dias);
+  return {
+    inicioDia: brIso(inicio.getUTCFullYear(), inicio.getUTCMonth() + 1, inicio.getUTCDate(), 0, 0, 0),
+    agora: brIso(now.year, now.month, now.day, now.hour, now.minute, now.second),
+  };
+}
+
 export function horaLocal(dateIso: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",

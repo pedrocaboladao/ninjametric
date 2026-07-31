@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useDashboardData } from "../hooks/useDashboardData";
+import { useTopVendidosPromocoes } from "../hooks/useTopVendidosPromocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
 import { DashboardHeader } from "./DashboardHeader";
 import { HeroFaturamento } from "./HeroFaturamento";
 import { RankingLojas } from "./RankingLojas";
 import { VendasChart } from "./VendasChart";
 import { ProdutosRanking } from "./ProdutosRanking";
+import { TopVendidosPromocoes } from "./TopVendidosPromocoes";
 
 export function Dashboard() {
   const [lojas, setLojas] = useState<Loja[]>([]);
@@ -19,6 +21,9 @@ export function Dashboard() {
   }, []);
 
   const { data, error, loading, atualizando, atualizadoEm } = useDashboardData(
+    lojaFiltro === "todas" ? undefined : lojaFiltro
+  );
+  const { produtos: topVendidos, loading: loadingTopVendidos } = useTopVendidosPromocoes(
     lojaFiltro === "todas" ? undefined : lojaFiltro
   );
 
@@ -76,6 +81,8 @@ export function Dashboard() {
             </div>
             <ProdutosRanking produtos={data.produtosMaisVendidos} />
           </div>
+
+          {!loadingTopVendidos && topVendidos && <TopVendidosPromocoes produtos={topVendidos} />}
         </>
       )}
     </div>
