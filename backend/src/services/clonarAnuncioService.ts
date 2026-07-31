@@ -9,6 +9,7 @@ import {
   atualizarFotosDasVariacoes,
   requerModeloUserProduct,
   requerRemoverGtin,
+  atributoObrigatorioFaltando,
   resolverItemIdPorUserProduct,
   listarFamiliaUserProducts,
   MlItemFull,
@@ -71,16 +72,40 @@ async function buscarItensDaFamilia(lojaId: number, mlUserId: number, item: MlIt
   return validos.length > 0 ? validos : [item];
 }
 
-// Algumas categorias exigem o atributo GTIN (código de barras); outras
-// recusam se o mesmo código já estiver em uso em outro anúncio/categoria.
-// Não dá pra saber de antemão qual é o caso, então tenta criar com o GTIN
-// normal e, só se der esse conflito específico, tenta de novo sem ele.
-async function criarItemComFallbackGtin(lojaId: number, payload: NovoItemPayload): Promise<MlItemFull> {
+// Atributos que já confirmamos com o dono das lojas — não são um "chute",
+// é o valor real desses produtos (impermeabilizantes/tintas à base de água,
+// não inflamáveis). Se algum dia um anúncio realmente inflamável cair aqui,
+// o correto é ajustar isso, não confiar cegamente no valor padrão.
+const VALOR_PADRAO_CONFIRMADO: Record<string, { value_id: string; value_name: string }> = {
+  IS_FLAMMABLE: { value_id: "242084", value_name: "Não" },
+};
+
+// Anúncios antigos/categorias diferentes têm exigências diferentes: algumas
+// recusam reaproveitar o GTIN do original (já usado em outro anúncio),
+// outras exigem atributos que o anúncio antigo nunca teve (ex.: declaração
+// de inflamabilidade, que passou a ser obrigatória depois). Tenta criar
+// normal e só ajusta o payload reativamente pros erros conhecidos.
+async function criarItemComFallbacks(lojaId: number, payloadOriginal: NovoItemPayload): Promise<MlItemFull> {
   try {
-    return await createItem(lojaId, payload);
+    return await createItem(lojaId, payloadOriginal);
   } catch (err) {
-    if (!requerRemoverGtin(err)) throw err;
-    return createItem(lojaId, { ...payload, attributes: payload.attributes.filter((a) => a.id !== "GTIN") });
+    let payload = payloadOriginal;
+    let ajustou = false;
+
+    if (requerRemoverGtin(err)) {
+      payload = { ...payload, attributes: payload.attributes.filter((a) => a.id !== "GTIN") };
+      ajustou = true;
+    }
+
+    for (const [attributeId, valor] of Object.entries(VALOR_PADRAO_CONFIRMADO)) {
+      if (atributoObrigatorioFaltando(err, attributeId)) {
+        payload = { ...payload, attributes: [...payload.attributes, { id: attributeId, ...valor }] };
+        ajustou = true;
+      }
+    }
+
+    if (!ajustou) throw err;
+    return createItem(lojaId, payload);
   }
 }
 
@@ -92,6 +117,9 @@ function resumoItemDaFamilia(item: MlItemFull): string {
   const cor = item.attributes.find((a) => a.id === "COLOR" || a.name === "Cor");
   return cor ? `${cor.name ?? "Cor"}: ${cor.value_name ?? "-"}` : item.title;
 }
+
+// O Mercado Livre limita a 12 fotos por anúncio.
+const MAX_FOTOS = 12;
 
 export interface PreviewAnuncio {
   itemOriginalId: string;
@@ -189,11 +217,12 @@ async function publicarUmaCopia(
       combinadas.push(...fotosDaVariacao);
       faixaPorVariacao.push(Array.from({ length: fotosDaVariacao.length }, (_, i) => inicio + i));
     });
-    fotosGerais = combinadas;
+    fotosGerais = combinadas.slice(0, MAX_FOTOS);
   } else {
-    fotosGerais = opcoes.imagensPersonalizadas?.length
+    fotosGerais = (opcoes.imagensPersonalizadas?.length
       ? opcoes.imagensPersonalizadas
-      : original.pictures.map((p) => p.secure_url);
+      : original.pictures.map((p) => p.secure_url)
+    ).slice(0, MAX_FOTOS);
   }
 
   const payload: NovoItemPayload = {
@@ -224,7 +253,7 @@ async function publicarUmaCopia(
 
   let novoItem: MlItemFull;
   try {
-    novoItem = await criarItemComFallbackGtin(lojaDestinoId, payload);
+    novoItem = await criarItemComFallbacks(lojaDestinoId, payload);
   } catch (err) {
     if (!requerModeloUserProduct(err)) {
       throw err;
@@ -244,18 +273,19 @@ async function publicarUmaCopia(
         buying_mode: original.buying_mode,
         condition: original.condition,
         attributes: [...original.attributes, ...v.attribute_combinations],
-        pictures: opcoes.imagensPorVariacao?.[index]?.length
+        pictures: (opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
           : opcoes.imagensPersonalizadas?.length
           ? opcoes.imagensPersonalizadas
-          : original.pictures.map((p) => p.secure_url),
+          : original.pictures.map((p) => p.secure_url)
+        ).slice(0, MAX_FOTOS),
         siteId: original.site_id,
         shipping: original.shipping,
       }));
       return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
     const { title: _titulo, ...payloadSemTitulo } = payload;
-    novoItem = await criarItemComFallbackGtin(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
+    novoItem = await criarItemComFallbacks(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
   }
 
   if (descricao) {
@@ -322,7 +352,10 @@ async function publicarFamiliaDeItens(
 
   try {
     for (const [index, fonte] of fontes.entries()) {
-      const fotos = opcoes.imagensPorVariacao?.[index]?.length ? opcoes.imagensPorVariacao[index] : fonte.pictures;
+      const fotos = (opcoes.imagensPorVariacao?.[index]?.length ? opcoes.imagensPorVariacao[index] : fonte.pictures).slice(
+        0,
+        MAX_FOTOS
+      );
 
       const payloadItem: NovoItemPayload = {
         // Sem "title": no modelo User Product ele é gerado automaticamente
@@ -340,7 +373,7 @@ async function publicarFamiliaDeItens(
         shipping: fonte.shipping,
       };
 
-      const novoItem = await criarItemComFallbackGtin(lojaDestinoId, payloadItem);
+      const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem);
       criados.push(novoItem.id);
 
       if (descricao) {
@@ -401,9 +434,10 @@ export async function publicarClone(
         buying_mode: it.buying_mode,
         condition: it.condition,
         attributes: it.attributes,
-        pictures: opcoes.imagensPorVariacao?.[index]?.length
+        pictures: (opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
-          : it.pictures.map((p) => p.secure_url),
+          : it.pictures.map((p) => p.secure_url)
+        ).slice(0, MAX_FOTOS),
         siteId: it.site_id,
         shipping: it.shipping,
       }));

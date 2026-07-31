@@ -64,6 +64,16 @@ export function requerRemoverGtin(err: unknown): boolean {
   return err.causas.some((c) => c.code === "item.attribute.invalid_product_identifier");
 }
 
+// Anúncios antigos podem não ter atributos que categorias exigem hoje em dia
+// (ex.: declaração de inflamabilidade). Detecta quando um atributo específico
+// está faltando, pra quem chamar decidir se sabe um valor padrão seguro.
+export function atributoObrigatorioFaltando(err: unknown, attributeId: string): boolean {
+  if (!(err instanceof ErroMercadoLivre)) return false;
+  return err.causas.some(
+    (c) => c.code === "item.attributes.missing_required" && c.message?.includes(`[${attributeId}]`)
+  );
+}
+
 export interface MlAttribute {
   id: string;
   name?: string;
