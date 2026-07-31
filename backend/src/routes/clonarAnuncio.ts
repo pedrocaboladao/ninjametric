@@ -14,13 +14,10 @@ clonarAnuncioRouter.get("/debug-up", async (req, res) => {
   const loja = (await listLojas()).find((l) => l.id === lojaId)!;
 
   const tentativas: Record<string, unknown> = {};
+  const familyId = String(req.query.familyId ?? "8685144846188752");
   const chamadas: Array<[string, string]> = [
-    ["userProduct", `https://api.mercadolibre.com/user-products/${userProductId}`],
-    [
-      "itemsSearchPorUserProduct",
-      `https://api.mercadolibre.com/users/${loja.ml_user_id}/items/search?user_product_id=${userProductId}`,
-    ],
-    ["itemsSearchDireto", `https://api.mercadolibre.com/items/search?user_product_id=${userProductId}`],
+    ["familia", `https://api.mercadolibre.com/sites/MLB/user-products-families/${familyId}`],
+    ["itemBase", `https://api.mercadolibre.com/items/MLB4732589171`],
   ];
   for (const [nome, url] of chamadas) {
     try {
