@@ -76,33 +76,35 @@ export function Dashboard() {
         <>
           <div className="dashboard-grid">
             <RankingLojas lojas={data.rankingLojas} />
-            <div className="painel painel-chart">
-              <span className="painel-eyebrow">Evolução por hora</span>
-              <h2>Vendas brutas por hora</h2>
-              <p className="painel-sub">Hoje comparado a ontem</p>
-              <VendasChart dados={data.vendasPorHora} />
+            <div className="dashboard-coluna-meio">
+              <div className="painel painel-chart">
+                <span className="painel-eyebrow">Evolução por hora</span>
+                <h2>Vendas brutas por hora</h2>
+                <p className="painel-sub">Hoje comparado a ontem</p>
+                <VendasChart dados={data.vendasPorHora} />
+              </div>
+
+              {loadingTopVendidos && (
+                <div className="state-message painel painel-top-vendidos">
+                  Carregando diagnóstico de promoções (pode levar até 30s em "Todas as lojas")...
+                </div>
+              )}
+              {errorTopVendidos && (
+                <div className="state-message state-error painel painel-top-vendidos">
+                  Erro ao carregar diagnóstico de promoções: {errorTopVendidos}
+                </div>
+              )}
+              {!loadingTopVendidos && topVendidos && (
+                <TopVendidosPromocoes
+                  produtos={topVendidos}
+                  lojas={lojas}
+                  lojaFiltro={lojaFiltroPromocoes}
+                  onChangeLojaFiltro={setLojaFiltroPromocoes}
+                />
+              )}
             </div>
             <ProdutosRanking produtos={data.produtosMaisVendidos} />
           </div>
-
-          {loadingTopVendidos && (
-            <div className="state-message painel-top-vendidos">
-              Carregando diagnóstico de promoções (pode levar até 30s em "Todas as lojas")...
-            </div>
-          )}
-          {errorTopVendidos && (
-            <div className="state-message state-error painel-top-vendidos">
-              Erro ao carregar diagnóstico de promoções: {errorTopVendidos}
-            </div>
-          )}
-          {!loadingTopVendidos && topVendidos && (
-            <TopVendidosPromocoes
-              produtos={topVendidos}
-              lojas={lojas}
-              lojaFiltro={lojaFiltroPromocoes}
-              onChangeLojaFiltro={setLojaFiltroPromocoes}
-            />
-          )}
         </>
       )}
     </div>

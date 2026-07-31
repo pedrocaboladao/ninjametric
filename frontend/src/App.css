@@ -520,6 +520,12 @@
   align-items: start;
 }
 
+.dashboard-coluna-meio {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 @media (max-width: 1150px) {
   .dashboard-grid {
     grid-template-columns: 1fr;
@@ -880,15 +886,12 @@
 }
 
 /* Top vendidos + promoções */
-.painel-top-vendidos {
-  margin-top: 18px;
-}
-
 .top-vendidos-header {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 16px;
+  gap: 10px;
   margin-bottom: 10px;
 }
 
@@ -897,6 +900,7 @@
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+  flex-wrap: wrap;
 }
 
 .promo-resumo-alerta {
