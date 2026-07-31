@@ -1,35 +1,9 @@
 import { Router } from "express";
-import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas, getValidAccessToken } from "../services/tokenStore";
+import { listLojas } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
-
-// TEMP: conferir o item real criado a partir de um user_product_id (MLBU...).
-clonarAnuncioRouter.get("/debug-up-criado", async (req, res) => {
-  const userProductId = String(req.query.userProductId);
-  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
-  for (const loja of lojas) {
-    try {
-      const token = await getValidAccessToken(loja.id);
-      const { data: busca } = await axios.get(`https://api.mercadolibre.com/users/${loja.ml_user_id}/items/search`, {
-        headers: { Authorization: `Bearer ${token}` },
-        params: { user_product_id: userProductId },
-      });
-      const itemId = busca.results?.[0];
-      if (!itemId) continue;
-      const { data: item } = await axios.get(`https://api.mercadolibre.com/items/${itemId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      res.json({ loja: loja.nome, itemId, item });
-      return;
-    } catch {
-      // tenta a próxima loja
-    }
-  }
-  res.status(404).json({ error: "Não encontrado em nenhuma loja." });
-});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
