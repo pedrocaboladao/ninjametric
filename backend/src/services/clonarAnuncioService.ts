@@ -161,6 +161,13 @@ async function publicarUmaCopia(
       price: v.price,
       available_quantity: v.available_quantity,
     }));
+    // Algumas categorias exigem esse campo quando o anúncio tem variações —
+    // sem ele, a criação falha com "body.required_fields [family_name]".
+    if (original.family_name) {
+      payload.family_name = original.family_name;
+    } else {
+      payload.family_name = titulo;
+    }
   }
 
   const novoItem = await createItem(lojaDestinoId, payload);

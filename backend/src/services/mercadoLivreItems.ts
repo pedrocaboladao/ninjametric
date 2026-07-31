@@ -54,6 +54,7 @@ export interface MlItemFull {
   pictures: MlPicture[];
   attributes: MlAttribute[];
   variations: MlVariation[];
+  family_name?: string;
   shipping: {
     mode: string;
     local_pick_up: boolean;
@@ -131,6 +132,7 @@ export interface NovoItemPayload {
   listing_type_id: string;
   pictures: Array<{ source: string }>;
   attributes: MlAttribute[];
+  family_name?: string;
   variations?: Array<{
     attribute_combinations: MlAttribute[];
     price: number;
