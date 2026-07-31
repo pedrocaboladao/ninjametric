@@ -8,23 +8,34 @@ import {
   ativarEnviosFlex,
   atualizarFotosDasVariacoes,
   requerModeloUserProduct,
+  resolverItemIdPorUserProduct,
+  listarFamiliaUserProducts,
   MlItemFull,
+  MlAttribute,
   NovoItemPayload,
+  IdentificadorAnuncio,
 } from "./mercadoLivreItems";
 import { listLojas } from "./tokenStore";
 
 async function encontrarLojaDonaEItem(
-  itemId: string,
+  identificador: IdentificadorAnuncio,
   lojasPermitidas?: number[]
-): Promise<{ lojaId: number; item: MlItemFull }> {
+): Promise<{ lojaId: number; mlUserId: number; item: MlItemFull }> {
   const lojas = (await listLojas()).filter(
     (l) => l.ml_user_id !== null && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
 
   for (const loja of lojas) {
+    const mlUserId = loja.ml_user_id as number;
     try {
-      const item = await getItemFullComToken(loja.id, itemId);
-      return { lojaId: loja.id, item };
+      if (identificador.tipo === "user_product") {
+        const itemId = await resolverItemIdPorUserProduct(loja.id, mlUserId, identificador.id);
+        if (!itemId) continue;
+        const item = await getItemFullComToken(loja.id, itemId);
+        return { lojaId: loja.id, mlUserId, item };
+      }
+      const item = await getItemFullComToken(loja.id, identificador.id);
+      return { lojaId: loja.id, mlUserId, item };
     } catch {
       // não é dessa loja, tenta a próxima
     }
@@ -37,8 +48,35 @@ async function encontrarLojaDonaEItem(
   );
 }
 
-function resumoVariacao(atributos: MlItemFull["variations"][number]["attribute_combinations"]): string {
+// Anúncios no modelo User Product não têm variações embutidas — cada "cor" é
+// um anúncio (item) separado, todos ligados pelo mesmo family_id. Se o item
+// pertence a uma família, busca todos os itens-irmãos pra clonar juntos.
+async function buscarItensDaFamilia(lojaId: number, mlUserId: number, item: MlItemFull): Promise<MlItemFull[]> {
+  if (!item.family_id) return [item];
+
+  const irmaos = await listarFamiliaUserProducts(lojaId, item.site_id, item.family_id);
+  const itens = await Promise.all(
+    irmaos.map(async (userProductId) => {
+      const itemId = await resolverItemIdPorUserProduct(lojaId, mlUserId, userProductId);
+      if (!itemId) return null;
+      try {
+        return await getItemFullComToken(lojaId, itemId);
+      } catch {
+        return null;
+      }
+    })
+  );
+  const validos = itens.filter((i): i is MlItemFull => i !== null);
+  return validos.length > 0 ? validos : [item];
+}
+
+function resumoVariacao(atributos: MlAttribute[]): string {
   return atributos.map((a) => `${a.name ?? a.id}: ${a.value_name ?? a.value_id ?? "-"}`).join(" · ");
+}
+
+function resumoItemDaFamilia(item: MlItemFull): string {
+  const cor = item.attributes.find((a) => a.id === "COLOR" || a.name === "Cor");
+  return cor ? `${cor.name ?? "Cor"}: ${cor.value_name ?? "-"}` : item.title;
 }
 
 export interface PreviewAnuncio {
@@ -62,10 +100,13 @@ export interface PreviewAnuncio {
 }
 
 export async function montarPreview(url: string, lojasPermitidas?: number[]): Promise<PreviewAnuncio> {
-  const itemId = await extrairItemIdDaUrl(url);
-  const { lojaId, item } = await encontrarLojaDonaEItem(itemId, lojasPermitidas);
+  const identificador = await extrairItemIdDaUrl(url);
+  const { lojaId, mlUserId, item } = await encontrarLojaDonaEItem(identificador, lojasPermitidas);
+  const itensFamilia = await buscarItensDaFamilia(lojaId, mlUserId, item);
+  const temFamilia = itensFamilia.length > 1;
+
   const [descricao, categoriaNome] = await Promise.all([
-    getItemDescriptionComToken(lojaId, itemId),
+    getItemDescriptionComToken(lojaId, item.id),
     getCategoryName(item.category_id),
   ]);
 
@@ -81,8 +122,10 @@ export async function montarPreview(url: string, lojasPermitidas?: number[]): Pr
     siteId: item.site_id,
     fotos: item.pictures.map((p) => p.secure_url),
     numAtributos: item.attributes.length,
-    numVariacoes: item.variations?.length ?? 0,
-    variacoes: (item.variations ?? []).map((v, index) => ({ index, resumo: resumoVariacao(v.attribute_combinations) })),
+    numVariacoes: temFamilia ? itensFamilia.length : item.variations?.length ?? 0,
+    variacoes: temFamilia
+      ? itensFamilia.map((it, index) => ({ index, resumo: resumoItemDaFamilia(it) }))
+      : (item.variations ?? []).map((v, index) => ({ index, resumo: resumoVariacao(v.attribute_combinations) })),
     frete: {
       modo: item.shipping.mode,
       freteGratis: item.shipping.free_shipping,
@@ -173,12 +216,28 @@ async function publicarUmaCopia(
     }
     // Algumas categorias já migraram pro modelo "User Product". Quando o
     // anúncio tem variações, cada uma vira um anúncio independente ligado
-    // pelo mesmo family_name (ver publicarComoFamiliaUserProduct). Quando
-    // não tem variações, o próprio Mercado Livre ainda assim exige o campo
+    // pelo mesmo family_name (ver publicarFamiliaDeItens). Quando não tem
+    // variações, o próprio Mercado Livre ainda assim exige o campo
     // family_name nesse tipo de categoria — só precisa tentar de novo com
     // esse campo preenchido, sem precisar quebrar em vários anúncios.
     if (temVariacoes) {
-      return publicarComoFamiliaUserProduct(original, descricao, lojaDestinoId, titulo, opcoes);
+      const fontes: FonteFamiliaItem[] = original.variations.map((v, index) => ({
+        price: v.price,
+        available_quantity: v.available_quantity,
+        category_id: original.category_id,
+        currency_id: original.currency_id,
+        buying_mode: original.buying_mode,
+        condition: original.condition,
+        attributes: [...original.attributes, ...v.attribute_combinations],
+        pictures: opcoes.imagensPorVariacao?.[index]?.length
+          ? opcoes.imagensPorVariacao[index]
+          : opcoes.imagensPersonalizadas?.length
+          ? opcoes.imagensPersonalizadas
+          : original.pictures.map((p) => p.secure_url),
+        siteId: original.site_id,
+        shipping: original.shipping,
+      }));
+      return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
     const { title: _titulo, ...payloadSemTitulo } = payload;
     novoItem = await createItem(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
@@ -204,14 +263,28 @@ async function publicarUmaCopia(
   return { novoItemId: novoItem.id, permalink: novoItem.permalink };
 }
 
-// Fallback para categorias no modelo "User Product": em vez de um item só com
-// várias variações dentro, cria um anúncio independente por variação (ex.:
-// uma cor cada), todos com o mesmo family_name — o Mercado Livre os agrupa
-// automaticamente numa mesma "família" na página do produto. Roda em série
-// (não em paralelo) para, se algo falhar no meio, sabermos exatamente quantas
-// variações já foram criadas.
-async function publicarComoFamiliaUserProduct(
-  original: MlItemFull,
+interface FonteFamiliaItem {
+  price: number;
+  available_quantity: number;
+  category_id: string;
+  currency_id: string;
+  buying_mode: string;
+  condition: string;
+  attributes: MlAttribute[];
+  pictures: string[];
+  siteId: string;
+  shipping: { mode: string; local_pick_up: boolean; free_shipping: boolean };
+}
+
+// Cria um anúncio independente por "fonte" (uma cor/variação cada), todos com
+// o mesmo family_name — o Mercado Livre os agrupa automaticamente numa mesma
+// família na página do produto. Usado tanto para anúncios clássicos com
+// variações que precisaram cair no modelo User Product, quanto para links que
+// já apontam direto pra uma família (várias cores já publicadas separadas).
+// Roda em série (não em paralelo) para, se algo falhar no meio, sabermos
+// exatamente quantos anúncios já foram criados.
+async function publicarFamiliaDeItens(
+  fontes: FonteFamiliaItem[],
   descricao: string,
   lojaDestinoId: number,
   titulo: string,
@@ -222,31 +295,23 @@ async function publicarComoFamiliaUserProduct(
   const criados: string[] = [];
 
   try {
-    for (const [index, variacao] of original.variations.entries()) {
-      const fotosDaVariacao = opcoes.imagensPorVariacao?.[index]?.length
-        ? opcoes.imagensPorVariacao[index]
-        : opcoes.imagensPersonalizadas?.length
-        ? opcoes.imagensPersonalizadas
-        : original.pictures.map((p) => p.secure_url);
+    for (const [index, fonte] of fontes.entries()) {
+      const fotos = opcoes.imagensPorVariacao?.[index]?.length ? opcoes.imagensPorVariacao[index] : fonte.pictures;
 
       const payloadItem: NovoItemPayload = {
         // Sem "title": no modelo User Product ele é gerado automaticamente
         // a partir do family_name + atributos.
-        category_id: original.category_id,
-        price: variacao.price,
-        currency_id: original.currency_id,
-        available_quantity: variacao.available_quantity,
-        buying_mode: original.buying_mode,
-        condition: original.condition,
+        category_id: fonte.category_id,
+        price: fonte.price,
+        currency_id: fonte.currency_id,
+        available_quantity: fonte.available_quantity,
+        buying_mode: fonte.buying_mode,
+        condition: fonte.condition,
         listing_type_id: opcoes.listingType,
-        pictures: fotosDaVariacao.map((source) => ({ source })),
-        attributes: [...original.attributes, ...variacao.attribute_combinations],
+        pictures: fotos.map((source) => ({ source })),
+        attributes: fonte.attributes,
         family_name: familyName,
-        shipping: {
-          mode: original.shipping.mode,
-          local_pick_up: original.shipping.local_pick_up,
-          free_shipping: original.shipping.free_shipping,
-        },
+        shipping: fonte.shipping,
       };
 
       const novoItem = await createItem(lojaDestinoId, payloadItem);
@@ -256,7 +321,7 @@ async function publicarComoFamiliaUserProduct(
         await setItemDescription(lojaDestinoId, novoItem.id, descricao);
       }
       if (opcoes.ativarFlex) {
-        await ativarEnviosFlex(lojaDestinoId, original.site_id, novoItem.id);
+        await ativarEnviosFlex(lojaDestinoId, fonte.siteId, novoItem.id);
       }
 
       if (!primeiroItem) {
@@ -266,8 +331,8 @@ async function publicarComoFamiliaUserProduct(
   } catch (err) {
     const mensagem = err instanceof Error ? err.message : "erro desconhecido";
     throw new Error(
-      `Falha ao criar a família de variações (modelo User Product): ${criados.length} de ` +
-        `${original.variations.length} anúncios foram criados antes do erro (ids: ${criados.join(", ") || "nenhum"}). ` +
+      `Falha ao criar a família de anúncios (modelo User Product): ${criados.length} de ` +
+        `${fontes.length} anúncios foram criados antes do erro (ids: ${criados.join(", ") || "nenhum"}). ` +
         `Confira/apague manualmente no Mercado Livre se necessário. Erro: ${mensagem}`
     );
   }
@@ -281,14 +346,38 @@ export async function publicarClone(
   opcoes: OpcoesClone,
   lojasPermitidas?: number[]
 ): Promise<ResultadoClone[]> {
-  const itemId = await extrairItemIdDaUrl(url);
-  const { lojaId: lojaOrigemId, item: original } = await encontrarLojaDonaEItem(itemId, lojasPermitidas);
-  const descricao = await getItemDescriptionComToken(lojaOrigemId, itemId);
+  const identificador = await extrairItemIdDaUrl(url);
+  const { lojaId: lojaOrigemId, mlUserId, item: original } = await encontrarLojaDonaEItem(
+    identificador,
+    lojasPermitidas
+  );
+  const itensFamilia = await buscarItensDaFamilia(lojaOrigemId, mlUserId, original);
+  const descricao = await getItemDescriptionComToken(lojaOrigemId, original.id);
 
   const titulos = opcoes.titulos.slice(0, 20);
   const resultados: ResultadoClone[] = [];
+
   for (const titulo of titulos) {
-    resultados.push(await publicarUmaCopia(original, descricao, lojaDestinoId, titulo, opcoes));
+    if (itensFamilia.length > 1) {
+      const fontes: FonteFamiliaItem[] = itensFamilia.map((it, index) => ({
+        price: it.price,
+        available_quantity: it.available_quantity,
+        category_id: it.category_id,
+        currency_id: it.currency_id,
+        buying_mode: it.buying_mode,
+        condition: it.condition,
+        attributes: it.attributes,
+        pictures: opcoes.imagensPorVariacao?.[index]?.length
+          ? opcoes.imagensPorVariacao[index]
+          : it.pictures.map((p) => p.secure_url),
+        siteId: it.site_id,
+        shipping: it.shipping,
+      }));
+      resultados.push(await publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes));
+    } else {
+      resultados.push(await publicarUmaCopia(original, descricao, lojaDestinoId, titulo, opcoes));
+    }
   }
+
   return resultados;
 }

@@ -1,34 +1,9 @@
 import { Router } from "express";
-import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas, getValidAccessToken } from "../services/tokenStore";
+import { listLojas } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
-
-// TEMP: investigar como resolver um user_product_id (MLBU...) pra um item_id.
-clonarAnuncioRouter.get("/debug-up", async (req, res) => {
-  const userProductId = String(req.query.userProductId);
-  const lojaId = Number(req.query.lojaId);
-  const token = await getValidAccessToken(lojaId);
-  const loja = (await listLojas()).find((l) => l.id === lojaId)!;
-
-  const tentativas: Record<string, unknown> = {};
-  const familyId = String(req.query.familyId ?? "8685144846188752");
-  const chamadas: Array<[string, string]> = [
-    ["familia", `https://api.mercadolibre.com/sites/MLB/user-products-families/${familyId}`],
-    ["itemBase", `https://api.mercadolibre.com/items/MLB4732589171`],
-  ];
-  for (const [nome, url] of chamadas) {
-    try {
-      const { data } = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
-      tentativas[nome] = data;
-    } catch (err: any) {
-      tentativas[nome] = { erro: err.message, resposta: err.response?.data };
-    }
-  }
-  res.json(tentativas);
-});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista

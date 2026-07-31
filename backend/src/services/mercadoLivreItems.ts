@@ -90,6 +90,10 @@ export interface MlItemFull {
   attributes: MlAttribute[];
   variations: MlVariation[];
   family_name?: string;
+  // Presentes quando o anúncio já é do modelo User Product — cada "cor" é um
+  // item/anúncio separado, todos com o mesmo family_id.
+  family_id?: number;
+  user_product_id?: string;
   shipping: {
     mode: string;
     local_pick_up: boolean;
@@ -109,16 +113,66 @@ async function resolveRedirect(url: string): Promise<string> {
   }
 }
 
-export async function extrairItemIdDaUrl(url: string): Promise<string> {
-  const direto = url.match(/MLB-?(\d+)/i);
-  if (direto) return `MLB${direto[1]}`;
+export type IdentificadorAnuncio = { tipo: "item"; id: string } | { tipo: "user_product"; id: string };
+
+// Extrai só da parte "de caminho" da URL (antes de ?/#) — links de recomendação
+// do próprio Mercado Livre costumam levar parâmetros de rastreamento
+// (ex.: "wid=MLB...") que também batem com o padrão de um MLB e confundiam
+// a extração antiga, pegando o item errado.
+function extrairDoCaminho(url: string): IdentificadorAnuncio | null {
+  const caminho = url.split(/[?#]/)[0];
+  const userProduct = caminho.match(/MLBU(\d+)/i);
+  if (userProduct) return { tipo: "user_product", id: `MLBU${userProduct[1]}` };
+
+  const item = caminho.match(/MLB-?(\d+)/i);
+  if (item) return { tipo: "item", id: `MLB${item[1]}` };
+
+  return null;
+}
+
+export async function extrairItemIdDaUrl(url: string): Promise<IdentificadorAnuncio> {
+  const direto = extrairDoCaminho(url);
+  if (direto) return direto;
 
   const final = await resolveRedirect(url);
-  const match = final.match(/MLB-?(\d+)/i);
-  if (!match) {
+  const resolvido = extrairDoCaminho(final);
+  if (!resolvido) {
     throw new Error("Não foi possível identificar o código do anúncio (MLB) nessa URL.");
   }
-  return `MLB${match[1]}`;
+  return resolvido;
+}
+
+// Resolve um user_product_id (link "/up/MLBU...") pro item_id de fato — só
+// funciona com o token da conta dona do produto (mesma regra dos itens).
+export async function resolverItemIdPorUserProduct(
+  lojaId: number,
+  mlUserId: number,
+  userProductId: string
+): Promise<string | null> {
+  const accessToken = await getValidAccessToken(lojaId);
+  try {
+    const { data } = await axios.get<{ results: string[] }>(`${ML_API_BASE}/users/${mlUserId}/items/search`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { user_product_id: userProductId },
+    });
+    return data.results[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Lista todas as "cores" (user_product_ids) de uma família do modelo User Product.
+export async function listarFamiliaUserProducts(
+  lojaId: number,
+  siteId: string,
+  familyId: number
+): Promise<string[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const { data } = await axios.get<{ user_products_ids: string[] }>(
+    `${ML_API_BASE}/sites/${siteId}/user-products-families/${familyId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  return data.user_products_ids;
 }
 
 // A API do Mercado Livre só deixa ler os detalhes completos de um anúncio (/items/{id})
