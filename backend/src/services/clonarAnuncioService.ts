@@ -70,6 +70,16 @@ async function buscarItensDaFamilia(lojaId: number, mlUserId: number, item: MlIt
   return validos.length > 0 ? validos : [item];
 }
 
+// GTIN (código de barras) identifica um produto específico globalmente — o
+// Mercado Livre recusa a criação se o mesmo código já estiver em uso em
+// outro anúncio/categoria. Um clone é um anúncio novo e independente, então
+// não faz sentido reaproveitar esse código do original.
+const ATRIBUTOS_A_NAO_CLONAR = new Set(["GTIN"]);
+
+function filtrarAtributosParaClone(atributos: MlAttribute[]): MlAttribute[] {
+  return atributos.filter((a) => !ATRIBUTOS_A_NAO_CLONAR.has(a.id));
+}
+
 function resumoVariacao(atributos: MlAttribute[]): string {
   return atributos.map((a) => `${a.name ?? a.id}: ${a.value_name ?? a.value_id ?? "-"}`).join(" · ");
 }
@@ -191,7 +201,7 @@ async function publicarUmaCopia(
     condition: original.condition,
     listing_type_id: opcoes.listingType,
     pictures: fotosGerais.map((source) => ({ source })),
-    attributes: original.attributes,
+    attributes: filtrarAtributosParaClone(original.attributes),
     shipping: {
       mode: original.shipping.mode,
       local_pick_up: original.shipping.local_pick_up,
@@ -228,7 +238,7 @@ async function publicarUmaCopia(
         currency_id: original.currency_id,
         buying_mode: original.buying_mode,
         condition: original.condition,
-        attributes: [...original.attributes, ...v.attribute_combinations],
+        attributes: filtrarAtributosParaClone([...original.attributes, ...v.attribute_combinations]),
         pictures: opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
           : opcoes.imagensPersonalizadas?.length
@@ -366,7 +376,7 @@ export async function publicarClone(
         currency_id: it.currency_id,
         buying_mode: it.buying_mode,
         condition: it.condition,
-        attributes: it.attributes,
+        attributes: filtrarAtributosParaClone(it.attributes),
         pictures: opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
           : it.pictures.map((p) => p.secure_url),
