@@ -7,6 +7,7 @@ import {
   setItemDescription,
   ativarEnviosFlex,
   atualizarFotosDasVariacoes,
+  requerModeloUserProduct,
   MlItemFull,
   NovoItemPayload,
 } from "./mercadoLivreItems";
@@ -161,16 +162,20 @@ async function publicarUmaCopia(
       price: v.price,
       available_quantity: v.available_quantity,
     }));
-    // Algumas categorias exigem esse campo quando o anúncio tem variações —
-    // sem ele, a criação falha com "body.required_fields [family_name]".
-    if (original.family_name) {
-      payload.family_name = original.family_name;
-    } else {
-      payload.family_name = titulo;
-    }
   }
 
-  const novoItem = await createItem(lojaDestinoId, payload);
+  let novoItem: MlItemFull;
+  try {
+    novoItem = await createItem(lojaDestinoId, payload);
+  } catch (err) {
+    // Algumas categorias já migraram pro modelo "User Product": não aceitam
+    // mais o array `variations` clássico, e cada variação precisa virar um
+    // anúncio independente, ligado aos demais pelo mesmo family_name.
+    if (temVariacoes && requerModeloUserProduct(err)) {
+      return publicarComoFamiliaUserProduct(original, descricao, lojaDestinoId, titulo, opcoes);
+    }
+    throw err;
+  }
 
   if (descricao) {
     await setItemDescription(lojaDestinoId, novoItem.id, descricao);
@@ -190,6 +195,76 @@ async function publicarUmaCopia(
   }
 
   return { novoItemId: novoItem.id, permalink: novoItem.permalink };
+}
+
+// Fallback para categorias no modelo "User Product": em vez de um item só com
+// várias variações dentro, cria um anúncio independente por variação (ex.:
+// uma cor cada), todos com o mesmo family_name — o Mercado Livre os agrupa
+// automaticamente numa mesma "família" na página do produto. Roda em série
+// (não em paralelo) para, se algo falhar no meio, sabermos exatamente quantas
+// variações já foram criadas.
+async function publicarComoFamiliaUserProduct(
+  original: MlItemFull,
+  descricao: string,
+  lojaDestinoId: number,
+  titulo: string,
+  opcoes: OpcoesClone
+): Promise<ResultadoClone> {
+  const familyName = titulo.slice(0, 120);
+  let primeiroItem: ResultadoClone | null = null;
+  const criados: string[] = [];
+
+  try {
+    for (const [index, variacao] of original.variations.entries()) {
+      const fotosDaVariacao = opcoes.imagensPorVariacao?.[index]?.length
+        ? opcoes.imagensPorVariacao[index]
+        : opcoes.imagensPersonalizadas?.length
+        ? opcoes.imagensPersonalizadas
+        : original.pictures.map((p) => p.secure_url);
+
+      const payloadItem: NovoItemPayload = {
+        title: titulo,
+        category_id: original.category_id,
+        price: variacao.price,
+        currency_id: original.currency_id,
+        available_quantity: variacao.available_quantity,
+        buying_mode: original.buying_mode,
+        condition: original.condition,
+        listing_type_id: opcoes.listingType,
+        pictures: fotosDaVariacao.map((source) => ({ source })),
+        attributes: [...original.attributes, ...variacao.attribute_combinations],
+        family_name: familyName,
+        shipping: {
+          mode: original.shipping.mode,
+          local_pick_up: original.shipping.local_pick_up,
+          free_shipping: original.shipping.free_shipping,
+        },
+      };
+
+      const novoItem = await createItem(lojaDestinoId, payloadItem);
+      criados.push(novoItem.id);
+
+      if (descricao) {
+        await setItemDescription(lojaDestinoId, novoItem.id, descricao);
+      }
+      if (opcoes.ativarFlex) {
+        await ativarEnviosFlex(lojaDestinoId, original.site_id, novoItem.id);
+      }
+
+      if (!primeiroItem) {
+        primeiroItem = { novoItemId: novoItem.id, permalink: novoItem.permalink };
+      }
+    }
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "erro desconhecido";
+    throw new Error(
+      `Falha ao criar a família de variações (modelo User Product): ${criados.length} de ` +
+        `${original.variations.length} anúncios foram criados antes do erro (ids: ${criados.join(", ") || "nenhum"}). ` +
+        `Confira/apague manualmente no Mercado Livre se necessário. Erro: ${mensagem}`
+    );
+  }
+
+  return primeiroItem!;
 }
 
 export async function publicarClone(

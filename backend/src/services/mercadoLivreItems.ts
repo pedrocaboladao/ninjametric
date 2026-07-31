@@ -3,18 +3,44 @@ import { getValidAccessToken } from "./tokenStore";
 
 const ML_API_BASE = "https://api.mercadolibre.com";
 
+interface MlErrorCause {
+  cause_id?: number;
+  code?: string;
+  message?: string;
+}
+
+// Erro estruturado do Mercado Livre — guarda as "causas" originais (cause_id,
+// code) além da mensagem, pra quem chamar poder decidir automaticamente uma
+// ação diferente (ex.: cause_id 374 = categoria exige o modelo User Product
+// em vez do array `variations` clássico) sem precisar reinterpretar texto.
+export class ErroMercadoLivre extends Error {
+  causas: MlErrorCause[];
+  constructor(mensagem: string, causas: MlErrorCause[] = []) {
+    super(mensagem);
+    this.name = "ErroMercadoLivre";
+    this.causas = causas;
+  }
+}
+
 // Por padrão, o axios só dá "Request failed with status code 400" — sem o
 // motivo de verdade que o Mercado Livre manda no corpo da resposta (ex.:
 // atributo obrigatório faltando, categoria não aceita o tipo de anúncio,
 // etc.). Essa função extrai esse detalhe pra virar uma mensagem útil.
 function mensagemErroMl(err: unknown, contexto: string): Error {
   if (axios.isAxiosError(err)) {
-    const corpo = err.response?.data;
+    const corpo = err.response?.data as { cause?: MlErrorCause[] } | undefined;
     if (corpo) {
-      return new Error(`${contexto}: ${JSON.stringify(corpo)}`);
+      return new ErroMercadoLivre(`${contexto}: ${JSON.stringify(corpo)}`, corpo.cause ?? []);
     }
   }
   return new Error(`${contexto}: ${err instanceof Error ? err.message : "erro desconhecido"}`);
+}
+
+// cause_id 374: "categoria migrada pro modelo User Product" — a API recusa o
+// array `variations` clássico e exige que cada variação vire um item/anúncio
+// independente, ligado aos demais pelo mesmo `family_name`.
+export function requerModeloUserProduct(err: unknown): boolean {
+  return err instanceof ErroMercadoLivre && err.causas.some((c) => c.cause_id === 374);
 }
 
 export interface MlAttribute {
