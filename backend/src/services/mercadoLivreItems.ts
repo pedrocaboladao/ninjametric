@@ -157,7 +157,10 @@ export async function getCategoryName(categoryId: string): Promise<string> {
 }
 
 export interface NovoItemPayload {
-  title: string;
+  // No modelo User Product (quando family_name é usado), o título é gerado
+  // automaticamente pelo Mercado Livre a partir do family_name + atributos —
+  // enviar "title" junto dá erro "The fields [title] are invalid".
+  title?: string;
   category_id: string;
   price: number;
   currency_id: string;

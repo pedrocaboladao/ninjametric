@@ -180,7 +180,8 @@ async function publicarUmaCopia(
     if (temVariacoes) {
       return publicarComoFamiliaUserProduct(original, descricao, lojaDestinoId, titulo, opcoes);
     }
-    novoItem = await createItem(lojaDestinoId, { ...payload, family_name: titulo.slice(0, 120) });
+    const { title: _titulo, ...payloadSemTitulo } = payload;
+    novoItem = await createItem(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
   }
 
   if (descricao) {
@@ -229,7 +230,8 @@ async function publicarComoFamiliaUserProduct(
         : original.pictures.map((p) => p.secure_url);
 
       const payloadItem: NovoItemPayload = {
-        title: titulo,
+        // Sem "title": no modelo User Product ele é gerado automaticamente
+        // a partir do family_name + atributos.
         category_id: original.category_id,
         price: variacao.price,
         currency_id: original.currency_id,
