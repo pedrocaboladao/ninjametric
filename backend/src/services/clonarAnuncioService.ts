@@ -366,13 +366,42 @@ interface FonteFamiliaItem {
   shipping: { mode: string; local_pick_up: boolean; free_shipping: boolean };
 }
 
+type ResultadoTarefa<R> = { sucesso: true; valor: R } | { sucesso: false; erro: unknown };
+
+// Roda até `limite` tarefas em paralelo (em vez de uma por vez), preservando
+// o resultado (ou erro) de cada item individualmente. Famílias grandes (12+
+// anúncios) rodando em série demoravam o suficiente pra estourar o timeout
+// do proxy (erro 504) — em paralelo, o tempo total cai proporcionalmente.
+async function comConcorrenciaLimitada<T, R>(
+  itens: T[],
+  limite: number,
+  fn: (item: T, index: number) => Promise<R>
+): Promise<ResultadoTarefa<R>[]> {
+  const resultados: ResultadoTarefa<R>[] = new Array(itens.length);
+  let proximo = 0;
+  async function worker() {
+    while (proximo < itens.length) {
+      const i = proximo++;
+      try {
+        resultados[i] = { sucesso: true, valor: await fn(itens[i], i) };
+      } catch (erro) {
+        resultados[i] = { sucesso: false, erro };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
+  return resultados;
+}
+
+const CONCORRENCIA_FAMILIA = 4;
+
 // Cria um anúncio independente por "fonte" (uma cor/variação cada), todos com
 // o mesmo family_name — o Mercado Livre os agrupa automaticamente numa mesma
 // família na página do produto. Usado tanto para anúncios clássicos com
 // variações que precisaram cair no modelo User Product, quanto para links que
 // já apontam direto pra uma família (várias cores já publicadas separadas).
-// Roda em série (não em paralelo) para, se algo falhar no meio, sabermos
-// exatamente quantos anúncios já foram criados.
+// Roda com um pouco de paralelismo (não um de cada vez) pra famílias grandes
+// não demorarem tanto a ponto de estourar o timeout do proxy.
 async function publicarFamiliaDeItens(
   fontes: FonteFamiliaItem[],
   descricao: string,
@@ -381,65 +410,66 @@ async function publicarFamiliaDeItens(
   opcoes: OpcoesClone
 ): Promise<ResultadoClone> {
   const familyName = titulo.slice(0, 120);
-  let primeiroItem: ResultadoClone | null = null;
-  const criados: string[] = [];
   const avisos: string[] = [];
 
-  try {
-    for (const [index, fonte] of fontes.entries()) {
-      const fotos = (opcoes.imagensPorVariacao?.[index]?.length ? opcoes.imagensPorVariacao[index] : fonte.pictures).slice(
-        0,
-        MAX_FOTOS
-      );
+  const resultados = await comConcorrenciaLimitada(fontes, CONCORRENCIA_FAMILIA, async (fonte, index) => {
+    const fotos = (opcoes.imagensPorVariacao?.[index]?.length ? opcoes.imagensPorVariacao[index] : fonte.pictures).slice(
+      0,
+      MAX_FOTOS
+    );
 
-      const payloadItem: NovoItemPayload = {
-        // Sem "title": no modelo User Product ele é gerado automaticamente
-        // a partir do family_name + atributos.
-        category_id: fonte.category_id,
-        price: fonte.price,
-        currency_id: fonte.currency_id,
-        available_quantity: fonte.available_quantity,
-        buying_mode: fonte.buying_mode,
-        condition: fonte.condition,
-        listing_type_id: opcoes.listingType,
-        pictures: fotos.map((source) => ({ source })),
-        attributes: removerCubagem(fonte.attributes),
-        family_name: familyName,
-        shipping: fonte.shipping,
-      };
+    const payloadItem: NovoItemPayload = {
+      // Sem "title": no modelo User Product ele é gerado automaticamente
+      // a partir do family_name + atributos.
+      category_id: fonte.category_id,
+      price: fonte.price,
+      currency_id: fonte.currency_id,
+      available_quantity: fonte.available_quantity,
+      buying_mode: fonte.buying_mode,
+      condition: fonte.condition,
+      listing_type_id: opcoes.listingType,
+      pictures: fotos.map((source) => ({ source })),
+      attributes: removerCubagem(fonte.attributes),
+      family_name: familyName,
+      shipping: fonte.shipping,
+    };
 
-      const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem, fonte.attributes);
-      criados.push(novoItem.id);
+    const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem, fonte.attributes);
 
-      if (descricao) {
-        await setItemDescription(lojaDestinoId, novoItem.id, descricao);
-      }
-      if (opcoes.ativarFlex) {
-        // Melhor esforço: um bloqueio pontual do Mercado Livre nesse endpoint
-        // não deve travar a criação do restante da família.
-        try {
-          await ativarEnviosFlex(lojaDestinoId, fonte.siteId, novoItem.id);
-        } catch (err) {
-          avisos.push(
-            `Não conseguiu ativar envios flex em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
-          );
-        }
-      }
-
-      if (!primeiroItem) {
-        primeiroItem = { novoItemId: novoItem.id, permalink: novoItem.permalink };
+    if (descricao) {
+      await setItemDescription(lojaDestinoId, novoItem.id, descricao);
+    }
+    if (opcoes.ativarFlex) {
+      // Melhor esforço: um bloqueio pontual do Mercado Livre nesse endpoint
+      // não deve travar a criação do restante da família.
+      try {
+        await ativarEnviosFlex(lojaDestinoId, fonte.siteId, novoItem.id);
+      } catch (err) {
+        avisos.push(
+          `Não conseguiu ativar envios flex em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
+        );
       }
     }
-  } catch (err) {
-    const mensagem = err instanceof Error ? err.message : "erro desconhecido";
-    throw new Error(
-      `Falha ao criar a família de anúncios (modelo User Product): ${criados.length} de ` +
-        `${fontes.length} anúncios foram criados antes do erro (ids: ${criados.join(", ") || "nenhum"}). ` +
-        `Confira/apague manualmente no Mercado Livre se necessário. Erro: ${mensagem}`
+
+    return { novoItemId: novoItem.id, permalink: novoItem.permalink };
+  });
+
+  const sucessos = resultados.filter((r): r is { sucesso: true; valor: ResultadoClone } => r.sucesso);
+  const falhas = resultados.filter((r): r is { sucesso: false; erro: unknown } => !r.sucesso);
+
+  if (sucessos.length === 0) {
+    const primeiraFalha = falhas[0]?.erro;
+    const mensagem = primeiraFalha instanceof Error ? primeiraFalha.message : "erro desconhecido";
+    throw new Error(`Falha ao criar a família de anúncios (modelo User Product): nenhum anúncio foi criado. Erro: ${mensagem}`);
+  }
+
+  if (falhas.length > 0) {
+    avisos.push(
+      `${falhas.length} de ${fontes.length} anúncios da família não foram criados (os outros ${sucessos.length} foram publicados normalmente).`
     );
   }
 
-  return { ...primeiroItem!, avisos: avisos.length ? avisos : undefined };
+  return { ...sucessos[0].valor, avisos: avisos.length ? avisos : undefined };
 }
 
 export async function publicarClone(
