@@ -158,6 +158,7 @@ export interface OpcoesClone {
 export interface ResultadoClone {
   novoItemId: string;
   permalink: string;
+  avisos?: string[];
 }
 
 async function publicarUmaCopia(
@@ -257,8 +258,18 @@ async function publicarUmaCopia(
     await setItemDescription(lojaDestinoId, novoItem.id, descricao);
   }
 
+  const avisos: string[] = [];
   if (opcoes.ativarFlex) {
-    await ativarEnviosFlex(lojaDestinoId, original.site_id, novoItem.id);
+    // Melhor esforço: se o flex não ativar (já vimos bloqueios pontuais do
+    // próprio Mercado Livre nesse endpoint), o anúncio continua válido e
+    // publicado — só avisamos, sem derrubar o clone inteiro por causa disso.
+    try {
+      await ativarEnviosFlex(lojaDestinoId, original.site_id, novoItem.id);
+    } catch (err) {
+      avisos.push(
+        `Não conseguiu ativar envios flex em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
+      );
+    }
   }
 
   if (usaFotosPorVariacao && novoItem.variations && novoItem.variations.length === faixaPorVariacao.length) {
@@ -270,7 +281,7 @@ async function publicarUmaCopia(
     await atualizarFotosDasVariacoes(lojaDestinoId, novoItem.id, variacoesComFotos);
   }
 
-  return { novoItemId: novoItem.id, permalink: novoItem.permalink };
+  return { novoItemId: novoItem.id, permalink: novoItem.permalink, avisos: avisos.length ? avisos : undefined };
 }
 
 interface FonteFamiliaItem {
@@ -303,6 +314,7 @@ async function publicarFamiliaDeItens(
   const familyName = titulo.slice(0, 120);
   let primeiroItem: ResultadoClone | null = null;
   const criados: string[] = [];
+  const avisos: string[] = [];
 
   try {
     for (const [index, fonte] of fontes.entries()) {
@@ -331,7 +343,15 @@ async function publicarFamiliaDeItens(
         await setItemDescription(lojaDestinoId, novoItem.id, descricao);
       }
       if (opcoes.ativarFlex) {
-        await ativarEnviosFlex(lojaDestinoId, fonte.siteId, novoItem.id);
+        // Melhor esforço: um bloqueio pontual do Mercado Livre nesse endpoint
+        // não deve travar a criação do restante da família.
+        try {
+          await ativarEnviosFlex(lojaDestinoId, fonte.siteId, novoItem.id);
+        } catch (err) {
+          avisos.push(
+            `Não conseguiu ativar envios flex em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
+          );
+        }
       }
 
       if (!primeiroItem) {
@@ -347,7 +367,7 @@ async function publicarFamiliaDeItens(
     );
   }
 
-  return primeiroItem!;
+  return { ...primeiroItem!, avisos: avisos.length ? avisos : undefined };
 }
 
 export async function publicarClone(

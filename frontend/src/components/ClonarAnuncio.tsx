@@ -152,6 +152,16 @@ export function ClonarAnuncio() {
               </a>
             ))}
           </div>
+          {resultados.some((r) => r.avisos?.length) && (
+            <div className="clonar-avisos">
+              <span className="painel-eyebrow">Atenção</span>
+              <ul>
+                {resultados.flatMap((r) => r.avisos ?? []).map((aviso, i) => (
+                  <li key={i}>{aviso}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <button className="btn-excluir" style={{ marginTop: 10 }} onClick={resetar}>
             Clonar outro anúncio
           </button>

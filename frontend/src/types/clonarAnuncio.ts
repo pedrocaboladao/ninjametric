@@ -26,6 +26,7 @@ export interface PreviewAnuncio {
 export interface ResultadoClone {
   novoItemId: string;
   permalink: string;
+  avisos?: string[];
 }
 
 export const TIPOS_ANUNCIO = [
