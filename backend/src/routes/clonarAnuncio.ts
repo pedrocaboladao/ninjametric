@@ -9,18 +9,25 @@ export const clonarAnuncioRouter = Router();
 // TEMP: investigar como resolver um user_product_id (MLBU...) pra um item_id.
 clonarAnuncioRouter.get("/debug-up", async (req, res) => {
   const userProductId = String(req.query.userProductId);
-  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+  const lojaId = Number(req.query.lojaId);
+  const token = await getValidAccessToken(lojaId);
+  const loja = (await listLojas()).find((l) => l.id === lojaId)!;
+
   const tentativas: Record<string, unknown> = {};
-  for (const loja of lojas) {
+  const chamadas: Array<[string, string]> = [
+    ["userProduct", `https://api.mercadolibre.com/user-products/${userProductId}`],
+    [
+      "itemsSearchPorUserProduct",
+      `https://api.mercadolibre.com/users/${loja.ml_user_id}/items/search?user_product_id=${userProductId}`,
+    ],
+    ["itemsSearchDireto", `https://api.mercadolibre.com/items/search?user_product_id=${userProductId}`],
+  ];
+  for (const [nome, url] of chamadas) {
     try {
-      const token = await getValidAccessToken(loja.id);
-      const { data } = await axios.get(`https://api.mercadolibre.com/user-products/${userProductId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      tentativas[loja.nome] = data;
-      break;
+      const { data } = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      tentativas[nome] = data;
     } catch (err: any) {
-      tentativas[loja.nome] = { erro: err.message, resposta: err.response?.data };
+      tentativas[nome] = { erro: err.message, resposta: err.response?.data };
     }
   }
   res.json(tentativas);
