@@ -8,6 +8,7 @@ import {
   ativarEnviosFlex,
   atualizarFotosDasVariacoes,
   requerModeloUserProduct,
+  ErroMercadoLivre,
   MlItemFull,
   NovoItemPayload,
 } from "./mercadoLivreItems";
@@ -173,6 +174,13 @@ async function publicarUmaCopia(
     // anúncio independente, ligado aos demais pelo mesmo family_name.
     if (temVariacoes && requerModeloUserProduct(err)) {
       return publicarComoFamiliaUserProduct(original, descricao, lojaDestinoId, titulo, opcoes);
+    }
+    // TEMP: diagnóstico pra entender por que o fallback não disparou.
+    const diag = `[diag temVariacoes=${temVariacoes} isErroMl=${err instanceof ErroMercadoLivre} causas=${
+      err instanceof ErroMercadoLivre ? JSON.stringify(err.causas) : "n/a"
+    }]`;
+    if (err instanceof Error) {
+      err.message = `${err.message} ${diag}`;
     }
     throw err;
   }
