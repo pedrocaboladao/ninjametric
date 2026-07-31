@@ -23,9 +23,11 @@ export function Dashboard() {
   const { data, error, loading, atualizando, atualizadoEm } = useDashboardData(
     lojaFiltro === "todas" ? undefined : lojaFiltro
   );
-  const { produtos: topVendidos, loading: loadingTopVendidos } = useTopVendidosPromocoes(
-    lojaFiltro === "todas" ? undefined : lojaFiltro
-  );
+  const {
+    produtos: topVendidos,
+    loading: loadingTopVendidos,
+    error: errorTopVendidos,
+  } = useTopVendidosPromocoes(lojaFiltro === "todas" ? undefined : lojaFiltro);
 
   function handleExpandir() {
     if (!containerRef.current) return;
@@ -82,6 +84,16 @@ export function Dashboard() {
             <ProdutosRanking produtos={data.produtosMaisVendidos} />
           </div>
 
+          {loadingTopVendidos && (
+            <div className="state-message painel-top-vendidos">
+              Carregando diagnóstico de promoções (pode levar até 30s em "Todas as lojas")...
+            </div>
+          )}
+          {errorTopVendidos && (
+            <div className="state-message state-error painel-top-vendidos">
+              Erro ao carregar diagnóstico de promoções: {errorTopVendidos}
+            </div>
+          )}
           {!loadingTopVendidos && topVendidos && <TopVendidosPromocoes produtos={topVendidos} />}
         </>
       )}
