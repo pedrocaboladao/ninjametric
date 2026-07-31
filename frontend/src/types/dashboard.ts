@@ -35,7 +35,7 @@ export interface DashboardData {
   ultimaVendaEm: string | null;
 }
 
-export type PromocaoStatus = "com_promocao" | "sem_promocao" | "nao_verificado";
+export type PromocaoStatus = "com_promocao" | "sem_promocao" | "anuncio_pausado" | "nao_verificado";
 
 export interface TopVendidoPromocao {
   mlItemId: string;

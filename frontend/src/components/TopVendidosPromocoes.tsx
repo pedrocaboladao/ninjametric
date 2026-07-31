@@ -8,6 +8,7 @@ interface Props {
 const BADGES: Record<PromocaoStatus, { texto: string; classe: string }> = {
   com_promocao: { texto: "Em promoção", classe: "promo-badge-ativa" },
   sem_promocao: { texto: "Sem promoção", classe: "promo-badge-alerta" },
+  anuncio_pausado: { texto: "Anúncio pausado", classe: "promo-badge-neutro" },
   nao_verificado: { texto: "Não verificado", classe: "promo-badge-neutro" },
 };
 

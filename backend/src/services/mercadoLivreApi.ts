@@ -62,7 +62,7 @@ export async function searchOrders(
   return orders;
 }
 
-export type PromocaoStatus = "com_promocao" | "sem_promocao" | "nao_verificado";
+export type PromocaoStatus = "com_promocao" | "sem_promocao" | "anuncio_pausado" | "nao_verificado";
 
 interface MlPromotionEntry {
   status: string;
@@ -72,7 +72,10 @@ interface MlPromotionEntry {
 // de "Preços e promoções" habilitada no app e a conta reautorizada depois
 // disso (mudar permissão não atualiza tokens já emitidos) — sem isso, a API
 // responde 403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES, e nesse caso tratamos
-// como "não verificado" em vez de quebrar o restante do painel.
+// como "não verificado" em vez de quebrar o restante do painel. Anúncios
+// pausados/encerrados respondem 400 "Item status is not allowed (closed)" —
+// distinguimos esse caso porque não é um problema de permissão nem falta de
+// promoção, é só um anúncio que não está mais ativo pra ter promoção.
 export async function getPromocaoStatus(lojaId: number, itemId: string): Promise<PromocaoStatus> {
   try {
     const accessToken = await getValidAccessToken(lojaId);
@@ -82,7 +85,13 @@ export async function getPromocaoStatus(lojaId: number, itemId: string): Promise
     );
     const emPromocao = data.some((p) => p.status === "started");
     return emPromocao ? "com_promocao" : "sem_promocao";
-  } catch {
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 400) {
+      const mensagem = (err.response.data as { message?: string })?.message ?? "";
+      if (mensagem.toLowerCase().includes("closed")) {
+        return "anuncio_pausado";
+      }
+    }
     return "nao_verificado";
   }
 }
