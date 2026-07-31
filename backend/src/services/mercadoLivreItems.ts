@@ -3,6 +3,22 @@ import { getValidAccessToken } from "./tokenStore";
 
 const ML_API_BASE = "https://api.mercadolibre.com";
 
+// Por padrão, o axios só dá "Request failed with status code 400" — sem o
+// motivo de verdade que o Mercado Livre manda no corpo da resposta (ex.:
+// atributo obrigatório faltando, categoria não aceita o tipo de anúncio,
+// etc.). Essa função extrai esse detalhe pra virar uma mensagem útil.
+function mensagemErroMl(err: unknown, contexto: string): Error {
+  if (axios.isAxiosError(err)) {
+    const corpo = err.response?.data as { message?: string; cause?: Array<{ message?: string }> } | undefined;
+    const causas = corpo?.cause?.map((c) => c.message).filter(Boolean).join("; ");
+    const detalhe = [corpo?.message, causas].filter(Boolean).join(" — ");
+    if (detalhe) {
+      return new Error(`${contexto}: ${detalhe}`);
+    }
+  }
+  return new Error(`${contexto}: ${err instanceof Error ? err.message : "erro desconhecido"}`);
+}
+
 export interface MlAttribute {
   id: string;
   name?: string;
@@ -129,29 +145,41 @@ export interface NovoItemPayload {
 
 export async function createItem(lojaId: number, payload: NovoItemPayload): Promise<MlItemFull> {
   const accessToken = await getValidAccessToken(lojaId);
-  const { data } = await axios.post<MlItemFull>(`${ML_API_BASE}/items`, payload, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  return data;
+  try {
+    const { data } = await axios.post<MlItemFull>(`${ML_API_BASE}/items`, payload, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return data;
+  } catch (err) {
+    throw mensagemErroMl(err, "Falha ao criar o anúncio no Mercado Livre");
+  }
 }
 
 export async function setItemDescription(lojaId: number, itemId: string, plainText: string): Promise<void> {
   if (!plainText.trim()) return;
   const accessToken = await getValidAccessToken(lojaId);
-  await axios.post(
-    `${ML_API_BASE}/items/${itemId}/description`,
-    { plain_text: plainText },
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+  try {
+    await axios.post(
+      `${ML_API_BASE}/items/${itemId}/description`,
+      { plain_text: plainText },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    throw mensagemErroMl(err, "Anúncio criado, mas falhou ao salvar a descrição");
+  }
 }
 
 export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: string): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
-  await axios.post(
-    `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
-    {},
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+  try {
+    await axios.post(
+      `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
+      {},
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    throw mensagemErroMl(err, "Anúncio criado, mas falhou ao ativar envios flex");
+  }
 }
 
 export async function atualizarFotosDasVariacoes(
@@ -160,9 +188,13 @@ export async function atualizarFotosDasVariacoes(
   variacoes: Array<{ id: number; picture_ids: string[] }>
 ): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
-  await axios.put(
-    `${ML_API_BASE}/items/${itemId}`,
-    { variations: variacoes },
-    { headers: { Authorization: `Bearer ${accessToken}` } }
-  );
+  try {
+    await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      { variations: variacoes },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    throw mensagemErroMl(err, "Anúncio criado, mas falhou ao vincular as fotos das variações");
+  }
 }
