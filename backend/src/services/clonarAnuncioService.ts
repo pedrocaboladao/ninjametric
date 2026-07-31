@@ -80,12 +80,29 @@ const VALOR_PADRAO_CONFIRMADO: Record<string, { value_id: string; value_name: st
   IS_FLAMMABLE: { value_id: "242084", value_name: "Não" },
 };
 
+// Peso/dimensões da embalagem ("cubagem") aumentam o frete calculado. Quando
+// não é obrigatório declarar, é melhor não declarar — por isso removemos
+// esses atributos do clone por padrão, mesmo que o anúncio original os
+// tivesse. Só voltam a ser incluídos se a categoria de destino realmente
+// exigir (e, nesse caso, só se o anúncio original tinha o valor real).
+const ATRIBUTOS_CUBAGEM = ["SELLER_PACKAGE_WEIGHT", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH", "SELLER_PACKAGE_LENGTH"];
+
+function removerCubagem(atributos: MlAttribute[]): MlAttribute[] {
+  return atributos.filter((a) => !ATRIBUTOS_CUBAGEM.includes(a.id));
+}
+
 // Anúncios antigos/categorias diferentes têm exigências diferentes: algumas
 // recusam reaproveitar o GTIN do original (já usado em outro anúncio),
 // outras exigem atributos que o anúncio antigo nunca teve (ex.: declaração
-// de inflamabilidade, que passou a ser obrigatória depois). Tenta criar
-// normal e só ajusta o payload reativamente pros erros conhecidos.
-async function criarItemComFallbacks(lojaId: number, payloadOriginal: NovoItemPayload): Promise<MlItemFull> {
+// de inflamabilidade), outras exigem cubagem que preferimos omitir por
+// padrão. Tenta criar normal (sem cubagem) e só ajusta o payload
+// reativamente pros erros conhecidos, usando os valores reais do anúncio
+// original quando existem — nunca inventando peso/dimensão.
+async function criarItemComFallbacks(
+  lojaId: number,
+  payloadOriginal: NovoItemPayload,
+  atributosOriginaisCompletos: MlAttribute[]
+): Promise<MlItemFull> {
   try {
     return await createItem(lojaId, payloadOriginal);
   } catch (err) {
@@ -102,6 +119,20 @@ async function criarItemComFallbacks(lojaId: number, payloadOriginal: NovoItemPa
         payload = { ...payload, attributes: [...payload.attributes, { id: attributeId, ...valor }] };
         ajustou = true;
       }
+    }
+
+    for (const attributeId of ATRIBUTOS_CUBAGEM) {
+      if (!atributoObrigatorioFaltando(err, attributeId)) continue;
+      const valorOriginal = atributosOriginaisCompletos.find((a) => a.id === attributeId);
+      if (!valorOriginal) {
+        throw new Error(
+          `A categoria de destino exige o atributo "${attributeId}" (cubagem), mas o anúncio original não tinha ` +
+            `esse valor declarado — não dá pra inventar um peso/dimensão. Declare manualmente no Mercado Livre ` +
+            `depois de criado, ou me diga o valor certo pra eu incluir.`
+        );
+      }
+      payload = { ...payload, attributes: [...payload.attributes, valorOriginal] };
+      ajustou = true;
     }
 
     if (!ajustou) throw err;
@@ -235,7 +266,7 @@ async function publicarUmaCopia(
     condition: original.condition,
     listing_type_id: opcoes.listingType,
     pictures: fotosGerais.map((source) => ({ source })),
-    attributes: original.attributes,
+    attributes: removerCubagem(original.attributes),
     shipping: {
       mode: original.shipping.mode,
       local_pick_up: original.shipping.local_pick_up,
@@ -253,7 +284,7 @@ async function publicarUmaCopia(
 
   let novoItem: MlItemFull;
   try {
-    novoItem = await criarItemComFallbacks(lojaDestinoId, payload);
+    novoItem = await criarItemComFallbacks(lojaDestinoId, payload, original.attributes);
   } catch (err) {
     if (!requerModeloUserProduct(err)) {
       throw err;
@@ -285,7 +316,11 @@ async function publicarUmaCopia(
       return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
     const { title: _titulo, ...payloadSemTitulo } = payload;
-    novoItem = await criarItemComFallbacks(lojaDestinoId, { ...payloadSemTitulo, family_name: titulo.slice(0, 120) });
+    novoItem = await criarItemComFallbacks(
+      lojaDestinoId,
+      { ...payloadSemTitulo, family_name: titulo.slice(0, 120) },
+      original.attributes
+    );
   }
 
   if (descricao) {
@@ -368,12 +403,12 @@ async function publicarFamiliaDeItens(
         condition: fonte.condition,
         listing_type_id: opcoes.listingType,
         pictures: fotos.map((source) => ({ source })),
-        attributes: fonte.attributes,
+        attributes: removerCubagem(fonte.attributes),
         family_name: familyName,
         shipping: fonte.shipping,
       };
 
-      const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem);
+      const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem, fonte.attributes);
       criados.push(novoItem.id);
 
       if (descricao) {
