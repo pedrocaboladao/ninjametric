@@ -8,7 +8,6 @@ import {
   ativarEnviosFlex,
   atualizarFotosDasVariacoes,
   requerModeloUserProduct,
-  ErroMercadoLivre,
   MlItemFull,
   NovoItemPayload,
 } from "./mercadoLivreItems";
@@ -169,20 +168,19 @@ async function publicarUmaCopia(
   try {
     novoItem = await createItem(lojaDestinoId, payload);
   } catch (err) {
-    // Algumas categorias já migraram pro modelo "User Product": não aceitam
-    // mais o array `variations` clássico, e cada variação precisa virar um
-    // anúncio independente, ligado aos demais pelo mesmo family_name.
-    if (temVariacoes && requerModeloUserProduct(err)) {
+    if (!requerModeloUserProduct(err)) {
+      throw err;
+    }
+    // Algumas categorias já migraram pro modelo "User Product". Quando o
+    // anúncio tem variações, cada uma vira um anúncio independente ligado
+    // pelo mesmo family_name (ver publicarComoFamiliaUserProduct). Quando
+    // não tem variações, o próprio Mercado Livre ainda assim exige o campo
+    // family_name nesse tipo de categoria — só precisa tentar de novo com
+    // esse campo preenchido, sem precisar quebrar em vários anúncios.
+    if (temVariacoes) {
       return publicarComoFamiliaUserProduct(original, descricao, lojaDestinoId, titulo, opcoes);
     }
-    // TEMP: diagnóstico pra entender por que o fallback não disparou.
-    const diag = `[diag temVariacoes=${temVariacoes} isErroMl=${err instanceof ErroMercadoLivre} causas=${
-      err instanceof ErroMercadoLivre ? JSON.stringify(err.causas) : "n/a"
-    }]`;
-    if (err instanceof Error) {
-      err.message = `${err.message} ${diag}`;
-    }
-    throw err;
+    novoItem = await createItem(lojaDestinoId, { ...payload, family_name: titulo.slice(0, 120) });
   }
 
   if (descricao) {
