@@ -889,17 +889,45 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 16px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
+}
+
+.top-vendidos-header-direita {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .promo-resumo-alerta {
   flex-shrink: 0;
 }
 
+.top-vendidos-select {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
 .top-vendidos-lista {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  max-height: 330px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.top-vendidos-lista::-webkit-scrollbar {
+  width: 6px;
+}
+
+.top-vendidos-lista::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.top-vendidos-lista::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .top-vendido-item {

@@ -1,8 +1,12 @@
 import type { TopVendidoPromocao, PromocaoStatus } from "../types/dashboard";
+import type { Loja } from "../api/lojas";
 import { formatCurrency, corDaLoja } from "../utils/format";
 
 interface Props {
   produtos: TopVendidoPromocao[];
+  lojas: Loja[];
+  lojaFiltro: number | "todas" | "minhas";
+  onChangeLojaFiltro: (valor: number | "todas" | "minhas") => void;
 }
 
 const BADGES: Record<PromocaoStatus, { texto: string; classe: string }> = {
@@ -12,7 +16,7 @@ const BADGES: Record<PromocaoStatus, { texto: string; classe: string }> = {
   nao_verificado: { texto: "Não verificado", classe: "promo-badge-neutro" },
 };
 
-export function TopVendidosPromocoes({ produtos }: Props) {
+export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLojaFiltro }: Props) {
   const semPromocao = produtos.filter((p) => p.promocao === "sem_promocao").length;
 
   return (
@@ -20,14 +24,29 @@ export function TopVendidosPromocoes({ produtos }: Props) {
       <div className="top-vendidos-header">
         <div>
           <span className="painel-eyebrow">Diagnóstico de promoções</span>
-          <h2>Top 20 mais vendidos (últimos 60 dias)</h2>
-          <p className="painel-sub">Anúncios com maior saída e se estão com promoção ativa na Central de Promoções</p>
+          <h2>Top 20 mais vendidos (60 dias)</h2>
         </div>
-        {semPromocao > 0 && (
-          <span className="promo-badge promo-badge-alerta promo-resumo-alerta">
-            {semPromocao} sem promoção
-          </span>
-        )}
+        <div className="top-vendidos-header-direita">
+          {semPromocao > 0 && (
+            <span className="promo-badge promo-badge-alerta promo-resumo-alerta">{semPromocao} sem promoção</span>
+          )}
+          <select
+            className="dashboard-select top-vendidos-select"
+            value={lojaFiltro}
+            onChange={(e) => {
+              const valor = e.target.value;
+              onChangeLojaFiltro(valor === "todas" || valor === "minhas" ? valor : Number(valor));
+            }}
+          >
+            <option value="todas">Todas as lojas</option>
+            <option value="minhas">Minhas lojas</option>
+            {lojas.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="top-vendidos-lista">

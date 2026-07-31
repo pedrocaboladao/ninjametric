@@ -12,6 +12,7 @@ import { TopVendidosPromocoes } from "./TopVendidosPromocoes";
 export function Dashboard() {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
+  const [lojaFiltroPromocoes, setLojaFiltroPromocoes] = useState<number | "todas" | "minhas">("todas");
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export function Dashboard() {
     produtos: topVendidos,
     loading: loadingTopVendidos,
     error: errorTopVendidos,
-  } = useTopVendidosPromocoes(lojaFiltro === "todas" ? undefined : lojaFiltro);
+  } = useTopVendidosPromocoes(lojaFiltroPromocoes === "todas" ? undefined : lojaFiltroPromocoes);
 
   function handleExpandir() {
     if (!containerRef.current) return;
@@ -94,7 +95,14 @@ export function Dashboard() {
               Erro ao carregar diagnóstico de promoções: {errorTopVendidos}
             </div>
           )}
-          {!loadingTopVendidos && topVendidos && <TopVendidosPromocoes produtos={topVendidos} />}
+          {!loadingTopVendidos && topVendidos && (
+            <TopVendidosPromocoes
+              produtos={topVendidos}
+              lojas={lojas}
+              lojaFiltro={lojaFiltroPromocoes}
+              onChangeLojaFiltro={setLojaFiltroPromocoes}
+            />
+          )}
         </>
       )}
     </div>
