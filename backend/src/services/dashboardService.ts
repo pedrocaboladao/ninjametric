@@ -221,6 +221,15 @@ async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (it
   return resultados;
 }
 
+// Buscar 60 dias de pedidos em várias lojas + checar promoção item a item é
+// lento (pode passar de 20s com várias lojas). Como esse painel é um
+// diagnóstico, não uma métrica ao vivo, cacheamos o resultado por loja/escopo
+// por mais tempo do que o intervalo de atualização do frontend — assim a
+// maioria das atualizações automáticas (e trocas de filtro repetidas) usam o
+// resultado recente em vez de refazer a busca inteira.
+const TOP_VENDIDOS_CACHE_TTL_MS = 10 * 60 * 1000;
+const cacheTopVendidos = new Map<string, { data: TopVendidoPromocao[]; expiraEm: number }>();
+
 export async function getTopVendidosPromocoes(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[]
@@ -231,6 +240,16 @@ export async function getTopVendidosPromocoes(
       (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
+
+  const chaveCache = lojas
+    .map((l) => l.id)
+    .sort((a, b) => a - b)
+    .join(",");
+  const emCache = cacheTopVendidos.get(chaveCache);
+  if (emCache && emCache.expiraEm > Date.now()) {
+    return emCache.data;
+  }
+
   const janela = janelaUltimosDias(60);
 
   const ordersPorLoja = await Promise.all(
@@ -283,7 +302,7 @@ export async function getTopVendidosPromocoes(
 
   const promocoes = await comConcorrenciaLimitada(top20, 5, async (p) => getPromocaoStatus(p.lojaId, p.mlItemId));
 
-  return top20.map((p, i) => {
+  const resultado = top20.map((p, i) => {
     const item = itensPorLoja.get(p.lojaId)?.get(p.mlItemId);
     return {
       mlItemId: p.mlItemId,
@@ -297,4 +316,7 @@ export async function getTopVendidosPromocoes(
       promocao: promocoes[i],
     };
   });
+
+  cacheTopVendidos.set(chaveCache, { data: resultado, expiraEm: Date.now() + TOP_VENDIDOS_CACHE_TTL_MS });
+  return resultado;
 }
