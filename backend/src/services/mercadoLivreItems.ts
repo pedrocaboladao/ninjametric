@@ -36,11 +36,22 @@ function mensagemErroMl(err: unknown, contexto: string): Error {
   return new Error(`${contexto}: ${err instanceof Error ? err.message : "erro desconhecido"}`);
 }
 
-// cause_id 374: "categoria migrada pro modelo User Product" — a API recusa o
-// array `variations` clássico e exige que cada variação vire um item/anúncio
-// independente, ligado aos demais pelo mesmo `family_name`.
+// Categoria migrada pro modelo User Product: a API recusa o array
+// `variations` clássico e exige que cada variação vire um item/anúncio
+// independente, ligado aos demais pelo mesmo `family_name`. Já vimos dois
+// cause_id diferentes reportarem essa mesma causa raiz: 369 (sem family_name
+// no corpo) e 374 (variations inválido junto com family_name) — por isso
+// também checa a mensagem, caso apareça outro cause_id novo no futuro.
+const CAUSE_IDS_USER_PRODUCT = new Set([369, 374]);
+
 export function requerModeloUserProduct(err: unknown): boolean {
-  return err instanceof ErroMercadoLivre && err.causas.some((c) => c.cause_id === 374);
+  if (!(err instanceof ErroMercadoLivre)) return false;
+  return err.causas.some(
+    (c) =>
+      (c.cause_id !== undefined && CAUSE_IDS_USER_PRODUCT.has(c.cause_id)) ||
+      c.message?.toLowerCase().includes("family_name") ||
+      c.message?.toLowerCase().includes("family name")
+  );
 }
 
 export interface MlAttribute {
