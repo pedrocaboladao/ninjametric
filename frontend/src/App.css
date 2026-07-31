@@ -962,15 +962,6 @@
   min-width: 0;
 }
 
-.top-vendido-valores {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  flex-shrink: 0;
-  width: 100px;
-}
-
 .promo-badge {
   font-size: 11.5px;
   font-weight: 700;

@@ -1,6 +1,5 @@
 import type { TopVendidoPromocao, PromocaoStatus } from "../types/dashboard";
 import type { Loja } from "../api/lojas";
-import { formatCurrency, corDaLoja } from "../utils/format";
 
 interface Props {
   produtos: TopVendidoPromocao[];
@@ -50,7 +49,7 @@ export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLoja
       </div>
 
       <div className="top-vendidos-lista">
-        {produtos.map((p, i) => {
+        {produtos.map((p) => {
           const badge = BADGES[p.promocao];
           return (
             <a
@@ -60,7 +59,6 @@ export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLoja
               target="_blank"
               rel="noreferrer"
             >
-              <span className="produto-rank">{i + 1}</span>
               {p.foto ? (
                 <img className="produto-foto" src={p.foto} alt="" loading="lazy" />
               ) : (
@@ -71,14 +69,6 @@ export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLoja
                   {p.titulo}
                 </div>
                 <div className="produto-mlb">{p.mlItemId}</div>
-                <div className="produto-loja">
-                  <i className="ranking-dot" style={{ background: corDaLoja(p.lojaId) }} />
-                  {p.lojaNome}
-                </div>
-              </div>
-              <div className="top-vendido-valores">
-                <span className="produto-preco">{formatCurrency(p.precoTotal)}</span>
-                <span className="produto-qtd">{p.quantidade} un.</span>
               </div>
               <span className={`promo-badge ${badge.classe}`}>{badge.texto}</span>
             </a>
