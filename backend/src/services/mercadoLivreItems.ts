@@ -9,11 +9,9 @@ const ML_API_BASE = "https://api.mercadolibre.com";
 // etc.). Essa função extrai esse detalhe pra virar uma mensagem útil.
 function mensagemErroMl(err: unknown, contexto: string): Error {
   if (axios.isAxiosError(err)) {
-    const corpo = err.response?.data as { message?: string; cause?: Array<{ message?: string }> } | undefined;
-    const causas = corpo?.cause?.map((c) => c.message).filter(Boolean).join("; ");
-    const detalhe = [corpo?.message, causas].filter(Boolean).join(" — ");
-    if (detalhe) {
-      return new Error(`${contexto}: ${detalhe}`);
+    const corpo = err.response?.data;
+    if (corpo) {
+      return new Error(`${contexto}: ${JSON.stringify(corpo)}`);
     }
   }
   return new Error(`${contexto}: ${err instanceof Error ? err.message : "erro desconhecido"}`);
