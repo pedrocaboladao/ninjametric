@@ -1,9 +1,30 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar como resolver um user_product_id (MLBU...) pra um item_id.
+clonarAnuncioRouter.get("/debug-up", async (req, res) => {
+  const userProductId = String(req.query.userProductId);
+  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+  const tentativas: Record<string, unknown> = {};
+  for (const loja of lojas) {
+    try {
+      const token = await getValidAccessToken(loja.id);
+      const { data } = await axios.get(`https://api.mercadolibre.com/user-products/${userProductId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      tentativas[loja.nome] = data;
+      break;
+    } catch (err: any) {
+      tentativas[loja.nome] = { erro: err.message, resposta: err.response?.data };
+    }
+  }
+  res.json(tentativas);
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
