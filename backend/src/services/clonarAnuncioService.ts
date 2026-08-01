@@ -91,6 +91,21 @@ const VALOR_PADRAO_CONFIRMADO: Record<string, { value_id: string; value_name: st
 // realmente rejeitar esse atributo (ver atributoRejeitado).
 const ATRIBUTOS_CUBAGEM = ["SELLER_PACKAGE_WEIGHT", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH", "SELLER_PACKAGE_LENGTH"];
 
+// O GET /items/{id} traz nos atributos campos extras que só existem em
+// resposta de leitura (values, struct, value_type, attribute_group_id...).
+// Reenviar isso na criação (POST /items) pode fazer a API do Mercado Livre
+// travar num erro interno genérico (500 "internal_error", cause vazio, sem
+// pista nenhuma) em vez de uma validação normal — por isso sempre reduz pro
+// formato mínimo que a criação espera antes de mandar.
+function sanearAtributos(atributos: MlAttribute[]): MlAttribute[] {
+  return atributos.map((a) => {
+    const limpo: MlAttribute = { id: a.id };
+    if (a.value_id !== undefined && a.value_id !== null) limpo.value_id = a.value_id;
+    if (a.value_name !== undefined && a.value_name !== null) limpo.value_name = a.value_name;
+    return limpo;
+  });
+}
+
 // Dígito verificador padrão EAN-13/GTIN-13 (GS1 General Specifications).
 function calcularDigitoVerificadorEan13(doze: string): number {
   let soma = 0;
@@ -126,12 +141,22 @@ function gerarGtinInterno(chave: string): string {
 async function criarItemComFallbacks(
   lojaId: number,
   payloadOriginal: NovoItemPayload,
-  atributosOriginaisCompletos: MlAttribute[]
+  atributosOriginaisCompletosBrutos: MlAttribute[]
 ): Promise<MlItemFull> {
+  const atributosOriginaisCompletos = sanearAtributos(atributosOriginaisCompletosBrutos);
+  const payloadInicial: NovoItemPayload = {
+    ...payloadOriginal,
+    attributes: sanearAtributos(payloadOriginal.attributes),
+    variations: payloadOriginal.variations?.map((v) => ({
+      ...v,
+      attribute_combinations: sanearAtributos(v.attribute_combinations),
+    })),
+  };
+
   try {
-    return await createItem(lojaId, payloadOriginal);
+    return await createItem(lojaId, payloadInicial);
   } catch (err) {
-    let payload = payloadOriginal;
+    let payload = payloadInicial;
     let ajustou = false;
 
     if (requerRemoverGtin(err)) {
