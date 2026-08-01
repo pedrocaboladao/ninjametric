@@ -163,3 +163,12 @@ ALTER TABLE tarefas_colunas ALTER COLUMN usuario_id SET NOT NULL;
 DROP INDEX IF EXISTS idx_tarefas_colunas_especial;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tarefas_colunas_usuario_especial
   ON tarefas_colunas (usuario_id, especial) WHERE especial IS NOT NULL;
+
+-- Painel de estudo: canais do YouTube acompanhados no Painel ao vivo
+CREATE TABLE IF NOT EXISTS canais_youtube (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  channel_id TEXT NOT NULL UNIQUE,
+  url TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);

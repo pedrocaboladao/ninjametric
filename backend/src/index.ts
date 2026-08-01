@@ -11,6 +11,7 @@ import { lojasRouter } from "./routes/lojas";
 import { tarefasRouter } from "./routes/tarefas";
 import { empacotadoresRouter } from "./routes/empacotadores";
 import { usuariosRouter } from "./routes/usuarios";
+import { youtubeRouter } from "./routes/youtube";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 
@@ -33,6 +34,7 @@ app.use("/api/lojas", requireAuth, lojasRouter);
 app.use("/api/tarefas", requireAuth, requirePermissao("tarefas"), tarefasRouter);
 app.use("/api/empacotadores", requireAuth, requirePermissao("funcionarios"), empacotadoresRouter);
 app.use("/api/usuarios", requireAuth, requireAdmin, usuariosRouter);
+app.use("/api/youtube", requireAuth, requireAdmin, youtubeRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

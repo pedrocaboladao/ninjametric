@@ -8,8 +8,14 @@ import { RankingLojas } from "./RankingLojas";
 import { VendasChart } from "./VendasChart";
 import { ProdutosRanking } from "./ProdutosRanking";
 import { TopVendidosPromocoes } from "./TopVendidosPromocoes";
+import { PainelEstudo } from "./PainelEstudo";
+import type { Usuario } from "../types/usuarios";
 
-export function Dashboard() {
+interface Props {
+  usuario: Usuario;
+}
+
+export function Dashboard({ usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPromocoes, setLojaFiltroPromocoes] = useState<number | "todas" | "minhas">("todas");
@@ -75,7 +81,10 @@ export function Dashboard() {
       {data && (
         <>
           <div className="dashboard-grid">
-            <RankingLojas lojas={data.rankingLojas} />
+            <div className="dashboard-coluna-esquerda">
+              <RankingLojas lojas={data.rankingLojas} />
+              {usuario.admin && <PainelEstudo />}
+            </div>
             <div className="dashboard-coluna-meio">
               <div className="painel painel-chart">
                 <span className="painel-eyebrow">Evolução por hora</span>
