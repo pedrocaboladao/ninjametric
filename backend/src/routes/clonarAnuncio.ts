@@ -1,9 +1,41 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar onde vem o custo do frete pago pelo vendedor, por pedido.
+clonarAnuncioRouter.get("/debug-frete-pedido", async (req, res) => {
+  const lojaId = Number(req.query.lojaId ?? 1);
+  const orderId = String(req.query.orderId ?? "");
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+
+  const { data: order } = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  let shipment: unknown = null;
+  const shippingId = order.shipping?.id;
+  if (shippingId) {
+    try {
+      const { data } = await axios.get(`https://api.mercadolibre.com/shipments/${shippingId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      shipment = data;
+    } catch (err: any) {
+      shipment = { erro: err.message, status: err.response?.status, data: err.response?.data };
+    }
+  }
+
+  res.json({ loja: loja.nome, orderShipping: order.shipping, payments: order.payments, shipment });
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
