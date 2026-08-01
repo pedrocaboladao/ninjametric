@@ -70,7 +70,10 @@ export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLoja
                 </div>
                 <div className="produto-mlb">{p.mlItemId}</div>
               </div>
-              <span className={`promo-badge ${badge.classe}`}>{badge.texto}</span>
+              <div className="top-vendido-badges">
+                <span className={`promo-badge ${badge.classe}`}>{badge.texto}</span>
+                {p.ads === "ads_ativo" && <span className="promo-badge promo-badge-ads">Ads ativo</span>}
+              </div>
             </a>
           );
         })}

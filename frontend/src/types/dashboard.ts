@@ -36,6 +36,7 @@ export interface DashboardData {
 }
 
 export type PromocaoStatus = "com_promocao" | "sem_promocao" | "anuncio_pausado" | "nao_verificado";
+export type AdsStatus = "ads_ativo" | "sem_ads" | "nao_verificado";
 
 export interface TopVendidoPromocao {
   mlItemId: string;
@@ -47,4 +48,5 @@ export interface TopVendidoPromocao {
   foto: string | null;
   linkMl: string | null;
   promocao: PromocaoStatus;
+  ads: AdsStatus;
 }

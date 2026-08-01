@@ -991,6 +991,19 @@
   color: var(--text-muted);
 }
 
+.promo-badge-ads {
+  background: rgba(56, 189, 248, 0.16);
+  color: var(--accent);
+}
+
+.top-vendido-badges {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 /* Perguntas */
 .perguntas-header {
   display: flex;

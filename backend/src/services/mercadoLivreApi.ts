@@ -96,6 +96,28 @@ export async function getPromocaoStatus(lojaId: number, itemId: string): Promise
   }
 }
 
+export type AdsStatus = "ads_ativo" | "sem_ads" | "nao_verificado";
+
+// Consulta o Product Ads (publicidade paga) do Mercado Livre pra um anúncio.
+// O item pode nunca ter sido incluído numa campanha (404) ou estar incluído
+// mas não rodando no momento ("idle"/"paused") — nos dois casos tratamos
+// como "sem_ads", só "active" conta como anúncio realmente em publicidade.
+export async function getAdsStatus(lojaId: number, itemId: string): Promise<AdsStatus> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{ status: string }>(
+      `${ML_API_BASE}/advertising/MLB/product_ads/ads/${itemId}`,
+      { headers: { Authorization: `Bearer ${accessToken}`, "api-version": "2" } }
+    );
+    return data.status === "active" ? "ads_ativo" : "sem_ads";
+  } catch (err) {
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return "sem_ads";
+    }
+    return "nao_verificado";
+  }
+}
+
 export interface MlItemBasicInfo {
   id: string;
   title: string;

@@ -1,5 +1,13 @@
 import { listLojas } from "./tokenStore";
-import { searchOrders, getItemsBasicInfo, getPromocaoStatus, MlOrder, PromocaoStatus } from "./mercadoLivreApi";
+import {
+  searchOrders,
+  getItemsBasicInfo,
+  getPromocaoStatus,
+  getAdsStatus,
+  MlOrder,
+  PromocaoStatus,
+  AdsStatus,
+} from "./mercadoLivreApi";
 import { janelaHoje, janelaOntemMesmoHorario, janelaUltimosDias, horaLocal, chaveJanelaDoDia } from "./dateUtils";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
@@ -206,6 +214,7 @@ export interface TopVendidoPromocao {
   foto: string | null;
   linkMl: string | null;
   promocao: PromocaoStatus;
+  ads: AdsStatus;
 }
 
 async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -302,7 +311,10 @@ export async function getTopVendidosPromocoes(
     })
   );
 
-  const promocoes = await comConcorrenciaLimitada(top20, 5, async (p) => getPromocaoStatus(p.lojaId, p.mlItemId));
+  const [promocoes, adsStatus] = await Promise.all([
+    comConcorrenciaLimitada(top20, 5, async (p) => getPromocaoStatus(p.lojaId, p.mlItemId)),
+    comConcorrenciaLimitada(top20, 5, async (p) => getAdsStatus(p.lojaId, p.mlItemId)),
+  ]);
 
   const resultado = top20.map((p, i) => {
     const item = itensPorLoja.get(p.lojaId)?.get(p.mlItemId);
@@ -316,6 +328,7 @@ export async function getTopVendidosPromocoes(
       foto: item?.thumbnail ?? null,
       linkMl: item?.permalink ?? null,
       promocao: promocoes[i],
+      ads: adsStatus[i],
     };
   });
 
