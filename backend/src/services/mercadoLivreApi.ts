@@ -11,6 +11,10 @@ export interface MlOrderItem {
   };
   quantity: number;
   unit_price: number;
+  // Comissão do Mercado Livre — valor por unidade (confirmado empiricamente:
+  // dois pedidos do mesmo produto/preço com quantidades diferentes vieram
+  // com o mesmo sale_fee, ou seja, não é o total da linha já multiplicado).
+  sale_fee?: number;
 }
 
 export interface MlOrder {

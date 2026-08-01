@@ -223,3 +223,12 @@ export function IconExternalLink({ size = 14 }: IconProps) {
     </svg>
   );
 }
+
+export function IconMoney({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v10M14.5 9.3a2.3 2.3 0 0 0-2.3-1.3c-1.4 0-2.5.8-2.5 2s1.1 1.6 2.5 1.8c1.4.2 2.5.6 2.5 1.9s-1.1 2.1-2.5 2.1a2.6 2.6 0 0 1-2.5-1.5" />
+    </svg>
+  );
+}

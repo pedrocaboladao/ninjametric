@@ -2939,3 +2939,126 @@
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Financeiro */
+
+.financeiro-page {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.financeiro-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.financeiro-topo h1 {
+  font-size: 24px;
+  margin: 4px 0 6px;
+}
+
+.financeiro-topo .painel-sub {
+  max-width: 560px;
+}
+
+.financeiro-resumo {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.financeiro-resumo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.financeiro-resumo-label {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.financeiro-resumo-valor {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.financeiro-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.financeiro-linha {
+  display: grid;
+  grid-template-columns: 110px 2fr 1fr 1fr 1fr 1.2fr;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13.5px;
+}
+
+.financeiro-linha-data {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.financeiro-linha-titulo {
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financeiro-linha-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.financeiro-linha-valor {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.financeiro-linha-label {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.financeiro-linha-margem {
+  font-weight: 700;
+}
+
+.financeiro-margem-positiva {
+  color: var(--good-text);
+}
+
+.financeiro-margem-negativa {
+  color: var(--critical-text);
+}
+
+.financeiro-margem-alerta {
+  color: #fbbf24;
+}
+
+.financeiro-margem-neutra {
+  color: var(--text-muted);
+}

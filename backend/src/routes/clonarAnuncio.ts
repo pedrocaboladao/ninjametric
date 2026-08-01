@@ -1,44 +1,9 @@
 import { Router } from "express";
-import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas, getValidAccessToken } from "../services/tokenStore";
-import { listarProdutos } from "../services/produtosService";
+import { listLojas } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
-
-// TEMP: validar estrutura real de order_items (sale_fee existe?) e se o
-// seller_sku bate com o SKU da planilha de produtos.
-clonarAnuncioRouter.get("/debug-financeiro", async (req, res) => {
-  const lojaId = Number(req.query.lojaId ?? 1);
-  const loja = (await listLojas()).find((l) => l.id === lojaId);
-  if (!loja || loja.ml_user_id === null) {
-    res.status(404).json({ error: "loja não encontrada" });
-    return;
-  }
-  const token = await getValidAccessToken(loja.id);
-
-  const { data } = await axios.get("https://api.mercadolibre.com/orders/search", {
-    headers: { Authorization: `Bearer ${token}` },
-    params: { seller: loja.ml_user_id, sort: "date_desc", limit: 5 },
-  });
-
-  const produtos = await listarProdutos();
-  const skusPlanilha = new Set(produtos.map((p) => p.sku));
-
-  const ordersResumo = (data.results as any[]).map((o) => ({
-    id: o.id,
-    order_items: o.order_items.map((oi: any) => ({
-      sku: oi.item?.seller_sku,
-      sale_fee: oi.sale_fee,
-      unit_price: oi.unit_price,
-      quantity: oi.quantity,
-      bateComPlanilha: oi.item?.seller_sku ? skusPlanilha.has(oi.item.seller_sku) : false,
-    })),
-  }));
-
-  res.json({ loja: loja.nome, ordersResumo });
-});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista

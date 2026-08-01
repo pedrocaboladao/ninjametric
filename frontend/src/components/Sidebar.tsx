@@ -11,11 +11,20 @@ import {
   IconGear,
   IconChevron,
   IconLogout,
+  IconMoney,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
 
-export type View = "dashboard" | "perguntas" | "clonar" | "produtos" | "tarefas" | "funcionarios" | "usuarios";
+export type View =
+  | "dashboard"
+  | "perguntas"
+  | "clonar"
+  | "produtos"
+  | "financeiro"
+  | "tarefas"
+  | "funcionarios"
+  | "usuarios";
 
 interface Props {
   view: View;
@@ -35,6 +44,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podePerguntas = temPermissao(usuario, "perguntas");
   const podeClonar = temPermissao(usuario, "clonar");
   const podeProdutos = temPermissao(usuario, "produtos");
+  const podeFinanceiro = temPermissao(usuario, "financeiro");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos;
@@ -64,6 +74,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconTasks size={16} />
               <span>Tarefas</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeFinanceiro && (
+          <>
+            <button
+              className={`sidebar-item ${view === "financeiro" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("financeiro")}
+            >
+              <IconMoney size={16} />
+              <span>Financeiro</span>
             </button>
             <div className="sidebar-divider" />
           </>

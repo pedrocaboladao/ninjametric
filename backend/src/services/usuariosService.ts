@@ -1,7 +1,15 @@
 import bcrypt from "bcryptjs";
 import { pool } from "../db/pool";
 
-export const MODULOS_VALIDOS = ["dashboard", "perguntas", "clonar", "tarefas", "funcionarios", "produtos"] as const;
+export const MODULOS_VALIDOS = [
+  "dashboard",
+  "perguntas",
+  "clonar",
+  "tarefas",
+  "funcionarios",
+  "produtos",
+  "financeiro",
+] as const;
 
 export interface Usuario {
   id: number;
