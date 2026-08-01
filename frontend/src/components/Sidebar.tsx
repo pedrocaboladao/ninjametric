@@ -15,7 +15,7 @@ import {
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
 
-export type View = "dashboard" | "perguntas" | "clonar" | "tarefas" | "funcionarios" | "usuarios";
+export type View = "dashboard" | "perguntas" | "clonar" | "produtos" | "tarefas" | "funcionarios" | "usuarios";
 
 interface Props {
   view: View;
@@ -25,10 +25,7 @@ interface Props {
   onSair: () => void;
 }
 
-const INERTES = [
-  { label: "Produtos", Icon: IconBox },
-  { label: "Criação", Icon: IconWand },
-];
+const INERTES = [{ label: "Criação", Icon: IconWand }];
 
 export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
@@ -37,9 +34,10 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeDashboard = temPermissao(usuario, "dashboard");
   const podePerguntas = temPermissao(usuario, "perguntas");
   const podeClonar = temPermissao(usuario, "clonar");
+  const podeProdutos = temPermissao(usuario, "produtos");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
-  const mostrarLojas = podeDashboard || podePerguntas || podeClonar;
+  const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos;
 
   const iniciais =
     usuario.nome
@@ -107,6 +105,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconCopy size={16} />
                     <span>Clonar Anúncio</span>
+                  </button>
+                )}
+                {podeProdutos && (
+                  <button
+                    className={`sidebar-item ${view === "produtos" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => onChangeView("produtos")}
+                  >
+                    <IconBox size={16} />
+                    <span>Produtos</span>
                   </button>
                 )}
               </div>
