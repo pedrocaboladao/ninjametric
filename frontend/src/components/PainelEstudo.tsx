@@ -47,6 +47,10 @@ export function PainelEstudo() {
     await carregar();
   }
 
+  const videosOrdenados = videos
+    ? [...videos].sort((a, b) => new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime())
+    : null;
+
   return (
     <div className="painel painel-estudo">
       <div className="painel-estudo-header">
@@ -93,7 +97,24 @@ export function PainelEstudo() {
               Nenhum canal configurado — clique em "Gerenciar canais" pra adicionar o primeiro.
             </div>
           )}
-          {videos?.map((v) => (
+          {videosOrdenados && videosOrdenados.length > 0 && (
+            <>
+              <div className="painel-estudo-player">
+                <iframe
+                  key={videosOrdenados[0].videoId}
+                  src={`https://www.youtube.com/embed/${videosOrdenados[0].videoId}`}
+                  title={videosOrdenados[0].titulo}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+              <div className="painel-estudo-player-titulo" title={videosOrdenados[0].titulo}>
+                {videosOrdenados[0].titulo}
+              </div>
+              <div className="painel-estudo-player-canal">{videosOrdenados[0].canalNome}</div>
+            </>
+          )}
+          {videosOrdenados?.slice(1).map((v) => (
             <a key={v.videoId} className="painel-estudo-video-item" href={v.link} target="_blank" rel="noreferrer">
               {v.thumbnail ? (
                 <img className="painel-estudo-thumb" src={v.thumbnail} alt="" loading="lazy" />
