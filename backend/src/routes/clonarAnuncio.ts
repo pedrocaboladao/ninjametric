@@ -63,6 +63,35 @@ clonarAnuncioRouter.get("/debug-item", async (req, res) => {
   res.status(404).json({ error: "não encontrado em nenhuma loja" });
 });
 
+// TEMP: checar se o frete alto é um problema da conta/loja de destino (não
+// do clone em si) — olha o logistic_type de anúncios JÁ existentes e
+// antigos dessa loja, criados direto no Mercado Livre, não pelo clonador.
+clonarAnuncioRouter.get("/debug-loja", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+
+  const { data: busca } = await axios.get(`https://api.mercadolibre.com/users/${loja.ml_user_id}/items/search`, {
+    headers: { Authorization: `Bearer ${token}` },
+    params: { status: "active", limit: 5 },
+  });
+
+  const itens = await Promise.all(
+    (busca.results as string[]).map(async (itemId) => {
+      const { data: item } = await axios.get(`https://api.mercadolibre.com/items/${itemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      return { itemId, title: item.title, category_id: item.category_id, shipping: item.shipping };
+    })
+  );
+
+  res.json({ loja: loja.nome, itens });
+});
+
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
 // geral de "lojas com acesso" usada pelo Dashboard/Perguntas.
