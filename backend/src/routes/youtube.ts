@@ -10,7 +10,7 @@ youtubeRouter.get("/debug-duracao", async (req, res) => {
   const videoId = String(req.query.id ?? "");
   try {
     const { data: html, status } = await axios.get<string>(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: { "User-Agent": "Mozilla/5.0" },
+      headers: { "User-Agent": "Mozilla/5.0", Cookie: "CONSENT=YES+1" },
     });
     res.json({
       status,
