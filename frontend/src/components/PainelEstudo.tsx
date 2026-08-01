@@ -1,24 +1,44 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchVideosRecentes, fetchCanais, adicionarCanal, removerCanal } from "../api/youtube";
 import type { VideoRecente, CanalYoutube } from "../types/youtube";
 
-function porDataDesc(a: VideoRecente, b: VideoRecente): number {
-  return new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime();
+// A API oficial do YouTube (sem pacote de tipos instalado) — só o mínimo
+// usado aqui pra criar o player e escutar quando um vídeo termina.
+interface YouTubePlayer {
+  loadVideoById(videoId: string): void;
+  destroy(): void;
+}
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (elementId: string, options: Record<string, unknown>) => YouTubePlayer;
+      PlayerState: { ENDED: number };
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
 }
 
-// Shorts saem com muito mais frequência que vídeos longos — se a lista fosse
-// só ordenada por data, os longos quase nunca apareceriam. Intercala os dois
-// tipos (começando pelo longo) pra garantir que a rotação sempre alterna.
-function intercalarPorTipo(videos: VideoRecente[]): VideoRecente[] {
-  const longos = videos.filter((v) => v.tipo === "video").sort(porDataDesc);
-  const shorts = videos.filter((v) => v.tipo === "short").sort(porDataDesc);
-  const resultado: VideoRecente[] = [];
-  const max = Math.max(longos.length, shorts.length);
-  for (let i = 0; i < max; i++) {
-    if (longos[i]) resultado.push(longos[i]);
-    if (shorts[i]) resultado.push(shorts[i]);
+const PLAYER_ELEMENT_ID = "painel-estudo-yt-player";
+
+function carregarApiYoutube(aoCarregar: () => void) {
+  if (window.YT?.Player) {
+    aoCarregar();
+    return;
   }
-  return resultado;
+  const anterior = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = () => {
+    anterior?.();
+    aoCarregar();
+  };
+  if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(script);
+  }
+}
+
+function porDataDesc(a: VideoRecente, b: VideoRecente): number {
+  return new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime();
 }
 
 export function PainelEstudo() {
@@ -28,7 +48,7 @@ export function PainelEstudo() {
   const [novoUrl, setNovoUrl] = useState("");
   const [adicionando, setAdicionando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [videoSelecionadoId, setVideoSelecionadoId] = useState<string | null>(null);
+  const [indiceAtual, setIndiceAtual] = useState(0);
 
   async function carregar() {
     try {
@@ -45,6 +65,58 @@ export function PainelEstudo() {
     const timer = setInterval(carregar, 30 * 60 * 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const videosOrdenados = videos ? [...videos].sort(porDataDesc) : null;
+  const videoTocando = videosOrdenados?.[indiceAtual] ?? videosOrdenados?.[0] ?? null;
+  const restante = videosOrdenados?.filter((_, i) => i !== indiceAtual) ?? [];
+
+  // Guarda a lista/posição atuais em refs pra o handler do player (registrado
+  // uma única vez na criação do player) sempre enxergar o valor mais recente,
+  // sem precisar recriar o player a cada troca de vídeo.
+  const videosOrdenadosRef = useRef(videosOrdenados);
+  videosOrdenadosRef.current = videosOrdenados;
+  const indiceAtualRef = useRef(indiceAtual);
+  indiceAtualRef.current = indiceAtual;
+
+  function avancarVideo() {
+    const lista = videosOrdenadosRef.current;
+    if (!lista || lista.length === 0) return;
+    setIndiceAtual((indiceAtualRef.current + 1) % lista.length);
+  }
+
+  const playerRef = useRef<YouTubePlayer | null>(null);
+
+  // Cria o player do YouTube uma única vez (assim que tiver o primeiro vídeo)
+  // e depois só troca o vídeo carregado nele — é o que permite detectar o
+  // fim de cada vídeo (onStateChange) e revezar pro próximo automaticamente.
+  useEffect(() => {
+    if (!videoTocando || playerRef.current) return;
+    carregarApiYoutube(() => {
+      if (playerRef.current) return;
+      playerRef.current = new window.YT!.Player(PLAYER_ELEMENT_ID, {
+        videoId: videoTocando.videoId,
+        playerVars: { autoplay: 1 },
+        events: {
+          onStateChange: (e: { data: number }) => {
+            if (e.data === window.YT!.PlayerState.ENDED) avancarVideo();
+          },
+        },
+      });
+    });
+    return () => {
+      playerRef.current?.destroy();
+      playerRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoTocando !== null]);
+
+  // Vídeo mudou (revezamento automático ou clique manual): troca só o vídeo
+  // carregado, sem recriar o player.
+  useEffect(() => {
+    if (videoTocando && playerRef.current) {
+      playerRef.current.loadVideoById(videoTocando.videoId);
+    }
+  }, [videoTocando?.videoId]);
 
   async function handleAdicionar(e: React.FormEvent) {
     e.preventDefault();
@@ -66,12 +138,6 @@ export function PainelEstudo() {
     await removerCanal(id);
     await carregar();
   }
-
-  const videosOrdenados = videos ? intercalarPorTipo(videos) : null;
-
-  const videoTocando =
-    videosOrdenados?.find((v) => v.videoId === videoSelecionadoId) ?? videosOrdenados?.[0] ?? null;
-  const restante = videosOrdenados?.filter((v) => v.videoId !== videoTocando?.videoId) ?? [];
 
   return (
     <div className="painel painel-estudo">
@@ -122,13 +188,7 @@ export function PainelEstudo() {
           {videoTocando && (
             <>
               <div className="painel-estudo-player">
-                <iframe
-                  key={videoTocando.videoId}
-                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?autoplay=1`}
-                  title={videoTocando.titulo}
-                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                  allowFullScreen
-                />
+                <div id={PLAYER_ELEMENT_ID} />
               </div>
               <div className="painel-estudo-player-titulo" title={videoTocando.titulo}>
                 {videoTocando.titulo}
@@ -140,7 +200,10 @@ export function PainelEstudo() {
             <button
               key={v.videoId}
               className="painel-estudo-video-item"
-              onClick={() => setVideoSelecionadoId(v.videoId)}
+              onClick={() => {
+                const i = videosOrdenados?.findIndex((item) => item.videoId === v.videoId) ?? -1;
+                if (i >= 0) setIndiceAtual(i);
+              }}
               type="button"
             >
               {v.thumbnail ? (
