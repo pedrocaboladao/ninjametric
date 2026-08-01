@@ -9,40 +9,40 @@ export const clonarAnuncioRouter = Router();
 // TEMP: investigar o 403 do endpoint de ativação de envios flex.
 clonarAnuncioRouter.get("/debug-flex", async (req, res) => {
   const itemId = String(req.query.itemId);
-  const lojaId = Number(req.query.lojaId);
-  const token = await getValidAccessToken(lojaId);
+  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
 
-  const respostas: Record<string, unknown> = {};
+  for (const loja of lojas) {
+    const token = await getValidAccessToken(loja.id);
+    try {
+      const { data } = await axios.get(`https://api.mercadolibre.com/items/${itemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-  // 1) Como está o shipping do item já criado?
-  try {
-    const { data } = await axios.get(`https://api.mercadolibre.com/items/${itemId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    respostas.shipping = data.shipping;
-    respostas.site_id = data.site_id;
-  } catch (err: any) {
-    respostas.erroBuscarItem = err.message;
+      const respostas: Record<string, unknown> = { loja: loja.nome, shipping: data.shipping, site_id: data.site_id };
+
+      try {
+        const { data: flexData } = await axios.post(
+          `https://api.mercadolibre.com/sites/MLB/shipping/selfservice/items/${itemId}`,
+          {},
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        respostas.flexAtivado = flexData;
+      } catch (err: any) {
+        respostas.erroFlex = {
+          message: err.message,
+          status: err.response?.status,
+          data: typeof err.response?.data === "string" ? err.response.data.slice(0, 300) : err.response?.data,
+        };
+      }
+
+      res.json(respostas);
+      return;
+    } catch {
+      // não é dessa loja, tenta a próxima
+    }
   }
 
-  // 2) Tenta ativar flex e captura o erro completo (headers inclusive).
-  try {
-    const { data } = await axios.post(
-      `https://api.mercadolibre.com/sites/MLB/shipping/selfservice/items/${itemId}`,
-      {},
-      { headers: { Authorization: `Bearer ${token}` } }
-    );
-    respostas.flexAtivado = data;
-  } catch (err: any) {
-    respostas.erroFlex = {
-      message: err.message,
-      status: err.response?.status,
-      headers: err.response?.headers,
-      data: typeof err.response?.data === "string" ? err.response.data.slice(0, 300) : err.response?.data,
-    };
-  }
-
-  res.json(respostas);
+  res.status(404).json({ error: "Item não encontrado em nenhuma loja." });
 });
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
