@@ -1,10 +1,45 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchVideosRecentes, fetchCanais, adicionarCanal, removerCanal } from "../api/youtube";
 import type { VideoRecente, CanalYoutube } from "../types/youtube";
 
-// Tempo que cada vídeo fica na posição do player antes de revezar pro
-// próximo (thumbs do painel rotacionando).
-const INTERVALO_REVEZAMENTO_MS = 90 * 1000;
+// A API oficial do YouTube (sem pacote de tipos instalado) — só o mínimo
+// usado aqui pra criar o player e escutar quando um vídeo termina.
+interface YouTubePlayer {
+  loadVideoById(videoId: string): void;
+  destroy(): void;
+}
+declare global {
+  interface Window {
+    YT?: {
+      Player: new (el: HTMLElement, options: Record<string, unknown>) => YouTubePlayer;
+      PlayerState: { ENDED: number };
+    };
+    onYouTubeIframeAPIReady?: () => void;
+  }
+}
+
+function carregarApiYoutube(aoCarregar: () => void) {
+  if (window.YT?.Player) {
+    aoCarregar();
+    return;
+  }
+  const anterior = window.onYouTubeIframeAPIReady;
+  window.onYouTubeIframeAPIReady = () => {
+    anterior?.();
+    aoCarregar();
+  };
+  if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    document.head.appendChild(script);
+  }
+}
+
+// Se a API do YouTube não carregar em alguns segundos (bloqueador de
+// anúncios, script travado etc.), cai num revezamento por tempo fixo em vez
+// de deixar o painel travado sem trocar de vídeo nunca.
+const TIMEOUT_API_MS = 6000;
+const INTERVALO_FALLBACK_MS = 90 * 1000;
 
 export function PainelEstudo() {
   const [videos, setVideos] = useState<VideoRecente[] | null>(null);
@@ -14,6 +49,7 @@ export function PainelEstudo() {
   const [adicionando, setAdicionando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [indiceAtual, setIndiceAtual] = useState(0);
+  const [apiFalhou, setApiFalhou] = useState(false);
 
   async function carregar() {
     try {
@@ -34,19 +70,88 @@ export function PainelEstudo() {
   const videosOrdenados = videos
     ? [...videos].sort((a, b) => new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime())
     : null;
-
-  // Revezamento automático: a cada intervalo, avança pro próximo vídeo do
-  // painel (volta pro início ao chegar no fim).
-  useEffect(() => {
-    if (!videosOrdenados || videosOrdenados.length < 2) return;
-    const timer = setInterval(() => {
-      setIndiceAtual((i) => (i + 1) % videosOrdenados.length);
-    }, INTERVALO_REVEZAMENTO_MS);
-    return () => clearInterval(timer);
-  }, [videosOrdenados?.length]);
-
   const videoTocando = videosOrdenados?.[indiceAtual] ?? videosOrdenados?.[0] ?? null;
   const restante = videosOrdenados?.filter((_, i) => i !== indiceAtual) ?? [];
+
+  // Refs pra o handler do player (registrado uma única vez na criação)
+  // sempre enxergar a lista/posição mais recentes.
+  const videosOrdenadosRef = useRef(videosOrdenados);
+  videosOrdenadosRef.current = videosOrdenados;
+
+  function avancarVideo() {
+    const lista = videosOrdenadosRef.current;
+    if (!lista || lista.length === 0) return;
+    setIndiceAtual((i) => (i + 1) % lista.length);
+  }
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const playerRef = useRef<YouTubePlayer | null>(null);
+
+  // Cria o player oficial do YouTube uma única vez (assim que tiver o
+  // primeiro vídeo) — é o que permite detectar quando o vídeo termina
+  // (onStateChange) e só então revezar pro próximo. Se a API não carregar a
+  // tempo ou falhar ao criar, cai no modo de revezamento por timer.
+  useEffect(() => {
+    if (!videoTocando || apiFalhou || playerRef.current || !containerRef.current) return;
+    let cancelado = false;
+    const timeoutId = setTimeout(() => {
+      if (!cancelado && !playerRef.current) setApiFalhou(true);
+    }, TIMEOUT_API_MS);
+
+    carregarApiYoutube(() => {
+      if (cancelado || playerRef.current || !containerRef.current) return;
+      try {
+        playerRef.current = new window.YT!.Player(containerRef.current, {
+          videoId: videoTocando.videoId,
+          playerVars: { autoplay: 1 },
+          events: {
+            onStateChange: (e: { data: number }) => {
+              if (e.data === window.YT!.PlayerState.ENDED) avancarVideo();
+            },
+          },
+        });
+        clearTimeout(timeoutId);
+      } catch {
+        setApiFalhou(true);
+      }
+    });
+
+    return () => {
+      cancelado = true;
+      clearTimeout(timeoutId);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoTocando !== null, apiFalhou]);
+
+  // Vídeo mudou (fim automático ou clique manual): troca só o vídeo
+  // carregado no player já existente, sem recriar.
+  useEffect(() => {
+    if (!videoTocando || !playerRef.current) return;
+    try {
+      playerRef.current.loadVideoById(videoTocando.videoId);
+    } catch {
+      setApiFalhou(true);
+    }
+  }, [videoTocando?.videoId]);
+
+  useEffect(() => {
+    return () => {
+      try {
+        playerRef.current?.destroy();
+      } catch {
+        // ignora — componente já está desmontando
+      }
+    };
+  }, []);
+
+  // Modo de segurança: só entra em ação se a API do player não funcionou.
+  useEffect(() => {
+    if (!apiFalhou || !videosOrdenados || videosOrdenados.length < 2) return;
+    const timer = setInterval(() => {
+      setIndiceAtual((i) => (i + 1) % videosOrdenados.length);
+    }, INTERVALO_FALLBACK_MS);
+    return () => clearInterval(timer);
+  }, [apiFalhou, videosOrdenados?.length]);
 
   async function handleAdicionar(e: React.FormEvent) {
     e.preventDefault();
@@ -115,17 +220,23 @@ export function PainelEstudo() {
               Nenhum canal configurado — clique em "Gerenciar canais" pra adicionar o primeiro.
             </div>
           )}
-          {videoTocando && (
-            <>
-              <div className="painel-estudo-player">
+          {videosOrdenados && videosOrdenados.length > 0 && (
+            <div className="painel-estudo-player">
+              {apiFalhou ? (
                 <iframe
-                  key={videoTocando.videoId}
-                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?autoplay=1`}
-                  title={videoTocando.titulo}
+                  key={videoTocando?.videoId}
+                  src={`https://www.youtube.com/embed/${videoTocando?.videoId}?autoplay=1`}
+                  title={videoTocando?.titulo}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 />
-              </div>
+              ) : (
+                <div ref={containerRef} />
+              )}
+            </div>
+          )}
+          {videoTocando && (
+            <>
               <div className="painel-estudo-player-titulo" title={videoTocando.titulo}>
                 {videoTocando.titulo}
               </div>
