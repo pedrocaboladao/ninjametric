@@ -2,44 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { fetchVideosRecentes, fetchCanais, adicionarCanal, removerCanal } from "../api/youtube";
 import type { VideoRecente, CanalYoutube } from "../types/youtube";
 
-// A API oficial do YouTube (sem pacote de tipos instalado) — só o mínimo
-// usado aqui pra criar o player e escutar quando um vídeo termina.
-interface YouTubePlayer {
-  loadVideoById(videoId: string): void;
-  destroy(): void;
-}
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (el: HTMLElement, options: Record<string, unknown>) => YouTubePlayer;
-      PlayerState: { ENDED: number };
-    };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-function carregarApiYoutube(aoCarregar: () => void) {
-  if (window.YT?.Player) {
-    aoCarregar();
-    return;
-  }
-  const anterior = window.onYouTubeIframeAPIReady;
-  window.onYouTubeIframeAPIReady = () => {
-    anterior?.();
-    aoCarregar();
-  };
-  if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
-    const script = document.createElement("script");
-    script.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(script);
-  }
-}
-
-// Se a API do YouTube não carregar em alguns segundos (bloqueador de
-// anúncios, script travado etc.), cai num revezamento por tempo fixo em vez
-// de deixar o painel travado sem trocar de vídeo nunca.
-const TIMEOUT_API_MS = 6000;
-const INTERVALO_FALLBACK_MS = 90 * 1000;
+const IFRAME_ID = "painel-estudo-yt-iframe";
 
 export function PainelEstudo() {
   const [videos, setVideos] = useState<VideoRecente[] | null>(null);
@@ -49,7 +12,6 @@ export function PainelEstudo() {
   const [adicionando, setAdicionando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [indiceAtual, setIndiceAtual] = useState(0);
-  const [apiFalhou, setApiFalhou] = useState(false);
 
   async function carregar() {
     try {
@@ -73,85 +35,45 @@ export function PainelEstudo() {
   const videoTocando = videosOrdenados?.[indiceAtual] ?? videosOrdenados?.[0] ?? null;
   const restante = videosOrdenados?.filter((_, i) => i !== indiceAtual) ?? [];
 
-  // Refs pra o handler do player (registrado uma única vez na criação)
-  // sempre enxergar a lista/posição mais recentes.
   const videosOrdenadosRef = useRef(videosOrdenados);
   videosOrdenadosRef.current = videosOrdenados;
 
-  function avancarVideo() {
-    const lista = videosOrdenadosRef.current;
-    if (!lista || lista.length === 0) return;
-    setIndiceAtual((i) => (i + 1) % lista.length);
-  }
-
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const playerRef = useRef<YouTubePlayer | null>(null);
-
-  // Cria o player oficial do YouTube uma única vez (assim que tiver o
-  // primeiro vídeo) — é o que permite detectar quando o vídeo termina
-  // (onStateChange) e só então revezar pro próximo. Se a API não carregar a
-  // tempo ou falhar ao criar, cai no modo de revezamento por timer.
+  // Escuta o protocolo de postMessage do próprio embed do YouTube (não
+  // precisa carregar nenhum script externo, só o iframe padrão com
+  // "enablejsapi=1") pra saber quando o vídeo atual chega ao fim e só então
+  // revezar pro próximo — em vez de um timer fixo que cortava vídeos longos
+  // no meio.
   useEffect(() => {
-    if (!videoTocando || apiFalhou || playerRef.current || !containerRef.current) return;
-    let cancelado = false;
-    const timeoutId = setTimeout(() => {
-      if (!cancelado && !playerRef.current) setApiFalhou(true);
-    }, TIMEOUT_API_MS);
-
-    carregarApiYoutube(() => {
-      if (cancelado || playerRef.current || !containerRef.current) return;
+    function aoReceberMensagem(evento: MessageEvent) {
+      if (evento.origin !== "https://www.youtube.com" || typeof evento.data !== "string") return;
+      let dados: { event?: string; info?: unknown };
       try {
-        playerRef.current = new window.YT!.Player(containerRef.current, {
-          videoId: videoTocando.videoId,
-          playerVars: { autoplay: 1 },
-          events: {
-            onStateChange: (e: { data: number }) => {
-              if (e.data === window.YT!.PlayerState.ENDED) avancarVideo();
-            },
-          },
-        });
-        clearTimeout(timeoutId);
+        dados = JSON.parse(evento.data);
       } catch {
-        setApiFalhou(true);
+        return;
       }
-    });
+      const estado =
+        dados.event === "onStateChange"
+          ? dados.info
+          : dados.event === "infoDelivery" && dados.info && typeof dados.info === "object"
+          ? (dados.info as { playerState?: unknown }).playerState
+          : undefined;
+      if (estado !== 0) return; // 0 = vídeo terminou
 
-    return () => {
-      cancelado = true;
-      clearTimeout(timeoutId);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoTocando !== null, apiFalhou]);
-
-  // Vídeo mudou (fim automático ou clique manual): troca só o vídeo
-  // carregado no player já existente, sem recriar.
-  useEffect(() => {
-    if (!videoTocando || !playerRef.current) return;
-    try {
-      playerRef.current.loadVideoById(videoTocando.videoId);
-    } catch {
-      setApiFalhou(true);
+      const lista = videosOrdenadosRef.current;
+      if (!lista || lista.length === 0) return;
+      setIndiceAtual((i) => (i + 1) % lista.length);
     }
-  }, [videoTocando?.videoId]);
 
-  useEffect(() => {
-    return () => {
-      try {
-        playerRef.current?.destroy();
-      } catch {
-        // ignora — componente já está desmontando
-      }
-    };
+    window.addEventListener("message", aoReceberMensagem);
+    return () => window.removeEventListener("message", aoReceberMensagem);
   }, []);
 
-  // Modo de segurança: só entra em ação se a API do player não funcionou.
-  useEffect(() => {
-    if (!apiFalhou || !videosOrdenados || videosOrdenados.length < 2) return;
-    const timer = setInterval(() => {
-      setIndiceAtual((i) => (i + 1) % videosOrdenados.length);
-    }, INTERVALO_FALLBACK_MS);
-    return () => clearInterval(timer);
-  }, [apiFalhou, videosOrdenados?.length]);
+  function aoCarregarIframe(e: React.SyntheticEvent<HTMLIFrameElement>) {
+    // Handshake do protocolo do YouTube: precisa avisar que está "ouvindo"
+    // pra receber os eventos de mudança de estado (infoDelivery).
+    e.currentTarget.contentWindow?.postMessage(JSON.stringify({ event: "listening", id: IFRAME_ID }), "*");
+  }
 
   async function handleAdicionar(e: React.FormEvent) {
     e.preventDefault();
@@ -220,23 +142,19 @@ export function PainelEstudo() {
               Nenhum canal configurado — clique em "Gerenciar canais" pra adicionar o primeiro.
             </div>
           )}
-          {videosOrdenados && videosOrdenados.length > 0 && (
-            <div className="painel-estudo-player">
-              {apiFalhou ? (
+          {videoTocando && (
+            <>
+              <div className="painel-estudo-player">
                 <iframe
-                  key={videoTocando?.videoId}
-                  src={`https://www.youtube.com/embed/${videoTocando?.videoId}?autoplay=1`}
-                  title={videoTocando?.titulo}
+                  id={IFRAME_ID}
+                  key={videoTocando.videoId}
+                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
+                  title={videoTocando.titulo}
+                  onLoad={aoCarregarIframe}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 />
-              ) : (
-                <div ref={containerRef} />
-              )}
-            </div>
-          )}
-          {videoTocando && (
-            <>
+              </div>
               <div className="painel-estudo-player-titulo" title={videoTocando.titulo}>
                 {videoTocando.titulo}
               </div>
