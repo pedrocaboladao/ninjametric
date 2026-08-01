@@ -3056,6 +3056,47 @@
   color: var(--text-muted);
 }
 
+.financeiro-impostos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.financeiro-impostos-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+}
+
+.financeiro-impostos-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.financeiro-impostos-linha:last-child {
+  border-bottom: none;
+}
+
+.financeiro-impostos-campo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.financeiro-impostos-campo input {
+  width: 70px;
+  text-align: right;
+}
+
 .financeiro-feed {
   display: flex;
   flex-direction: column;
@@ -3064,7 +3105,7 @@
 
 .financeiro-linha {
   display: grid;
-  grid-template-columns: 110px 2fr 1fr 1fr 1fr 1fr 1.2fr;
+  grid-template-columns: 110px 2fr 1fr 1fr 1fr 1fr 1fr 1.2fr;
   gap: 14px;
   align-items: center;
   padding: 12px 16px;

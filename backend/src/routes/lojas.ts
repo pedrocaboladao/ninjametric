@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, atualizarImpostoLoja } from "../services/tokenStore";
 import { temAcessoLoja } from "../services/usuariosService";
 import { requireAdmin } from "../middleware/requireAuth";
 
@@ -25,9 +25,35 @@ lojasRouter.get("/", async (req, res) => {
 lojasRouter.get("/todas", requireAdmin, async (_req, res) => {
   try {
     const lojas = await listLojas();
-    res.json({ lojas: lojas.map((l) => ({ id: l.id, nome: l.nome, autorizada: l.ml_user_id !== null })) });
+    res.json({
+      lojas: lojas.map((l) => ({
+        id: l.id,
+        nome: l.nome,
+        autorizada: l.ml_user_id !== null,
+        impostoPercentual: l.imposto_percentual,
+      })),
+    });
   } catch (err) {
     console.error("Erro ao listar lojas:", err);
     res.status(500).json({ error: "Falha ao listar lojas." });
+  }
+});
+
+// Alíquota de imposto usada no cálculo de margem no Financeiro — editável
+// por loja, só admin.
+lojasRouter.put("/:id/imposto", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { impostoPercentual } = req.body;
+  if (!Number.isInteger(id) || typeof impostoPercentual !== "number" || impostoPercentual < 0 || impostoPercentual > 100) {
+    res.status(400).json({ error: "Informe um percentual de imposto entre 0 e 100." });
+    return;
+  }
+
+  try {
+    await atualizarImpostoLoja(id, impostoPercentual);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Erro ao atualizar imposto da loja:", err);
+    res.status(500).json({ error: "Falha ao atualizar imposto." });
   }
 });

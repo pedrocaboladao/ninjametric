@@ -63,7 +63,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         )}
         {view === "clonar" && temPermissao(usuario, "clonar") && <ClonarAnuncio />}
         {view === "produtos" && temPermissao(usuario, "produtos") && <Produtos />}
-        {view === "financeiro" && temPermissao(usuario, "financeiro") && <Financeiro />}
+        {view === "financeiro" && temPermissao(usuario, "financeiro") && <Financeiro usuario={usuario} />}
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
         {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
         {view === "usuarios" && usuario.admin && <Usuarios />}

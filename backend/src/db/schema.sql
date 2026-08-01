@@ -172,3 +172,7 @@ CREATE TABLE IF NOT EXISTS canais_youtube (
   url TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Financeiro: alíquota de imposto usada no cálculo de margem, editável por
+-- loja (cada empresa/CNPJ pode ter um regime tributário diferente).
+ALTER TABLE lojas ADD COLUMN IF NOT EXISTS imposto_percentual NUMERIC(5, 2) NOT NULL DEFAULT 7.00;

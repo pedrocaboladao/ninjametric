@@ -18,6 +18,7 @@ export interface VendaFinanceira {
   custoTotal: number | null;
   taxaMlTotal: number;
   freteTotal: number | null;
+  impostoTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
 }
@@ -71,6 +72,7 @@ export async function listarVendasFinanceiras(
       lojas.map(async (loja) => ({
         lojaId: loja.id,
         lojaNome: loja.nome,
+        impostoPercentual: loja.imposto_percentual,
         orders: await searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora),
       }))
     ),
@@ -108,8 +110,9 @@ export async function listarVendasFinanceiras(
       const receitaTotal = item.unit_price * item.quantity;
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
+      const impostoTotal = receitaTotal * (loja.impostoPercentual / 100);
       const margemContribuicao =
-        custoTotal !== null ? receitaTotal - custoTotal - taxaMlTotal - (freteAlocado ?? 0) : null;
+        custoTotal !== null ? receitaTotal - custoTotal - taxaMlTotal - (freteAlocado ?? 0) - impostoTotal : null;
 
       vendas.push({
         orderId: order.id,
@@ -123,6 +126,7 @@ export async function listarVendasFinanceiras(
         custoTotal,
         taxaMlTotal,
         freteTotal: freteAlocado,
+        impostoTotal,
         margemContribuicao,
         margemPercentual:
           margemContribuicao !== null && receitaTotal > 0 ? (margemContribuicao / receitaTotal) * 100 : null,
