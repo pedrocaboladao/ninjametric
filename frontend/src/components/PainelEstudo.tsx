@@ -55,7 +55,7 @@ export function PainelEstudo() {
     <div className="painel painel-estudo">
       <div className="painel-estudo-header">
         <div>
-          <span className="painel-eyebrow">Painel de estudo</span>
+          <span className="painel-eyebrow">Impetrus TV</span>
           <h2>Últimos vídeos</h2>
         </div>
         <button className="painel-estudo-gerenciar-btn" onClick={() => setGerenciando((g) => !g)} type="button">
