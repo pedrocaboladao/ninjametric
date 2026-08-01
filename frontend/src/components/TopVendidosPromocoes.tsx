@@ -1,4 +1,4 @@
-import type { TopVendidoPromocao, PromocaoStatus } from "../types/dashboard";
+import type { TopVendidoPromocao, PromocaoStatus, AdsStatus } from "../types/dashboard";
 import type { Loja } from "../api/lojas";
 
 interface Props {
@@ -12,6 +12,12 @@ const BADGES: Record<PromocaoStatus, { texto: string; classe: string }> = {
   com_promocao: { texto: "Em promoção", classe: "promo-badge-ativa" },
   sem_promocao: { texto: "Sem promoção", classe: "promo-badge-alerta" },
   anuncio_pausado: { texto: "Anúncio pausado", classe: "promo-badge-neutro" },
+  nao_verificado: { texto: "Não verificado", classe: "promo-badge-neutro" },
+};
+
+const ADS_BADGES: Record<AdsStatus, { texto: string; classe: string }> = {
+  ads_ativo: { texto: "Em publicidade", classe: "promo-badge-ads" },
+  sem_ads: { texto: "Sem publicidade", classe: "promo-badge-alerta" },
   nao_verificado: { texto: "Não verificado", classe: "promo-badge-neutro" },
 };
 
@@ -51,6 +57,7 @@ export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLoja
       <div className="top-vendidos-lista">
         {produtos.map((p) => {
           const badge = BADGES[p.promocao];
+          const badgeAds = ADS_BADGES[p.ads];
           return (
             <a
               key={`${p.lojaId}:${p.mlItemId}`}
@@ -72,7 +79,7 @@ export function TopVendidosPromocoes({ produtos, lojas, lojaFiltro, onChangeLoja
               </div>
               <div className="top-vendido-badges">
                 <span className={`promo-badge ${badge.classe}`}>{badge.texto}</span>
-                {p.ads === "ads_ativo" && <span className="promo-badge promo-badge-ads">Ads ativo</span>}
+                <span className={`promo-badge ${badgeAds.classe}`}>{badgeAds.texto}</span>
               </div>
             </a>
           );
