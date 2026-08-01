@@ -13,4 +13,5 @@ export interface VideoRecente {
   thumbnail: string;
   publicadoEm: string;
   link: string;
+  tipo: "short" | "video";
 }

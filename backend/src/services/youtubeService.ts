@@ -77,33 +77,83 @@ export interface VideoRecente {
   thumbnail: string;
   publicadoEm: string;
   link: string;
+  tipo: "short" | "video";
 }
 
-async function buscarUltimoVideo(canal: CanalYoutube): Promise<VideoRecente | null> {
+interface EntradaFeed {
+  videoId: string;
+  titulo: string;
+  thumbnail: string;
+  publicadoEm: string;
+}
+
+function parseEntradasFeed(xml: string): EntradaFeed[] {
+  const blocos = xml.match(/<entry>([\s\S]*?)<\/entry>/g) ?? [];
+  return blocos
+    .map((bloco) => ({
+      videoId: bloco.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1] ?? "",
+      titulo: decodeXmlEntities(bloco.match(/<title>([^<]+)<\/title>/)?.[1] ?? ""),
+      thumbnail: bloco.match(/<media:thumbnail url="([^"]+)"/)?.[1] ?? "",
+      publicadoEm: bloco.match(/<published>([^<]+)<\/published>/)?.[1] ?? "",
+    }))
+    .filter((e) => e.videoId && e.titulo);
+}
+
+// O próprio YouTube considera Short qualquer vídeo de até 3 minutos.
+const LIMITE_SHORT_SEGUNDOS = 180;
+
+// O feed RSS não informa a duração do vídeo — só dá pra saber lendo a
+// página de fato (o player embute "lengthSeconds" no HTML).
+async function buscarDuracaoSegundos(videoId: string): Promise<number | null> {
+  try {
+    const { data: html } = await axios.get<string>(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    const duracao = html.match(/"lengthSeconds":"(\d+)"/)?.[1];
+    return duracao ? Number(duracao) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Canais costumam postar shorts com muito mais frequência que vídeos
+// longos — pegando só o vídeo mais recente no geral, o long quase nunca
+// aparece (fica sempre atrás de shorts mais novos). Por isso busca os dois
+// separadamente: o short mais recente E o vídeo longo mais recente, parando
+// assim que achar os dois (early exit, sem varrer o feed inteiro à toa).
+async function buscarVideosCanal(canal: CanalYoutube): Promise<VideoRecente[]> {
   try {
     const { data: xml } = await axios.get<string>(
       `https://www.youtube.com/feeds/videos.xml?channel_id=${canal.channelId}`
     );
-    const entry = xml.match(/<entry>([\s\S]*?)<\/entry>/)?.[1];
-    if (!entry) return null;
+    const entradas = parseEntradasFeed(xml);
 
-    const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1];
-    const titulo = entry.match(/<title>([^<]+)<\/title>/)?.[1];
-    const thumbnail = entry.match(/<media:thumbnail url="([^"]+)"/)?.[1];
-    const publicadoEm = entry.match(/<published>([^<]+)<\/published>/)?.[1];
-    if (!videoId || !titulo) return null;
+    let short: VideoRecente | null = null;
+    let longo: VideoRecente | null = null;
 
-    return {
-      canalId: canal.id,
-      canalNome: canal.nome,
-      videoId,
-      titulo: decodeXmlEntities(titulo),
-      thumbnail: thumbnail ?? "",
-      publicadoEm: publicadoEm ?? "",
-      link: `https://www.youtube.com/watch?v=${videoId}`,
-    };
+    for (const entrada of entradas) {
+      if (short && longo) break;
+      const duracaoSegundos = await buscarDuracaoSegundos(entrada.videoId);
+      if (duracaoSegundos === null) continue;
+
+      const video: VideoRecente = {
+        canalId: canal.id,
+        canalNome: canal.nome,
+        videoId: entrada.videoId,
+        titulo: entrada.titulo,
+        thumbnail: entrada.thumbnail,
+        publicadoEm: entrada.publicadoEm,
+        link: `https://www.youtube.com/watch?v=${entrada.videoId}`,
+        tipo: duracaoSegundos <= LIMITE_SHORT_SEGUNDOS ? "short" : "video",
+      };
+
+      if (video.tipo === "short" && !short) short = video;
+      if (video.tipo === "video" && !longo) longo = video;
+    }
+
+    return [short, longo].filter((v): v is VideoRecente => v !== null);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -121,9 +171,9 @@ export async function listarVideosRecentes(): Promise<VideoRecente[]> {
   if (cache && cache.expiraEm > Date.now()) return cache.data;
 
   const canais = await listarCanais();
-  const videos = await Promise.all(canais.map(buscarUltimoVideo));
-  const validos = videos.filter((v): v is VideoRecente => v !== null);
+  const videosPorCanal = await Promise.all(canais.map(buscarVideosCanal));
+  const todos = videosPorCanal.flat();
 
-  cache = { data: validos, expiraEm: Date.now() + CACHE_TTL_MS };
-  return validos;
+  cache = { data: todos, expiraEm: Date.now() + CACHE_TTL_MS };
+  return todos;
 }

@@ -2,6 +2,25 @@ import { useEffect, useState } from "react";
 import { fetchVideosRecentes, fetchCanais, adicionarCanal, removerCanal } from "../api/youtube";
 import type { VideoRecente, CanalYoutube } from "../types/youtube";
 
+function porDataDesc(a: VideoRecente, b: VideoRecente): number {
+  return new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime();
+}
+
+// Shorts saem com muito mais frequência que vídeos longos — se a lista fosse
+// só ordenada por data, os longos quase nunca apareceriam. Intercala os dois
+// tipos (começando pelo longo) pra garantir que a rotação sempre alterna.
+function intercalarPorTipo(videos: VideoRecente[]): VideoRecente[] {
+  const longos = videos.filter((v) => v.tipo === "video").sort(porDataDesc);
+  const shorts = videos.filter((v) => v.tipo === "short").sort(porDataDesc);
+  const resultado: VideoRecente[] = [];
+  const max = Math.max(longos.length, shorts.length);
+  for (let i = 0; i < max; i++) {
+    if (longos[i]) resultado.push(longos[i]);
+    if (shorts[i]) resultado.push(shorts[i]);
+  }
+  return resultado;
+}
+
 export function PainelEstudo() {
   const [videos, setVideos] = useState<VideoRecente[] | null>(null);
   const [canais, setCanais] = useState<CanalYoutube[]>([]);
@@ -48,9 +67,7 @@ export function PainelEstudo() {
     await carregar();
   }
 
-  const videosOrdenados = videos
-    ? [...videos].sort((a, b) => new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime())
-    : null;
+  const videosOrdenados = videos ? intercalarPorTipo(videos) : null;
 
   const videoTocando =
     videosOrdenados?.find((v) => v.videoId === videoSelecionadoId) ?? videosOrdenados?.[0] ?? null;
