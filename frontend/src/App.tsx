@@ -47,7 +47,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {semAcesso && (
           <div className="state-message">Nenhum acesso liberado. Fale com o administrador da conta.</div>
         )}
-        {view === "dashboard" && temPermissao(usuario, "dashboard") && <Dashboard usuario={usuario} />}
+        {view === "dashboard" && temPermissao(usuario, "dashboard") && <Dashboard />}
         {view === "perguntas" && temPermissao(usuario, "perguntas") && (
           <Perguntas
             perguntas={perguntas.perguntas}
