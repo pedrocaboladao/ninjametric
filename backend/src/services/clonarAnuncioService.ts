@@ -10,6 +10,7 @@ import {
   requerModeloUserProduct,
   requerRemoverGtin,
   atributoObrigatorioFaltando,
+  atributoRejeitado,
   resolverItemIdPorUserProduct,
   listarFamiliaUserProducts,
   MlItemFull,
@@ -80,16 +81,15 @@ const VALOR_PADRAO_CONFIRMADO: Record<string, { value_id: string; value_name: st
   IS_FLAMMABLE: { value_id: "242084", value_name: "Não" },
 };
 
-// Peso/dimensões da embalagem ("cubagem") aumentam o frete calculado. Quando
-// não é obrigatório declarar, é melhor não declarar — por isso removemos
-// esses atributos do clone por padrão, mesmo que o anúncio original os
-// tivesse. Só voltam a ser incluídos se a categoria de destino realmente
-// exigir (e, nesse caso, só se o anúncio original tinha o valor real).
+// Peso/dimensões da embalagem ("cubagem"). Testamos remover isso por padrão
+// achando que reduzia o frete calculado, mas na prática é o oposto: sem
+// cubagem declarada, o Mercado Livre assume um pacote genérico bem maior/
+// mais pesado pra calcular o frete, e o clone sai com frete várias vezes
+// mais caro que o original (confirmado comparando frete real dos dois pro
+// mesmo CEP). Por isso agora mantemos a cubagem real do anúncio original
+// por padrão — só removemos reativamente se a categoria de destino
+// realmente rejeitar esse atributo (ver atributoRejeitado).
 const ATRIBUTOS_CUBAGEM = ["SELLER_PACKAGE_WEIGHT", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH", "SELLER_PACKAGE_LENGTH"];
-
-function removerCubagem(atributos: MlAttribute[]): MlAttribute[] {
-  return atributos.filter((a) => !ATRIBUTOS_CUBAGEM.includes(a.id));
-}
 
 // Dígito verificador padrão EAN-13/GTIN-13 (GS1 General Specifications).
 function calcularDigitoVerificadorEan13(doze: string): number {
@@ -157,6 +157,15 @@ async function criarItemComFallbacks(
         );
       }
       payload = { ...payload, attributes: [...payload.attributes, valorOriginal] };
+      ajustou = true;
+    }
+
+    // Caso oposto: a categoria de destino rejeita a cubagem que enviamos por
+    // padrão (não é toda categoria que exige, e algumas nem aceitam).
+    for (const attributeId of ATRIBUTOS_CUBAGEM) {
+      if (!atributoRejeitado(err, attributeId)) continue;
+      if (!payload.attributes.some((a) => a.id === attributeId)) continue;
+      payload = { ...payload, attributes: payload.attributes.filter((a) => a.id !== attributeId) };
       ajustou = true;
     }
 
@@ -313,7 +322,7 @@ async function publicarUmaCopia(
     condition: original.condition,
     listing_type_id: opcoes.listingType,
     pictures: fotosGerais.map((source) => ({ source })),
-    attributes: removerCubagem(original.attributes),
+    attributes: original.attributes,
     shipping: {
       mode: original.shipping.mode,
       local_pick_up: original.shipping.local_pick_up,
@@ -476,7 +485,7 @@ async function publicarFamiliaDeItens(
       condition: fonte.condition,
       listing_type_id: opcoes.listingType,
       pictures: fotos.map((source) => ({ source })),
-      attributes: removerCubagem(fonte.attributes),
+      attributes: fonte.attributes,
       family_name: familyName,
       shipping: fonte.shipping,
     };

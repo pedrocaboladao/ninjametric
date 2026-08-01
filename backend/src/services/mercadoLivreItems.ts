@@ -77,6 +77,16 @@ export function atributoObrigatorioFaltando(err: unknown, attributeId: string): 
   return err.causas.some((c) => c.code && CODES_ATRIBUTO_FALTANDO.has(c.code) && c.message?.includes(`[${attributeId}]`));
 }
 
+// Erro citando o atributo mas com um code diferente de "está faltando" —
+// ou seja, a categoria de destino não aceita esse atributo (ex.: cubagem
+// que enviamos por padrão, mas essa categoria específica rejeita).
+export function atributoRejeitado(err: unknown, attributeId: string): boolean {
+  if (!(err instanceof ErroMercadoLivre)) return false;
+  return err.causas.some(
+    (c) => c.message?.includes(`[${attributeId}]`) && !(c.code && CODES_ATRIBUTO_FALTANDO.has(c.code))
+  );
+}
+
 export interface MlAttribute {
   id: string;
   name?: string;
