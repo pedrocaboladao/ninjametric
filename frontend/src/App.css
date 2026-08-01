@@ -2989,38 +2989,77 @@
   font-size: 13px;
 }
 
-.financeiro-resumo {
-  display: flex;
-  gap: 24px;
-  flex-wrap: wrap;
-  padding: 14px 18px;
-  background: var(--bg-panel-alt);
-  border: 1px solid var(--border);
-  border-radius: 12px;
+.financeiro-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
 }
 
-.financeiro-resumo-item {
+.financeiro-stat-card {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
 }
 
-.financeiro-resumo-label {
+.financeiro-stat-card-destaque {
+  background: var(--bg-panel-alt);
+  border-color: var(--border-strong);
+  position: relative;
+  overflow: hidden;
+}
+
+.financeiro-stat-card-destaque::before {
+  content: "";
+  position: absolute;
+  top: -40px;
+  right: -40px;
+  width: 140px;
+  height: 140px;
+  background: radial-gradient(circle, rgba(56, 189, 248, 0.14), transparent 70%);
+  pointer-events: none;
+}
+
+.financeiro-stat-label {
   font-size: 11.5px;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.04em;
 }
 
-.financeiro-resumo-valor {
-  font-size: 18px;
+.financeiro-stat-valor {
+  font-size: 21px;
   font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.15;
+}
+
+.financeiro-stat-valor-grande {
+  font-size: 30px;
+  background: linear-gradient(90deg, var(--text-primary), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.financeiro-stat-valor-grande.financeiro-margem-negativa {
+  background: none;
+  -webkit-background-clip: unset;
+  background-clip: unset;
+}
+
+.financeiro-stat-sub {
+  font-size: 12px;
+  color: var(--text-muted);
 }
 
 .financeiro-feed {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .financeiro-linha {
@@ -3033,6 +3072,17 @@
   border: 1px solid var(--border);
   border-radius: 10px;
   font-size: 13.5px;
+}
+
+.financeiro-linha-header {
+  background: var(--bg-panel-alt);
+  border: none;
+  padding: 8px 16px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 
 .financeiro-linha-data {
@@ -3052,19 +3102,6 @@
   font-size: 11.5px;
   color: var(--text-muted);
   margin-top: 2px;
-}
-
-.financeiro-linha-valor {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.financeiro-linha-label {
-  font-size: 10.5px;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
 }
 
 .financeiro-linha-margem {

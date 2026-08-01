@@ -48,6 +48,9 @@ export function Financeiro() {
 
   const comMargem = vendas?.filter((v) => v.margemContribuicao !== null) ?? [];
   const receitaTotal = vendas?.reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
+  const custoTotalGeral = vendas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
+  const taxaMlTotalGeral = vendas?.reduce((s, v) => s + v.taxaMlTotal, 0) ?? 0;
+  const freteTotalGeral = vendas?.reduce((s, v) => s + (v.freteTotal ?? 0), 0) ?? 0;
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
 
@@ -116,66 +119,78 @@ export function Financeiro() {
       {vendas !== null && (
         <>
           {vendas.length > 0 && (
-            <div className="financeiro-resumo">
-              <div className="financeiro-resumo-item">
-                <span className="financeiro-resumo-label">Receita</span>
-                <span className="financeiro-resumo-valor">{formatCurrency(receitaTotal)}</span>
+            <div className="financeiro-stats">
+              <div className="financeiro-stat-card">
+                <span className="financeiro-stat-label">Receita</span>
+                <span className="financeiro-stat-valor">{formatCurrency(receitaTotal)}</span>
+                <span className="financeiro-stat-sub">{vendas.length} vendas</span>
               </div>
-              <div className="financeiro-resumo-item">
-                <span className="financeiro-resumo-label">Margem de contribuição</span>
-                <span className={`financeiro-resumo-valor ${classeMargem(margemPercentualMedia)}`}>
+              <div className="financeiro-stat-card">
+                <span className="financeiro-stat-label">Custo dos produtos</span>
+                <span className="financeiro-stat-valor">{formatCurrency(custoTotalGeral)}</span>
+              </div>
+              <div className="financeiro-stat-card">
+                <span className="financeiro-stat-label">Taxa Mercado Livre</span>
+                <span className="financeiro-stat-valor">{formatCurrency(taxaMlTotalGeral)}</span>
+              </div>
+              <div className="financeiro-stat-card">
+                <span className="financeiro-stat-label">Frete</span>
+                <span className="financeiro-stat-valor">{formatCurrency(freteTotalGeral)}</span>
+              </div>
+              <div className="financeiro-stat-card financeiro-stat-card-destaque">
+                <span className="financeiro-stat-label">Margem de contribuição</span>
+                <span className={`financeiro-stat-valor financeiro-stat-valor-grande ${classeMargem(margemPercentualMedia)}`}>
                   {formatCurrency(margemTotal)}
-                  {margemPercentualMedia !== null && ` (${margemPercentualMedia.toFixed(1)}%)`}
                 </span>
+                {margemPercentualMedia !== null && (
+                  <span className={`financeiro-stat-sub ${classeMargem(margemPercentualMedia)}`}>
+                    {margemPercentualMedia >= 0 ? "↗" : "↘"} {margemPercentualMedia.toFixed(1)}% da receita
+                  </span>
+                )}
+                {comMargem.length < vendas.length && (
+                  <span className="financeiro-stat-sub">{vendas.length - comMargem.length} sem custo cadastrado</span>
+                )}
               </div>
-              {comMargem.length < vendas.length && (
-                <div className="financeiro-resumo-item">
-                  <span className="financeiro-resumo-label">Sem custo cadastrado</span>
-                  <span className="financeiro-resumo-valor">{vendas.length - comMargem.length} vendas</span>
-                </div>
-              )}
             </div>
           )}
 
           {vendas.length === 0 && <div className="state-message">Nenhuma venda no período selecionado.</div>}
 
-          <div className="financeiro-feed">
-            {vendas.map((v) => (
-              <div key={`${v.orderId}-${v.sku}`} className="financeiro-linha">
-                <div className="financeiro-linha-data">{formatDataHora(v.dataCriacao)}</div>
-                <div className="financeiro-linha-produto">
-                  <div className="financeiro-linha-titulo" title={v.titulo}>
-                    {v.titulo}
-                  </div>
-                  <div className="financeiro-linha-sub">
-                    {v.lojaNome} · {v.sku ?? "sem SKU"} · qtd {v.quantidade}
-                  </div>
-                </div>
-                <div className="financeiro-linha-valor">
-                  <span className="financeiro-linha-label">Receita</span>
-                  {formatCurrency(v.receitaTotal)}
-                </div>
-                <div className="financeiro-linha-valor">
-                  <span className="financeiro-linha-label">Custo</span>
-                  {v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}
-                </div>
-                <div className="financeiro-linha-valor">
-                  <span className="financeiro-linha-label">Taxa ML</span>
-                  {formatCurrency(v.taxaMlTotal)}
-                </div>
-                <div className="financeiro-linha-valor">
-                  <span className="financeiro-linha-label">Frete</span>
-                  {v.freteTotal !== null ? formatCurrency(v.freteTotal) : "—"}
-                </div>
-                <div className={`financeiro-linha-valor financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
-                  <span className="financeiro-linha-label">Margem</span>
-                  {v.margemContribuicao !== null
-                    ? `${formatCurrency(v.margemContribuicao)} (${v.margemPercentual?.toFixed(1)}%)`
-                    : "não cadastrado"}
-                </div>
+          {vendas.length > 0 && (
+            <div className="financeiro-feed">
+              <div className="financeiro-linha financeiro-linha-header">
+                <span>Data</span>
+                <span>Produto</span>
+                <span>Receita</span>
+                <span>Custo</span>
+                <span>Taxa ML</span>
+                <span>Frete</span>
+                <span>Margem</span>
               </div>
-            ))}
-          </div>
+              {vendas.map((v) => (
+                <div key={`${v.orderId}-${v.sku}`} className="financeiro-linha">
+                  <span className="financeiro-linha-data">{formatDataHora(v.dataCriacao)}</span>
+                  <div className="financeiro-linha-produto">
+                    <div className="financeiro-linha-titulo" title={v.titulo}>
+                      {v.titulo}
+                    </div>
+                    <div className="financeiro-linha-sub">
+                      {v.lojaNome} · {v.sku ?? "sem SKU"} · qtd {v.quantidade}
+                    </div>
+                  </div>
+                  <span>{formatCurrency(v.receitaTotal)}</span>
+                  <span>{v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}</span>
+                  <span>{formatCurrency(v.taxaMlTotal)}</span>
+                  <span>{v.freteTotal !== null ? formatCurrency(v.freteTotal) : "—"}</span>
+                  <span className={`financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
+                    {v.margemContribuicao !== null
+                      ? `${formatCurrency(v.margemContribuicao)} (${v.margemPercentual?.toFixed(1)}%)`
+                      : "não cadastrado"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
