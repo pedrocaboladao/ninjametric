@@ -1,45 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { fetchVideosRecentes, fetchCanais, adicionarCanal, removerCanal } from "../api/youtube";
 import type { VideoRecente, CanalYoutube } from "../types/youtube";
 
-// A API oficial do YouTube (sem pacote de tipos instalado) — só o mínimo
-// usado aqui pra criar o player e escutar quando um vídeo termina.
-interface YouTubePlayer {
-  loadVideoById(videoId: string): void;
-  destroy(): void;
-}
-declare global {
-  interface Window {
-    YT?: {
-      Player: new (elementId: string, options: Record<string, unknown>) => YouTubePlayer;
-      PlayerState: { ENDED: number };
-    };
-    onYouTubeIframeAPIReady?: () => void;
-  }
-}
-
-const PLAYER_ELEMENT_ID = "painel-estudo-yt-player";
-
-function carregarApiYoutube(aoCarregar: () => void) {
-  if (window.YT?.Player) {
-    aoCarregar();
-    return;
-  }
-  const anterior = window.onYouTubeIframeAPIReady;
-  window.onYouTubeIframeAPIReady = () => {
-    anterior?.();
-    aoCarregar();
-  };
-  if (!document.querySelector('script[src="https://www.youtube.com/iframe_api"]')) {
-    const script = document.createElement("script");
-    script.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(script);
-  }
-}
-
-function porDataDesc(a: VideoRecente, b: VideoRecente): number {
-  return new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime();
-}
+// Tempo que cada vídeo fica na posição do player antes de revezar pro
+// próximo (thumbs do painel rotacionando).
+const INTERVALO_REVEZAMENTO_MS = 90 * 1000;
 
 export function PainelEstudo() {
   const [videos, setVideos] = useState<VideoRecente[] | null>(null);
@@ -66,57 +31,22 @@ export function PainelEstudo() {
     return () => clearInterval(timer);
   }, []);
 
-  const videosOrdenados = videos ? [...videos].sort(porDataDesc) : null;
+  const videosOrdenados = videos
+    ? [...videos].sort((a, b) => new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime())
+    : null;
+
+  // Revezamento automático: a cada intervalo, avança pro próximo vídeo do
+  // painel (volta pro início ao chegar no fim).
+  useEffect(() => {
+    if (!videosOrdenados || videosOrdenados.length < 2) return;
+    const timer = setInterval(() => {
+      setIndiceAtual((i) => (i + 1) % videosOrdenados.length);
+    }, INTERVALO_REVEZAMENTO_MS);
+    return () => clearInterval(timer);
+  }, [videosOrdenados?.length]);
+
   const videoTocando = videosOrdenados?.[indiceAtual] ?? videosOrdenados?.[0] ?? null;
   const restante = videosOrdenados?.filter((_, i) => i !== indiceAtual) ?? [];
-
-  // Guarda a lista/posição atuais em refs pra o handler do player (registrado
-  // uma única vez na criação do player) sempre enxergar o valor mais recente,
-  // sem precisar recriar o player a cada troca de vídeo.
-  const videosOrdenadosRef = useRef(videosOrdenados);
-  videosOrdenadosRef.current = videosOrdenados;
-  const indiceAtualRef = useRef(indiceAtual);
-  indiceAtualRef.current = indiceAtual;
-
-  function avancarVideo() {
-    const lista = videosOrdenadosRef.current;
-    if (!lista || lista.length === 0) return;
-    setIndiceAtual((indiceAtualRef.current + 1) % lista.length);
-  }
-
-  const playerRef = useRef<YouTubePlayer | null>(null);
-
-  // Cria o player do YouTube uma única vez (assim que tiver o primeiro vídeo)
-  // e depois só troca o vídeo carregado nele — é o que permite detectar o
-  // fim de cada vídeo (onStateChange) e revezar pro próximo automaticamente.
-  useEffect(() => {
-    if (!videoTocando || playerRef.current) return;
-    carregarApiYoutube(() => {
-      if (playerRef.current) return;
-      playerRef.current = new window.YT!.Player(PLAYER_ELEMENT_ID, {
-        videoId: videoTocando.videoId,
-        playerVars: { autoplay: 1 },
-        events: {
-          onStateChange: (e: { data: number }) => {
-            if (e.data === window.YT!.PlayerState.ENDED) avancarVideo();
-          },
-        },
-      });
-    });
-    return () => {
-      playerRef.current?.destroy();
-      playerRef.current = null;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [videoTocando !== null]);
-
-  // Vídeo mudou (revezamento automático ou clique manual): troca só o vídeo
-  // carregado, sem recriar o player.
-  useEffect(() => {
-    if (videoTocando && playerRef.current) {
-      playerRef.current.loadVideoById(videoTocando.videoId);
-    }
-  }, [videoTocando?.videoId]);
 
   async function handleAdicionar(e: React.FormEvent) {
     e.preventDefault();
@@ -188,7 +118,13 @@ export function PainelEstudo() {
           {videoTocando && (
             <>
               <div className="painel-estudo-player">
-                <div id={PLAYER_ELEMENT_ID} />
+                <iframe
+                  key={videoTocando.videoId}
+                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?autoplay=1`}
+                  title={videoTocando.titulo}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
               </div>
               <div className="painel-estudo-player-titulo" title={videoTocando.titulo}>
                 {videoTocando.titulo}
