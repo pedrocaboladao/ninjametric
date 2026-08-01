@@ -148,7 +148,7 @@ export function PainelEstudo() {
                 <iframe
                   id={IFRAME_ID}
                   key={videoTocando.videoId}
-                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?autoplay=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
+                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
                   title={videoTocando.titulo}
                   onLoad={aoCarregarIframe}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
