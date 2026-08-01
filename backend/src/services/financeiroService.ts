@@ -1,7 +1,7 @@
 import { listLojas } from "./tokenStore";
 import { searchOrders, getCustoFreteDoEnvio, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
-import { janelaUltimosDias } from "./dateUtils";
+import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 const DIAS_JANELA = 7;
@@ -43,7 +43,9 @@ const cache = new Map<string, { data: VendaFinanceira[]; expiraEm: number }>();
 
 export async function listarVendasFinanceiras(
   lojaIdFiltro?: number,
-  lojasPermitidas?: number[]
+  lojasPermitidas?: number[],
+  dataInicio?: string,
+  dataFim?: string
 ): Promise<VendaFinanceira[]> {
   const lojas = (await listLojas()).filter(
     (l) =>
@@ -52,16 +54,16 @@ export async function listarVendasFinanceiras(
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
 
-  const chaveCache = lojas
+  const chaveCache = `${lojas
     .map((l) => l.id)
     .sort((a, b) => a - b)
-    .join(",");
+    .join(",")}|${dataInicio ?? ""}|${dataFim ?? ""}`;
   const emCache = cache.get(chaveCache);
   if (emCache && emCache.expiraEm > Date.now()) {
     return emCache.data;
   }
 
-  const janela = janelaUltimosDias(DIAS_JANELA);
+  const janela = dataInicio && dataFim ? janelaEntre(dataInicio, dataFim) : janelaUltimosDias(DIAS_JANELA);
 
   const [produtos, ordersPorLoja] = await Promise.all([
     listarProdutos(),

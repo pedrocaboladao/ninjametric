@@ -57,6 +57,18 @@ export function janelaOntemMesmoHorario(): DiaJanela {
   };
 }
 
+// Constrói uma janela a partir de duas datas escolhidas pelo usuário
+// ("YYYY-MM-DD", como vem de um <input type="date">) — do início do primeiro
+// dia até o fim do último.
+export function janelaEntre(dataInicio: string, dataFim: string): DiaJanela {
+  const [yi, mi, di] = dataInicio.split("-").map(Number);
+  const [yf, mf, df] = dataFim.split("-").map(Number);
+  return {
+    inicioDia: brIso(yi, mi, di, 0, 0, 0),
+    agora: brIso(yf, mf, df, 23, 59, 59),
+  };
+}
+
 export function janelaUltimosDias(dias: number): DiaJanela {
   const now = brNowParts();
   const inicio = new Date(Date.UTC(now.year, now.month - 1, now.day));

@@ -2965,6 +2965,30 @@
   max-width: 560px;
 }
 
+.financeiro-filtros {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.financeiro-filtro-datas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.financeiro-filtro-datas input[type="date"] {
+  width: auto;
+}
+
+.financeiro-btn-hoje {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
 .financeiro-resumo {
   display: flex;
   gap: 24px;

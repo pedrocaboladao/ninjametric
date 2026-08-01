@@ -11,23 +11,40 @@ function classeMargem(margemPercentual: number | null): string {
   return "financeiro-margem-positiva";
 }
 
+function dataISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function hojeISO(): string {
+  return dataISO(new Date());
+}
+
+function diasAtrasISO(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return dataISO(d);
+}
+
 export function Financeiro() {
   const [vendas, setVendas] = useState<VendaFinanceira[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
+  const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
+  const [dataFim, setDataFim] = useState(() => hojeISO());
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
   }, []);
 
   useEffect(() => {
+    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
     setVendas(null);
     setErro(null);
-    fetchVendasFinanceiras(lojaFiltro)
+    fetchVendasFinanceiras(lojaFiltro, dataInicio, dataFim)
       .then(setVendas)
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."));
-  }, [lojaFiltro]);
+  }, [lojaFiltro, dataInicio, dataFim]);
 
   const comMargem = vendas?.filter((v) => v.margemContribuicao !== null) ?? [];
   const receitaTotal = vendas?.reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
@@ -41,26 +58,56 @@ export function Financeiro() {
           <span className="painel-eyebrow">Financeiro</span>
           <h1>Feed de vendas</h1>
           <p className="painel-sub">
-            Últimos 7 dias — receita, custo do produto, comissão do Mercado Livre e frete por venda. Não inclui
-            custo fixo (aluguel, salários etc.).
+            Receita, custo do produto, comissão do Mercado Livre e frete por venda. Não inclui custo fixo (aluguel,
+            salários etc.).
           </p>
         </div>
-        <select
-          className="dashboard-select"
-          value={lojaFiltro}
-          onChange={(e) => {
-            const valor = e.target.value;
-            setLojaFiltro(valor === "todas" || valor === "minhas" ? valor : Number(valor));
-          }}
-        >
-          <option value="todas">Todas as lojas</option>
-          <option value="minhas">Minhas lojas</option>
-          {lojas.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.nome}
-            </option>
-          ))}
-        </select>
+        <div className="financeiro-filtros">
+          <div className="financeiro-filtro-datas">
+            <input
+              type="date"
+              className="dashboard-select"
+              value={dataInicio}
+              max={dataFim}
+              onChange={(e) => setDataInicio(e.target.value)}
+            />
+            <span>até</span>
+            <input
+              type="date"
+              className="dashboard-select"
+              value={dataFim}
+              min={dataInicio}
+              max={hojeISO()}
+              onChange={(e) => setDataFim(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-responder financeiro-btn-hoje"
+              onClick={() => {
+                setDataInicio(hojeISO());
+                setDataFim(hojeISO());
+              }}
+            >
+              Hoje
+            </button>
+          </div>
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => {
+              const valor = e.target.value;
+              setLojaFiltro(valor === "todas" || valor === "minhas" ? valor : Number(valor));
+            }}
+          >
+            <option value="todas">Todas as lojas</option>
+            <option value="minhas">Minhas lojas</option>
+            {lojas.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
@@ -90,7 +137,7 @@ export function Financeiro() {
             </div>
           )}
 
-          {vendas.length === 0 && <div className="state-message">Nenhuma venda nos últimos 7 dias.</div>}
+          {vendas.length === 0 && <div className="state-message">Nenhuma venda no período selecionado.</div>}
 
           <div className="financeiro-feed">
             {vendas.map((v) => (
