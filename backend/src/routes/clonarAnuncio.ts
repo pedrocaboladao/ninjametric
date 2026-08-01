@@ -1,9 +1,49 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar o 403 do endpoint de ativação de envios flex.
+clonarAnuncioRouter.get("/debug-flex", async (req, res) => {
+  const itemId = String(req.query.itemId);
+  const lojaId = Number(req.query.lojaId);
+  const token = await getValidAccessToken(lojaId);
+
+  const respostas: Record<string, unknown> = {};
+
+  // 1) Como está o shipping do item já criado?
+  try {
+    const { data } = await axios.get(`https://api.mercadolibre.com/items/${itemId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    respostas.shipping = data.shipping;
+    respostas.site_id = data.site_id;
+  } catch (err: any) {
+    respostas.erroBuscarItem = err.message;
+  }
+
+  // 2) Tenta ativar flex e captura o erro completo (headers inclusive).
+  try {
+    const { data } = await axios.post(
+      `https://api.mercadolibre.com/sites/MLB/shipping/selfservice/items/${itemId}`,
+      {},
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    respostas.flexAtivado = data;
+  } catch (err: any) {
+    respostas.erroFlex = {
+      message: err.message,
+      status: err.response?.status,
+      headers: err.response?.headers,
+      data: typeof err.response?.data === "string" ? err.response.data.slice(0, 300) : err.response?.data,
+    };
+  }
+
+  res.json(respostas);
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
