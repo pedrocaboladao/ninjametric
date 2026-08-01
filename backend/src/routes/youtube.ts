@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { adicionarCanal, listarCanais, removerCanal, listarVideosRecentes } from "../services/youtubeService";
+import { requireAdmin } from "../middleware/requireAuth";
 
 export const youtubeRouter = Router();
 
@@ -13,7 +14,7 @@ youtubeRouter.get("/canais", async (_req, res) => {
   }
 });
 
-youtubeRouter.post("/canais", async (req, res) => {
+youtubeRouter.post("/canais", requireAdmin, async (req, res) => {
   const { url } = req.body;
   if (typeof url !== "string" || !url.trim()) {
     res.status(400).json({ error: "Informe o link do canal." });
@@ -30,7 +31,7 @@ youtubeRouter.post("/canais", async (req, res) => {
   }
 });
 
-youtubeRouter.delete("/canais/:id", async (req, res) => {
+youtubeRouter.delete("/canais/:id", requireAdmin, async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Id inválido." });

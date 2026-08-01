@@ -4,7 +4,11 @@ import type { VideoRecente, CanalYoutube } from "../types/youtube";
 
 const IFRAME_ID = "painel-estudo-yt-iframe";
 
-export function PainelEstudo() {
+interface Props {
+  podeGerenciarCanais: boolean;
+}
+
+export function PainelEstudo({ podeGerenciarCanais }: Props) {
   const [videos, setVideos] = useState<VideoRecente[] | null>(null);
   const [canais, setCanais] = useState<CanalYoutube[]>([]);
   const [gerenciando, setGerenciando] = useState(false);
@@ -103,12 +107,14 @@ export function PainelEstudo() {
           <span className="painel-eyebrow">Impetrus TV</span>
           <h2>Últimos vídeos</h2>
         </div>
-        <button className="painel-estudo-gerenciar-btn" onClick={() => setGerenciando((g) => !g)} type="button">
-          {gerenciando ? "Concluído" : "Gerenciar canais"}
-        </button>
+        {podeGerenciarCanais && (
+          <button className="painel-estudo-gerenciar-btn" onClick={() => setGerenciando((g) => !g)} type="button">
+            {gerenciando ? "Concluído" : "Gerenciar canais"}
+          </button>
+        )}
       </div>
 
-      {gerenciando ? (
+      {gerenciando && podeGerenciarCanais ? (
         <div className="painel-estudo-gerenciar">
           <form onSubmit={handleAdicionar} className="painel-estudo-add-form">
             <input

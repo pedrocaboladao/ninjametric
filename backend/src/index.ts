@@ -34,7 +34,7 @@ app.use("/api/lojas", requireAuth, lojasRouter);
 app.use("/api/tarefas", requireAuth, requirePermissao("tarefas"), tarefasRouter);
 app.use("/api/empacotadores", requireAuth, requirePermissao("funcionarios"), empacotadoresRouter);
 app.use("/api/usuarios", requireAuth, requireAdmin, usuariosRouter);
-app.use("/api/youtube", requireAuth, requireAdmin, youtubeRouter);
+app.use("/api/youtube", requireAuth, youtubeRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
