@@ -24,7 +24,13 @@ clonarAnuncioRouter.get("/debug-flex", async (req, res) => {
         const { data: flexData } = await axios.post(
           `https://api.mercadolibre.com/sites/MLB/shipping/selfservice/items/${itemId}`,
           {},
-          { headers: { Authorization: `Bearer ${token}` } }
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+              Accept: "application/json",
+            },
+          }
         );
         respostas.flexAtivado = flexData;
       } catch (err: any) {
@@ -33,6 +39,16 @@ clonarAnuncioRouter.get("/debug-flex", async (req, res) => {
           status: err.response?.status,
           data: typeof err.response?.data === "string" ? err.response.data.slice(0, 300) : err.response?.data,
         };
+      }
+
+      try {
+        const { data: statusData } = await axios.get(
+          `https://api.mercadolibre.com/items`,
+          { headers: { Authorization: `Bearer ${token}` }, params: { ids: itemId, attributes: "status" } }
+        );
+        respostas.statusItem = statusData;
+      } catch (err: any) {
+        respostas.erroStatus = { message: err.message, status: err.response?.status };
       }
 
       res.json(respostas);
