@@ -135,6 +135,25 @@ async function criarItemComFallbacks(
       ajustou = true;
     }
 
+    // GTIN é obrigatório em algumas categorias quando o anúncio não tem
+    // Marca + Modelo cadastrados (só Marca não basta como identificador). Se
+    // o original tinha um GTIN real, reaproveita; se não tinha, não dá pra
+    // inventar um código de barras — precisa avisar em vez de travar num
+    // erro genérico.
+    if (atributoObrigatorioFaltando(err, "GTIN")) {
+      const gtinOriginal = atributosOriginaisCompletos.find((a) => a.id === "GTIN");
+      if (!gtinOriginal) {
+        throw new Error(
+          "Essa categoria exige um identificador de produto (GTIN/código de barras) porque o anúncio original " +
+            "só tem Marca cadastrada, sem Modelo. Não dá pra inventar um código de barras — se você tiver o " +
+            "código real desse produto, me passa que eu incluo; senão, não é possível clonar esse anúncio " +
+            "nessa categoria."
+        );
+      }
+      payload = { ...payload, attributes: [...payload.attributes, gtinOriginal] };
+      ajustou = true;
+    }
+
     if (!ajustou) throw err;
     return createItem(lojaId, payload);
   }
