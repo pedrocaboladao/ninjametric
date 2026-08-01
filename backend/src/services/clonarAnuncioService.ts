@@ -91,6 +91,31 @@ function removerCubagem(atributos: MlAttribute[]): MlAttribute[] {
   return atributos.filter((a) => !ATRIBUTOS_CUBAGEM.includes(a.id));
 }
 
+// Dígito verificador padrão EAN-13/GTIN-13 (GS1 General Specifications).
+function calcularDigitoVerificadorEan13(doze: string): number {
+  let soma = 0;
+  for (let i = 0; i < 12; i++) {
+    soma += Number(doze[i]) * (i % 2 === 0 ? 1 : 3);
+  }
+  const resto = soma % 10;
+  return resto === 0 ? 0 : 10 - resto;
+}
+
+// Gera um GTIN-13 válido (dígito verificador correto) dentro da faixa que a
+// própria GS1 reserva pra uso interno/restrito de empresas (prefixo "02...",
+// nunca atribuída a produto real de ninguém) — evita colidir com o código
+// de barras de outra empresa. Determinístico a partir de uma chave (SKU/
+// título do produto), pra não gerar o mesmo código pra produtos diferentes.
+function gerarGtinInterno(chave: string): string {
+  let hash = 0;
+  for (let i = 0; i < chave.length; i++) {
+    hash = (hash * 31 + chave.charCodeAt(i)) >>> 0;
+  }
+  const dezDigitos = String(hash).padStart(10, "0").slice(-10);
+  const doze = `02${dezDigitos}`;
+  return doze + calcularDigitoVerificadorEan13(doze);
+}
+
 // Anúncios antigos/categorias diferentes têm exigências diferentes: algumas
 // recusam reaproveitar o GTIN do original (já usado em outro anúncio),
 // outras exigem atributos que o anúncio antigo nunca teve (ex.: declaração
@@ -135,24 +160,23 @@ async function criarItemComFallbacks(
       ajustou = true;
     }
 
-    // GTIN é obrigatório em algumas categorias quando o anúncio não tem
-    // Marca + Modelo cadastrados (só Marca não basta como identificador). Se
-    // o original tinha um GTIN real, reaproveita. Se não tinha, em vez de
-    // inventar um código de barras (que pode colidir com o produto real de
-    // outra empresa), preenche o "Modelo" — campo de texto livre, sem
-    // validação contra catálogo — com o SKU do produto (ou o título, se não
-    // tiver SKU). Marca + Modelo já satisfaz a exigência de identificador
-    // sem nenhum risco de conflito.
+    // GTIN obrigatório e faltando: se o original tinha um GTIN real,
+    // reaproveita. Se não tinha, gera um GTIN-13 válido dentro da faixa
+    // reservada da GS1 pra uso interno (nunca atribuída a produto real de
+    // ninguém) — decisão explícita do dono das lojas, ciente do risco.
     if (atributoObrigatorioFaltando(err, "GTIN")) {
       const gtinOriginal = atributosOriginaisCompletos.find((a) => a.id === "GTIN");
       if (gtinOriginal) {
         payload = { ...payload, attributes: [...payload.attributes, gtinOriginal] };
       } else {
-        const sku = atributosOriginaisCompletos.find((a) => a.id === "SELLER_SKU")?.value_name;
-        const modelo = sku || payload.title?.slice(0, 60) || "Padrão";
+        // Inclui loja + título/família na chave pra não gerar o mesmo GTIN
+        // ao clonar o mesmo produto em lojas diferentes ou em várias cópias.
+        const sku = atributosOriginaisCompletos.find((a) => a.id === "SELLER_SKU")?.value_name ?? "";
+        const chave = `${lojaId}|${sku}|${payload.title ?? payload.family_name ?? payload.category_id}`;
+        const gtinGerado = gerarGtinInterno(chave);
         payload = {
           ...payload,
-          attributes: [...payload.attributes.filter((a) => a.id !== "MODEL"), { id: "MODEL", value_name: modelo }],
+          attributes: [...payload.attributes.filter((a) => a.id !== "GTIN"), { id: "GTIN", value_name: gtinGerado }],
         };
       }
       ajustou = true;
