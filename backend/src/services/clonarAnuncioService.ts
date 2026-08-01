@@ -137,20 +137,24 @@ async function criarItemComFallbacks(
 
     // GTIN é obrigatório em algumas categorias quando o anúncio não tem
     // Marca + Modelo cadastrados (só Marca não basta como identificador). Se
-    // o original tinha um GTIN real, reaproveita; se não tinha, não dá pra
-    // inventar um código de barras — precisa avisar em vez de travar num
-    // erro genérico.
+    // o original tinha um GTIN real, reaproveita. Se não tinha, em vez de
+    // inventar um código de barras (que pode colidir com o produto real de
+    // outra empresa), preenche o "Modelo" — campo de texto livre, sem
+    // validação contra catálogo — com o SKU do produto (ou o título, se não
+    // tiver SKU). Marca + Modelo já satisfaz a exigência de identificador
+    // sem nenhum risco de conflito.
     if (atributoObrigatorioFaltando(err, "GTIN")) {
       const gtinOriginal = atributosOriginaisCompletos.find((a) => a.id === "GTIN");
-      if (!gtinOriginal) {
-        throw new Error(
-          "Essa categoria exige um identificador de produto (GTIN/código de barras) porque o anúncio original " +
-            "só tem Marca cadastrada, sem Modelo. Não dá pra inventar um código de barras — se você tiver o " +
-            "código real desse produto, me passa que eu incluo; senão, não é possível clonar esse anúncio " +
-            "nessa categoria."
-        );
+      if (gtinOriginal) {
+        payload = { ...payload, attributes: [...payload.attributes, gtinOriginal] };
+      } else {
+        const sku = atributosOriginaisCompletos.find((a) => a.id === "SELLER_SKU")?.value_name;
+        const modelo = sku || payload.title?.slice(0, 60) || "Padrão";
+        payload = {
+          ...payload,
+          attributes: [...payload.attributes.filter((a) => a.id !== "MODEL"), { id: "MODEL", value_name: modelo }],
+        };
       }
-      payload = { ...payload, attributes: [...payload.attributes, gtinOriginal] };
       ajustou = true;
     }
 
