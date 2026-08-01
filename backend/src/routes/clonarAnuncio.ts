@@ -1,9 +1,37 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: testar se dá pra puxar dados de Product Ads (publicidade) com o
+// token que já temos, sem precisar de escopo/re-autorização extra.
+clonarAnuncioRouter.get("/debug-ads", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+
+  try {
+    const { data: advertisers } = await axios.get("https://api.mercadolibre.com/advertising/advertisers", {
+      headers: { Authorization: `Bearer ${token}`, "api-version": "2" },
+      params: { product_id: "PADS" },
+    });
+    res.json({ loja: loja.nome, advertisers });
+  } catch (err: any) {
+    res.json({
+      loja: loja.nome,
+      erro: err.message,
+      status: err.response?.status,
+      data: err.response?.data,
+    });
+  }
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
