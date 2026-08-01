@@ -79,29 +79,66 @@ export interface VideoRecente {
   link: string;
 }
 
+interface EntradaFeed {
+  videoId: string;
+  titulo: string;
+  thumbnail: string;
+  publicadoEm: string;
+}
+
+function parseEntradasFeed(xml: string): EntradaFeed[] {
+  const blocos = xml.match(/<entry>([\s\S]*?)<\/entry>/g) ?? [];
+  return blocos
+    .map((bloco) => ({
+      videoId: bloco.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1] ?? "",
+      titulo: decodeXmlEntities(bloco.match(/<title>([^<]+)<\/title>/)?.[1] ?? ""),
+      thumbnail: bloco.match(/<media:thumbnail url="([^"]+)"/)?.[1] ?? "",
+      publicadoEm: bloco.match(/<published>([^<]+)<\/published>/)?.[1] ?? "",
+    }))
+    .filter((e) => e.videoId && e.titulo);
+}
+
+// O próprio YouTube considera Short qualquer vídeo de até 3 minutos.
+const LIMITE_SHORT_SEGUNDOS = 180;
+
+// O feed RSS não informa a duração — só dá pra saber lendo a página de fato
+// (o player embute "lengthSeconds" no HTML).
+async function buscarDuracaoSegundos(videoId: string): Promise<number | null> {
+  try {
+    const { data: html } = await axios.get<string>(`https://www.youtube.com/watch?v=${videoId}`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    const duracao = html.match(/"lengthSeconds":"(\d+)"/)?.[1];
+    return duracao ? Number(duracao) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Não queremos shorts no painel — procura o vídeo longo mais recente do
+// canal, pulando os shorts mais novos que vierem antes dele no feed.
 async function buscarUltimoVideo(canal: CanalYoutube): Promise<VideoRecente | null> {
   try {
     const { data: xml } = await axios.get<string>(
       `https://www.youtube.com/feeds/videos.xml?channel_id=${canal.channelId}`
     );
-    const entry = xml.match(/<entry>([\s\S]*?)<\/entry>/)?.[1];
-    if (!entry) return null;
+    const entradas = parseEntradasFeed(xml);
 
-    const videoId = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1];
-    const titulo = entry.match(/<title>([^<]+)<\/title>/)?.[1];
-    const thumbnail = entry.match(/<media:thumbnail url="([^"]+)"/)?.[1];
-    const publicadoEm = entry.match(/<published>([^<]+)<\/published>/)?.[1];
-    if (!videoId || !titulo) return null;
+    for (const entrada of entradas) {
+      const duracaoSegundos = await buscarDuracaoSegundos(entrada.videoId);
+      if (duracaoSegundos === null || duracaoSegundos <= LIMITE_SHORT_SEGUNDOS) continue;
 
-    return {
-      canalId: canal.id,
-      canalNome: canal.nome,
-      videoId,
-      titulo: decodeXmlEntities(titulo),
-      thumbnail: thumbnail ?? "",
-      publicadoEm: publicadoEm ?? "",
-      link: `https://www.youtube.com/watch?v=${videoId}`,
-    };
+      return {
+        canalId: canal.id,
+        canalNome: canal.nome,
+        videoId: entrada.videoId,
+        titulo: entrada.titulo,
+        thumbnail: entrada.thumbnail,
+        publicadoEm: entrada.publicadoEm,
+        link: `https://www.youtube.com/watch?v=${entrada.videoId}`,
+      };
+    }
+    return null;
   } catch {
     return null;
   }
