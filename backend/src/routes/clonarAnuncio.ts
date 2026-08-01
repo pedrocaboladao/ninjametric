@@ -17,12 +17,27 @@ clonarAnuncioRouter.get("/debug-ads", async (req, res) => {
   }
   const token = await getValidAccessToken(loja.id);
 
+  const itemId = String(req.query.itemId ?? "");
+
   try {
     const { data: advertisers } = await axios.get("https://api.mercadolibre.com/advertising/advertisers", {
       headers: { Authorization: `Bearer ${token}`, "api-version": "2" },
       params: { product_id: "PADS" },
     });
-    res.json({ loja: loja.nome, advertisers });
+
+    let adItem: unknown = null;
+    if (itemId) {
+      try {
+        const { data } = await axios.get(`https://api.mercadolibre.com/advertising/MLB/product_ads/ads/${itemId}`, {
+          headers: { Authorization: `Bearer ${token}`, "api-version": "2" },
+        });
+        adItem = data;
+      } catch (err: any) {
+        adItem = { erro: err.message, status: err.response?.status, data: err.response?.data };
+      }
+    }
+
+    res.json({ loja: loja.nome, advertisers, adItem });
   } catch (err: any) {
     res.json({
       loja: loja.nome,
