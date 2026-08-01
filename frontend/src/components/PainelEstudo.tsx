@@ -9,6 +9,7 @@ export function PainelEstudo() {
   const [novoUrl, setNovoUrl] = useState("");
   const [adicionando, setAdicionando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [videoSelecionadoId, setVideoSelecionadoId] = useState<string | null>(null);
 
   async function carregar() {
     try {
@@ -50,6 +51,10 @@ export function PainelEstudo() {
   const videosOrdenados = videos
     ? [...videos].sort((a, b) => new Date(b.publicadoEm).getTime() - new Date(a.publicadoEm).getTime())
     : null;
+
+  const videoTocando =
+    videosOrdenados?.find((v) => v.videoId === videoSelecionadoId) ?? videosOrdenados?.[0] ?? null;
+  const restante = videosOrdenados?.filter((v) => v.videoId !== videoTocando?.videoId) ?? [];
 
   return (
     <div className="painel painel-estudo">
@@ -97,25 +102,30 @@ export function PainelEstudo() {
               Nenhum canal configurado — clique em "Gerenciar canais" pra adicionar o primeiro.
             </div>
           )}
-          {videosOrdenados && videosOrdenados.length > 0 && (
+          {videoTocando && (
             <>
               <div className="painel-estudo-player">
                 <iframe
-                  key={videosOrdenados[0].videoId}
-                  src={`https://www.youtube.com/embed/${videosOrdenados[0].videoId}`}
-                  title={videosOrdenados[0].titulo}
+                  key={videoTocando.videoId}
+                  src={`https://www.youtube.com/embed/${videoTocando.videoId}?autoplay=1`}
+                  title={videoTocando.titulo}
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                   allowFullScreen
                 />
               </div>
-              <div className="painel-estudo-player-titulo" title={videosOrdenados[0].titulo}>
-                {videosOrdenados[0].titulo}
+              <div className="painel-estudo-player-titulo" title={videoTocando.titulo}>
+                {videoTocando.titulo}
               </div>
-              <div className="painel-estudo-player-canal">{videosOrdenados[0].canalNome}</div>
+              <div className="painel-estudo-player-canal">{videoTocando.canalNome}</div>
             </>
           )}
-          {videosOrdenados?.slice(1).map((v) => (
-            <a key={v.videoId} className="painel-estudo-video-item" href={v.link} target="_blank" rel="noreferrer">
+          {restante.map((v) => (
+            <button
+              key={v.videoId}
+              className="painel-estudo-video-item"
+              onClick={() => setVideoSelecionadoId(v.videoId)}
+              type="button"
+            >
               {v.thumbnail ? (
                 <img className="painel-estudo-thumb" src={v.thumbnail} alt="" loading="lazy" />
               ) : (
@@ -127,7 +137,7 @@ export function PainelEstudo() {
                 </div>
                 <div className="painel-estudo-video-canal">{v.canalNome}</div>
               </div>
-            </a>
+            </button>
           ))}
         </div>
       )}

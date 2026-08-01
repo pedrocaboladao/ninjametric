@@ -1702,7 +1702,13 @@
   border-radius: 10px;
   text-decoration: none;
   color: inherit;
+  border: none;
   border-bottom: 1px solid var(--border);
+  background: none;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
 }
 
 .painel-estudo-video-item:last-child {
