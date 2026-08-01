@@ -91,6 +91,7 @@ clonarAnuncioRouter.get("/debug-frete", async (req, res) => {
         try {
           const { data } = await axios.get(`https://api.mercadolibre.com/items/${itemId}/shipping_options`, {
             headers: { Authorization: `Bearer ${token}` },
+            params: { zip_code: "01310100" },
           });
           opcoesFrete = data;
         } catch (err: any) {
