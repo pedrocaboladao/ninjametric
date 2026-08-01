@@ -41,8 +41,8 @@ export function Financeiro() {
           <span className="painel-eyebrow">Financeiro</span>
           <h1>Feed de vendas</h1>
           <p className="painel-sub">
-            Últimos 7 dias — receita, custo do produto e comissão do Mercado Livre por venda. Não inclui custo fixo
-            (aluguel, salários etc.).
+            Últimos 7 dias — receita, custo do produto, comissão do Mercado Livre e frete por venda. Não inclui
+            custo fixo (aluguel, salários etc.).
           </p>
         </div>
         <select
@@ -115,6 +115,10 @@ export function Financeiro() {
                 <div className="financeiro-linha-valor">
                   <span className="financeiro-linha-label">Taxa ML</span>
                   {formatCurrency(v.taxaMlTotal)}
+                </div>
+                <div className="financeiro-linha-valor">
+                  <span className="financeiro-linha-label">Frete</span>
+                  {v.freteTotal !== null ? formatCurrency(v.freteTotal) : "—"}
                 </div>
                 <div className={`financeiro-linha-valor financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
                   <span className="financeiro-linha-label">Margem</span>

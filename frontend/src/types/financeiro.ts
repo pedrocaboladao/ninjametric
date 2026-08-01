@@ -9,6 +9,7 @@ export interface VendaFinanceira {
   receitaTotal: number;
   custoTotal: number | null;
   taxaMlTotal: number;
+  freteTotal: number | null;
   margemContribuicao: number | null;
   margemPercentual: number | null;
 }

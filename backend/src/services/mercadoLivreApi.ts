@@ -24,6 +24,7 @@ export interface MlOrder {
   total_amount: number;
   buyer?: { nickname?: string };
   order_items: MlOrderItem[];
+  shipping?: { id: number };
 }
 
 interface MlOrderSearchResponse {
@@ -119,6 +120,24 @@ export async function getAdsStatus(lojaId: number, itemId: string): Promise<AdsS
       return "sem_ads";
     }
     return "nao_verificado";
+  }
+}
+
+// Custo de frete pago pelo vendedor (list_cost — a mesma referência usada
+// na investigação do frete do clonador). Quando vários pedidos vão no mesmo
+// envio, esse valor não cresce proporcionalmente ao número de pedidos
+// agrupados (confirmado comparando pedidos reais), então é tratado como o
+// custo do próprio pedido, sem tentar dividir entre pedidos agrupados.
+export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): Promise<number | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{ shipping_option?: { list_cost?: number } }>(
+      `${ML_API_BASE}/shipments/${shippingId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    return data.shipping_option?.list_cost ?? null;
+  } catch {
+    return null;
   }
 }
 

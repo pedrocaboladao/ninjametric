@@ -1,5 +1,5 @@
 import { listLojas } from "./tokenStore";
-import { searchOrders, MlOrder } from "./mercadoLivreApi";
+import { searchOrders, getCustoFreteDoEnvio, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias } from "./dateUtils";
 
@@ -17,8 +17,22 @@ export interface VendaFinanceira {
   receitaTotal: number;
   custoTotal: number | null;
   taxaMlTotal: number;
+  freteTotal: number | null;
   margemContribuicao: number | null;
   margemPercentual: number | null;
+}
+
+async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const resultados: R[] = new Array(itens.length);
+  let indice = 0;
+  async function worker() {
+    while (indice < itens.length) {
+      const i = indice++;
+      resultados[i] = await fn(itens[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
+  return resultados;
 }
 
 // Cache curto: é um feed de atividade recente, não precisa reprocessar tudo
@@ -62,34 +76,57 @@ export async function listarVendasFinanceiras(
 
   const custoPorSku = new Map(produtos.map((p) => [p.sku, p.custo]));
 
-  const vendas: VendaFinanceira[] = [];
+  // Pedidos válidos (pagos/confirmados) de todas as lojas, achatados numa
+  // lista só, pra buscar o frete de cada um com paralelismo limitado — sem
+  // isso, uma janela com muitos pedidos ficaria lenta (uma chamada de frete
+  // por pedido, sequencial).
+  const pedidosValidos: { loja: (typeof ordersPorLoja)[number]; order: MlOrder }[] = [];
   for (const l of ordersPorLoja) {
     for (const o of l.orders.filter((x: MlOrder) => STATUS_VALIDOS.has(x.status))) {
-      for (const item of o.order_items) {
-        const sku = item.item.seller_sku ?? null;
-        const custoUnitario = sku !== null ? custoPorSku.get(sku) ?? null : null;
-        const receitaTotal = item.unit_price * item.quantity;
-        const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
-        const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
-        const margemContribuicao = custoTotal !== null ? receitaTotal - custoTotal - taxaMlTotal : null;
-
-        vendas.push({
-          orderId: o.id,
-          dataCriacao: o.date_created,
-          lojaId: l.lojaId,
-          lojaNome: l.lojaNome,
-          titulo: item.item.title,
-          sku,
-          quantidade: item.quantity,
-          receitaTotal,
-          custoTotal,
-          taxaMlTotal,
-          margemContribuicao,
-          margemPercentual: margemContribuicao !== null && receitaTotal > 0 ? (margemContribuicao / receitaTotal) * 100 : null,
-        });
-      }
+      pedidosValidos.push({ loja: l, order: o });
     }
   }
+
+  const fretesPorPedido = await comConcorrenciaLimitada(pedidosValidos, 8, async ({ loja, order }) => {
+    if (!order.shipping?.id) return null;
+    return getCustoFreteDoEnvio(loja.lojaId, order.shipping.id);
+  });
+
+  const vendas: VendaFinanceira[] = [];
+  pedidosValidos.forEach(({ loja, order }, indice) => {
+    const freteDoPedido = fretesPorPedido[indice];
+    // Quando o pedido tem mais de um item, rateia o frete do pedido entre
+    // eles (mesma lógica pedida: dividir o custo do envio entre o que foi
+    // despachado junto).
+    const freteAlocado = freteDoPedido !== null ? freteDoPedido / order.order_items.length : null;
+
+    for (const item of order.order_items) {
+      const sku = item.item.seller_sku ?? null;
+      const custoUnitario = sku !== null ? custoPorSku.get(sku) ?? null : null;
+      const receitaTotal = item.unit_price * item.quantity;
+      const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
+      const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
+      const margemContribuicao =
+        custoTotal !== null ? receitaTotal - custoTotal - taxaMlTotal - (freteAlocado ?? 0) : null;
+
+      vendas.push({
+        orderId: order.id,
+        dataCriacao: order.date_created,
+        lojaId: loja.lojaId,
+        lojaNome: loja.lojaNome,
+        titulo: item.item.title,
+        sku,
+        quantidade: item.quantity,
+        receitaTotal,
+        custoTotal,
+        taxaMlTotal,
+        freteTotal: freteAlocado,
+        margemContribuicao,
+        margemPercentual:
+          margemContribuicao !== null && receitaTotal > 0 ? (margemContribuicao / receitaTotal) * 100 : null,
+      });
+    }
+  });
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
