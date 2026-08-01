@@ -1,9 +1,67 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: checar cubagem/frete real de um item específico (aceita MLB ou MLBU).
+clonarAnuncioRouter.get("/debug-item", async (req, res) => {
+  const idBruto = String(req.query.id ?? "");
+  const userProductMatch = idBruto.match(/MLBU(\d+)/i);
+  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+
+  for (const loja of lojas) {
+    const token = await getValidAccessToken(loja.id);
+    try {
+      let itemId = idBruto;
+      if (userProductMatch) {
+        const { data: busca } = await axios.get(
+          `https://api.mercadolibre.com/users/${loja.ml_user_id}/items/search`,
+          { headers: { Authorization: `Bearer ${token}` }, params: { user_product_id: `MLBU${userProductMatch[1]}` } }
+        );
+        const encontrado = busca.results?.[0];
+        if (!encontrado) continue;
+        itemId = encontrado;
+      }
+
+      const { data: item } = await axios.get(`https://api.mercadolibre.com/items/${itemId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      let opcoesFrete: unknown = null;
+      try {
+        const { data } = await axios.get(`https://api.mercadolibre.com/items/${itemId}/shipping_options`, {
+          headers: { Authorization: `Bearer ${token}` },
+          params: { zip_code: "01310100" },
+        });
+        opcoesFrete = data;
+      } catch (err: any) {
+        opcoesFrete = { erro: err.response?.data ?? err.message };
+      }
+
+      const cubagem = item.attributes?.filter((a: any) =>
+        ["SELLER_PACKAGE_WEIGHT", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH", "SELLER_PACKAGE_LENGTH"].includes(a.id)
+      );
+
+      res.json({
+        loja: loja.nome,
+        itemId,
+        category_id: item.category_id,
+        price: item.price,
+        shipping: item.shipping,
+        cubagem,
+        opcoesFrete,
+      });
+      return;
+    } catch {
+      // não é dessa loja
+    }
+  }
+
+  res.status(404).json({ error: "não encontrado em nenhuma loja" });
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
