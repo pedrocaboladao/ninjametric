@@ -43,14 +43,6 @@ function normalizarSku(sku: string): string {
     .toUpperCase();
 }
 
-// TEMP: correção pontual pra testar/comparar com o sistema externo enquanto
-// o SKU não é corrigido no Mercado Livre (a venda de hoje já saiu com a
-// grafia antiga "RESIFLEX-18KG-MARROM-TELHA", que não está na planilha).
-// Remover depois que a comparação for validada.
-const CUSTO_MANUAL_TEMP: Record<string, number> = {
-  "RESIFLEX-18KG-MARROM-TELHA": 110,
-};
-
 export interface VendaFinanceira {
   orderId: number;
   itemId: string;
@@ -182,8 +174,7 @@ export async function listarVendasFinanceiras(
 
     for (const item of order.order_items) {
       const sku = item.item.seller_sku ?? null;
-      const custoUnitario =
-        sku !== null ? CUSTO_MANUAL_TEMP[sku] ?? custoPorSku.get(normalizarSku(sku)) ?? null : null;
+      const custoUnitario = sku !== null ? custoPorSku.get(normalizarSku(sku)) ?? null : null;
       const receitaTotal = item.unit_price * item.quantity;
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
