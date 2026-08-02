@@ -1,9 +1,36 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar divergência de frete comparando com sistema externo.
+clonarAnuncioRouter.get("/debug-pedido-completo", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const orderId = String(req.query.orderId ?? "");
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+
+  const { data: order } = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  let shipment: unknown = null;
+  if (order.shipping?.id) {
+    const { data } = await axios.get(`https://api.mercadolibre.com/shipments/${order.shipping.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    shipment = data;
+  }
+
+  res.json({ order, shipment });
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
