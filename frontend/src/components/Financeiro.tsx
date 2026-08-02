@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchVendasFinanceiras } from "../api/financeiro";
 import { fetchLojas, fetchLojasTodas, atualizarImpostoLoja, type Loja, type LojaTodas } from "../api/lojas";
-import type { VendaFinanceira } from "../types/financeiro";
+import type { VendaFinanceira, ResumoPedidos } from "../types/financeiro";
 import type { Usuario } from "../types/usuarios";
 import { formatCurrency, formatDataHora } from "../utils/format";
 
@@ -152,8 +152,54 @@ function GerenciarImpostos({ onFechar }: { onFechar: () => void }) {
   );
 }
 
+interface FatiaDonut {
+  label: string;
+  valor: number;
+  cor: string;
+}
+
+function DonutFinanceiro({ fatias, total }: { fatias: FatiaDonut[]; total: number }) {
+  if (total <= 0) return null;
+
+  let acumulado = 0;
+  const stops = fatias
+    .filter((f) => f.valor > 0)
+    .map((f) => {
+      const inicio = (acumulado / total) * 360;
+      acumulado += f.valor;
+      const fim = (acumulado / total) * 360;
+      return `${f.cor} ${inicio}deg ${fim}deg`;
+    });
+
+  return (
+    <div className="financeiro-donut-card">
+      <span className="financeiro-stat-label">Representação gráfica</span>
+      <div className="financeiro-donut-corpo">
+        <div className="financeiro-donut" style={{ background: `conic-gradient(${stops.join(", ")})` }}>
+          <div className="financeiro-donut-furo" />
+        </div>
+        <div className="financeiro-donut-legenda">
+          {fatias
+            .filter((f) => f.valor > 0)
+            .map((f) => (
+              <div key={f.label} className="financeiro-donut-item">
+                <i className="financeiro-donut-dot" style={{ background: f.cor }} />
+                <span>{f.label}</span>
+                <b>{((f.valor / total) * 100).toFixed(1)}%</b>
+              </div>
+            ))}
+        </div>
+      </div>
+      <p className="financeiro-donut-nota">
+        * O frete pago pelo comprador não entra nesse cálculo (não é custo da loja).
+      </p>
+    </div>
+  );
+}
+
 export function Financeiro({ usuario }: Props) {
   const [vendas, setVendas] = useState<VendaFinanceira[] | null>(null);
+  const [resumoPedidos, setResumoPedidos] = useState<ResumoPedidos | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -164,6 +210,9 @@ export function Financeiro({ usuario }: Props) {
     chave: "dataCriacao",
     direcao: -1,
   });
+  const [filtroPedido, setFiltroPedido] = useState("");
+  const [filtroTitulo, setFiltroTitulo] = useState("");
+  const [filtroSku, setFiltroSku] = useState("");
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
@@ -172,9 +221,13 @@ export function Financeiro({ usuario }: Props) {
   useEffect(() => {
     if (!dataInicio || !dataFim || dataInicio > dataFim) return;
     setVendas(null);
+    setResumoPedidos(null);
     setErro(null);
     fetchVendasFinanceiras(lojaFiltro, dataInicio, dataFim)
-      .then(setVendas)
+      .then((r) => {
+        setVendas(r.vendas);
+        setResumoPedidos(r.resumoPedidos);
+      })
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."));
   }, [lojaFiltro, dataInicio, dataFim]);
 
@@ -184,19 +237,41 @@ export function Financeiro({ usuario }: Props) {
     );
   }
 
-  const vendasOrdenadas = useMemo(() => {
+  const vendasFiltradas = useMemo(() => {
     if (!vendas) return null;
-    return [...vendas].sort((a, b) => comparar(a, b, ordenacao.chave, ordenacao.direcao));
-  }, [vendas, ordenacao]);
+    const pedido = filtroPedido.trim();
+    const titulo = filtroTitulo.trim().toLowerCase();
+    const sku = filtroSku.trim().toLowerCase();
+    return vendas.filter(
+      (v) =>
+        (!pedido || String(v.orderId).includes(pedido) || v.itemId.toLowerCase().includes(pedido.toLowerCase())) &&
+        (!titulo || v.titulo.toLowerCase().includes(titulo)) &&
+        (!sku || (v.sku ?? "").toLowerCase().includes(sku))
+    );
+  }, [vendas, filtroPedido, filtroTitulo, filtroSku]);
 
-  const comMargem = vendas?.filter((v) => v.margemContribuicao !== null) ?? [];
-  const receitaTotal = vendas?.reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
-  const custoTotalGeral = vendas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
-  const taxaMlTotalGeral = vendas?.reduce((s, v) => s + v.taxaMlTotal, 0) ?? 0;
-  const freteVendedorTotalGeral = vendas?.reduce((s, v) => s + (v.freteVendedorTotal ?? 0), 0) ?? 0;
-  const impostoTotalGeral = vendas?.reduce((s, v) => s + v.impostoTotal, 0) ?? 0;
+  const vendasOrdenadas = useMemo(() => {
+    if (!vendasFiltradas) return null;
+    return [...vendasFiltradas].sort((a, b) => comparar(a, b, ordenacao.chave, ordenacao.direcao));
+  }, [vendasFiltradas, ordenacao]);
+
+  const comMargem = vendasFiltradas?.filter((v) => v.margemContribuicao !== null) ?? [];
+  const receitaTotal = vendasFiltradas?.reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
+  const custoTotalGeral = vendasFiltradas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
+  const taxaMlTotalGeral = vendasFiltradas?.reduce((s, v) => s + v.taxaMlTotal, 0) ?? 0;
+  const freteVendedorTotalGeral = vendasFiltradas?.reduce((s, v) => s + (v.freteVendedorTotal ?? 0), 0) ?? 0;
+  const freteCompradorTotalGeral = vendasFiltradas?.reduce((s, v) => s + (v.freteCompradorTotal ?? 0), 0) ?? 0;
+  const impostoTotalGeral = vendasFiltradas?.reduce((s, v) => s + v.impostoTotal, 0) ?? 0;
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
+  const semCustoCadastrado = (vendasFiltradas?.length ?? 0) - comMargem.length;
+  const naoCalculadoDonut = Math.max(
+    0,
+    receitaTotal - (custoTotalGeral + impostoTotalGeral + taxaMlTotalGeral + freteVendedorTotalGeral + margemTotal)
+  );
+
+  const ticketMedioVenda = vendasFiltradas && vendasFiltradas.length > 0 ? receitaTotal / vendasFiltradas.length : null;
+  const ticketMedioMargem = comMargem.length > 0 ? margemTotal / comMargem.length : null;
 
   return (
     <div className="financeiro-page">
@@ -269,54 +344,146 @@ export function Financeiro({ usuario }: Props) {
       {gerenciandoImpostos && usuario.admin && <GerenciarImpostos onFechar={() => setGerenciandoImpostos(false)} />}
 
       {erro && <div className="state-message state-error">{erro}</div>}
-      {!erro && vendas === null && <div className="state-message">Carregando vendas...</div>}
+      {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}
 
       {vendasOrdenadas !== null && (
         <>
-          {vendasOrdenadas.length > 0 && (
-            <div className="financeiro-stats">
+          <div className="financeiro-busca">
+            <input
+              className="clonar-input"
+              placeholder="Nº pedido / MLB"
+              value={filtroPedido}
+              onChange={(e) => setFiltroPedido(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Buscar por título"
+              value={filtroTitulo}
+              onChange={(e) => setFiltroTitulo(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Buscar por SKU"
+              value={filtroSku}
+              onChange={(e) => setFiltroSku(e.target.value)}
+            />
+          </div>
+
+          {vendas && vendas.length > 0 && (
+            <div className="financeiro-cards-cor">
+              <div className="financeiro-card-cor financeiro-card-roxo">
+                <div className="financeiro-card-cor-topo">
+                  <span>Vendas Aprovadas</span>
+                </div>
+                <div className="financeiro-card-cor-corpo">
+                  <span className="financeiro-card-cor-valor">{formatCurrency(receitaTotal)}</span>
+                  <span className="financeiro-card-cor-sub">Faturamento ML</span>
+                </div>
+              </div>
+              <div className="financeiro-card-cor financeiro-card-vermelho">
+                <div className="financeiro-card-cor-topo">
+                  <span>Custo &amp; Imposto</span>
+                </div>
+                <div className="financeiro-card-cor-corpo">
+                  <span className="financeiro-card-cor-valor">{formatCurrency(custoTotalGeral + impostoTotalGeral)}</span>
+                  <div className="financeiro-card-cor-linha">
+                    <span>Custo</span>
+                    <b>{formatCurrency(custoTotalGeral)}</b>
+                  </div>
+                  <div className="financeiro-card-cor-linha">
+                    <span>Imposto</span>
+                    <b>{formatCurrency(impostoTotalGeral)}</b>
+                  </div>
+                </div>
+              </div>
+              <div className="financeiro-card-cor financeiro-card-amarelo">
+                <div className="financeiro-card-cor-topo">
+                  <span>Tarifa de Venda</span>
+                </div>
+                <div className="financeiro-card-cor-corpo">
+                  <span className="financeiro-card-cor-valor">{formatCurrency(taxaMlTotalGeral)}</span>
+                </div>
+              </div>
+              <div className="financeiro-card-cor financeiro-card-azul">
+                <div className="financeiro-card-cor-topo">
+                  <span>Frete Total</span>
+                </div>
+                <div className="financeiro-card-cor-corpo">
+                  <span className="financeiro-card-cor-valor">
+                    {formatCurrency(freteVendedorTotalGeral + freteCompradorTotalGeral)}
+                  </span>
+                  <div className="financeiro-card-cor-linha">
+                    <span>Frete Comprador</span>
+                    <b>{formatCurrency(freteCompradorTotalGeral)}</b>
+                  </div>
+                  <div className="financeiro-card-cor-linha">
+                    <span>Frete Vendedor</span>
+                    <b>{formatCurrency(freteVendedorTotalGeral)}</b>
+                  </div>
+                </div>
+              </div>
+              <div className="financeiro-card-cor financeiro-card-verde">
+                <div className="financeiro-card-cor-topo">
+                  <span>Margem de Contribuição</span>
+                </div>
+                <div className="financeiro-card-cor-corpo">
+                  <span className={`financeiro-card-cor-valor ${classeMargem(margemPercentualMedia)}`}>
+                    {formatCurrency(margemTotal)}
+                  </span>
+                  {margemPercentualMedia !== null && (
+                    <span className="financeiro-card-cor-sub">({margemPercentualMedia.toFixed(2)}%)</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {vendas && vendas.length > 0 && resumoPedidos && (
+            <div className="financeiro-cards-secundarios">
               <div className="financeiro-stat-card">
-                <span className="financeiro-stat-label">Receita</span>
-                <span className="financeiro-stat-valor">{formatCurrency(receitaTotal)}</span>
-                <span className="financeiro-stat-sub">{vendasOrdenadas.length} vendas</span>
+                <span className="financeiro-stat-label">Qtd Vendas Aprovadas</span>
+                <span className="financeiro-stat-valor">{resumoPedidos.pedidosAprovados}</span>
+                <span className="financeiro-stat-sub">
+                  Total: {resumoPedidos.totalPedidos} · Canceladas: {resumoPedidos.pedidosCancelados}
+                </span>
+                {semCustoCadastrado > 0 && (
+                  <span className="financeiro-stat-sub">{semCustoCadastrado} sem custo cadastrado</span>
+                )}
               </div>
               <div className="financeiro-stat-card">
-                <span className="financeiro-stat-label">Custo dos produtos</span>
-                <span className="financeiro-stat-valor">{formatCurrency(custoTotalGeral)}</span>
+                <span className="financeiro-stat-label">Ticket Médio por Venda Aprovada</span>
+                <span className="financeiro-stat-valor">
+                  {ticketMedioVenda !== null ? formatCurrency(ticketMedioVenda) : "—"}
+                </span>
               </div>
               <div className="financeiro-stat-card">
-                <span className="financeiro-stat-label">Taxa Mercado Livre</span>
-                <span className="financeiro-stat-valor">{formatCurrency(taxaMlTotalGeral)}</span>
-              </div>
-              <div className="financeiro-stat-card">
-                <span className="financeiro-stat-label">Frete vendedor</span>
-                <span className="financeiro-stat-valor">{formatCurrency(freteVendedorTotalGeral)}</span>
-              </div>
-              <div className="financeiro-stat-card">
-                <span className="financeiro-stat-label">Imposto</span>
-                <span className="financeiro-stat-valor">{formatCurrency(impostoTotalGeral)}</span>
-              </div>
-              <div className="financeiro-stat-card financeiro-stat-card-destaque">
-                <span className="financeiro-stat-label">Margem de contribuição</span>
-                <span className={`financeiro-stat-valor financeiro-stat-valor-grande ${classeMargem(margemPercentualMedia)}`}>
-                  {formatCurrency(margemTotal)}
+                <span className="financeiro-stat-label">Ticket Médio da Margem de Contribuição</span>
+                <span className={`financeiro-stat-valor ${classeMargem(margemPercentualMedia)}`}>
+                  {ticketMedioMargem !== null ? formatCurrency(ticketMedioMargem) : "—"}
                 </span>
                 {margemPercentualMedia !== null && (
-                  <span className={`financeiro-stat-sub ${classeMargem(margemPercentualMedia)}`}>
-                    {margemPercentualMedia >= 0 ? "↗" : "↘"} {margemPercentualMedia.toFixed(1)}% da receita
-                  </span>
-                )}
-                {comMargem.length < vendasOrdenadas.length && (
-                  <span className="financeiro-stat-sub">
-                    {vendasOrdenadas.length - comMargem.length} sem custo cadastrado
-                  </span>
+                  <span className="financeiro-stat-sub">{margemPercentualMedia.toFixed(2)}%</span>
                 )}
               </div>
             </div>
           )}
 
+          {vendas && vendas.length > 0 && (
+            <DonutFinanceiro
+              total={receitaTotal}
+              fatias={[
+                { label: "Frete Vendedor", valor: freteVendedorTotalGeral, cor: "#38bdf8" },
+                { label: "Tarifa", valor: taxaMlTotalGeral, cor: "#fbbf24" },
+                { label: "Margem Contrib.", valor: Math.max(0, margemTotal), cor: "#4ade80" },
+                { label: "Custo", valor: custoTotalGeral, cor: "#fb923c" },
+                { label: "Imposto", valor: impostoTotalGeral, cor: "#f87171" },
+                { label: "Não calculado", valor: naoCalculadoDonut, cor: "#64748b" },
+              ]}
+            />
+          )}
+
           {vendasOrdenadas.length === 0 && (
-            <div className="state-message">Nenhuma venda no período selecionado.</div>
+            <div className="state-message">Nenhuma venda encontrada com esse filtro.</div>
           )}
 
           {vendasOrdenadas.length > 0 && (

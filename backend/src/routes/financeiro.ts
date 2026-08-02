@@ -21,8 +21,8 @@ financeiroRouter.get("/", async (req, res) => {
 
   if (lojaIdParam === "minhas") {
     try {
-      const vendas = await listarVendasFinanceiras(undefined, usuario.lojas, dataInicio, dataFim);
-      res.json({ vendas });
+      const resultado = await listarVendasFinanceiras(undefined, usuario.lojas, dataInicio, dataFim);
+      res.json(resultado);
     } catch (err) {
       console.error("Erro ao montar feed financeiro:", err);
       res.status(500).json({ error: "Falha ao carregar vendas." });
@@ -39,8 +39,8 @@ financeiroRouter.get("/", async (req, res) => {
   }
 
   try {
-    const vendas = await listarVendasFinanceiras(lojaId, lojasEfetivas(usuario), dataInicio, dataFim);
-    res.json({ vendas });
+    const resultado = await listarVendasFinanceiras(lojaId, lojasEfetivas(usuario), dataInicio, dataFim);
+    res.json(resultado);
   } catch (err) {
     console.error("Erro ao montar feed financeiro:", err);
     res.status(500).json({ error: "Falha ao carregar vendas." });

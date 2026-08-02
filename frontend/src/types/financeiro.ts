@@ -17,3 +17,14 @@ export interface VendaFinanceira {
   margemContribuicao: number | null;
   margemPercentual: number | null;
 }
+
+export interface ResumoPedidos {
+  totalPedidos: number;
+  pedidosAprovados: number;
+  pedidosCancelados: number;
+}
+
+export interface ResultadoFinanceiro {
+  vendas: VendaFinanceira[];
+  resumoPedidos: ResumoPedidos;
+}

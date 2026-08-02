@@ -4,6 +4,7 @@ import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
+const STATUS_CANCELADO = "cancelled";
 const DIAS_JANELA = 7;
 
 export interface VendaFinanceira {
@@ -26,6 +27,20 @@ export interface VendaFinanceira {
   margemPercentual: number | null;
 }
 
+// Contagem de pedidos por status na janela pesquisada — vem do mesmo
+// resultado de busca dos pedidos (só olhamos os já pagos/confirmados pra
+// montar a lista de vendas, mas os outros status já vieram junto).
+export interface ResumoPedidos {
+  totalPedidos: number;
+  pedidosAprovados: number;
+  pedidosCancelados: number;
+}
+
+export interface ResultadoFinanceiro {
+  vendas: VendaFinanceira[];
+  resumoPedidos: ResumoPedidos;
+}
+
 async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const resultados: R[] = new Array(itens.length);
   let indice = 0;
@@ -43,14 +58,14 @@ async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (it
 // a cada requisição, mas também não faz sentido guardar por horas como o
 // diagnóstico de promoções (que é mais "foto do dia").
 const CACHE_TTL_MS = 15 * 60 * 1000;
-const cache = new Map<string, { data: VendaFinanceira[]; expiraEm: number }>();
+const cache = new Map<string, { data: ResultadoFinanceiro; expiraEm: number }>();
 
 export async function listarVendasFinanceiras(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
   dataFim?: string
-): Promise<VendaFinanceira[]> {
+): Promise<ResultadoFinanceiro> {
   const lojas = (await listLojas()).filter(
     (l) =>
       l.ml_user_id !== null &&
@@ -82,6 +97,13 @@ export async function listarVendasFinanceiras(
   ]);
 
   const custoPorSku = new Map(produtos.map((p) => [p.sku, p.custo]));
+
+  const todosOsPedidos = ordersPorLoja.flatMap((l) => l.orders);
+  const resumoPedidos: ResumoPedidos = {
+    totalPedidos: todosOsPedidos.length,
+    pedidosAprovados: todosOsPedidos.filter((o) => STATUS_VALIDOS.has(o.status)).length,
+    pedidosCancelados: todosOsPedidos.filter((o) => o.status === STATUS_CANCELADO).length,
+  };
 
   // Pedidos válidos (pagos/confirmados) de todas as lojas, achatados numa
   // lista só, pra buscar o frete de cada um com paralelismo limitado — sem
@@ -150,6 +172,7 @@ export async function listarVendasFinanceiras(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  cache.set(chaveCache, { data: vendas, expiraEm: Date.now() + CACHE_TTL_MS });
-  return vendas;
+  const resultado: ResultadoFinanceiro = { vendas, resumoPedidos };
+  cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
+  return resultado;
 }
