@@ -204,7 +204,13 @@ export async function listarVendasFinanceiras(
       const receitaTotal = item.unit_price * item.quantity;
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
-      const impostoTotal = receitaTotal * (loja.impostoPercentual / 100);
+      // Arredonda por venda (não só no total da janela) — igual à convenção
+      // do sistema externo. Sem isso, somar as frações exatas de cada venda
+      // e arredondar só o total pode fechar num centavo diferente de somar
+      // cada venda já arredondada (confirmado comparando um dia inteiro:
+      // 731,3971 fecha em R$731,40 somando bruto, mas em R$731,39 somando
+      // cada linha arredondada primeiro).
+      const impostoTotal = arredondarCentavos(receitaTotal * (loja.impostoPercentual / 100));
       // Frete do comprador não é custo da loja — não entra na margem, é só
       // informativo (na prática costuma ser 0, já que os anúncios têm frete
       // grátis pro comprador).
