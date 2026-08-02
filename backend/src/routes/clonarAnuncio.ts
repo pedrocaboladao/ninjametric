@@ -1,9 +1,71 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar pedidos de um SKU específico que sumiram da nossa busca
+// (comparando com sistema externo) — lista todos os pedidos crus da API,
+// sem nenhum filtro nosso, pra achar o que está faltando.
+clonarAnuncioRouter.get("/debug-pedidos-sku", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const skuAlvo = String(req.query.sku ?? "").toUpperCase();
+  const dataInicio = String(req.query.dataInicio ?? "");
+  const dataFim = String(req.query.dataFim ?? "");
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+
+  const desde = `${dataInicio}T00:00:00.000-03:00`;
+  const ate = `${dataFim}T23:59:59.000-03:00`;
+
+  const todos: any[] = [];
+  let offset = 0;
+  const limit = 50;
+  while (true) {
+    const { data } = await axios.get("https://api.mercadolibre.com/orders/search", {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        seller: loja.ml_user_id,
+        "order.date_created.from": desde,
+        "order.date_created.to": ate,
+        sort: "date_desc",
+        offset,
+        limit,
+      },
+    });
+    todos.push(...data.results);
+    offset += limit;
+    if (offset >= data.paging.total || data.results.length === 0) break;
+  }
+
+  const doSku = todos.filter((o) =>
+    (o.order_items ?? []).some((oi: any) => (oi.item?.seller_sku ?? "").toUpperCase() === skuAlvo)
+  );
+
+  res.json({
+    loja: loja.nome,
+    desde,
+    ate,
+    totalPedidosNaJanela: todos.length,
+    totalDoSku: doSku.length,
+    pedidosDoSku: doSku.map((o) => ({
+      id: o.id,
+      status: o.status,
+      date_created: o.date_created,
+      itens: o.order_items.map((oi: any) => ({
+        sku: oi.item?.seller_sku,
+        qtd: oi.quantity,
+        preco: oi.unit_price,
+      })),
+    })),
+  });
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
