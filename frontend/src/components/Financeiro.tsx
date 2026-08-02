@@ -252,12 +252,12 @@ export function Financeiro({ usuario }: Props) {
               <div className="financeiro-linha financeiro-linha-header">
                 <span>Data</span>
                 <span>Produto</span>
-                <span>Receita</span>
-                <span>Custo</span>
-                <span>Taxa ML</span>
-                <span>Frete</span>
-                <span>Imposto</span>
-                <span>Margem</span>
+                <span className="financeiro-col-numero">Receita</span>
+                <span className="financeiro-col-numero">Custo</span>
+                <span className="financeiro-col-numero">Taxa ML</span>
+                <span className="financeiro-col-numero">Frete</span>
+                <span className="financeiro-col-numero">Imposto</span>
+                <span className="financeiro-col-numero">Margem</span>
               </div>
               {vendas.map((v) => (
                 <div key={`${v.orderId}-${v.sku}`} className="financeiro-linha">
@@ -270,12 +270,16 @@ export function Financeiro({ usuario }: Props) {
                       {v.lojaNome} · {v.sku ?? "sem SKU"} · qtd {v.quantidade}
                     </div>
                   </div>
-                  <span>{formatCurrency(v.receitaTotal)}</span>
-                  <span>{v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}</span>
-                  <span>{formatCurrency(v.taxaMlTotal)}</span>
-                  <span>{v.freteTotal !== null ? formatCurrency(v.freteTotal) : "—"}</span>
-                  <span>{formatCurrency(v.impostoTotal)}</span>
-                  <span className={`financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
+                  <span className="financeiro-col-numero">{formatCurrency(v.receitaTotal)}</span>
+                  <span className="financeiro-col-numero">
+                    {v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}
+                  </span>
+                  <span className="financeiro-col-numero">{formatCurrency(v.taxaMlTotal)}</span>
+                  <span className="financeiro-col-numero">
+                    {v.freteTotal !== null ? formatCurrency(v.freteTotal) : "—"}
+                  </span>
+                  <span className="financeiro-col-numero">{formatCurrency(v.impostoTotal)}</span>
+                  <span className={`financeiro-col-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
                     {v.margemContribuicao !== null
                       ? `${formatCurrency(v.margemContribuicao)} (${v.margemPercentual?.toFixed(1)}%)`
                       : "não cadastrado"}

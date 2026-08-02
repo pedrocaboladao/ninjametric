@@ -3149,6 +3149,12 @@
   font-weight: 700;
 }
 
+.financeiro-col-numero {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .financeiro-margem-positiva {
   color: var(--good-text);
 }
