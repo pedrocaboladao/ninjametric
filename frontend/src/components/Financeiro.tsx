@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchVendasFinanceiras } from "../api/financeiro";
 import { fetchLojas, fetchLojasTodas, atualizarImpostoLoja, type Loja, type LojaTodas } from "../api/lojas";
 import type { VendaFinanceira } from "../types/financeiro";
@@ -28,6 +28,59 @@ function diasAtrasISO(dias: number): string {
   const d = new Date();
   d.setDate(d.getDate() - dias);
   return dataISO(d);
+}
+
+type ChaveOrdenacao =
+  | "titulo"
+  | "lojaNome"
+  | "sku"
+  | "dataCriacao"
+  | "valorUnitario"
+  | "quantidade"
+  | "receitaTotal"
+  | "custoTotal"
+  | "impostoTotal"
+  | "taxaMlTotal"
+  | "freteCompradorTotal"
+  | "freteVendedorTotal"
+  | "margemContribuicao"
+  | "margemPercentual";
+
+interface Coluna {
+  chave: ChaveOrdenacao;
+  label: string;
+  numerica?: boolean;
+}
+
+const COLUNAS: Coluna[] = [
+  { chave: "titulo", label: "Anúncio" },
+  { chave: "lojaNome", label: "Conta" },
+  { chave: "sku", label: "SKU" },
+  { chave: "dataCriacao", label: "Data" },
+  { chave: "valorUnitario", label: "Valor Unit.", numerica: true },
+  { chave: "quantidade", label: "Qtd.", numerica: true },
+  { chave: "receitaTotal", label: "Faturamento ML", numerica: true },
+  { chave: "custoTotal", label: "Custo (-)", numerica: true },
+  { chave: "impostoTotal", label: "Imposto (-)", numerica: true },
+  { chave: "taxaMlTotal", label: "Tarifa de Venda (-)", numerica: true },
+  { chave: "freteCompradorTotal", label: "Frete Comprador (-)", numerica: true },
+  { chave: "freteVendedorTotal", label: "Frete Vendedor (-)", numerica: true },
+  { chave: "margemContribuicao", label: "Margem Contrib. (=)", numerica: true },
+  { chave: "margemPercentual", label: "MC em %", numerica: true },
+];
+
+function valorOrdenacao(v: VendaFinanceira, chave: ChaveOrdenacao): number | string {
+  if (chave === "dataCriacao") return new Date(v.dataCriacao).getTime();
+  const bruto = v[chave] as unknown;
+  if (bruto === null || bruto === undefined) return -Infinity;
+  return bruto as number | string;
+}
+
+function comparar(a: VendaFinanceira, b: VendaFinanceira, chave: ChaveOrdenacao, direcao: 1 | -1): number {
+  const va = valorOrdenacao(a, chave);
+  const vb = valorOrdenacao(b, chave);
+  if (typeof va === "string" && typeof vb === "string") return va.localeCompare(vb) * direcao;
+  return ((va as number) - (vb as number)) * direcao;
 }
 
 function GerenciarImpostos({ onFechar }: { onFechar: () => void }) {
@@ -107,6 +160,10 @@ export function Financeiro({ usuario }: Props) {
   const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
   const [dataFim, setDataFim] = useState(() => hojeISO());
   const [gerenciandoImpostos, setGerenciandoImpostos] = useState(false);
+  const [ordenacao, setOrdenacao] = useState<{ chave: ChaveOrdenacao; direcao: 1 | -1 }>({
+    chave: "dataCriacao",
+    direcao: -1,
+  });
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
@@ -121,11 +178,22 @@ export function Financeiro({ usuario }: Props) {
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."));
   }, [lojaFiltro, dataInicio, dataFim]);
 
+  function ordenarPor(chave: ChaveOrdenacao) {
+    setOrdenacao((atual) =>
+      atual.chave === chave ? { chave, direcao: atual.direcao === 1 ? -1 : 1 } : { chave, direcao: 1 }
+    );
+  }
+
+  const vendasOrdenadas = useMemo(() => {
+    if (!vendas) return null;
+    return [...vendas].sort((a, b) => comparar(a, b, ordenacao.chave, ordenacao.direcao));
+  }, [vendas, ordenacao]);
+
   const comMargem = vendas?.filter((v) => v.margemContribuicao !== null) ?? [];
   const receitaTotal = vendas?.reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
   const custoTotalGeral = vendas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
   const taxaMlTotalGeral = vendas?.reduce((s, v) => s + v.taxaMlTotal, 0) ?? 0;
-  const freteTotalGeral = vendas?.reduce((s, v) => s + (v.freteTotal ?? 0), 0) ?? 0;
+  const freteVendedorTotalGeral = vendas?.reduce((s, v) => s + (v.freteVendedorTotal ?? 0), 0) ?? 0;
   const impostoTotalGeral = vendas?.reduce((s, v) => s + v.impostoTotal, 0) ?? 0;
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
@@ -203,14 +271,14 @@ export function Financeiro({ usuario }: Props) {
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendas === null && <div className="state-message">Carregando vendas...</div>}
 
-      {vendas !== null && (
+      {vendasOrdenadas !== null && (
         <>
-          {vendas.length > 0 && (
+          {vendasOrdenadas.length > 0 && (
             <div className="financeiro-stats">
               <div className="financeiro-stat-card">
                 <span className="financeiro-stat-label">Receita</span>
                 <span className="financeiro-stat-valor">{formatCurrency(receitaTotal)}</span>
-                <span className="financeiro-stat-sub">{vendas.length} vendas</span>
+                <span className="financeiro-stat-sub">{vendasOrdenadas.length} vendas</span>
               </div>
               <div className="financeiro-stat-card">
                 <span className="financeiro-stat-label">Custo dos produtos</span>
@@ -221,8 +289,8 @@ export function Financeiro({ usuario }: Props) {
                 <span className="financeiro-stat-valor">{formatCurrency(taxaMlTotalGeral)}</span>
               </div>
               <div className="financeiro-stat-card">
-                <span className="financeiro-stat-label">Frete</span>
-                <span className="financeiro-stat-valor">{formatCurrency(freteTotalGeral)}</span>
+                <span className="financeiro-stat-label">Frete vendedor</span>
+                <span className="financeiro-stat-valor">{formatCurrency(freteVendedorTotalGeral)}</span>
               </div>
               <div className="financeiro-stat-card">
                 <span className="financeiro-stat-label">Imposto</span>
@@ -238,54 +306,68 @@ export function Financeiro({ usuario }: Props) {
                     {margemPercentualMedia >= 0 ? "↗" : "↘"} {margemPercentualMedia.toFixed(1)}% da receita
                   </span>
                 )}
-                {comMargem.length < vendas.length && (
-                  <span className="financeiro-stat-sub">{vendas.length - comMargem.length} sem custo cadastrado</span>
+                {comMargem.length < vendasOrdenadas.length && (
+                  <span className="financeiro-stat-sub">
+                    {vendasOrdenadas.length - comMargem.length} sem custo cadastrado
+                  </span>
                 )}
               </div>
             </div>
           )}
 
-          {vendas.length === 0 && <div className="state-message">Nenhuma venda no período selecionado.</div>}
+          {vendasOrdenadas.length === 0 && (
+            <div className="state-message">Nenhuma venda no período selecionado.</div>
+          )}
 
-          {vendas.length > 0 && (
-            <div className="financeiro-feed">
-              <div className="financeiro-linha financeiro-linha-header">
-                <span>Data</span>
-                <span>Produto</span>
-                <span className="financeiro-col-numero">Receita</span>
-                <span className="financeiro-col-numero">Custo</span>
-                <span className="financeiro-col-numero">Taxa ML</span>
-                <span className="financeiro-col-numero">Frete</span>
-                <span className="financeiro-col-numero">Imposto</span>
-                <span className="financeiro-col-numero">Margem</span>
-              </div>
-              {vendas.map((v) => (
-                <div key={`${v.orderId}-${v.sku}`} className="financeiro-linha">
-                  <span className="financeiro-linha-data">{formatDataHora(v.dataCriacao)}</span>
-                  <div className="financeiro-linha-produto">
-                    <div className="financeiro-linha-titulo" title={v.titulo}>
-                      {v.titulo}
-                    </div>
-                    <div className="financeiro-linha-sub">
-                      {v.lojaNome} · {v.sku ?? "sem SKU"} · qtd {v.quantidade}
-                    </div>
-                  </div>
-                  <span className="financeiro-col-numero">{formatCurrency(v.receitaTotal)}</span>
-                  <span className="financeiro-col-numero">
-                    {v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}
-                  </span>
-                  <span className="financeiro-col-numero">{formatCurrency(v.taxaMlTotal)}</span>
-                  <span className="financeiro-col-numero">
-                    {v.freteTotal !== null ? formatCurrency(v.freteTotal) : "—"}
-                  </span>
-                  <span className="financeiro-col-numero">{formatCurrency(v.impostoTotal)}</span>
-                  <span className={`financeiro-col-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
-                    {v.margemContribuicao !== null
-                      ? `${formatCurrency(v.margemContribuicao)} (${v.margemPercentual?.toFixed(1)}%)`
-                      : "não cadastrado"}
-                  </span>
-                </div>
-              ))}
+          {vendasOrdenadas.length > 0 && (
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    {COLUNAS.map((c) => (
+                      <th
+                        key={c.chave}
+                        className={c.numerica ? "financeiro-th-numero" : ""}
+                        onClick={() => ordenarPor(c.chave)}
+                      >
+                        {c.label} {ordenacao.chave === c.chave && (ordenacao.direcao === 1 ? "↑" : "↓")}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {vendasOrdenadas.map((v) => (
+                    <tr key={`${v.orderId}-${v.sku}`}>
+                      <td className="financeiro-td-titulo" title={v.titulo}>
+                        {v.titulo}
+                      </td>
+                      <td>{v.lojaNome}</td>
+                      <td className="financeiro-td-sku">{v.sku ?? "—"}</td>
+                      <td>{formatDataHora(v.dataCriacao)}</td>
+                      <td className="financeiro-th-numero">{formatCurrency(v.valorUnitario)}</td>
+                      <td className="financeiro-th-numero">{v.quantidade}</td>
+                      <td className="financeiro-th-numero">{formatCurrency(v.receitaTotal)}</td>
+                      <td className="financeiro-th-numero financeiro-td-custo">
+                        {v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.impostoTotal)}</td>
+                      <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.taxaMlTotal)}</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {v.freteCompradorTotal !== null ? formatCurrency(v.freteCompradorTotal) : "—"}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-custo">
+                        {v.freteVendedorTotal !== null ? formatCurrency(v.freteVendedorTotal) : "—"}
+                      </td>
+                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
+                        {v.margemContribuicao !== null ? formatCurrency(v.margemContribuicao) : "não cadastrado"}
+                      </td>
+                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
+                        {v.margemPercentual !== null ? `${v.margemPercentual.toFixed(2)}%` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </>

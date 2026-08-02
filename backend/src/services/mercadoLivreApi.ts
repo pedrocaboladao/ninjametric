@@ -123,31 +123,43 @@ export async function getAdsStatus(lojaId: number, itemId: string): Promise<AdsS
   }
 }
 
-// Custo de frete pago pelo vendedor (list_cost — a mesma referência usada
-// na investigação do frete do clonador). Quando vários pedidos vão no mesmo
-// envio, esse valor não cresce proporcionalmente ao número de pedidos
-// agrupados (confirmado comparando pedidos reais), então é tratado como o
-// custo do próprio pedido, sem tentar dividir entre pedidos agrupados.
-// Uma vez criado, o envio não muda de custo — cacheia por processo (sem TTL)
-// pra não refazer a mesma chamada toda vez que o usuário troca o filtro de
-// loja/data no Financeiro (o mesmo pedido aparece em janelas diferentes).
-const cacheFreteEnvio = new Map<number, number | null>();
+export interface CustoFreteEnvio {
+  // Quanto a loja paga pelo envio (list_cost — mesma referência usada na
+  // investigação do frete do clonador).
+  vendedor: number | null;
+  // Quanto o comprador paga (shipping_option.cost) — nos nossos anúncios
+  // costuma ser 0 (frete grátis), mas é informação real do pedido, não uma
+  // suposição.
+  comprador: number | null;
+}
 
-export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): Promise<number | null> {
+// Quando vários pedidos vão no mesmo envio, o custo não cresce
+// proporcionalmente ao número de pedidos agrupados (confirmado comparando
+// pedidos reais) — por isso é tratado como o custo do próprio pedido, sem
+// tentar dividir entre pedidos agrupados. Uma vez criado, o envio não muda
+// de custo — cacheia por processo (sem TTL) pra não refazer a mesma chamada
+// toda vez que o usuário troca o filtro de loja/data no Financeiro (o
+// mesmo pedido aparece em janelas diferentes).
+const cacheFreteEnvio = new Map<number, CustoFreteEnvio>();
+
+export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): Promise<CustoFreteEnvio> {
   const emCache = cacheFreteEnvio.get(shippingId);
   if (emCache !== undefined) return emCache;
 
   try {
     const accessToken = await getValidAccessToken(lojaId);
-    const { data } = await axios.get<{ shipping_option?: { list_cost?: number } }>(
+    const { data } = await axios.get<{ shipping_option?: { list_cost?: number; cost?: number } }>(
       `${ML_API_BASE}/shipments/${shippingId}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    const custo = data.shipping_option?.list_cost ?? null;
-    cacheFreteEnvio.set(shippingId, custo);
-    return custo;
+    const resultado: CustoFreteEnvio = {
+      vendedor: data.shipping_option?.list_cost ?? null,
+      comprador: data.shipping_option?.cost ?? null,
+    };
+    cacheFreteEnvio.set(shippingId, resultado);
+    return resultado;
   } catch {
-    return null;
+    return { vendedor: null, comprador: null };
   }
 }
 

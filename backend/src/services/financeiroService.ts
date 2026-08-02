@@ -8,16 +8,19 @@ const DIAS_JANELA = 7;
 
 export interface VendaFinanceira {
   orderId: number;
+  itemId: string;
   dataCriacao: string;
   lojaId: number;
   lojaNome: string;
   titulo: string;
   sku: string | null;
+  valorUnitario: number;
   quantidade: number;
   receitaTotal: number;
   custoTotal: number | null;
   taxaMlTotal: number;
-  freteTotal: number | null;
+  freteVendedorTotal: number | null;
+  freteCompradorTotal: number | null;
   impostoTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
@@ -92,7 +95,7 @@ export async function listarVendasFinanceiras(
   }
 
   const fretesPorPedido = await comConcorrenciaLimitada(pedidosValidos, 15, async ({ loja, order }) => {
-    if (!order.shipping?.id) return null;
+    if (!order.shipping?.id) return { vendedor: null, comprador: null };
     return getCustoFreteDoEnvio(loja.lojaId, order.shipping.id);
   });
 
@@ -102,7 +105,10 @@ export async function listarVendasFinanceiras(
     // Quando o pedido tem mais de um item, rateia o frete do pedido entre
     // eles (mesma lógica pedida: dividir o custo do envio entre o que foi
     // despachado junto).
-    const freteAlocado = freteDoPedido !== null ? freteDoPedido / order.order_items.length : null;
+    const freteVendedorAlocado =
+      freteDoPedido.vendedor !== null ? freteDoPedido.vendedor / order.order_items.length : null;
+    const freteCompradorAlocado =
+      freteDoPedido.comprador !== null ? freteDoPedido.comprador / order.order_items.length : null;
 
     for (const item of order.order_items) {
       const sku = item.item.seller_sku ?? null;
@@ -111,21 +117,29 @@ export async function listarVendasFinanceiras(
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
       const impostoTotal = receitaTotal * (loja.impostoPercentual / 100);
+      // Frete do comprador não é custo da loja — não entra na margem, é só
+      // informativo (na prática costuma ser 0, já que os anúncios têm frete
+      // grátis pro comprador).
       const margemContribuicao =
-        custoTotal !== null ? receitaTotal - custoTotal - taxaMlTotal - (freteAlocado ?? 0) - impostoTotal : null;
+        custoTotal !== null
+          ? receitaTotal - custoTotal - taxaMlTotal - (freteVendedorAlocado ?? 0) - impostoTotal
+          : null;
 
       vendas.push({
         orderId: order.id,
+        itemId: item.item.id,
         dataCriacao: order.date_created,
         lojaId: loja.lojaId,
         lojaNome: loja.lojaNome,
         titulo: item.item.title,
         sku,
+        valorUnitario: item.unit_price,
         quantidade: item.quantity,
         receitaTotal,
         custoTotal,
         taxaMlTotal,
-        freteTotal: freteAlocado,
+        freteVendedorTotal: freteVendedorAlocado,
+        freteCompradorTotal: freteCompradorAlocado,
         impostoTotal,
         margemContribuicao,
         margemPercentual:
