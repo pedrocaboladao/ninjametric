@@ -128,14 +128,24 @@ export async function getAdsStatus(lojaId: number, itemId: string): Promise<AdsS
 // envio, esse valor não cresce proporcionalmente ao número de pedidos
 // agrupados (confirmado comparando pedidos reais), então é tratado como o
 // custo do próprio pedido, sem tentar dividir entre pedidos agrupados.
+// Uma vez criado, o envio não muda de custo — cacheia por processo (sem TTL)
+// pra não refazer a mesma chamada toda vez que o usuário troca o filtro de
+// loja/data no Financeiro (o mesmo pedido aparece em janelas diferentes).
+const cacheFreteEnvio = new Map<number, number | null>();
+
 export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): Promise<number | null> {
+  const emCache = cacheFreteEnvio.get(shippingId);
+  if (emCache !== undefined) return emCache;
+
   try {
     const accessToken = await getValidAccessToken(lojaId);
     const { data } = await axios.get<{ shipping_option?: { list_cost?: number } }>(
       `${ML_API_BASE}/shipments/${shippingId}`,
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
-    return data.shipping_option?.list_cost ?? null;
+    const custo = data.shipping_option?.list_cost ?? null;
+    cacheFreteEnvio.set(shippingId, custo);
+    return custo;
   } catch {
     return null;
   }

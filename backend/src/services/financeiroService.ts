@@ -91,7 +91,7 @@ export async function listarVendasFinanceiras(
     }
   }
 
-  const fretesPorPedido = await comConcorrenciaLimitada(pedidosValidos, 8, async ({ loja, order }) => {
+  const fretesPorPedido = await comConcorrenciaLimitada(pedidosValidos, 15, async ({ loja, order }) => {
     if (!order.shipping?.id) return null;
     return getCustoFreteDoEnvio(loja.lojaId, order.shipping.id);
   });
