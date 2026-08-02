@@ -119,7 +119,8 @@ export async function listarVendasFinanceiras(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
-  dataFim?: string
+  dataFim?: string,
+  forcarAtualizacao = false
 ): Promise<ResultadoFinanceiro> {
   const lojas = (await listLojas()).filter(
     (l) =>
@@ -133,7 +134,7 @@ export async function listarVendasFinanceiras(
     .sort((a, b) => a - b)
     .join(",")}|${dataInicio ?? ""}|${dataFim ?? ""}`;
   const emCache = cache.get(chaveCache);
-  if (emCache && emCache.expiraEm > Date.now()) {
+  if (!forcarAtualizacao && emCache && emCache.expiraEm > Date.now()) {
     return emCache.data;
   }
 

@@ -18,10 +18,11 @@ financeiroRouter.get("/", async (req, res) => {
   const lojaIdParam = req.query.lojaId;
   const usuario = req.usuario!;
   const { dataInicio, dataFim } = extrairDatas(req);
+  const forcar = req.query.forcar === "1";
 
   if (lojaIdParam === "minhas") {
     try {
-      const resultado = await listarVendasFinanceiras(undefined, usuario.lojas, dataInicio, dataFim);
+      const resultado = await listarVendasFinanceiras(undefined, usuario.lojas, dataInicio, dataFim, forcar);
       res.json(resultado);
     } catch (err) {
       console.error("Erro ao montar feed financeiro:", err);
@@ -39,7 +40,7 @@ financeiroRouter.get("/", async (req, res) => {
   }
 
   try {
-    const resultado = await listarVendasFinanceiras(lojaId, lojasEfetivas(usuario), dataInicio, dataFim);
+    const resultado = await listarVendasFinanceiras(lojaId, lojasEfetivas(usuario), dataInicio, dataFim, forcar);
     res.json(resultado);
   } catch (err) {
     console.error("Erro ao montar feed financeiro:", err);

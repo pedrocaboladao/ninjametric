@@ -213,6 +213,7 @@ export function Financeiro({ usuario }: Props) {
   const [filtroPedido, setFiltroPedido] = useState("");
   const [filtroTitulo, setFiltroTitulo] = useState("");
   const [filtroSku, setFiltroSku] = useState("");
+  const [atualizando, setAtualizando] = useState(false);
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
@@ -230,6 +231,19 @@ export function Financeiro({ usuario }: Props) {
       })
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."));
   }, [lojaFiltro, dataInicio, dataFim]);
+
+  function atualizarAgora() {
+    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
+    setAtualizando(true);
+    setErro(null);
+    fetchVendasFinanceiras(lojaFiltro, dataInicio, dataFim, true)
+      .then((r) => {
+        setVendas(r.vendas);
+        setResumoPedidos(r.resumoPedidos);
+      })
+      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."))
+      .finally(() => setAtualizando(false));
+  }
 
   function ordenarPor(chave: ChaveOrdenacao) {
     setOrdenacao((atual) =>
@@ -311,6 +325,15 @@ export function Financeiro({ usuario }: Props) {
               }}
             >
               Hoje
+            </button>
+            <button
+              type="button"
+              className="btn-responder financeiro-btn-hoje"
+              onClick={atualizarAgora}
+              disabled={atualizando}
+              title="Buscar dados novos agora, sem esperar o cache"
+            >
+              {atualizando ? "Atualizando..." : "Atualizar"}
             </button>
           </div>
           <select
