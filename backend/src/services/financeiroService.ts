@@ -43,6 +43,16 @@ function normalizarSku(sku: string): string {
     .toUpperCase();
 }
 
+// TEMP: os 2 pedidos de 02/08/2026 abaixo já saíram com a grafia antiga do
+// SKU ("RESIFLEX-18KG-MARROM-TELHA") antes da correção no anúncio do
+// Mercado Livre — pedido feito não muda de SKU depois, só as vendas novas
+// já saem com a grafia certa (que já está na planilha). É só pra esses 2
+// pedidos históricos baterem no gráfico de hoje; pode remover depois.
+const CUSTO_MANUAL_TEMP_POR_PEDIDO: Record<number, number> = {
+  2000017713022558: 110,
+  2000017713024336: 110,
+};
+
 export interface VendaFinanceira {
   orderId: number;
   itemId: string;
@@ -174,7 +184,9 @@ export async function listarVendasFinanceiras(
 
     for (const item of order.order_items) {
       const sku = item.item.seller_sku ?? null;
-      const custoUnitario = sku !== null ? custoPorSku.get(normalizarSku(sku)) ?? null : null;
+      const custoUnitario =
+        CUSTO_MANUAL_TEMP_POR_PEDIDO[order.id] ??
+        (sku !== null ? custoPorSku.get(normalizarSku(sku)) ?? null : null);
       const receitaTotal = item.unit_price * item.quantity;
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;

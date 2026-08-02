@@ -1,71 +1,9 @@
 import { Router } from "express";
-import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas, getValidAccessToken } from "../services/tokenStore";
+import { listLojas } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
-
-// TEMP: investigar o valor real de frete debitado do vendedor (comparado ao
-// "Detalhe do recebimento" que o próprio Mercado Livre mostra) — o
-// list_cost que usamos hoje pode não ser o valor realmente cobrado.
-clonarAnuncioRouter.get("/debug-custo-envio", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
-  const id = String(req.query.id ?? "");
-  const loja = (await listLojas()).find((l) => l.id === lojaId);
-  if (!loja || loja.ml_user_id === null) {
-    res.status(404).json({ error: "loja não encontrada" });
-    return;
-  }
-  const token = await getValidAccessToken(loja.id);
-  const headers = { Authorization: `Bearer ${token}` };
-
-  const resultado: any = { idConsultado: id };
-
-  try {
-    const { data: order } = await axios.get(`https://api.mercadolibre.com/orders/${id}`, { headers });
-    resultado.order = order;
-    const shippingId = order.shipping?.id;
-    if (shippingId) {
-      try {
-        const { data: shipment } = await axios.get(`https://api.mercadolibre.com/shipments/${shippingId}`, { headers });
-        resultado.shipment = shipment;
-      } catch (e: any) {
-        resultado.shipmentError = e?.response?.data ?? e.message;
-      }
-      try {
-        const { data: costs } = await axios.get(`https://api.mercadolibre.com/shipments/${shippingId}/costs`, { headers });
-        resultado.shipmentCosts = costs;
-      } catch (e: any) {
-        resultado.shipmentCostsError = e?.response?.data ?? e.message;
-      }
-    }
-  } catch (e: any) {
-    resultado.orderError = e?.response?.data ?? e.message;
-
-    // Pode não ser um order id — tenta como shipping id e como pack id direto.
-    try {
-      const { data: shipment } = await axios.get(`https://api.mercadolibre.com/shipments/${id}`, { headers });
-      resultado.shipmentComoIdDireto = shipment;
-      try {
-        const { data: costs } = await axios.get(`https://api.mercadolibre.com/shipments/${id}/costs`, { headers });
-        resultado.shipmentCostsComoIdDireto = costs;
-      } catch (e2: any) {
-        resultado.shipmentCostsComoIdDiretoError = e2?.response?.data ?? e2.message;
-      }
-    } catch (e2: any) {
-      resultado.shipmentComoIdDiretoError = e2?.response?.data ?? e2.message;
-    }
-    try {
-      const { data: pack } = await axios.get(`https://api.mercadolibre.com/packs/${id}`, { headers });
-      resultado.pack = pack;
-    } catch (e2: any) {
-      resultado.packError = e2?.response?.data ?? e2.message;
-    }
-  }
-
-  res.json(resultado);
-});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
