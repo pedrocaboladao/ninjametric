@@ -43,6 +43,15 @@ function normalizarSku(sku: string): string {
     .toUpperCase();
 }
 
+// Arredonda pra cima no meio-a-meio (ex.: 42,995 -> 43,00), igual à
+// convenção do sistema externo — o toFixed nativo do JS erra esse caso
+// específico (42.995.toFixed(2) dá "42.99" em vez de "43.00", porque o
+// número não é representável exatamente em ponto flutuante binário; o
+// pequeno epsilon somado antes corrige isso sem afetar nenhum outro valor).
+function arredondarCentavos(valor: number): number {
+  return Math.round((valor + 1e-9) * 100) / 100;
+}
+
 // TEMP: os 2 pedidos de 02/08/2026 abaixo já saíram com a grafia antiga do
 // SKU ("RESIFLEX-18KG-MARROM-TELHA") antes da correção no anúncio do
 // Mercado Livre — pedido feito não muda de SKU depois, só as vendas novas
@@ -179,8 +188,13 @@ export async function listarVendasFinanceiras(
     // devia ser dividido com outro.
     const freteVendedorAlocado =
       freteDoPedido.vendedor !== null ? freteDoPedido.vendedor / freteDoPedido.itensNoEnvio : null;
+    // Frete comprador é só informativo (não entra na margem) — arredonda por
+    // pedido pra bater com a convenção do sistema externo, em vez de manter
+    // a fração exata como fazemos no frete vendedor (que afeta a margem).
     const freteCompradorAlocado =
-      freteDoPedido.comprador !== null ? freteDoPedido.comprador / freteDoPedido.itensNoEnvio : null;
+      freteDoPedido.comprador !== null
+        ? arredondarCentavos(freteDoPedido.comprador / freteDoPedido.itensNoEnvio)
+        : null;
 
     for (const item of order.order_items) {
       const sku = item.item.seller_sku ?? null;
