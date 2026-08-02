@@ -131,15 +131,19 @@ export interface CustoFreteEnvio {
   // costuma ser 0 (frete grátis), mas é informação real do pedido, não uma
   // suposição.
   comprador: number | null;
+  // Quantos itens (de um ou mais pedidos) foram despachados juntos nesse
+  // mesmo envio — confirmado com um pedido real que o valor de list_cost é
+  // do ENVIO inteiro, não do pedido: quando dois pedidos diferentes (cores
+  // diferentes do mesmo produto) vão juntos, o mesmo envio aparece pros
+  // dois com o list_cost cheio. Sem dividir por isso, um pedido acaba
+  // "levando" o frete que na real é compartilhado com outro.
+  itensNoEnvio: number;
 }
 
-// Quando vários pedidos vão no mesmo envio, o custo não cresce
-// proporcionalmente ao número de pedidos agrupados (confirmado comparando
-// pedidos reais) — por isso é tratado como o custo do próprio pedido, sem
-// tentar dividir entre pedidos agrupados. Uma vez criado, o envio não muda
-// de custo — cacheia por processo (sem TTL) pra não refazer a mesma chamada
-// toda vez que o usuário troca o filtro de loja/data no Financeiro (o
-// mesmo pedido aparece em janelas diferentes).
+// Uma vez criado, o envio não muda de custo — cacheia por processo (sem
+// TTL) pra não refazer a mesma chamada toda vez que o usuário troca o
+// filtro de loja/data no Financeiro (o mesmo pedido aparece em janelas
+// diferentes).
 const cacheFreteEnvio = new Map<number, CustoFreteEnvio>();
 
 export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): Promise<CustoFreteEnvio> {
@@ -148,18 +152,19 @@ export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): 
 
   try {
     const accessToken = await getValidAccessToken(lojaId);
-    const { data } = await axios.get<{ shipping_option?: { list_cost?: number; cost?: number } }>(
-      `${ML_API_BASE}/shipments/${shippingId}`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
+    const { data } = await axios.get<{
+      shipping_option?: { list_cost?: number; cost?: number };
+      shipping_items?: unknown[];
+    }>(`${ML_API_BASE}/shipments/${shippingId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
     const resultado: CustoFreteEnvio = {
       vendedor: data.shipping_option?.list_cost ?? null,
       comprador: data.shipping_option?.cost ?? null,
+      itensNoEnvio: Math.max(1, data.shipping_items?.length ?? 1),
     };
     cacheFreteEnvio.set(shippingId, resultado);
     return resultado;
   } catch {
-    return { vendedor: null, comprador: null };
+    return { vendedor: null, comprador: null, itensNoEnvio: 1 };
   }
 }
 

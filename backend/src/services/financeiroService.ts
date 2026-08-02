@@ -7,6 +7,42 @@ const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 const STATUS_CANCELADO = "cancelled";
 const DIAS_JANELA = 7;
 
+// A planilha de produtos às vezes tem o SKU digitado sem acento (ex.:
+// "CAMURCA") enquanto o Mercado Livre tem o SKU real com acento
+// ("CAMURÇA") — mesma peça, grafias diferentes. Normaliza (maiúsculas +
+// remove acento) tanto na hora de indexar a planilha quanto na hora de
+// procurar o SKU da venda, pra essas duas grafias baterem.
+function normalizarSku(sku: string): string {
+  return sku
+    .toLowerCase()
+    .replace(/á/g, "a")
+    .replace(/à/g, "a")
+    .replace(/ã/g, "a")
+    .replace(/â/g, "a")
+    .replace(/ä/g, "a")
+    .replace(/é/g, "e")
+    .replace(/è/g, "e")
+    .replace(/ê/g, "e")
+    .replace(/ë/g, "e")
+    .replace(/í/g, "i")
+    .replace(/ì/g, "i")
+    .replace(/î/g, "i")
+    .replace(/ï/g, "i")
+    .replace(/ó/g, "o")
+    .replace(/ò/g, "o")
+    .replace(/õ/g, "o")
+    .replace(/ô/g, "o")
+    .replace(/ö/g, "o")
+    .replace(/ú/g, "u")
+    .replace(/ù/g, "u")
+    .replace(/û/g, "u")
+    .replace(/ü/g, "u")
+    .replace(/ç/g, "c")
+    .replace(/ñ/g, "n")
+    .trim()
+    .toUpperCase();
+}
+
 export interface VendaFinanceira {
   orderId: number;
   itemId: string;
@@ -96,7 +132,7 @@ export async function listarVendasFinanceiras(
     ),
   ]);
 
-  const custoPorSku = new Map(produtos.map((p) => [p.sku, p.custo]));
+  const custoPorSku = new Map(produtos.map((p) => [normalizarSku(p.sku), p.custo]));
 
   const todosOsPedidos = ordersPorLoja.flatMap((l) => l.orders);
   const resumoPedidos: ResumoPedidos = {
@@ -117,24 +153,28 @@ export async function listarVendasFinanceiras(
   }
 
   const fretesPorPedido = await comConcorrenciaLimitada(pedidosValidos, 15, async ({ loja, order }) => {
-    if (!order.shipping?.id) return { vendedor: null, comprador: null };
+    if (!order.shipping?.id) return { vendedor: null, comprador: null, itensNoEnvio: 1 };
     return getCustoFreteDoEnvio(loja.lojaId, order.shipping.id);
   });
 
   const vendas: VendaFinanceira[] = [];
   pedidosValidos.forEach(({ loja, order }, indice) => {
     const freteDoPedido = fretesPorPedido[indice];
-    // Quando o pedido tem mais de um item, rateia o frete do pedido entre
-    // eles (mesma lógica pedida: dividir o custo do envio entre o que foi
-    // despachado junto).
+    // O list_cost/cost do envio é do ENVIO inteiro, não do pedido — quando
+    // dois pedidos diferentes (ex.: cores diferentes do mesmo produto) vão
+    // despachados juntos, os dois compartilham o mesmo envio e o mesmo
+    // list_cost cheio (confirmado com um pedido real). Por isso rateia pelo
+    // total de itens do ENVIO (itensNoEnvio), não pelos itens do pedido —
+    // dividir só pelos itens do pedido fazia um pedido "levar" o frete que
+    // devia ser dividido com outro.
     const freteVendedorAlocado =
-      freteDoPedido.vendedor !== null ? freteDoPedido.vendedor / order.order_items.length : null;
+      freteDoPedido.vendedor !== null ? freteDoPedido.vendedor / freteDoPedido.itensNoEnvio : null;
     const freteCompradorAlocado =
-      freteDoPedido.comprador !== null ? freteDoPedido.comprador / order.order_items.length : null;
+      freteDoPedido.comprador !== null ? freteDoPedido.comprador / freteDoPedido.itensNoEnvio : null;
 
     for (const item of order.order_items) {
       const sku = item.item.seller_sku ?? null;
-      const custoUnitario = sku !== null ? custoPorSku.get(sku) ?? null : null;
+      const custoUnitario = sku !== null ? custoPorSku.get(normalizarSku(sku)) ?? null : null;
       const receitaTotal = item.unit_price * item.quantity;
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
