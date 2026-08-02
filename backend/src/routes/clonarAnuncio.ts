@@ -6,6 +6,32 @@ import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
 
+// TEMP: checar se um pedido reembolsado continua com order.status "paid"
+// (ou seja, se já está sendo contado como venda válida no Financeiro hoje).
+clonarAnuncioRouter.get("/debug-status-reembolso", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const orderId = String(req.query.orderId ?? "");
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+  const { data } = await axios.get(`https://api.mercadolibre.com/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  res.json({
+    orderId: data.id,
+    orderStatus: data.status,
+    payments: (data.payments ?? []).map((p: any) => ({
+      status: p.status,
+      status_detail: p.status_detail,
+      transaction_amount: p.transaction_amount,
+      transaction_amount_refunded: p.transaction_amount_refunded,
+    })),
+  });
+});
+
 // TEMP: investigar modalidades de frete reais (logistic_type/mode) e dados
 // de devolução/reembolso disponíveis nos pedidos, pra planejar a quebra por
 // modalidade e devoluções parciais no Financeiro.
