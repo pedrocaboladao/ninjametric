@@ -42,6 +42,26 @@ clonarAnuncioRouter.get("/debug-custo-envio", async (req, res) => {
     }
   } catch (e: any) {
     resultado.orderError = e?.response?.data ?? e.message;
+
+    // Pode não ser um order id — tenta como shipping id e como pack id direto.
+    try {
+      const { data: shipment } = await axios.get(`https://api.mercadolibre.com/shipments/${id}`, { headers });
+      resultado.shipmentComoIdDireto = shipment;
+      try {
+        const { data: costs } = await axios.get(`https://api.mercadolibre.com/shipments/${id}/costs`, { headers });
+        resultado.shipmentCostsComoIdDireto = costs;
+      } catch (e2: any) {
+        resultado.shipmentCostsComoIdDiretoError = e2?.response?.data ?? e2.message;
+      }
+    } catch (e2: any) {
+      resultado.shipmentComoIdDiretoError = e2?.response?.data ?? e2.message;
+    }
+    try {
+      const { data: pack } = await axios.get(`https://api.mercadolibre.com/packs/${id}`, { headers });
+      resultado.pack = pack;
+    } catch (e2: any) {
+      resultado.packError = e2?.response?.data ?? e2.message;
+    }
   }
 
   res.json(resultado);
