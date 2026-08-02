@@ -3131,6 +3131,10 @@
   font-size: 12px;
 }
 
+.financeiro-linha-produto {
+  min-width: 0;
+}
+
 .financeiro-linha-titulo {
   font-weight: 600;
   color: var(--text-primary);
@@ -3143,6 +3147,9 @@
   font-size: 11.5px;
   color: var(--text-muted);
   margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .financeiro-linha-margem {
