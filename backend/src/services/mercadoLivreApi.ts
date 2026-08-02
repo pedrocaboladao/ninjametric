@@ -124,19 +124,24 @@ export async function getAdsStatus(lojaId: number, itemId: string): Promise<AdsS
 }
 
 export interface CustoFreteEnvio {
-  // Quanto a loja paga pelo envio (list_cost — mesma referência usada na
-  // investigação do frete do clonador).
+  // Quanto a loja efetivamente paga pelo envio — vem de
+  // /shipments/{id}/costs (senders[].cost), não do shipping_option.list_cost
+  // do /shipments/{id}. Confirmado com um pedido real e o "Detalhe do
+  // recebimento" do próprio Mercado Livre: o list_cost é o preço "cheio" do
+  // frete, mas o ML aplica um desconto obrigatório (visto: 50%, tipo
+  // "mandatory") antes de debitar do vendedor — usar list_cost inflava o
+  // frete vendedor bem acima do valor real cobrado.
   vendedor: number | null;
-  // Quanto o comprador paga (shipping_option.cost) — nos nossos anúncios
-  // costuma ser 0 (frete grátis), mas é informação real do pedido, não uma
-  // suposição.
+  // Quanto o comprador paga — /shipments/{id}/costs (receiver.cost). Nos
+  // nossos anúncios costuma ser 0 (frete grátis), mas é informação real do
+  // pedido, não uma suposição.
   comprador: number | null;
   // Quantos itens (de um ou mais pedidos) foram despachados juntos nesse
-  // mesmo envio — confirmado com um pedido real que o valor de list_cost é
-  // do ENVIO inteiro, não do pedido: quando dois pedidos diferentes (cores
+  // mesmo envio — confirmado com um pedido real que o custo do envio é do
+  // ENVIO inteiro, não do pedido: quando dois pedidos diferentes (cores
   // diferentes do mesmo produto) vão juntos, o mesmo envio aparece pros
-  // dois com o list_cost cheio. Sem dividir por isso, um pedido acaba
-  // "levando" o frete que na real é compartilhado com outro.
+  // dois com o custo cheio. Sem dividir por isso, um pedido acaba "levando"
+  // o frete que na real é compartilhado com outro.
   itensNoEnvio: number;
 }
 
@@ -146,20 +151,26 @@ export interface CustoFreteEnvio {
 // diferentes).
 const cacheFreteEnvio = new Map<number, CustoFreteEnvio>();
 
+interface MlShipmentCosts {
+  receiver?: { cost?: number };
+  senders?: { cost?: number }[];
+}
+
 export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): Promise<CustoFreteEnvio> {
   const emCache = cacheFreteEnvio.get(shippingId);
   if (emCache !== undefined) return emCache;
 
   try {
     const accessToken = await getValidAccessToken(lojaId);
-    const { data } = await axios.get<{
-      shipping_option?: { list_cost?: number; cost?: number };
-      shipping_items?: unknown[];
-    }>(`${ML_API_BASE}/shipments/${shippingId}`, { headers: { Authorization: `Bearer ${accessToken}` } });
+    const headers = { Authorization: `Bearer ${accessToken}` };
+    const [{ data: shipment }, { data: costs }] = await Promise.all([
+      axios.get<{ shipping_items?: unknown[] }>(`${ML_API_BASE}/shipments/${shippingId}`, { headers }),
+      axios.get<MlShipmentCosts>(`${ML_API_BASE}/shipments/${shippingId}/costs`, { headers }),
+    ]);
     const resultado: CustoFreteEnvio = {
-      vendedor: data.shipping_option?.list_cost ?? null,
-      comprador: data.shipping_option?.cost ?? null,
-      itensNoEnvio: Math.max(1, data.shipping_items?.length ?? 1),
+      vendedor: costs.senders?.reduce((soma, s) => soma + (s.cost ?? 0), 0) ?? null,
+      comprador: costs.receiver?.cost ?? null,
+      itensNoEnvio: Math.max(1, shipment.shipping_items?.length ?? 1),
     };
     cacheFreteEnvio.set(shippingId, resultado);
     return resultado;
