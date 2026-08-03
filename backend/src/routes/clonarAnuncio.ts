@@ -32,16 +32,15 @@ clonarAnuncioRouter.get("/debug-ads-campanhas", async (req, res) => {
   const advertiserId = resultado.advertisers?.advertisers?.[0]?.advertiser_id;
   if (advertiserId) {
     try {
-      const { data } = await axios.get(
-        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
-        { headers, params: { limit: 20 } }
-      );
+      const { data } = await axios.get(`https://api.mercadolibre.com/advertising/product_ads/campaigns`, {
+        headers,
+        params: { advertiser_id: advertiserId, limit: 20 },
+      });
       resultado.campanhas = data;
     } catch (e: any) {
       resultado.campanhasError = {
         status: e?.response?.status,
         data: e?.response?.data,
-        headers: e?.response?.headers,
         message: e.message,
       };
     }
