@@ -3422,15 +3422,17 @@
   background: var(--bg-panel-alt);
 }
 
-.ads-triagem-amarelo {
+/* A cor da borda só aparece no card que está de fato selecionado — antes
+   aparecia nos 3 o tempo todo, parecendo que vários estavam "ativos". */
+.ads-triagem-amarelo.ads-triagem-selecionado {
   border-left-color: #fbbf24;
 }
 
-.ads-triagem-vermelho {
+.ads-triagem-vermelho.ads-triagem-selecionado {
   border-left-color: var(--critical-text);
 }
 
-.ads-triagem-verde {
+.ads-triagem-verde.ads-triagem-selecionado {
   border-left-color: var(--good-text);
 }
 
