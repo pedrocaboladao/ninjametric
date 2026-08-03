@@ -1,4 +1,4 @@
-import type { DashboardData, TopVendidoPromocao } from "../types/dashboard";
+import type { DashboardData, TopVendidoPromocao, RankingPrecificacao } from "../types/dashboard";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -19,4 +19,13 @@ export async function fetchTopVendidosPromocoes(lojaId?: number | "minhas"): Pro
   }
   const data = await res.json();
   return data.produtos;
+}
+
+export async function fetchRankingPrecificacao(lojaId?: number | "minhas"): Promise<RankingPrecificacao> {
+  const query = lojaId ? `?lojaId=${lojaId}` : "";
+  const res = await fetch(`${API_BASE}/api/dashboard/precificacao${query}`, { credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar ranking de precificação: ${res.status}`);
+  }
+  return res.json();
 }

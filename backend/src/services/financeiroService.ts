@@ -13,7 +13,7 @@ const DIAS_JANELA = 7;
 // ("CAMURÇA") — mesma peça, grafias diferentes. Normaliza (maiúsculas +
 // remove acento) tanto na hora de indexar a planilha quanto na hora de
 // procurar o SKU da venda, pra essas duas grafias baterem.
-function normalizarSku(sku: string): string {
+export function normalizarSku(sku: string): string {
   return sku
     .toLowerCase()
     .replace(/á/g, "a")

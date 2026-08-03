@@ -50,3 +50,28 @@ export interface TopVendidoPromocao {
   promocao: PromocaoStatus;
   ads: AdsStatus;
 }
+
+export interface RankingMenorPreco {
+  sku: string;
+  titulo: string;
+  lojaId: number;
+  lojaNome: string;
+  precoLoja: number;
+  precoReferenciaGrupo: number;
+  percentualAbaixo: number;
+}
+
+export interface RankingMenorMargem {
+  lojaId: number;
+  lojaNome: string;
+  titulo: string;
+  sku: string | null;
+  dataCriacao: string;
+  receitaTotal: number;
+  margemPercentual: number;
+}
+
+export interface RankingPrecificacao {
+  menorPreco: RankingMenorPreco[];
+  menorMargem: RankingMenorMargem[];
+}

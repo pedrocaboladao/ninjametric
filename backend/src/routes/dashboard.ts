@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { getDashboardData, getTopVendidosPromocoes } from "../services/dashboardService";
+import { calcularRankingPrecificacao } from "../services/precificacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const dashboardRouter = Router();
@@ -65,5 +66,37 @@ dashboardRouter.get("/top-vendidos", async (req, res) => {
   } catch (err) {
     console.error("Erro ao montar top vendidos:", err);
     res.status(500).json({ error: "Falha ao carregar top vendidos." });
+  }
+});
+
+dashboardRouter.get("/precificacao", async (req, res) => {
+  const lojaIdParam = req.query.lojaId;
+  const usuario = req.usuario!;
+
+  if (lojaIdParam === "minhas") {
+    try {
+      const ranking = await calcularRankingPrecificacao(undefined, usuario.lojas);
+      res.json(ranking);
+    } catch (err) {
+      console.error("Erro ao montar ranking de precificação:", err);
+      res.status(500).json({ error: "Falha ao carregar ranking de precificação." });
+    }
+    return;
+  }
+
+  const lojaId =
+    typeof lojaIdParam === "string" && Number.isInteger(Number(lojaIdParam)) ? Number(lojaIdParam) : undefined;
+
+  if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
+    res.status(403).json({ error: "Você não tem acesso a essa loja." });
+    return;
+  }
+
+  try {
+    const ranking = await calcularRankingPrecificacao(lojaId, lojasEfetivas(usuario));
+    res.json(ranking);
+  } catch (err) {
+    console.error("Erro ao montar ranking de precificação:", err);
+    res.status(500).json({ error: "Falha ao carregar ranking de precificação." });
   }
 });

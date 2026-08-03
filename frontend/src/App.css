@@ -962,6 +962,27 @@
   background: rgba(239, 68, 68, 0.1);
 }
 
+.precificacao-colunas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+}
+
+.precificacao-subtitulo {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin: 0 0 8px;
+}
+
+.precificacao-numeros {
+  flex-shrink: 0;
+  text-align: right;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
 .top-vendido-info {
   flex: 1;
   min-width: 0;

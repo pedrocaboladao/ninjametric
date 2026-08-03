@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useDashboardData } from "../hooks/useDashboardData";
 import { useTopVendidosPromocoes } from "../hooks/useTopVendidosPromocoes";
+import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 import { fetchLojas, type Loja } from "../api/lojas";
+import { fetchRankingPrecificacao } from "../api/dashboard";
+import type { RankingPrecificacao as RankingPrecificacaoTipo } from "../types/dashboard";
 import { DashboardHeader } from "./DashboardHeader";
 import { HeroFaturamento } from "./HeroFaturamento";
 import { RankingLojas } from "./RankingLojas";
 import { VendasChart } from "./VendasChart";
 import { ProdutosRanking } from "./ProdutosRanking";
 import { TopVendidosPromocoes } from "./TopVendidosPromocoes";
+import { RankingPrecificacao } from "./RankingPrecificacao";
 import { PainelEstudo } from "./PainelEstudo";
 import type { Usuario } from "../types/usuarios";
 
@@ -19,6 +23,7 @@ export function Dashboard({ usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPromocoes, setLojaFiltroPromocoes] = useState<number | "todas" | "minhas">("todas");
+  const [lojaFiltroPrecificacao, setLojaFiltroPrecificacao] = useState<number | "todas" | "minhas">("todas");
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -35,6 +40,15 @@ export function Dashboard({ usuario }: Props) {
     loading: loadingTopVendidos,
     error: errorTopVendidos,
   } = useTopVendidosPromocoes(lojaFiltroPromocoes === "todas" ? undefined : lojaFiltroPromocoes);
+
+  const buscarRankingPrecificacao = useCallback(
+    () => fetchRankingPrecificacao(lojaFiltroPrecificacao === "todas" ? undefined : lojaFiltroPrecificacao),
+    [lojaFiltroPrecificacao]
+  );
+  const { dados: rankingPrecificacao, erro: erroRankingPrecificacao } = useBuscaComCancelamento<RankingPrecificacaoTipo>(
+    buscarRankingPrecificacao,
+    true
+  );
 
   function handleExpandir() {
     if (!containerRef.current) return;
@@ -114,6 +128,23 @@ export function Dashboard({ usuario }: Props) {
             </div>
             <ProdutosRanking produtos={data.produtosMaisVendidos} />
           </div>
+
+          {erroRankingPrecificacao && (
+            <div className="state-message state-error">
+              Erro ao carregar vigilância de preço e margem: {erroRankingPrecificacao}
+            </div>
+          )}
+          {!erroRankingPrecificacao && !rankingPrecificacao && (
+            <div className="state-message">Carregando vigilância de preço e margem...</div>
+          )}
+          {rankingPrecificacao && (
+            <RankingPrecificacao
+              ranking={rankingPrecificacao}
+              lojas={lojas}
+              lojaFiltro={lojaFiltroPrecificacao}
+              onChangeLojaFiltro={setLojaFiltroPrecificacao}
+            />
+          )}
         </>
       )}
     </div>
