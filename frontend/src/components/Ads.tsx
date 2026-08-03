@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchCampanhasAds } from "../api/ads";
+import { fetchCampanhasAds, fetchTacosProdutos } from "../api/ads";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { CampanhaAds } from "../types/ads";
+import type { CampanhaAds, TacosProduto } from "../types/ads";
 import { formatCurrency } from "../utils/format";
 
 function dataISO(d: Date): string {
@@ -99,6 +99,40 @@ function somarGrupo(campanhas: CampanhaAds[]) {
   };
 }
 
+type ChaveOrdenacaoTacos =
+  | "lojaNome"
+  | "titulo"
+  | "gastoAds"
+  | "vendasAtribuidasAds"
+  | "receitaTotalReal"
+  | "acos"
+  | "tacos";
+
+interface ColunaTacos {
+  chave: ChaveOrdenacaoTacos;
+  label: string;
+  numerica?: boolean;
+}
+
+const COLUNAS_TACOS: ColunaTacos[] = [
+  { chave: "lojaNome", label: "Conta" },
+  { chave: "titulo", label: "Produto" },
+  { chave: "gastoAds", label: "Gasto Ads", numerica: true },
+  { chave: "vendasAtribuidasAds", label: "Vendas Ads", numerica: true },
+  { chave: "receitaTotalReal", label: "Receita Real", numerica: true },
+  { chave: "acos", label: "ACOS", numerica: true },
+  { chave: "tacos", label: "TACOS Real", numerica: true },
+];
+
+function compararTacos(a: TacosProduto, b: TacosProduto, chave: ChaveOrdenacaoTacos, direcao: 1 | -1): number {
+  const va = a[chave];
+  const vb = b[chave];
+  if (typeof va === "string" && typeof vb === "string") return va.localeCompare(vb) * direcao;
+  const na = va === null ? -Infinity : (va as number);
+  const nb = vb === null ? -Infinity : (vb as number);
+  return (na - nb) * direcao;
+}
+
 export function Ads() {
   const [campanhas, setCampanhas] = useState<CampanhaAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -114,6 +148,13 @@ export function Ads() {
   const [atualizando, setAtualizando] = useState(false);
   const [grupoFiltro, setGrupoFiltro] = useState<Grupo | "todos">("todos");
 
+  const [tacosProdutos, setTacosProdutos] = useState<TacosProduto[] | null>(null);
+  const [erroTacos, setErroTacos] = useState<string | null>(null);
+  const [ordenacaoTacos, setOrdenacaoTacos] = useState<{ chave: ChaveOrdenacaoTacos; direcao: 1 | -1 }>({
+    chave: "gastoAds",
+    direcao: -1,
+  });
+
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
   }, []);
@@ -125,6 +166,15 @@ export function Ads() {
     fetchCampanhasAds(lojaFiltro, dataInicio, dataFim)
       .then(setCampanhas)
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar campanhas."));
+  }, [lojaFiltro, dataInicio, dataFim]);
+
+  useEffect(() => {
+    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
+    setTacosProdutos(null);
+    setErroTacos(null);
+    fetchTacosProdutos(lojaFiltro, dataInicio, dataFim)
+      .then(setTacosProdutos)
+      .catch((err) => setErroTacos(err instanceof Error ? err.message : "Falha ao carregar TACOS por produto."));
   }, [lojaFiltro, dataInicio, dataFim]);
 
   function atualizarAgora() {
@@ -142,6 +192,17 @@ export function Ads() {
       atual.chave === chave ? { chave, direcao: atual.direcao === 1 ? -1 : 1 } : { chave, direcao: 1 }
     );
   }
+
+  function ordenarPorTacos(chave: ChaveOrdenacaoTacos) {
+    setOrdenacaoTacos((atual) =>
+      atual.chave === chave ? { chave, direcao: atual.direcao === 1 ? -1 : 1 } : { chave, direcao: 1 }
+    );
+  }
+
+  const tacosOrdenados = useMemo(() => {
+    if (!tacosProdutos) return null;
+    return [...tacosProdutos].sort((a, b) => compararTacos(a, b, ordenacaoTacos.chave, ordenacaoTacos.direcao));
+  }, [tacosProdutos, ordenacaoTacos]);
 
   const campanhasBase = useMemo(() => {
     if (!campanhas) return null;
@@ -370,6 +431,66 @@ export function Ads() {
               </tbody>
             </table>
           </div>
+
+          <div>
+            <span className="painel-eyebrow">TACOS real por produto</span>
+            <h1 style={{ fontSize: 18, margin: "4px 0 6px" }}>Gasto de Ads ÷ receita real do produto</h1>
+            <p className="painel-sub">
+              Diferente do ACOS (que só olha as vendas que o próprio Mercado Livre credita ao Ads), o TACOS compara o
+              gasto com o faturamento real do produto no período — incluindo vendas orgânicas. Cruzamento por ID do
+              anúncio, o mesmo usado no Financeiro.
+            </p>
+          </div>
+
+          {erroTacos && <div className="state-message state-error">{erroTacos}</div>}
+          {!erroTacos && tacosOrdenados === null && <div className="state-message">Carregando TACOS por produto...</div>}
+
+          {tacosOrdenados !== null && (
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    {COLUNAS_TACOS.map((col) => (
+                      <th
+                        key={col.chave}
+                        className={col.numerica ? "financeiro-th-numero" : undefined}
+                        onClick={() => ordenarPorTacos(col.chave)}
+                      >
+                        {col.label}{" "}
+                        {ordenacaoTacos.chave === col.chave ? (ordenacaoTacos.direcao === 1 ? "▲" : "▼") : ""}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {tacosOrdenados.length === 0 && (
+                    <tr>
+                      <td colSpan={COLUNAS_TACOS.length} className="financeiro-td-mudo">
+                        Nenhum produto com investimento em Ads nesse período.
+                      </td>
+                    </tr>
+                  )}
+                  {tacosOrdenados.map((p) => (
+                    <tr key={`${p.lojaId}-${p.itemId}`}>
+                      <td>{p.lojaNome}</td>
+                      <td className="financeiro-td-titulo" title={p.titulo}>
+                        {p.titulo}
+                      </td>
+                      <td className="financeiro-th-numero">{formatCurrency(p.gastoAds)}</td>
+                      <td className="financeiro-th-numero">{formatCurrency(p.vendasAtribuidasAds)}</td>
+                      <td className="financeiro-th-numero">{formatCurrency(p.receitaTotalReal)}</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {p.acos !== null ? `${p.acos.toFixed(1)}%` : "—"}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-linha-margem">
+                        {p.tacos !== null ? `${p.tacos.toFixed(1)}%` : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
     </div>

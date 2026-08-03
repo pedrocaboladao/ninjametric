@@ -1,4 +1,4 @@
-import type { CampanhaAds } from "../types/ads";
+import type { CampanhaAds, TacosProduto } from "../types/ads";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -17,4 +17,19 @@ export async function fetchCampanhasAds(
   }
   const data = await res.json();
   return data.campanhas;
+}
+
+export async function fetchTacosProdutos(
+  lojaFiltro: number | "todas" | "minhas",
+  dataInicio: string,
+  dataFim: string
+): Promise<TacosProduto[]> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro), dataInicio, dataFim });
+  const res = await fetch(`${API_BASE}/api/ads/tacos?${params}`, { credentials: "include" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? `Erro ${res.status}`);
+  }
+  const data = await res.json();
+  return data.produtos;
 }

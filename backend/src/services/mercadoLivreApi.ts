@@ -276,3 +276,50 @@ export async function getCampanhasAds(
   }
   return campanhas;
 }
+
+export interface MlAnuncioAds {
+  item_id: string;
+  campaign_id: number;
+  title: string;
+  status: string;
+  metrics: {
+    clicks: number;
+    prints: number;
+    cost: number;
+    cpc: number;
+    direct_amount: number;
+    indirect_amount: number;
+    total_amount: number;
+    acos: number;
+  };
+}
+
+// Anúncio individual dentro de uma campanha — diferente de MlCampanhaAds
+// (que é a campanha inteira, podendo ter vários produtos). Cada anúncio
+// aqui já vem com o item_id do MLB, que é o mesmo id usado nas vendas do
+// Financeiro — dá pra cruzar gasto de Ads com receita real por produto sem
+// depender do nome da campanha.
+export async function getAnunciosAds(
+  lojaId: number,
+  advertiserId: number,
+  dateFrom: string,
+  dateTo: string
+): Promise<MlAnuncioAds[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const headers = { Authorization: `Bearer ${accessToken}`, "api-version": "2" };
+  const metrics = "clicks,prints,cost,cpc,acos,direct_amount,indirect_amount,total_amount";
+
+  const anuncios: MlAnuncioAds[] = [];
+  let offset = 0;
+  const limit = 50;
+  while (true) {
+    const { data } = await axios.get<{ paging: { total: number }; results: MlAnuncioAds[] }>(
+      `${ML_API_BASE}/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/ads/search`,
+      { headers, params: { limit, offset, date_from: dateFrom, date_to: dateTo, metrics } }
+    );
+    anuncios.push(...data.results);
+    offset += limit;
+    if (offset >= data.paging.total || data.results.length === 0) break;
+  }
+  return anuncios;
+}

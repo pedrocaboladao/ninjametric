@@ -15,3 +15,15 @@ export interface CampanhaAds {
   vendasTotais: number;
   acos: number;
 }
+
+export interface TacosProduto {
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string;
+  gastoAds: number;
+  vendasAtribuidasAds: number;
+  receitaTotalReal: number;
+  acos: number | null;
+  tacos: number | null;
+}

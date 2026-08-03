@@ -1,5 +1,6 @@
-import { Router, Request } from "express";
+import { Router, Request, Response } from "express";
 import { listarCampanhasAds } from "../services/adsService";
+import { listarTacosPorProduto } from "../services/tacosService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const adsRouter = Router();
@@ -14,21 +15,15 @@ function extrairDatas(req: Request): { dataInicio?: string; dataFim?: string } {
   return {};
 }
 
-adsRouter.get("/", async (req, res) => {
+// Resolve o filtro de loja (id específico, "todas" ou "minhas") pro usuário
+// logado — devolve null e já responde o erro se a loja pedida não é
+// permitida.
+function resolverLojaFiltro(req: Request, res: Response): { lojaId?: number; lojasPermitidas?: number[] } | null {
   const lojaIdParam = req.query.lojaId;
   const usuario = req.usuario!;
-  const { dataInicio, dataFim } = extrairDatas(req);
-  const forcar = req.query.forcar === "1";
 
   if (lojaIdParam === "minhas") {
-    try {
-      const campanhas = await listarCampanhasAds(undefined, usuario.lojas, dataInicio, dataFim, forcar);
-      res.json({ campanhas });
-    } catch (err) {
-      console.error("Erro ao listar campanhas de Ads:", err);
-      res.status(500).json({ error: "Falha ao carregar campanhas de Ads." });
-    }
-    return;
+    return { lojaId: undefined, lojasPermitidas: usuario.lojas };
   }
 
   const lojaId =
@@ -36,14 +31,37 @@ adsRouter.get("/", async (req, res) => {
 
   if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja." });
-    return;
+    return null;
   }
 
+  return { lojaId, lojasPermitidas: lojasEfetivas(usuario) };
+}
+
+adsRouter.get("/", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
+  const forcar = req.query.forcar === "1";
+
   try {
-    const campanhas = await listarCampanhasAds(lojaId, lojasEfetivas(usuario), dataInicio, dataFim, forcar);
+    const campanhas = await listarCampanhasAds(filtro.lojaId, filtro.lojasPermitidas, dataInicio, dataFim, forcar);
     res.json({ campanhas });
   } catch (err) {
     console.error("Erro ao listar campanhas de Ads:", err);
     res.status(500).json({ error: "Falha ao carregar campanhas de Ads." });
+  }
+});
+
+adsRouter.get("/tacos", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
+
+  try {
+    const produtos = await listarTacosPorProduto(filtro.lojaId, filtro.lojasPermitidas, dataInicio, dataFim);
+    res.json({ produtos });
+  } catch (err) {
+    console.error("Erro ao calcular TACOS por produto:", err);
+    res.status(500).json({ error: "Falha ao calcular TACOS por produto." });
   }
 });
