@@ -31,29 +31,69 @@ clonarAnuncioRouter.get("/debug-ads-campanhas", async (req, res) => {
 
   const advertiserId = resultado.advertisers?.advertisers?.[0]?.advertiser_id;
   if (advertiserId) {
-    try {
-      const hoje = new Date().toISOString().slice(0, 10);
-      const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-      const { data } = await axios.get(
-        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
-        {
-          headers,
-          params: {
-            limit: 20,
-            offset: 0,
-            date_from: seteDiasAtras,
-            date_to: hoje,
-            metrics: "clicks,prints,cost,cpc,acos,direct_items_quantity,indirect_items_quantity,direct_amount,indirect_amount,total_amount",
-          },
-        }
-      );
-      resultado.campanhas = data;
-    } catch (e: any) {
-      resultado.campanhasError = {
-        status: e?.response?.status,
-        data: e?.response?.data,
-        message: e.message,
-      };
+    const hoje = new Date().toISOString().slice(0, 10);
+    const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const metricas =
+      "clicks,prints,cost,cpc,acos,direct_items_quantity,indirect_items_quantity,direct_amount,indirect_amount,total_amount";
+
+    const tentativas: { nome: string; url: string; headers: Record<string, string>; params?: Record<string, unknown> }[] = [
+      {
+        nome: "v2_com_datas",
+        url: `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
+        headers: { ...headers, "api-version": "2" },
+        params: { limit: 20, offset: 0, date_from: seteDiasAtras, date_to: hoje, metrics: metricas },
+      },
+      {
+        nome: "v2_sem_params",
+        url: `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
+        headers: { ...headers, "api-version": "2" },
+      },
+      {
+        nome: "v1_com_datas",
+        url: `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
+        headers: { ...headers, "api-version": "1" },
+        params: { limit: 20, offset: 0, date_from: seteDiasAtras, date_to: hoje, metrics: metricas },
+      },
+      {
+        nome: "marketplace_search",
+        url: `https://api.mercadolibre.com/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns/search`,
+        headers: { ...headers, "api-version": "2" },
+        params: { limit: 20, offset: 0, date_from: seteDiasAtras, date_to: hoje, metrics: metricas },
+      },
+      {
+        nome: "com_MLB_no_path",
+        url: `https://api.mercadolibre.com/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns`,
+        headers: { ...headers, "api-version": "2" },
+        params: { limit: 20, offset: 0, date_from: seteDiasAtras, date_to: hoje, metrics: metricas },
+      },
+      {
+        nome: "campaigns_search_sem_advertiser_no_path",
+        url: `https://api.mercadolibre.com/advertising/product_ads/campaigns/search`,
+        headers: { ...headers, "api-version": "2" },
+        params: { advertiser_id: advertiserId, limit: 20, offset: 0, date_from: seteDiasAtras, date_to: hoje, metrics: metricas },
+      },
+      {
+        nome: "product_ads_items",
+        url: `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/items`,
+        headers: { ...headers, "api-version": "2" },
+        params: { limit: 5, offset: 0 },
+      },
+    ];
+
+    resultado.tentativas = {};
+    for (const t of tentativas) {
+      try {
+        const { data, status } = await axios.get(t.url, { headers: t.headers, params: t.params });
+        resultado.tentativas[t.nome] = { ok: true, status, urlUsada: t.url, data };
+      } catch (e: any) {
+        resultado.tentativas[t.nome] = {
+          ok: false,
+          status: e?.response?.status,
+          data: e?.response?.data,
+          urlUsada: t.url,
+          message: e.message,
+        };
+      }
     }
   }
 
