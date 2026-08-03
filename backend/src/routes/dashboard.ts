@@ -5,6 +5,16 @@ import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const dashboardRouter = Router();
 
+const DATA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+function extrairDatas(req: Request): { dataInicio?: string; dataFim?: string } {
+  const { dataInicio, dataFim } = req.query;
+  if (typeof dataInicio === "string" && typeof dataFim === "string" && DATA_REGEX.test(dataInicio) && DATA_REGEX.test(dataFim)) {
+    return { dataInicio, dataFim };
+  }
+  return {};
+}
+
 // Resolve o filtro de loja (id específico, "todas" ou "minhas") pro usuário
 // logado — devolve null e já responde o erro se a loja pedida não é
 // permitida.
@@ -56,9 +66,10 @@ dashboardRouter.get("/top-vendidos", async (req, res) => {
 dashboardRouter.get("/precificacao", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
 
   try {
-    const ranking = await calcularRankingPrecificacao(filtro.lojaId, filtro.lojasPermitidas);
+    const ranking = await calcularRankingPrecificacao(filtro.lojaId, filtro.lojasPermitidas, dataInicio, dataFim);
     res.json(ranking);
   } catch (err) {
     console.error("Erro ao montar ranking de precificação:", err);
@@ -69,6 +80,7 @@ dashboardRouter.get("/precificacao", async (req, res) => {
 dashboardRouter.get("/precificacao/sku", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
 
   const sku = String(req.query.sku ?? "").trim();
   if (!sku) {
@@ -77,7 +89,7 @@ dashboardRouter.get("/precificacao/sku", async (req, res) => {
   }
 
   try {
-    const comparacao = await buscarComparacaoPorSku(sku, filtro.lojaId, filtro.lojasPermitidas);
+    const comparacao = await buscarComparacaoPorSku(sku, filtro.lojaId, filtro.lojasPermitidas, dataInicio, dataFim);
     res.json({ comparacao });
   } catch (err) {
     console.error("Erro ao buscar comparação por SKU:", err);

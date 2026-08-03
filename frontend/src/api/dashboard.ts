@@ -21,8 +21,16 @@ export async function fetchTopVendidosPromocoes(lojaId?: number | "minhas"): Pro
   return data.produtos;
 }
 
-export async function fetchRankingPrecificacao(lojaId?: number | "minhas"): Promise<RankingPrecificacao> {
-  const query = lojaId ? `?lojaId=${lojaId}` : "";
+export async function fetchRankingPrecificacao(
+  lojaId?: number | "minhas",
+  dataInicio?: string,
+  dataFim?: string
+): Promise<RankingPrecificacao> {
+  const params = new URLSearchParams();
+  if (lojaId) params.set("lojaId", String(lojaId));
+  if (dataInicio) params.set("dataInicio", dataInicio);
+  if (dataFim) params.set("dataFim", dataFim);
+  const query = params.toString() ? `?${params}` : "";
   const res = await fetch(`${API_BASE}/api/dashboard/precificacao${query}`, { credentials: "include" });
   if (!res.ok) {
     throw new Error(`Falha ao buscar ranking de precificação: ${res.status}`);
@@ -32,10 +40,14 @@ export async function fetchRankingPrecificacao(lojaId?: number | "minhas"): Prom
 
 export async function fetchComparacaoPorSku(
   sku: string,
-  lojaId?: number | "minhas"
+  lojaId?: number | "minhas",
+  dataInicio?: string,
+  dataFim?: string
 ): Promise<ComparacaoSkuLoja[]> {
   const params = new URLSearchParams({ sku });
   if (lojaId) params.set("lojaId", String(lojaId));
+  if (dataInicio) params.set("dataInicio", dataInicio);
+  if (dataFim) params.set("dataFim", dataFim);
   const res = await fetch(`${API_BASE}/api/dashboard/precificacao/sku?${params}`, { credentials: "include" });
   if (!res.ok) {
     const data = await res.json().catch(() => null);

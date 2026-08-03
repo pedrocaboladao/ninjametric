@@ -15,6 +15,16 @@ import { RankingPrecificacao } from "./RankingPrecificacao";
 import { PainelEstudo } from "./PainelEstudo";
 import type { Usuario } from "../types/usuarios";
 
+function hojeISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function diasAtrasISO(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return d.toISOString().slice(0, 10);
+}
+
 interface Props {
   usuario: Usuario;
 }
@@ -24,6 +34,7 @@ export function Dashboard({ usuario }: Props) {
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPromocoes, setLojaFiltroPromocoes] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPrecificacao, setLojaFiltroPrecificacao] = useState<number | "todas" | "minhas">("todas");
+  const [modoDataPrecificacao, setModoDataPrecificacao] = useState<"hoje" | "7dias">("hoje");
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,9 +52,17 @@ export function Dashboard({ usuario }: Props) {
     error: errorTopVendidos,
   } = useTopVendidosPromocoes(lojaFiltroPromocoes === "todas" ? undefined : lojaFiltroPromocoes);
 
+  const dataInicioPrecificacao = modoDataPrecificacao === "hoje" ? hojeISO() : diasAtrasISO(7);
+  const dataFimPrecificacao = hojeISO();
+
   const buscarRankingPrecificacao = useCallback(
-    () => fetchRankingPrecificacao(lojaFiltroPrecificacao === "todas" ? undefined : lojaFiltroPrecificacao),
-    [lojaFiltroPrecificacao]
+    () =>
+      fetchRankingPrecificacao(
+        lojaFiltroPrecificacao === "todas" ? undefined : lojaFiltroPrecificacao,
+        dataInicioPrecificacao,
+        dataFimPrecificacao
+      ),
+    [lojaFiltroPrecificacao, dataInicioPrecificacao, dataFimPrecificacao]
   );
   const { dados: rankingPrecificacao, erro: erroRankingPrecificacao } = useBuscaComCancelamento<RankingPrecificacaoTipo>(
     buscarRankingPrecificacao,
@@ -142,6 +161,10 @@ export function Dashboard({ usuario }: Props) {
                   lojas={lojas}
                   lojaFiltro={lojaFiltroPrecificacao}
                   onChangeLojaFiltro={setLojaFiltroPrecificacao}
+                  modoData={modoDataPrecificacao}
+                  onChangeModoData={setModoDataPrecificacao}
+                  dataInicio={dataInicioPrecificacao}
+                  dataFim={dataFimPrecificacao}
                 />
               )}
             </div>

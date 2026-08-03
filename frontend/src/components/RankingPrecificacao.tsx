@@ -9,6 +9,10 @@ interface Props {
   lojas: Loja[];
   lojaFiltro: number | "todas" | "minhas";
   onChangeLojaFiltro: (valor: number | "todas" | "minhas") => void;
+  modoData: "hoje" | "7dias";
+  onChangeModoData: (valor: "hoje" | "7dias") => void;
+  dataInicio: string;
+  dataFim: string;
 }
 
 type Aba = "preco" | "margem";
@@ -20,7 +24,16 @@ function classeMargem(margemPercentual: number | null): string {
   return "financeiro-margem-positiva";
 }
 
-export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFiltro }: Props) {
+export function RankingPrecificacao({
+  ranking,
+  lojas,
+  lojaFiltro,
+  onChangeLojaFiltro,
+  modoData,
+  onChangeModoData,
+  dataInicio,
+  dataFim,
+}: Props) {
   const [aba, setAba] = useState<Aba>("preco");
   const [buscaSku, setBuscaSku] = useState("");
   const [resultadoBusca, setResultadoBusca] = useState<ComparacaoSkuLoja[] | null>(null);
@@ -32,7 +45,7 @@ export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFi
     if (!sku) return;
     setBuscando(true);
     setErroBusca(null);
-    fetchComparacaoPorSku(sku, lojaFiltro === "todas" ? undefined : lojaFiltro)
+    fetchComparacaoPorSku(sku, lojaFiltro === "todas" ? undefined : lojaFiltro, dataInicio, dataFim)
       .then(setResultadoBusca)
       .catch((err) => setErroBusca(err instanceof Error ? err.message : "Falha ao buscar SKU."))
       .finally(() => setBuscando(false));
@@ -49,7 +62,7 @@ export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFi
       <div className="top-vendidos-header">
         <div>
           <span className="painel-eyebrow">Vigilância de preço e margem</span>
-          <h2>Fora do padrão do grupo (7 dias)</h2>
+          <h2>Fora do padrão do grupo ({modoData === "hoje" ? "hoje" : "7 dias"})</h2>
         </div>
         <select
           className="dashboard-select top-vendidos-select"
@@ -67,6 +80,23 @@ export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFi
             </option>
           ))}
         </select>
+      </div>
+
+      <div className="precificacao-abas">
+        <button
+          type="button"
+          className={`precificacao-aba ${modoData === "hoje" ? "precificacao-aba-ativa" : ""}`}
+          onClick={() => onChangeModoData("hoje")}
+        >
+          Hoje
+        </button>
+        <button
+          type="button"
+          className={`precificacao-aba ${modoData === "7dias" ? "precificacao-aba-ativa" : ""}`}
+          onClick={() => onChangeModoData("7dias")}
+        >
+          7 dias
+        </button>
       </div>
 
       <div className="precificacao-busca">

@@ -42,9 +42,11 @@ export interface RankingPrecificacao {
 // que o resto do grupo pratica.
 export async function calcularRankingPrecificacao(
   lojaIdFiltro?: number,
-  lojasPermitidas?: number[]
+  lojasPermitidas?: number[],
+  dataInicio?: string,
+  dataFim?: string
 ): Promise<RankingPrecificacao> {
-  const { vendas } = await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas);
+  const { vendas } = await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim);
 
   interface AgregadoLoja {
     somaPreco: number;
@@ -130,9 +132,11 @@ export interface ComparacaoSkuLoja {
 export async function buscarComparacaoPorSku(
   skuBusca: string,
   lojaIdFiltro?: number,
-  lojasPermitidas?: number[]
+  lojasPermitidas?: number[],
+  dataInicio?: string,
+  dataFim?: string
 ): Promise<ComparacaoSkuLoja[]> {
-  const { vendas } = await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas);
+  const { vendas } = await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim);
   const buscaNorm = normalizarSku(skuBusca);
   if (!buscaNorm) return [];
 
