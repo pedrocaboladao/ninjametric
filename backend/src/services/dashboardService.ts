@@ -71,7 +71,26 @@ export interface DashboardData {
   ultimaVendaEm: string | null;
 }
 
+// Painel ao vivo: com várias pessoas logadas ao mesmo tempo, cada uma
+// pollando a cada 2 min, sem cache isso vira N buscas simultâneas nas
+// mesmas lojas na API do Mercado Livre. TTL curto (bem menor que o
+// intervalo de poll do frontend) pra absorver essas requisições
+// concorrentes sem deixar o número visivelmente desatualizado.
+const TTL_DASHBOARD_MS = 60 * 1000;
+const cacheDashboard = new Map<string, { data: DashboardData; expiraEm: number }>();
+
+function chaveCacheDashboard(lojaIdFiltro?: number, lojasPermitidas?: number[]): string {
+  const permitidas = lojasPermitidas ? [...lojasPermitidas].sort((a, b) => a - b).join(",") : "todas";
+  return `${lojaIdFiltro ?? "todas"}|${permitidas}`;
+}
+
 export async function getDashboardData(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<DashboardData> {
+  const chaveCache = chaveCacheDashboard(lojaIdFiltro, lojasPermitidas);
+  const emCache = cacheDashboard.get(chaveCache);
+  if (emCache && emCache.expiraEm > Date.now()) {
+    return emCache.data;
+  }
+
   const porLoja = await buscarOrdersDeTodasLojas(lojaIdFiltro, lojasPermitidas);
 
   const faturamentoHoje = porLoja.reduce(
@@ -193,7 +212,7 @@ export async function getDashboardData(lojaIdFiltro?: number, lojasPermitidas?: 
     }
   }
 
-  return {
+  const resultado: DashboardData = {
     faturamentoHoje,
     faturamentoOntemMesmoHorario,
     variacaoPercentual,
@@ -202,6 +221,8 @@ export async function getDashboardData(lojaIdFiltro?: number, lojasPermitidas?: 
     produtosMaisVendidos,
     ultimaVendaEm,
   };
+  cacheDashboard.set(chaveCache, { data: resultado, expiraEm: Date.now() + TTL_DASHBOARD_MS });
+  return resultado;
 }
 
 export interface TopVendidoPromocao {
