@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchVendasFinanceiras } from "../api/financeiro";
+import { fetchVendasFinanceiras, fetchPontoEquilibrio, atualizarCustoFixoMensal } from "../api/financeiro";
 import { fetchLojas, fetchLojasTodas, atualizarImpostoLoja, type Loja, type LojaTodas } from "../api/lojas";
-import type { VendaFinanceira, ResumoPedidos } from "../types/financeiro";
+import type { VendaFinanceira, ResumoPedidos, PontoEquilibrio } from "../types/financeiro";
 import type { Usuario } from "../types/usuarios";
 import { formatCurrency, formatDataHora } from "../utils/format";
 
@@ -148,6 +148,111 @@ function GerenciarImpostos({ onFechar }: { onFechar: () => void }) {
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function PontoEquilibrioCard({ lojaFiltro, admin }: { lojaFiltro: number | "todas" | "minhas"; admin: boolean }) {
+  const [dados, setDados] = useState<PontoEquilibrio | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [editando, setEditando] = useState(false);
+  const [valorEdicao, setValorEdicao] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  function carregar() {
+    fetchPontoEquilibrio(lojaFiltro)
+      .then(setDados)
+      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar ponto de equilíbrio."));
+  }
+
+  useEffect(() => {
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lojaFiltro]);
+
+  async function salvarCustoFixo() {
+    const valor = Number(valorEdicao.replace(",", "."));
+    if (Number.isNaN(valor) || valor < 0) {
+      setErro("Informe um valor válido.");
+      return;
+    }
+    setSalvando(true);
+    setErro(null);
+    try {
+      await atualizarCustoFixoMensal(valor);
+      setEditando(false);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (erro) return <div className="state-message state-error">{erro}</div>;
+  if (!dados) return <div className="state-message">Carregando ponto de equilíbrio...</div>;
+
+  const temMeta = dados.custoFixoMensal > 0;
+  const percentual = temMeta ? Math.min(100, Math.max(0, (dados.margemAposAds / dados.custoFixoMensal) * 100)) : 0;
+  const noRitmo = temMeta && dados.projecaoFechamento >= dados.custoFixoMensal;
+
+  return (
+    <div className="financeiro-equilibrio">
+      <div className="financeiro-equilibrio-header">
+        <div>
+          <span className="financeiro-stat-label">Ponto de equilíbrio — mês atual</span>
+          <div className="financeiro-equilibrio-valores">
+            <b>{formatCurrency(dados.margemAposAds)}</b>
+            <span> de </span>
+            {admin && editando ? (
+              <span className="financeiro-equilibrio-edicao">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="clonar-input"
+                  value={valorEdicao}
+                  onChange={(e) => setValorEdicao(e.target.value)}
+                  autoFocus
+                />
+                <button type="button" className="btn-responder" disabled={salvando} onClick={salvarCustoFixo}>
+                  {salvando ? "Salvando..." : "Salvar"}
+                </button>
+                <button type="button" className="btn-excluir" onClick={() => setEditando(false)}>
+                  Cancelar
+                </button>
+              </span>
+            ) : (
+              <span
+                className={admin ? "financeiro-equilibrio-meta-editavel" : undefined}
+                onClick={
+                  admin
+                    ? () => {
+                        setValorEdicao(String(dados.custoFixoMensal));
+                        setEditando(true);
+                      }
+                    : undefined
+                }
+                title={admin ? "Clique pra editar o custo fixo mensal" : undefined}
+              >
+                {temMeta ? `${formatCurrency(dados.custoFixoMensal)} (custo fixo)` : admin ? "definir custo fixo" : "custo fixo não configurado"}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className={`financeiro-equilibrio-status ${noRitmo ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
+          Projeção do mês: {formatCurrency(dados.projecaoFechamento)}
+          <span className="financeiro-stat-sub">
+            {dados.percentualAtingido !== null ? `${dados.percentualAtingido.toFixed(0)}% da meta · ` : ""}
+            dia {dados.diasDecorridos} de {dados.diasNoMes}
+          </span>
+        </div>
+      </div>
+      <div className="financeiro-equilibrio-barra">
+        <div
+          className={`financeiro-equilibrio-barra-preenchida ${noRitmo ? "financeiro-equilibrio-barra-ok" : ""}`}
+          style={{ width: `${percentual}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -373,6 +478,8 @@ export function Financeiro({ usuario }: Props) {
       </div>
 
       {gerenciandoImpostos && usuario.admin && <GerenciarImpostos onFechar={() => setGerenciandoImpostos(false)} />}
+
+      <PontoEquilibrioCard lojaFiltro={lojaFiltro} admin={usuario.admin} />
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}

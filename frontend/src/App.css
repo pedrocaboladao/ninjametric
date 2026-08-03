@@ -3330,3 +3330,130 @@
 .financeiro-margem-neutra {
   color: var(--text-muted);
 }
+
+.financeiro-equilibrio {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.financeiro-equilibrio-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.financeiro-equilibrio-valores {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 20px;
+  margin-top: 4px;
+}
+
+.financeiro-equilibrio-valores b {
+  color: var(--text-primary);
+}
+
+.financeiro-equilibrio-valores span {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.financeiro-equilibrio-meta-editavel {
+  cursor: pointer;
+  border-bottom: 1px dashed var(--text-muted);
+}
+
+.financeiro-equilibrio-meta-editavel:hover {
+  color: var(--text-primary);
+}
+
+.financeiro-equilibrio-edicao {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.financeiro-equilibrio-edicao input {
+  width: 110px;
+}
+
+.financeiro-equilibrio-status {
+  text-align: right;
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.financeiro-equilibrio-status .financeiro-stat-sub {
+  display: block;
+  font-weight: 400;
+  margin-top: 2px;
+}
+
+.financeiro-equilibrio-barra {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.financeiro-equilibrio-barra-preenchida {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--critical-text);
+  transition: width 0.3s ease;
+}
+
+.financeiro-equilibrio-barra-preenchida.financeiro-equilibrio-barra-ok {
+  background: var(--good-text);
+}
+
+.ads-triagem {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.ads-triagem-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  border-left: 4px solid transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+
+.ads-triagem-card:hover {
+  background: var(--bg-panel-alt);
+}
+
+.ads-triagem-amarelo {
+  border-left-color: #fbbf24;
+}
+
+.ads-triagem-vermelho {
+  border-left-color: var(--critical-text);
+}
+
+.ads-triagem-verde {
+  border-left-color: var(--good-text);
+}
+
+.ads-triagem-selecionado {
+  background: var(--bg-panel-alt);
+  border-color: var(--border-strong);
+}

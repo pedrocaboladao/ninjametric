@@ -1,7 +1,8 @@
+import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
 import { searchOrders, getCustoFreteDoEnvio, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
-import { janelaUltimosDias, janelaEntre } from "./dateUtils";
+import { janelaUltimosDias, janelaEntre, janelaMesAtual } from "./dateUtils";
 import { listarCampanhasAds } from "./adsService";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
@@ -256,4 +257,57 @@ export async function listarVendasFinanceiras(
   const resultado: ResultadoFinanceiro = { vendas, resumoPedidos, gastoAdsTotal };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
+}
+
+export async function obterCustoFixoMensal(): Promise<number> {
+  const { rows } = await pool.query("SELECT custo_fixo_mensal FROM financeiro_config WHERE id = 1");
+  return Number(rows[0]?.custo_fixo_mensal ?? 0);
+}
+
+export async function atualizarCustoFixoMensal(valor: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO financeiro_config (id, custo_fixo_mensal) VALUES (1, $1)
+     ON CONFLICT (id) DO UPDATE SET custo_fixo_mensal = $1`,
+    [valor]
+  );
+}
+
+export interface PontoEquilibrio {
+  margemAposAds: number;
+  custoFixoMensal: number;
+  diasDecorridos: number;
+  diasNoMes: number;
+  projecaoFechamento: number;
+  percentualAtingido: number | null;
+}
+
+// Sempre o mês corrente (dia 1 até hoje), independente do período escolhido
+// nos filtros da tela — ponto de equilíbrio é um conceito de mês fechado,
+// não faz sentido variar com um filtro de data arbitrário.
+export async function calcularPontoEquilibrio(
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<PontoEquilibrio> {
+  const mes = janelaMesAtual();
+  const dataInicio = mes.inicioDia.slice(0, 10);
+  const dataFim = mes.agora.slice(0, 10);
+
+  const [{ vendas, gastoAdsTotal }, custoFixoMensal] = await Promise.all([
+    listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
+    obterCustoFixoMensal(),
+  ]);
+
+  const margemContribuicao = vendas.reduce((soma, v) => soma + (v.margemContribuicao ?? 0), 0);
+  const margemAposAds = margemContribuicao - gastoAdsTotal;
+  const projecaoFechamento =
+    mes.diasDecorridos > 0 ? (margemAposAds / mes.diasDecorridos) * mes.diasNoMes : margemAposAds;
+
+  return {
+    margemAposAds,
+    custoFixoMensal,
+    diasDecorridos: mes.diasDecorridos,
+    diasNoMes: mes.diasNoMes,
+    projecaoFechamento,
+    percentualAtingido: custoFixoMensal > 0 ? (margemAposAds / custoFixoMensal) * 100 : null,
+  };
 }

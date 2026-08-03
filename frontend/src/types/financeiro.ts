@@ -29,3 +29,12 @@ export interface ResultadoFinanceiro {
   resumoPedidos: ResumoPedidos;
   gastoAdsTotal: number;
 }
+
+export interface PontoEquilibrio {
+  margemAposAds: number;
+  custoFixoMensal: number;
+  diasDecorridos: number;
+  diasNoMes: number;
+  projecaoFechamento: number;
+  percentualAtingido: number | null;
+}

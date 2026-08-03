@@ -1,6 +1,7 @@
-import { Router, Request } from "express";
-import { listarVendasFinanceiras } from "../services/financeiroService";
+import { Router, Request, Response } from "express";
+import { listarVendasFinanceiras, atualizarCustoFixoMensal, calcularPontoEquilibrio } from "../services/financeiroService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
+import { requireAdmin } from "../middleware/requireAuth";
 
 export const financeiroRouter = Router();
 
@@ -14,21 +15,15 @@ function extrairDatas(req: Request): { dataInicio?: string; dataFim?: string } {
   return {};
 }
 
-financeiroRouter.get("/", async (req, res) => {
+// Resolve o filtro de loja (id específico, "todas" ou "minhas") pro usuário
+// logado, igual à rota "/" — devolve null e já responde o erro se a loja
+// pedida não é permitida.
+function resolverLojaFiltro(req: Request, res: Response): { lojaId?: number; lojasPermitidas?: number[] } | null {
   const lojaIdParam = req.query.lojaId;
   const usuario = req.usuario!;
-  const { dataInicio, dataFim } = extrairDatas(req);
-  const forcar = req.query.forcar === "1";
 
   if (lojaIdParam === "minhas") {
-    try {
-      const resultado = await listarVendasFinanceiras(undefined, usuario.lojas, dataInicio, dataFim, forcar);
-      res.json(resultado);
-    } catch (err) {
-      console.error("Erro ao montar feed financeiro:", err);
-      res.status(500).json({ error: "Falha ao carregar vendas." });
-    }
-    return;
+    return { lojaId: undefined, lojasPermitidas: usuario.lojas };
   }
 
   const lojaId =
@@ -36,14 +31,60 @@ financeiroRouter.get("/", async (req, res) => {
 
   if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja." });
-    return;
+    return null;
   }
 
+  return { lojaId, lojasPermitidas: lojasEfetivas(usuario) };
+}
+
+financeiroRouter.get("/", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
+  const forcar = req.query.forcar === "1";
+
   try {
-    const resultado = await listarVendasFinanceiras(lojaId, lojasEfetivas(usuario), dataInicio, dataFim, forcar);
+    const resultado = await listarVendasFinanceiras(
+      filtro.lojaId,
+      filtro.lojasPermitidas,
+      dataInicio,
+      dataFim,
+      forcar
+    );
     res.json(resultado);
   } catch (err) {
     console.error("Erro ao montar feed financeiro:", err);
     res.status(500).json({ error: "Falha ao carregar vendas." });
+  }
+});
+
+// Custo fixo mensal (aluguel, salários etc.) — da empresa toda, usado no
+// ponto de equilíbrio (devolvido junto de /ponto-equilibrio). Só admin edita.
+financeiroRouter.put("/custo-fixo", requireAdmin, async (req, res) => {
+  const { custoFixoMensal } = req.body;
+  if (typeof custoFixoMensal !== "number" || custoFixoMensal < 0) {
+    res.status(400).json({ error: "Informe um valor de custo fixo válido." });
+    return;
+  }
+  try {
+    await atualizarCustoFixoMensal(custoFixoMensal);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Erro ao atualizar custo fixo:", err);
+    res.status(500).json({ error: "Falha ao atualizar custo fixo." });
+  }
+});
+
+// Ponto de equilíbrio: sempre o mês corrente, não usa dataInicio/dataFim.
+financeiroRouter.get("/ponto-equilibrio", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  try {
+    const resultado = await calcularPontoEquilibrio(filtro.lojaId, filtro.lojasPermitidas);
+    res.json(resultado);
+  } catch (err) {
+    console.error("Erro ao calcular ponto de equilíbrio:", err);
+    res.status(500).json({ error: "Falha ao calcular ponto de equilíbrio." });
   }
 });

@@ -66,16 +66,37 @@ function statusLabel(status: string): string {
   return status;
 }
 
+// Triagem: só campanhas ativas com gasto entram num grupo — pausadas ou sem
+// gasto não são o foco de revisão (não estão consumindo orçamento agora).
+type Grupo = "semVenda" | "acimaMeta" | "dentroMeta" | null;
+
+function grupoDaCampanha(c: CampanhaAds): Grupo {
+  if (c.status !== "active" || c.custo === 0) return null;
+  if (c.vendasTotais === 0) return "semVenda";
+  if (c.acos > c.acosMeta) return "acimaMeta";
+  return "dentroMeta";
+}
+
 function classeLinha(c: CampanhaAds): string {
-  if (c.status === "active" && c.custo === 0) return "financeiro-margem-alerta";
-  if (c.status === "active" && c.custo > 0 && c.acos > c.acosMeta) return "financeiro-margem-negativa";
+  const grupo = grupoDaCampanha(c);
+  if (grupo === "semVenda") return "financeiro-margem-alerta";
+  if (grupo === "acimaMeta") return "financeiro-margem-negativa";
   return "";
 }
 
 function motivoDestaque(c: CampanhaAds): string | null {
-  if (c.status === "active" && c.custo === 0) return "Ativa sem gasto — verba parada.";
-  if (c.status === "active" && c.custo > 0 && c.acos > c.acosMeta) return "ACOS acima da meta — queimando mais do que devia.";
+  const grupo = grupoDaCampanha(c);
+  if (grupo === "semVenda") return "Ativa com gasto, mas nenhuma venda atribuída — verba parada.";
+  if (grupo === "acimaMeta") return "ACOS acima da meta — revisar orçamento ou pausar.";
   return null;
+}
+
+function somarGrupo(campanhas: CampanhaAds[]) {
+  return {
+    qtd: campanhas.length,
+    gasto: campanhas.reduce((s, c) => s + c.custo, 0),
+    vendas: campanhas.reduce((s, c) => s + c.vendasTotais, 0),
+  };
 }
 
 export function Ads() {
@@ -91,6 +112,7 @@ export function Ads() {
   });
   const [filtroNome, setFiltroNome] = useState("");
   const [atualizando, setAtualizando] = useState(false);
+  const [grupoFiltro, setGrupoFiltro] = useState<Grupo | "todos">("todos");
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
@@ -121,11 +143,26 @@ export function Ads() {
     );
   }
 
-  const campanhasFiltradas = useMemo(() => {
+  const campanhasBase = useMemo(() => {
     if (!campanhas) return null;
     const nome = filtroNome.trim().toLowerCase();
     return campanhas.filter((c) => !nome || c.nome.toLowerCase().includes(nome));
   }, [campanhas, filtroNome]);
+
+  const buckets = useMemo(() => {
+    const base = campanhasBase ?? [];
+    return {
+      semVenda: somarGrupo(base.filter((c) => grupoDaCampanha(c) === "semVenda")),
+      acimaMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c) === "acimaMeta")),
+      dentroMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c) === "dentroMeta")),
+    };
+  }, [campanhasBase]);
+
+  const campanhasFiltradas = useMemo(() => {
+    if (!campanhasBase) return null;
+    if (grupoFiltro === "todos") return campanhasBase;
+    return campanhasBase.filter((c) => grupoDaCampanha(c) === grupoFiltro);
+  }, [campanhasBase, grupoFiltro]);
 
   const campanhasOrdenadas = useMemo(() => {
     if (!campanhasFiltradas) return null;
@@ -137,7 +174,11 @@ export function Ads() {
   const cliquesTotais = campanhasFiltradas?.reduce((s, c) => s + c.cliques, 0) ?? 0;
   const impressoesTotais = campanhasFiltradas?.reduce((s, c) => s + c.impressoes, 0) ?? 0;
   const acosMedio = vendasTotais > 0 ? (custoTotal / vendasTotais) * 100 : null;
-  const campanhasComProblema = campanhasFiltradas?.filter((c) => motivoDestaque(c) !== null).length ?? 0;
+  const campanhasComProblema = buckets.semVenda.qtd + buckets.acimaMeta.qtd;
+
+  function alternarGrupo(grupo: Grupo) {
+    setGrupoFiltro((atual) => (atual === grupo ? "todos" : grupo));
+  }
 
   return (
     <div className="financeiro-page">
@@ -238,6 +279,40 @@ export function Ads() {
               <span className="financeiro-stat-valor financeiro-margem-negativa">{campanhasComProblema}</span>
               <span className="financeiro-stat-sub">ACOS acima da meta ou sem gasto</span>
             </div>
+          </div>
+
+          <div className="ads-triagem">
+            <button
+              type="button"
+              className={`ads-triagem-card ads-triagem-amarelo ${grupoFiltro === "semVenda" ? "ads-triagem-selecionado" : ""}`}
+              onClick={() => alternarGrupo("semVenda")}
+            >
+              <span className="financeiro-stat-label">Sem venda atribuída</span>
+              <span className="financeiro-stat-valor">{buckets.semVenda.qtd} campanhas</span>
+              <span className="financeiro-stat-sub">Gasto: {formatCurrency(buckets.semVenda.gasto)} — 100% desperdício</span>
+            </button>
+            <button
+              type="button"
+              className={`ads-triagem-card ads-triagem-vermelho ${grupoFiltro === "acimaMeta" ? "ads-triagem-selecionado" : ""}`}
+              onClick={() => alternarGrupo("acimaMeta")}
+            >
+              <span className="financeiro-stat-label">ACOS acima da meta</span>
+              <span className="financeiro-stat-valor">{buckets.acimaMeta.qtd} campanhas</span>
+              <span className="financeiro-stat-sub">
+                Gasto: {formatCurrency(buckets.acimaMeta.gasto)} · Vendas: {formatCurrency(buckets.acimaMeta.vendas)}
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`ads-triagem-card ads-triagem-verde ${grupoFiltro === "dentroMeta" ? "ads-triagem-selecionado" : ""}`}
+              onClick={() => alternarGrupo("dentroMeta")}
+            >
+              <span className="financeiro-stat-label">Dentro da meta</span>
+              <span className="financeiro-stat-valor">{buckets.dentroMeta.qtd} campanhas</span>
+              <span className="financeiro-stat-sub">
+                Gasto: {formatCurrency(buckets.dentroMeta.gasto)} · Vendas: {formatCurrency(buckets.dentroMeta.vendas)}
+              </span>
+            </button>
           </div>
 
           <input

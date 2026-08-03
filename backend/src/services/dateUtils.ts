@@ -69,6 +69,20 @@ export function janelaEntre(dataInicio: string, dataFim: string): DiaJanela {
   };
 }
 
+// Do dia 1 do mês corrente (00:00) até agora — usado no ponto de equilíbrio,
+// que é sempre "o mês atual", independente do período escolhido nos filtros
+// do Financeiro.
+export function janelaMesAtual(): DiaJanela & { diasDecorridos: number; diasNoMes: number } {
+  const now = brNowParts();
+  const diasNoMes = new Date(Date.UTC(now.year, now.month, 0)).getUTCDate();
+  return {
+    inicioDia: brIso(now.year, now.month, 1, 0, 0, 0),
+    agora: brIso(now.year, now.month, now.day, now.hour, now.minute, now.second),
+    diasDecorridos: now.day,
+    diasNoMes,
+  };
+}
+
 export function janelaUltimosDias(dias: number): DiaJanela {
   const now = brNowParts();
   const inicio = new Date(Date.UTC(now.year, now.month - 1, now.day));
