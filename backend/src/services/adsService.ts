@@ -119,16 +119,50 @@ export async function capturarGastoAdsDoDia(): Promise<void> {
   }
 }
 
-// Soma o gasto de Ads guardado no nosso histórico (sobrevive a campanhas
-// excluídas). Se não tiver nada guardado no período (datas antes do
-// snapshot existir, ou nenhuma campanha rodou), cai pro total ao vivo — que
-// é o comportamento de antes, só não é imune a campanhas já excluídas.
+function listarDiasEntre(inicio: string, fim: string): string[] {
+  const dias: string[] = [];
+  let atual = new Date(`${inicio}T00:00:00Z`);
+  const fimData = new Date(`${fim}T00:00:00Z`);
+  while (atual <= fimData) {
+    dias.push(atual.toISOString().slice(0, 10));
+    atual = new Date(atual.getTime() + 24 * 60 * 60 * 1000);
+  }
+  return dias;
+}
+
+// Agrupa dias soltos (ex.: [01,02,03,10,11]) em faixas contínuas
+// ([{01,03},{10,11}]) — pra pedir pro Mercado Livre numa chamada só por
+// faixa, em vez de uma chamada por dia individual.
+function agruparEmFaixas(dias: string[]): { inicio: string; fim: string }[] {
+  if (dias.length === 0) return [];
+  const ordenados = [...dias].sort();
+  const faixas: { inicio: string; fim: string }[] = [];
+  let inicioFaixa = ordenados[0];
+  let anterior = ordenados[0];
+  for (let i = 1; i < ordenados.length; i++) {
+    const atual = ordenados[i];
+    const diasEntre = (new Date(atual).getTime() - new Date(anterior).getTime()) / (24 * 60 * 60 * 1000);
+    if (diasEntre > 1) {
+      faixas.push({ inicio: inicioFaixa, fim: anterior });
+      inicioFaixa = atual;
+    }
+    anterior = atual;
+  }
+  faixas.push({ inicio: inicioFaixa, fim: anterior });
+  return faixas;
+}
+
+// Soma o gasto de Ads dia a dia: pros dias que já têm foto guardada (ver
+// capturarGastoAdsDoDia), usa a foto — imune a campanha excluída. Pros dias
+// sem foto (datas anteriores a esse recurso existir, ou hoje antes da
+// primeira captura do dia), busca ao vivo só a faixa que falta, e soma os
+// dois. Assim um período que mistura dias com e sem foto fecha certo, sem
+// silenciosamente ignorar os dias sem foto.
 export async function obterGastoAdsHistorico(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
-  dataFim?: string,
-  forcarAtualizacao = false
+  dataFim?: string
 ): Promise<number> {
   const lojas = (await listLojas()).filter(
     (l) =>
@@ -136,23 +170,55 @@ export async function obterGastoAdsHistorico(
       (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
+  if (lojas.length === 0) return 0;
   const lojaIds = lojas.map((l) => l.id);
-  if (lojaIds.length === 0) return 0;
 
   const hoje = janelaHoje().agora.slice(0, 10);
   const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const dataInicioReal = dataInicio ?? seteDiasAtras;
   const dataFimReal = dataFim ?? hoje;
 
-  const { rows } = await pool.query<{ soma: string | null }>(
-    `SELECT SUM(custo) AS soma FROM ads_gasto_diario WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3`,
-    [lojaIds, dataInicioReal, dataFimReal]
-  );
-  const somaSnapshot = Number(rows[0]?.soma ?? 0);
-  if (somaSnapshot > 0) return somaSnapshot;
+  const [{ rows: somaRows }, { rows: diasRows }] = await Promise.all([
+    pool.query<{ soma: string | null }>(
+      `SELECT SUM(custo) AS soma FROM ads_gasto_diario WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3`,
+      [lojaIds, dataInicioReal, dataFimReal]
+    ),
+    pool.query<{ loja_id: number; data: string }>(
+      `SELECT DISTINCT loja_id, data::text AS data FROM ads_gasto_diario WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3`,
+      [lojaIds, dataInicioReal, dataFimReal]
+    ),
+  ]);
 
-  const campanhas = await listarCampanhasAds(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim, forcarAtualizacao);
-  return campanhas.reduce((soma, c) => soma + c.custo, 0);
+  let total = Number(somaRows[0]?.soma ?? 0);
+
+  const diasCapturadosPorLoja = new Map<number, Set<string>>();
+  for (const r of diasRows) {
+    if (!diasCapturadosPorLoja.has(r.loja_id)) diasCapturadosPorLoja.set(r.loja_id, new Set());
+    diasCapturadosPorLoja.get(r.loja_id)!.add(r.data);
+  }
+
+  const todosOsDias = listarDiasEntre(dataInicioReal, dataFimReal);
+
+  for (const loja of lojas) {
+    const capturados = diasCapturadosPorLoja.get(loja.id) ?? new Set<string>();
+    const faltando = todosOsDias.filter((d) => !capturados.has(d));
+    const faixas = agruparEmFaixas(faltando);
+    if (faixas.length === 0) continue;
+
+    const advertiserId = await getAdvertiserId(loja.id);
+    if (advertiserId === null) continue;
+
+    for (const faixa of faixas) {
+      try {
+        const campanhas = await getCampanhasAds(loja.id, advertiserId, faixa.inicio, faixa.fim);
+        total += campanhas.reduce((soma, c) => soma + c.metrics.cost, 0);
+      } catch {
+        // melhor esforço: se essa faixa falhar, só não soma ela
+      }
+    }
+  }
+
+  return total;
 }
 
 const HORARIOS_SNAPSHOT_ADS = [0, 4, 8, 12, 16, 20];

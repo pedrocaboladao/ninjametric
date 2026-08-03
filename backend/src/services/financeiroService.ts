@@ -157,7 +157,7 @@ export async function listarVendasFinanceiras(
     // ideia de margem "depois do investimento em publicidade" sem misturar
     // com o custo fixo (que ainda não existe no sistema, vai entrar só no DRE).
     // Vem do histórico salvo (imune a campanhas excluídas), não da API ao vivo.
-    obterGastoAdsHistorico(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim, forcarAtualizacao),
+    obterGastoAdsHistorico(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
   ]);
 
   const custoPorSku = new Map(produtos.map((p) => [normalizarSku(p.sku), p.custo]));
