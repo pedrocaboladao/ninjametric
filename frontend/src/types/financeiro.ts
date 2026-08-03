@@ -27,4 +27,5 @@ export interface ResumoPedidos {
 export interface ResultadoFinanceiro {
   vendas: VendaFinanceira[];
   resumoPedidos: ResumoPedidos;
+  gastoAdsTotal: number;
 }

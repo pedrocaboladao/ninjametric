@@ -2,6 +2,7 @@ import { listLojas } from "./tokenStore";
 import { searchOrders, getCustoFreteDoEnvio, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
+import { listarCampanhasAds } from "./adsService";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 const STATUS_CANCELADO = "cancelled";
@@ -94,6 +95,7 @@ export interface ResumoPedidos {
 export interface ResultadoFinanceiro {
   vendas: VendaFinanceira[];
   resumoPedidos: ResumoPedidos;
+  gastoAdsTotal: number;
 }
 
 async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -140,7 +142,7 @@ export async function listarVendasFinanceiras(
 
   const janela = dataInicio && dataFim ? janelaEntre(dataInicio, dataFim) : janelaUltimosDias(DIAS_JANELA);
 
-  const [produtos, ordersPorLoja] = await Promise.all([
+  const [produtos, ordersPorLoja, campanhasAds] = await Promise.all([
     listarProdutos(),
     Promise.all(
       lojas.map(async (loja) => ({
@@ -150,7 +152,13 @@ export async function listarVendasFinanceiras(
         orders: await searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora),
       }))
     ),
+    // Gasto de Ads não é por venda (é por campanha/dia), por isso não entra
+    // na margem de cada linha da tabela — só no total da janela, pra dar uma
+    // ideia de margem "depois do investimento em publicidade" sem misturar
+    // com o custo fixo (que ainda não existe no sistema, vai entrar só no DRE).
+    listarCampanhasAds(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim, forcarAtualizacao),
   ]);
+  const gastoAdsTotal = campanhasAds.reduce((soma, c) => soma + c.custo, 0);
 
   const custoPorSku = new Map(produtos.map((p) => [normalizarSku(p.sku), p.custo]));
 
@@ -245,7 +253,7 @@ export async function listarVendasFinanceiras(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  const resultado: ResultadoFinanceiro = { vendas, resumoPedidos };
+  const resultado: ResultadoFinanceiro = { vendas, resumoPedidos, gastoAdsTotal };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
 }

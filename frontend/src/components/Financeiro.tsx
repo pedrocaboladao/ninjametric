@@ -200,6 +200,7 @@ function DonutFinanceiro({ fatias, total }: { fatias: FatiaDonut[]; total: numbe
 export function Financeiro({ usuario }: Props) {
   const [vendas, setVendas] = useState<VendaFinanceira[] | null>(null);
   const [resumoPedidos, setResumoPedidos] = useState<ResumoPedidos | null>(null);
+  const [gastoAdsTotal, setGastoAdsTotal] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -228,6 +229,7 @@ export function Financeiro({ usuario }: Props) {
       .then((r) => {
         setVendas(r.vendas);
         setResumoPedidos(r.resumoPedidos);
+        setGastoAdsTotal(r.gastoAdsTotal);
       })
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."));
   }, [lojaFiltro, dataInicio, dataFim]);
@@ -240,6 +242,7 @@ export function Financeiro({ usuario }: Props) {
       .then((r) => {
         setVendas(r.vendas);
         setResumoPedidos(r.resumoPedidos);
+        setGastoAdsTotal(r.gastoAdsTotal);
       })
       .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."))
       .finally(() => setAtualizando(false));
@@ -286,6 +289,11 @@ export function Financeiro({ usuario }: Props) {
 
   const ticketMedioVenda = vendasFiltradas && vendasFiltradas.length > 0 ? receitaTotal / vendasFiltradas.length : null;
   const ticketMedioMargem = comMargem.length > 0 ? margemTotal / comMargem.length : null;
+
+  // Gasto de Ads não é por venda (é por campanha, no período todo) — por isso
+  // só desconta aqui, no total da janela, e não em cada linha da tabela.
+  const margemAposAds = margemTotal - gastoAdsTotal;
+  const margemAposAdsPercentual = receitaTotal > 0 ? (margemAposAds / receitaTotal) * 100 : null;
 
   return (
     <div className="financeiro-page">
@@ -487,6 +495,16 @@ export function Financeiro({ usuario }: Props) {
                 {margemPercentualMedia !== null && (
                   <span className="financeiro-stat-sub">{margemPercentualMedia.toFixed(2)}%</span>
                 )}
+              </div>
+              <div className="financeiro-stat-card">
+                <span className="financeiro-stat-label">Margem após Ads</span>
+                <span className={`financeiro-stat-valor ${classeMargem(margemAposAdsPercentual)}`}>
+                  {formatCurrency(margemAposAds)}
+                </span>
+                <span className="financeiro-stat-sub">
+                  Gasto Ads: {formatCurrency(gastoAdsTotal)}
+                  {margemAposAdsPercentual !== null ? ` · ${margemAposAdsPercentual.toFixed(2)}%` : ""}
+                </span>
               </div>
             </div>
           )}
