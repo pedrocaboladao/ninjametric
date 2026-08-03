@@ -1,9 +1,64 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
+import { getAdvertiserId } from "../services/mercadoLivreApi";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar por que o gasto total de campanhas (soma do que a
+// busca normal retorna) fica abaixo do "Investimento" que o proprio
+// Mercado Livre mostra — hipotese: campanhas excluidas nao aparecem na
+// busca normal, mas o ML ainda soma o gasto historico delas.
+clonarAnuncioRouter.get("/debug-ads-gasto-real", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const dataInicio = String(req.query.dataInicio ?? "");
+  const dataFim = String(req.query.dataFim ?? "");
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+  const headers = { Authorization: `Bearer ${token}`, "api-version": "2" };
+  const advertiserId = await getAdvertiserId(loja.id);
+  if (!advertiserId) {
+    res.status(404).json({ error: "sem conta de anunciante" });
+    return;
+  }
+
+  const resultado: any = { advertiserId };
+  const metrics = "clicks,prints,cost,cpc,acos,direct_amount,indirect_amount,total_amount";
+  const baseUrl = `https://api.mercadolibre.com/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns/search`;
+
+  // 1) busca normal (o que ja usamos), com metrics_summary=true pra ver o
+  // total agregado pelo proprio ML dos resultados retornados.
+  try {
+    const { data } = await axios.get(baseUrl, {
+      headers,
+      params: { limit: 1, offset: 0, date_from: dataInicio, date_to: dataFim, metrics, metrics_summary: true },
+    });
+    resultado.buscaNormalComSummary = { paging: data.paging, metrics_summary: data.metrics_summary };
+  } catch (e: any) {
+    resultado.buscaNormalComSummaryError = e?.response?.data ?? e.message;
+  }
+
+  // 2) tentar varios valores de status pra ver se algum inclui excluidas
+  for (const status of ["cancelled", "deleted", "excluded", "all", "inactive"]) {
+    try {
+      const { data } = await axios.get(baseUrl, {
+        headers,
+        params: { limit: 5, offset: 0, date_from: dataInicio, date_to: dataFim, metrics, status },
+      });
+      resultado[`status_${status}`] = { total: data.paging?.total, amostra: data.results?.slice(0, 2) };
+    } catch (e: any) {
+      resultado[`status_${status}_error`] = e?.response?.data ?? e.message;
+    }
+  }
+
+  res.json(resultado);
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
