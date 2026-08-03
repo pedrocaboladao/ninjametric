@@ -14,6 +14,8 @@ const LOJAS = [
   "Comercial Soares Baleeiro",
   "CASG",
   "Palazzo Collors",
+  "Modal Tintas",
+  "Collor Mix",
 ];
 
 async function seed() {
