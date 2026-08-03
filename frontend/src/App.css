@@ -3436,6 +3436,10 @@
   border-left-color: var(--good-text);
 }
 
+.ads-triagem-azul.ads-triagem-selecionado {
+  border-left-color: #38bdf8;
+}
+
 .ads-triagem-selecionado {
   background: var(--bg-panel-alt);
   border-color: var(--border-strong);

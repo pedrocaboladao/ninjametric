@@ -18,12 +18,22 @@ function diasAtrasISO(dias: number): string {
   return dataISO(d);
 }
 
+function diasNoPeriodo(dataInicio: string, dataFim: string): number {
+  const inicio = new Date(`${dataInicio}T00:00:00Z`);
+  const fim = new Date(`${dataFim}T00:00:00Z`);
+  return Math.max(1, Math.round((fim.getTime() - inicio.getTime()) / (24 * 60 * 60 * 1000)) + 1);
+}
+
 // TACOS real = gasto ÷ receita real do produto (todas as vendas, incluindo
 // orgânicas) — calculado no front cruzando a campanha com a receita real
 // buscada à parte (ver fetchReceitaRealPorCampanha), sem precisar de uma
 // tabela nova: fica como mais uma coluna na campanha, ao lado do ACOS.
+// acosIdeal = margem de contribuição real do produto em % — teto
+// aproximado de ACOS sustentável, pra comparar com o ACOS Meta configurado
+// na campanha (que pode estar solto ou apertado demais pra esse produto).
 interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
+  acosIdeal: number | null;
 }
 
 type ChaveOrdenacao =
@@ -39,7 +49,8 @@ type ChaveOrdenacao =
   | "vendasIndiretas"
   | "acos"
   | "acosMeta"
-  | "tacosReal";
+  | "tacosReal"
+  | "acosIdeal";
 
 interface Coluna {
   chave: ChaveOrdenacao;
@@ -61,6 +72,7 @@ const COLUNAS: Coluna[] = [
   { chave: "acos", label: "ACOS", numerica: true },
   { chave: "acosMeta", label: "ACOS Meta", numerica: true },
   { chave: "tacosReal", label: "TACOS Real", numerica: true },
+  { chave: "acosIdeal", label: "ACOS Ideal (margem)", numerica: true },
 ];
 
 function comparar(a: CampanhaComTacos, b: CampanhaComTacos, chave: ChaveOrdenacao, direcao: 1 | -1): number {
@@ -80,26 +92,36 @@ function statusLabel(status: string): string {
 
 // Triagem: só campanhas ativas com gasto entram num grupo — pausadas ou sem
 // gasto não são o foco de revisão (não estão consumindo orçamento agora).
-type Grupo = "semVenda" | "acimaMeta" | "dentroMeta" | null;
+// A ordem importa: uma campanha só cai em "orçamentoParado" se já estiver
+// indo bem (tem venda, ACOS dentro da meta) mas gastando pouco perto do
+// que o orçamento configurado permitiria — é oportunidade de escalar, não
+// desperdício. O orçamento do Ads é diário, por isso multiplica pelos dias
+// do período escolhido antes de comparar com o gasto total desse período.
+const LIMIAR_ORCAMENTO_PARADO = 0.2;
 
-function grupoDaCampanha(c: CampanhaAds): Grupo {
+type Grupo = "semVenda" | "acimaMeta" | "orcamentoParado" | "dentroMeta" | null;
+
+function grupoDaCampanha(c: CampanhaAds, diasPeriodo: number): Grupo {
   if (c.status !== "active" || c.custo === 0) return null;
   if (c.vendasTotais === 0) return "semVenda";
   if (c.acos > c.acosMeta) return "acimaMeta";
+  if (c.orcamento > 0 && c.custo / (c.orcamento * diasPeriodo) < LIMIAR_ORCAMENTO_PARADO) return "orcamentoParado";
   return "dentroMeta";
 }
 
-function classeLinha(c: CampanhaAds): string {
-  const grupo = grupoDaCampanha(c);
+function classeLinha(c: CampanhaAds, diasPeriodo: number): string {
+  const grupo = grupoDaCampanha(c, diasPeriodo);
   if (grupo === "semVenda") return "financeiro-margem-alerta";
   if (grupo === "acimaMeta") return "financeiro-margem-negativa";
+  if (grupo === "orcamentoParado") return "financeiro-margem-positiva";
   return "";
 }
 
-function motivoDestaque(c: CampanhaAds): string | null {
-  const grupo = grupoDaCampanha(c);
+function motivoDestaque(c: CampanhaAds, diasPeriodo: number): string | null {
+  const grupo = grupoDaCampanha(c, diasPeriodo);
   if (grupo === "semVenda") return "Ativa com gasto, mas nenhuma venda atribuída — verba parada.";
   if (grupo === "acimaMeta") return "ACOS acima da meta — revisar orçamento ou pausar.";
+  if (grupo === "orcamentoParado") return "Indo bem, mas usando pouco do orçamento — pode dar pra escalar.";
   return null;
 }
 
@@ -111,10 +133,15 @@ function somarGrupo(campanhas: CampanhaAds[]) {
   };
 }
 
+interface DadosReceitaCampanha {
+  receitaTotalReal: number;
+  acosIdeal: number | null;
+}
+
 export function Ads() {
   const [campanhas, setCampanhas] = useState<CampanhaAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [receitaRealPorCampanha, setReceitaRealPorCampanha] = useState<Map<string, number>>(new Map());
+  const [receitaRealPorCampanha, setReceitaRealPorCampanha] = useState<Map<string, DadosReceitaCampanha>>(new Map());
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
@@ -144,11 +171,13 @@ export function Ads() {
     if (!dataInicio || !dataFim || dataInicio > dataFim) return;
     fetchReceitaRealPorCampanha(lojaFiltro, dataInicio, dataFim)
       .then((receitas) => {
-        const mapa = new Map<string, number>();
-        for (const r of receitas) mapa.set(`${r.lojaId}-${r.campanhaId}`, r.receitaTotalReal);
+        const mapa = new Map<string, DadosReceitaCampanha>();
+        for (const r of receitas) {
+          mapa.set(`${r.lojaId}-${r.campanhaId}`, { receitaTotalReal: r.receitaTotalReal, acosIdeal: r.acosIdeal });
+        }
         setReceitaRealPorCampanha(mapa);
       })
-      .catch(() => {}); // TACOS é um extra na coluna — se falhar, a tabela principal continua funcionando
+      .catch(() => {}); // TACOS/ACOS Ideal são extras nas colunas — se falhar, a tabela principal continua funcionando
   }, [lojaFiltro, dataInicio, dataFim]);
 
   function atualizarAgora() {
@@ -167,15 +196,22 @@ export function Ads() {
     );
   }
 
+  const diasPeriodo = useMemo(() => diasNoPeriodo(dataInicio, dataFim), [dataInicio, dataFim]);
+
   const campanhasComTacos = useMemo((): CampanhaComTacos[] | null => {
     if (!campanhas) return null;
     return campanhas.map((c) => {
-      const receitaReal = receitaRealPorCampanha.get(`${c.lojaId}-${c.campanhaId}`) ?? 0;
+      const dados = receitaRealPorCampanha.get(`${c.lojaId}-${c.campanhaId}`);
+      const receitaReal = dados?.receitaTotalReal ?? 0;
       // TACOS não pode ficar menor que a receita já creditada ao Ads (a
       // busca de receita real é independente da de campanhas, pequena
       // diferença de fuso pode deixar uma levemente atrás da outra).
       const receitaBase = Math.max(receitaReal, c.vendasTotais);
-      return { ...c, tacosReal: receitaBase > 0 ? (c.custo / receitaBase) * 100 : null };
+      return {
+        ...c,
+        tacosReal: receitaBase > 0 ? (c.custo / receitaBase) * 100 : null,
+        acosIdeal: dados?.acosIdeal ?? null,
+      };
     });
   }, [campanhas, receitaRealPorCampanha]);
 
@@ -188,17 +224,18 @@ export function Ads() {
   const buckets = useMemo(() => {
     const base = campanhasBase ?? [];
     return {
-      semVenda: somarGrupo(base.filter((c) => grupoDaCampanha(c) === "semVenda")),
-      acimaMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c) === "acimaMeta")),
-      dentroMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c) === "dentroMeta")),
+      semVenda: somarGrupo(base.filter((c) => grupoDaCampanha(c, diasPeriodo) === "semVenda")),
+      acimaMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c, diasPeriodo) === "acimaMeta")),
+      orcamentoParado: somarGrupo(base.filter((c) => grupoDaCampanha(c, diasPeriodo) === "orcamentoParado")),
+      dentroMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c, diasPeriodo) === "dentroMeta")),
     };
-  }, [campanhasBase]);
+  }, [campanhasBase, diasPeriodo]);
 
   const campanhasFiltradas = useMemo(() => {
     if (!campanhasBase) return null;
     if (grupoFiltro === "todos") return campanhasBase;
-    return campanhasBase.filter((c) => grupoDaCampanha(c) === grupoFiltro);
-  }, [campanhasBase, grupoFiltro]);
+    return campanhasBase.filter((c) => grupoDaCampanha(c, diasPeriodo) === grupoFiltro);
+  }, [campanhasBase, grupoFiltro, diasPeriodo]);
 
   const campanhasOrdenadas = useMemo(() => {
     if (!campanhasFiltradas) return null;
@@ -341,6 +378,18 @@ export function Ads() {
             </button>
             <button
               type="button"
+              className={`ads-triagem-card ads-triagem-azul ${grupoFiltro === "orcamentoParado" ? "ads-triagem-selecionado" : ""}`}
+              onClick={() => alternarGrupo("orcamentoParado")}
+              title="Indo bem (tem venda, ACOS dentro da meta), mas gastando menos de 20% do orçamento configurado — pode dar pra investir mais."
+            >
+              <span className="financeiro-stat-label">Orçamento parado</span>
+              <span className="financeiro-stat-valor">{buckets.orcamentoParado.qtd} campanhas</span>
+              <span className="financeiro-stat-sub">
+                Gasto: {formatCurrency(buckets.orcamentoParado.gasto)} · Vendas: {formatCurrency(buckets.orcamentoParado.vendas)}
+              </span>
+            </button>
+            <button
+              type="button"
               className={`ads-triagem-card ads-triagem-verde ${grupoFiltro === "dentroMeta" ? "ads-triagem-selecionado" : ""}`}
               onClick={() => alternarGrupo("dentroMeta")}
             >
@@ -384,7 +433,7 @@ export function Ads() {
                   </tr>
                 )}
                 {campanhasOrdenadas.map((c) => {
-                  const motivo = motivoDestaque(c);
+                  const motivo = motivoDestaque(c, diasPeriodo);
                   return (
                     <tr key={`${c.lojaId}-${c.campanhaId}`} title={motivo ?? undefined}>
                       <td>{c.lojaNome}</td>
@@ -397,11 +446,14 @@ export function Ads() {
                       <td className="financeiro-th-numero">{formatCurrency(c.cpc)}</td>
                       <td className="financeiro-th-numero">{formatCurrency(c.vendasDiretas)}</td>
                       <td className="financeiro-th-numero">{formatCurrency(c.vendasIndiretas)}</td>
-                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeLinha(c)}`}>
+                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeLinha(c, diasPeriodo)}`}>
                         {c.acos.toFixed(1)}%
                       </td>
                       <td className="financeiro-th-numero financeiro-td-mudo">{c.acosMeta.toFixed(1)}%</td>
                       <td className="financeiro-th-numero">{c.tacosReal !== null ? `${c.tacosReal.toFixed(1)}%` : "—"}</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {c.acosIdeal !== null ? `${c.acosIdeal.toFixed(1)}%` : "—"}
+                      </td>
                     </tr>
                   );
                 })}
