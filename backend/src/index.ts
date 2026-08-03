@@ -17,6 +17,7 @@ import { financeiroRouter } from "./routes/financeiro";
 import { adsRouter } from "./routes/ads";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
+import { iniciarSnapshotAds } from "./services/adsService";
 
 const app = express();
 
@@ -51,3 +52,4 @@ app.listen(env.port, () => {
 });
 
 iniciarPrewarmPromocoes();
+iniciarSnapshotAds();

@@ -182,3 +182,18 @@ ALTER TABLE lojas ADD COLUMN IF NOT EXISTS imposto_percentual NUMERIC(5, 2) NOT 
 -- soma o custo fixo das lojas incluídas no filtro.
 ALTER TABLE lojas ADD COLUMN IF NOT EXISTS custo_fixo_mensal NUMERIC(12, 2) NOT NULL DEFAULT 0;
 DROP TABLE IF EXISTS financeiro_config;
+
+-- Ads: snapshot do gasto diário por campanha, capturado periodicamente (a
+-- cada 4h) enquanto a campanha ainda existe. O Mercado Livre "esquece" o
+-- gasto de campanhas excluídas na API de campanhas — guardando aqui antes
+-- disso acontecer, o histórico sobrevive mesmo depois da campanha sumir.
+CREATE TABLE IF NOT EXISTS ads_gasto_diario (
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  campanha_id BIGINT NOT NULL,
+  data DATE NOT NULL,
+  nome TEXT NOT NULL,
+  custo NUMERIC(12, 2) NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (loja_id, campanha_id, data)
+);
+CREATE INDEX IF NOT EXISTS idx_ads_gasto_diario_loja_data ON ads_gasto_diario (loja_id, data);
