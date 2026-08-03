@@ -16,6 +16,8 @@ const LOJAS = [
   "Palazzo Collors",
   "Modal Tintas",
   "Collor Mix",
+  "Lux Collor",
+  "Fábrica de Tintas",
 ];
 
 async function seed() {
