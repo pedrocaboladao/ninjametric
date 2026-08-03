@@ -1,9 +1,49 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar se da pra puxar gasto/ACOS de campanhas de Ads com o
+// token que ja temos, sem precisar reautorizar as lojas.
+clonarAnuncioRouter.get("/debug-ads-campanhas", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+  const headers = { Authorization: `Bearer ${token}`, "api-version": "2" };
+  const resultado: any = {};
+
+  try {
+    const { data } = await axios.get("https://api.mercadolibre.com/advertising/advertisers", {
+      headers,
+      params: { product_id: "PADS" },
+    });
+    resultado.advertisers = data;
+  } catch (e: any) {
+    resultado.advertisersError = e?.response?.data ?? e.message;
+  }
+
+  const advertiserId = resultado.advertisers?.advertisers?.[0]?.advertiser_id;
+  if (advertiserId) {
+    try {
+      const { data } = await axios.get(
+        `https://api.mercadolibre.com/advertising/advertisers/${advertiserId}/product_ads/campaigns`,
+        { headers, params: { limit: 20 } }
+      );
+      resultado.campanhas = data;
+    } catch (e: any) {
+      resultado.campanhasError = e?.response?.data ?? e.message;
+    }
+  }
+
+  res.json(resultado);
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
