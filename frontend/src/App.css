@@ -3386,6 +3386,14 @@
   color: var(--text-secondary);
 }
 
+.financeiro-rateio-lojas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 10px 0;
+  margin-top: 4px;
+}
+
 .financeiro-margem-positiva {
   color: var(--good-text);
 }

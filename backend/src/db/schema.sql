@@ -246,3 +246,11 @@ ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS grupo_parcelamento_id IN
 ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS parcela_numero INTEGER;
 ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS parcela_total INTEGER;
 CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_grupo_parcelamento ON contas_lancamentos (grupo_parcelamento_id);
+
+-- Rateio de custo compartilhado entre lojas escolhidas, em partes iguais.
+-- Mesma ideia do grupo_parcelamento_id: a primeira linha criada é a âncora
+-- do grupo (grupo_rateio_id aponta pro id dela, inclusive nela mesma). Sem
+-- coluna de "posição" — rateio não tem ordem, só as N lojas participantes.
+ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS grupo_rateio_id INTEGER REFERENCES contas_lancamentos(id) ON DELETE SET NULL;
+ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS rateio_total INTEGER;
+CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_grupo_rateio ON contas_lancamentos (grupo_rateio_id);

@@ -25,6 +25,8 @@ export interface Lancamento {
   grupoParcelamentoId: number | null;
   parcelaNumero: number | null;
   parcelaTotal: number | null;
+  grupoRateioId: number | null;
+  rateioTotal: number | null;
 }
 
 export interface FiltroLancamentos {
@@ -66,6 +68,8 @@ function linhaParaLancamento(r: Record<string, unknown>): Lancamento {
     grupoParcelamentoId: (r.grupo_parcelamento_id as number | null) ?? null,
     parcelaNumero: (r.parcela_numero as number | null) ?? null,
     parcelaTotal: (r.parcela_total as number | null) ?? null,
+    grupoRateioId: (r.grupo_rateio_id as number | null) ?? null,
+    rateioTotal: (r.rateio_total as number | null) ?? null,
   };
 }
 
@@ -229,6 +233,71 @@ export async function criarLancamentoParcelado(criadoPorId: number, dados: NovoL
     parcelas.push((await buscarLancamentoPorId(rows[0].id)) as Lancamento);
   }
   return parcelas;
+}
+
+// Divide um custo compartilhado (ex: aluguel) em partes iguais entre as
+// lojas escolhidas — uma linha por loja, mesmo padrão de âncora do
+// parcelamento (a 1ª linha vira o grupo_rateio_id de todas, inclusive dela
+// mesma). Divide em centavos pra fechar a soma exata: R$100/3 lojas vira
+// 33,33 + 33,33 + 33,34 (as primeiras `resto` lojas da lista recebem 1
+// centavo a mais), nunca 33,33 x 3 = 99,99 sumindo 1 centavo.
+export interface NovoLancamentoRateado {
+  lojaIds: number[];
+  tipo: TipoLancamento;
+  descricao: string;
+  categoria?: string | null;
+  contatoId?: number | null;
+  valorTotal: number;
+  vencimento: string;
+  observacao?: string | null;
+}
+
+export async function criarLancamentoRateado(criadoPorId: number, dados: NovoLancamentoRateado): Promise<Lancamento[]> {
+  const totalCentavos = Math.round(dados.valorTotal * 100);
+  const n = dados.lojaIds.length;
+  const base = Math.floor(totalCentavos / n);
+  const resto = totalCentavos - base * n;
+  const valorPorLoja = (indice: number) => (base + (indice < resto ? 1 : 0)) / 100;
+
+  const primeira = await criarLancamento(criadoPorId, {
+    lojaId: dados.lojaIds[0],
+    tipo: dados.tipo,
+    descricao: dados.descricao,
+    categoria: dados.categoria,
+    contatoId: dados.contatoId,
+    valor: valorPorLoja(0),
+    vencimento: dados.vencimento,
+    observacao: dados.observacao,
+  });
+  await pool.query(
+    "UPDATE contas_lancamentos SET grupo_rateio_id = $1, rateio_total = $2 WHERE id = $1",
+    [primeira.id, n]
+  );
+
+  const lancamentos: Lancamento[] = [(await buscarLancamentoPorId(primeira.id)) as Lancamento];
+  for (let i = 1; i < n; i++) {
+    const { rows } = await pool.query(
+      `INSERT INTO contas_lancamentos
+         (loja_id, tipo, descricao, categoria, contato_id, valor, vencimento, observacao, criado_por, grupo_rateio_id, rateio_total)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       RETURNING id`,
+      [
+        dados.lojaIds[i],
+        dados.tipo,
+        dados.descricao,
+        dados.categoria ?? null,
+        dados.contatoId ?? null,
+        valorPorLoja(i),
+        dados.vencimento,
+        dados.observacao ?? null,
+        criadoPorId,
+        primeira.id,
+        n,
+      ]
+    );
+    lancamentos.push((await buscarLancamentoPorId(rows[0].id)) as Lancamento);
+  }
+  return lancamentos;
 }
 
 export interface AtualizacaoLancamento {

@@ -4,6 +4,7 @@ import {
   fetchResumoContas,
   criarLancamento,
   criarLancamentoParcelado,
+  criarLancamentoRateado,
   atualizarLancamento,
   marcarComoPago,
   excluirLancamento,
@@ -48,8 +49,11 @@ function labelStatus(l: Lancamento): string {
   return l.atrasado ? "Atrasado" : "Pendente";
 }
 
+type ModoLancamento = "unico" | "parcelado" | "rateado";
+
 interface FormState {
   lojaId: number | null;
+  lojaIdsRateio: number[];
   tipo: TipoLancamento;
   descricao: string;
   categoria: string;
@@ -57,13 +61,14 @@ interface FormState {
   valor: string;
   vencimento: string;
   observacao: string;
-  parcelado: boolean;
+  modo: ModoLancamento;
   quantidadeParcelas: string;
 }
 
 function formVazio(lojaPadrao: number | null): FormState {
   return {
     lojaId: lojaPadrao,
+    lojaIdsRateio: [],
     tipo: "pagar",
     descricao: "",
     categoria: "",
@@ -71,7 +76,7 @@ function formVazio(lojaPadrao: number | null): FormState {
     valor: "",
     vencimento: hojeISO(),
     observacao: "",
-    parcelado: false,
+    modo: "unico",
     quantidadeParcelas: "2",
   };
 }
@@ -296,6 +301,7 @@ export function Contas({ usuario: _usuario }: Props) {
     setEditandoId(l.id);
     setForm({
       lojaId: l.lojaId,
+      lojaIdsRateio: [],
       tipo: l.tipo,
       descricao: l.descricao,
       categoria: l.categoria ?? "",
@@ -303,7 +309,7 @@ export function Contas({ usuario: _usuario }: Props) {
       valor: String(l.valor),
       vencimento: l.vencimento,
       observacao: l.observacao ?? "",
-      parcelado: false,
+      modo: "unico",
       quantidadeParcelas: "2",
     });
     setErroForm(null);
@@ -331,12 +337,16 @@ export function Contas({ usuario: _usuario }: Props) {
       return;
     }
     let quantidadeParcelas = 0;
-    if (form.parcelado && editandoId === null) {
+    if (form.modo === "parcelado" && editandoId === null) {
       quantidadeParcelas = Number(form.quantidadeParcelas);
       if (!Number.isInteger(quantidadeParcelas) || quantidadeParcelas < 2 || quantidadeParcelas > 60) {
         setErroForm("Informe uma quantidade de parcelas entre 2 e 60.");
         return;
       }
+    }
+    if (form.modo === "rateado" && editandoId === null && form.lojaIdsRateio.length < 2) {
+      setErroForm("Escolha pelo menos 2 lojas pra ratear.");
+      return;
     }
 
     setSalvando(true);
@@ -350,13 +360,24 @@ export function Contas({ usuario: _usuario }: Props) {
           vencimento: form.vencimento,
           observacao: form.observacao.trim() || null,
         });
+      } else if (form.modo === "rateado") {
+        await criarLancamentoRateado({
+          lojaIds: form.lojaIdsRateio,
+          tipo: form.tipo,
+          descricao: form.descricao.trim(),
+          categoria: form.categoria.trim() || null,
+          contatoId: form.contatoId,
+          valorTotal: valorNum,
+          vencimento: form.vencimento,
+          observacao: form.observacao.trim() || null,
+        });
       } else {
         if (form.lojaId === null) {
           setErroForm("Selecione uma loja.");
           setSalvando(false);
           return;
         }
-        if (form.parcelado) {
+        if (form.modo === "parcelado") {
           await criarLancamentoParcelado({
             lojaId: form.lojaId,
             tipo: form.tipo,
@@ -500,22 +521,73 @@ export function Contas({ usuario: _usuario }: Props) {
             </button>
           </div>
           {erroForm && <div className="state-message state-error">{erroForm}</div>}
+          {editandoId === null && (
+            <div className="precificacao-abas">
+              <button
+                type="button"
+                className={`precificacao-aba ${form.modo === "unico" ? "precificacao-aba-ativa" : ""}`}
+                onClick={() => setForm((f) => ({ ...f, modo: "unico" }))}
+              >
+                Único
+              </button>
+              <button
+                type="button"
+                className={`precificacao-aba ${form.modo === "parcelado" ? "precificacao-aba-ativa" : ""}`}
+                onClick={() => setForm((f) => ({ ...f, modo: "parcelado" }))}
+              >
+                Parcelado
+              </button>
+              <button
+                type="button"
+                className={`precificacao-aba ${form.modo === "rateado" ? "precificacao-aba-ativa" : ""}`}
+                onClick={() => setForm((f) => ({ ...f, modo: "rateado" }))}
+              >
+                Rateado entre lojas
+              </button>
+            </div>
+          )}
+          {form.modo === "rateado" && editandoId === null ? (
+            <div className="financeiro-rateio-lojas">
+              {lojas.map((l) => {
+                const marcada = form.lojaIdsRateio.includes(l.id);
+                return (
+                  <label key={l.id} className="financeiro-checkbox-parcelar">
+                    <input
+                      type="checkbox"
+                      checked={marcada}
+                      onChange={(e) =>
+                        setForm((f) => ({
+                          ...f,
+                          lojaIdsRateio: e.target.checked
+                            ? [...f.lojaIdsRateio, l.id]
+                            : f.lojaIdsRateio.filter((id) => id !== l.id),
+                        }))
+                      }
+                    />
+                    {l.nome}
+                  </label>
+                );
+              })}
+            </div>
+          ) : null}
           <div className="financeiro-busca">
-            <select
-              className="dashboard-select"
-              value={form.lojaId ?? ""}
-              disabled={editandoId !== null}
-              onChange={(e) => setForm((f) => ({ ...f, lojaId: Number(e.target.value) }))}
-            >
-              <option value="" disabled>
-                Loja...
-              </option>
-              {lojas.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.nome}
+            {form.modo !== "rateado" && (
+              <select
+                className="dashboard-select"
+                value={form.lojaId ?? ""}
+                disabled={editandoId !== null}
+                onChange={(e) => setForm((f) => ({ ...f, lojaId: Number(e.target.value) }))}
+              >
+                <option value="" disabled>
+                  Loja...
                 </option>
-              ))}
-            </select>
+                {lojas.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nome}
+                  </option>
+                ))}
+              </select>
+            )}
             <select
               className="dashboard-select"
               value={form.tipo}
@@ -558,7 +630,9 @@ export function Contas({ usuario: _usuario }: Props) {
             <input
               className="clonar-input"
               inputMode="decimal"
-              placeholder={form.parcelado ? "Valor de cada parcela" : "Valor"}
+              placeholder={
+                form.modo === "parcelado" ? "Valor de cada parcela" : form.modo === "rateado" ? "Valor total" : "Valor"
+              }
               value={form.valor}
               onChange={(e) => setForm((f) => ({ ...f, valor: e.target.value }))}
             />
@@ -568,7 +642,7 @@ export function Contas({ usuario: _usuario }: Props) {
               value={form.vencimento}
               onChange={(e) => setForm((f) => ({ ...f, vencimento: e.target.value }))}
             />
-            {form.parcelado && (
+            {form.modo === "parcelado" && (
               <input
                 type="number"
                 min={2}
@@ -580,15 +654,15 @@ export function Contas({ usuario: _usuario }: Props) {
               />
             )}
           </div>
-          {editandoId === null && (
-            <label className="financeiro-checkbox-parcelar">
-              <input
-                type="checkbox"
-                checked={form.parcelado}
-                onChange={(e) => setForm((f) => ({ ...f, parcelado: e.target.checked }))}
-              />
-              Parcelar (o vencimento acima vira o da 1ª parcela; as seguintes vencem 1 mês depois, uma da outra)
-            </label>
+          {form.modo === "parcelado" && editandoId === null && (
+            <span className="financeiro-stat-sub">
+              O vencimento acima vira o da 1ª parcela; as seguintes vencem 1 mês depois, uma da outra.
+            </span>
+          )}
+          {form.modo === "rateado" && editandoId === null && (
+            <span className="financeiro-stat-sub">
+              O valor total é dividido em partes iguais entre as lojas marcadas acima.
+            </span>
           )}
           <textarea
             className="clonar-input"
@@ -691,6 +765,9 @@ export function Contas({ usuario: _usuario }: Props) {
                       <div className="financeiro-td-mudo financeiro-td-sublinha">
                         Parcela {l.parcelaNumero}/{l.parcelaTotal}
                       </div>
+                    )}
+                    {l.rateioTotal && (
+                      <div className="financeiro-td-mudo financeiro-td-sublinha">Rateado entre {l.rateioTotal} lojas</div>
                     )}
                   </td>
                   <td className="financeiro-th-numero">{formatCurrency(l.valor)}</td>

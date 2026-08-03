@@ -3,6 +3,7 @@ import type {
   ResumoContas,
   NovoLancamentoInput,
   NovoLancamentoParceladoInput,
+  NovoLancamentoRateadoInput,
   EdicaoLancamentoInput,
   Contato,
   TipoContato,
@@ -84,6 +85,16 @@ export async function excluirLancamento(id: number): Promise<void> {
 
 export async function criarLancamentoParcelado(dados: NovoLancamentoParceladoInput): Promise<Lancamento[]> {
   const res = await fetch(`${API_BASE}/api/contas/parcelado`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(dados),
+  });
+  return tratarResposta(res);
+}
+
+export async function criarLancamentoRateado(dados: NovoLancamentoRateadoInput): Promise<Lancamento[]> {
+  const res = await fetch(`${API_BASE}/api/contas/rateado`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",

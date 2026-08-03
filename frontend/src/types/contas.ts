@@ -23,6 +23,8 @@ export interface Lancamento {
   grupoParcelamentoId: number | null;
   parcelaNumero: number | null;
   parcelaTotal: number | null;
+  grupoRateioId: number | null;
+  rateioTotal: number | null;
 }
 
 export type TipoContato = "fornecedor" | "cliente";
@@ -82,6 +84,17 @@ export interface NovoLancamentoParceladoInput {
   valorParcela: number;
   primeiroVencimento: string;
   quantidadeParcelas: number;
+  observacao?: string | null;
+}
+
+export interface NovoLancamentoRateadoInput {
+  lojaIds: number[];
+  tipo: TipoLancamento;
+  descricao: string;
+  categoria?: string | null;
+  contatoId?: number | null;
+  valorTotal: number;
+  vencimento: string;
   observacao?: string | null;
 }
 

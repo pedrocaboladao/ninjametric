@@ -3,6 +3,7 @@ import {
   listarLancamentos,
   criarLancamento,
   criarLancamentoParcelado,
+  criarLancamentoRateado,
   atualizarLancamento,
   marcarComoPago,
   excluirLancamento,
@@ -284,6 +285,58 @@ contasRouter.delete("/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao excluir lançamento.");
+  }
+});
+
+contasRouter.post("/rateado", async (req, res) => {
+  const { lojaIds, tipo, descricao, categoria, valorTotal, vencimento, observacao } = req.body ?? {};
+  const usuario = req.usuario!;
+
+  if (!Array.isArray(lojaIds) || lojaIds.length < 2 || !lojaIds.every((id) => Number.isInteger(id))) {
+    res.status(400).json({ error: "Escolha pelo menos 2 lojas pra ratear." });
+    return;
+  }
+  if (new Set(lojaIds).size !== lojaIds.length) {
+    res.status(400).json({ error: "Loja repetida na lista de rateio." });
+    return;
+  }
+  for (const id of lojaIds) {
+    if (!temAcessoLoja(usuario, id)) {
+      res.status(403).json({ error: "Você não tem acesso a uma das lojas selecionadas." });
+      return;
+    }
+  }
+  if (typeof tipo !== "string" || !TIPOS_VALIDOS.has(tipo)) {
+    res.status(400).json({ error: "Informe o tipo (pagar ou receber)." });
+    return;
+  }
+  if (typeof descricao !== "string" || !descricao.trim()) {
+    res.status(400).json({ error: "Informe a descrição." });
+    return;
+  }
+  if (typeof valorTotal !== "number" || !(valorTotal > 0)) {
+    res.status(400).json({ error: "Informe um valor total maior que zero." });
+    return;
+  }
+  if (typeof vencimento !== "string" || !DATA_REGEX.test(vencimento)) {
+    res.status(400).json({ error: "Informe a data de vencimento." });
+    return;
+  }
+
+  try {
+    const lancamentos = await criarLancamentoRateado(usuario.id, {
+      lojaIds,
+      tipo: tipo as TipoLancamento,
+      descricao: descricao.trim(),
+      categoria: typeof categoria === "string" && categoria.trim() ? categoria.trim() : null,
+      contatoId: extrairContatoId(req.body ?? {}),
+      valorTotal,
+      vencimento,
+      observacao: typeof observacao === "string" && observacao.trim() ? observacao.trim() : null,
+    });
+    res.json(lancamentos);
+  } catch (err) {
+    erro(res, err, "Falha ao criar lançamento rateado.");
   }
 });
 
