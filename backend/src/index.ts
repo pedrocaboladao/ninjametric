@@ -15,6 +15,7 @@ import { youtubeRouter } from "./routes/youtube";
 import { produtosRouter } from "./routes/produtos";
 import { financeiroRouter } from "./routes/financeiro";
 import { adsRouter } from "./routes/ads";
+import { contasRouter } from "./routes/contas";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
@@ -42,6 +43,7 @@ app.use("/api/youtube", requireAuth, youtubeRouter);
 app.use("/api/produtos", requireAuth, requirePermissao("produtos"), produtosRouter);
 app.use("/api/financeiro", requireAuth, requirePermissao("financeiro"), financeiroRouter);
 app.use("/api/ads", requireAuth, requirePermissao("ads"), adsRouter);
+app.use("/api/contas", requireAuth, requirePermissao("contas"), contasRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

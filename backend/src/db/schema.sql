@@ -197,3 +197,27 @@ CREATE TABLE IF NOT EXISTS ads_gasto_diario (
   PRIMARY KEY (loja_id, campanha_id, data)
 );
 CREATE INDEX IF NOT EXISTS idx_ads_gasto_diario_loja_data ON ads_gasto_diario (loja_id, data);
+
+-- Contas a pagar e receber: lançamentos manuais de despesas/receitas que não
+-- vêm de pedidos do Mercado Livre (essas já são rastreadas automaticamente
+-- no Financeiro) — fornecedores, aluguel, salários, impostos etc. Por loja,
+-- igual ao resto do sistema. "Atrasado" não é armazenado: é derivado em
+-- tempo de leitura (status = 'pendente' E vencimento < hoje) — não precisa
+-- de cron pra manter em dia.
+CREATE TABLE IF NOT EXISTS contas_lancamentos (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
+  tipo TEXT NOT NULL CHECK (tipo IN ('pagar', 'receber')),
+  descricao TEXT NOT NULL,
+  categoria TEXT,
+  valor NUMERIC(12, 2) NOT NULL CHECK (valor > 0),
+  vencimento DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'pago', 'cancelado')),
+  data_pagamento DATE,
+  observacao TEXT,
+  criado_por INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_loja_status ON contas_lancamentos (loja_id, status);
+CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_vencimento ON contas_lancamentos (vencimento);

@@ -3366,6 +3366,12 @@
   font-weight: 700;
 }
 
+.financeiro-acoes {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .financeiro-margem-positiva {
   color: var(--good-text);
 }
