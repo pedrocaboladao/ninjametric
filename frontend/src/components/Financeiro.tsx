@@ -32,12 +32,6 @@ function hojeISO(): string {
   return dataISO(new Date());
 }
 
-function diasAtrasISO(dias: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  return dataISO(d);
-}
-
 type ChaveOrdenacao =
   | "titulo"
   | "lojaNome"
@@ -320,7 +314,7 @@ function DonutFinanceiro({ fatias, total }: { fatias: FatiaDonut[]; total: numbe
 export function Financeiro({ usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
-  const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
+  const [dataInicio, setDataInicio] = useState(() => hojeISO());
   const [dataFim, setDataFim] = useState(() => hojeISO());
   const [gerenciandoImpostos, setGerenciandoImpostos] = useState(false);
   const [gerenciandoCustoFixo, setGerenciandoCustoFixo] = useState(false);

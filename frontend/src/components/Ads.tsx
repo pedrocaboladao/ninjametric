@@ -13,12 +13,6 @@ function hojeISO(): string {
   return dataISO(new Date());
 }
 
-function diasAtrasISO(dias: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - dias);
-  return dataISO(d);
-}
-
 function diasNoPeriodo(dataInicio: string, dataFim: string): number {
   const inicio = new Date(`${dataInicio}T00:00:00Z`);
   const fim = new Date(`${dataFim}T00:00:00Z`);
@@ -142,7 +136,7 @@ interface DadosReceitaCampanha {
 export function Ads() {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
-  const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
+  const [dataInicio, setDataInicio] = useState(() => hojeISO());
   const [dataFim, setDataFim] = useState(() => hojeISO());
   const [ordenacao, setOrdenacao] = useState<{ chave: ChaveOrdenacao; direcao: 1 | -1 }>({
     chave: "custo",
