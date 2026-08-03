@@ -12,6 +12,7 @@ import {
   IconChevron,
   IconLogout,
   IconMoney,
+  IconMegaphone,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -22,6 +23,7 @@ export type View =
   | "clonar"
   | "produtos"
   | "financeiro"
+  | "ads"
   | "tarefas"
   | "funcionarios"
   | "usuarios";
@@ -45,6 +47,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeClonar = temPermissao(usuario, "clonar");
   const podeProdutos = temPermissao(usuario, "produtos");
   const podeFinanceiro = temPermissao(usuario, "financeiro");
+  const podeAds = temPermissao(usuario, "ads");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos;
@@ -87,6 +90,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconMoney size={16} />
               <span>Financeiro</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeAds && (
+          <>
+            <button
+              className={`sidebar-item ${view === "ads" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("ads")}
+            >
+              <IconMegaphone size={16} />
+              <span>Gestão de Ads</span>
             </button>
             <div className="sidebar-divider" />
           </>

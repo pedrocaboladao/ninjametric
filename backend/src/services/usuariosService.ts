@@ -9,6 +9,7 @@ export const MODULOS_VALIDOS = [
   "funcionarios",
   "produtos",
   "financeiro",
+  "ads",
 ] as const;
 
 export interface Usuario {

@@ -232,3 +232,12 @@ export function IconMoney({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconMegaphone({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M3 10v4a1 1 0 0 0 1 1h2l1 5h2l-1-5h1l9 4V6l-9 4H4a1 1 0 0 0-1 1z" />
+      <path d="M19 9.5v5" />
+    </svg>
+  );
+}

@@ -209,3 +209,70 @@ export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Prom
 
   return result;
 }
+
+export interface MlCampanhaAds {
+  id: number;
+  name: string;
+  status: string;
+  budget: number;
+  acos_target: number;
+  metrics: {
+    clicks: number;
+    prints: number;
+    cost: number;
+    cpc: number;
+    direct_amount: number;
+    indirect_amount: number;
+    total_amount: number;
+    direct_items_quantity: number;
+    indirect_items_quantity: number;
+    acos: number;
+  };
+}
+
+// Cada loja tem uma conta de anunciante própria dentro do Product Ads —
+// precisa desse id antes de listar as campanhas. Uma loja pode nunca ter
+// aberto o Product Ads (404) — nesse caso não tem o que gerir, retorna null.
+export async function getAdvertiserId(lojaId: number): Promise<number | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{ advertisers: { advertiser_id: number }[] }>(
+      `${ML_API_BASE}/advertising/advertisers`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, params: { product_id: "PADS" } }
+    );
+    return data.advertisers?.[0]?.advertiser_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// O endpoint de busca de campanhas fica sob /marketplace (não é o mesmo
+// prefixo /advertising usado pro status simples de anúncio) e exige
+// date_from/date_to — confirmado por tentativa e erro, a documentação
+// pública lista o caminho sem o /marketplace, mas só esse funciona de
+// verdade.
+export async function getCampanhasAds(
+  lojaId: number,
+  advertiserId: number,
+  dateFrom: string,
+  dateTo: string
+): Promise<MlCampanhaAds[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const headers = { Authorization: `Bearer ${accessToken}`, "api-version": "2" };
+  const metrics =
+    "clicks,prints,cost,cpc,acos,direct_items_quantity,indirect_items_quantity,direct_amount,indirect_amount,total_amount";
+
+  const campanhas: MlCampanhaAds[] = [];
+  let offset = 0;
+  const limit = 50;
+  while (true) {
+    const { data } = await axios.get<{ paging: { total: number }; results: MlCampanhaAds[] }>(
+      `${ML_API_BASE}/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/campaigns/search`,
+      { headers, params: { limit, offset, date_from: dateFrom, date_to: dateTo, metrics } }
+    );
+    campanhas.push(...data.results);
+    offset += limit;
+    if (offset >= data.paging.total || data.results.length === 0) break;
+  }
+  return campanhas;
+}

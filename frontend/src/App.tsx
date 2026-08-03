@@ -5,6 +5,7 @@ import { Perguntas } from "./components/Perguntas";
 import { ClonarAnuncio } from "./components/ClonarAnuncio";
 import { Produtos } from "./components/Produtos";
 import { Financeiro } from "./components/Financeiro";
+import { Ads } from "./components/Ads";
 import { Tarefas } from "./components/Tarefas";
 import { Funcionarios } from "./components/Funcionarios";
 import { Usuarios } from "./components/Usuarios";
@@ -21,6 +22,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "clonar")) return "clonar";
   if (temPermissao(usuario, "produtos")) return "produtos";
   if (temPermissao(usuario, "financeiro")) return "financeiro";
+  if (temPermissao(usuario, "ads")) return "ads";
   if (temPermissao(usuario, "tarefas")) return "tarefas";
   if (temPermissao(usuario, "funcionarios")) return "funcionarios";
   if (usuario.admin) return "usuarios";
@@ -64,6 +66,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "clonar" && temPermissao(usuario, "clonar") && <ClonarAnuncio />}
         {view === "produtos" && temPermissao(usuario, "produtos") && <Produtos />}
         {view === "financeiro" && temPermissao(usuario, "financeiro") && <Financeiro usuario={usuario} />}
+        {view === "ads" && temPermissao(usuario, "ads") && <Ads />}
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
         {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
         {view === "usuarios" && usuario.admin && <Usuarios />}
