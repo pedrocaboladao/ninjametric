@@ -98,6 +98,7 @@ export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFi
             type="button"
             className={`precificacao-aba ${aba === "preco" ? "precificacao-aba-ativa" : ""}`}
             onClick={() => setAba("preco")}
+            title="Ordenado pelo impacto estimado (diferença de preço × quantidade vendida) — não só pelo % de desconto isolado, pra priorizar quem realmente está puxando o mercado pra baixo."
           >
             Menor preço
           </button>
@@ -146,10 +147,15 @@ export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFi
                   {p.lojaNome} · SKU {p.sku}
                 </div>
               </div>
-              <div className="precificacao-numeros">
-                <span className="financeiro-margem-negativa">{formatCurrency(p.precoLoja)}</span>
-                <span className="financeiro-td-mudo"> vs {formatCurrency(p.precoReferenciaGrupo)}</span>
-                <b className="financeiro-margem-negativa"> (-{p.percentualAbaixo.toFixed(0)}%)</b>
+              <div className="precificacao-numeros precificacao-numeros-multilinha">
+                <div>
+                  <b className="financeiro-margem-negativa">{formatCurrency(p.impactoEstimado)}</b>
+                  <span className="financeiro-td-mudo"> impacto</span>
+                </div>
+                <div className="financeiro-td-mudo precificacao-detalhe">
+                  {p.quantidadeVendida} un. · {formatCurrency(p.precoLoja)} vs {formatCurrency(p.precoReferenciaGrupo)} (-
+                  {p.percentualAbaixo.toFixed(0)}%)
+                </div>
               </div>
             </div>
           ))}

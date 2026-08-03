@@ -59,6 +59,8 @@ export interface RankingMenorPreco {
   precoLoja: number;
   precoReferenciaGrupo: number;
   percentualAbaixo: number;
+  quantidadeVendida: number;
+  impactoEstimado: number;
 }
 
 export interface RankingMenorMargem {

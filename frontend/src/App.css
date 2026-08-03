@@ -992,6 +992,16 @@
   white-space: nowrap;
 }
 
+.precificacao-numeros-multilinha {
+  white-space: normal;
+  max-width: 190px;
+}
+
+.precificacao-detalhe {
+  font-size: 11px;
+  margin-top: 2px;
+}
+
 .precificacao-busca {
   display: flex;
   align-items: center;

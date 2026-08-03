@@ -10,6 +10,13 @@ export interface RankingMenorPreco {
   precoLoja: number;
   precoReferenciaGrupo: number;
   percentualAbaixo: number;
+  quantidadeVendida: number;
+  // (precoReferenciaGrupo - precoLoja) × quantidadeVendida — quanto essa
+  // loja "tirou do mercado" vendendo abaixo do grupo, pesando o desconto
+  // pelo volume. Um desconto grande com poucas vendas pesa pouco; um
+  // desconto menor com muito volume pode pesar mais — é o critério de
+  // ordenação principal, não só o % de desconto isolado.
+  impactoEstimado: number;
 }
 
 export interface RankingMenorMargem {
@@ -67,6 +74,7 @@ export async function calcularRankingPrecificacao(
       lojaNome: d.lojaNome,
       titulo: d.titulo,
       precoMedio: d.somaPreco / d.quantidade,
+      quantidade: d.quantidade,
     }));
     const referencia = Math.max(...precosPorLoja.map((p) => p.precoMedio));
 
@@ -82,10 +90,12 @@ export async function calcularRankingPrecificacao(
         precoLoja: p.precoMedio,
         precoReferenciaGrupo: referencia,
         percentualAbaixo,
+        quantidadeVendida: p.quantidade,
+        impactoEstimado: (referencia - p.precoMedio) * p.quantidade,
       });
     }
   }
-  menorPreco.sort((a, b) => b.percentualAbaixo - a.percentualAbaixo);
+  menorPreco.sort((a, b) => b.impactoEstimado - a.impactoEstimado);
 
   const menorMargem: RankingMenorMargem[] = vendas
     .filter((v): v is typeof v & { margemPercentual: number } => v.margemPercentual !== null)
