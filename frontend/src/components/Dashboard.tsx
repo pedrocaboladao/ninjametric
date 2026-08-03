@@ -125,26 +125,28 @@ export function Dashboard({ usuario }: Props) {
                   onChangeLojaFiltro={setLojaFiltroPromocoes}
                 />
               )}
+
+              {erroRankingPrecificacao && (
+                <div className="state-message state-error painel painel-top-vendidos">
+                  Erro ao carregar vigilância de preço e margem: {erroRankingPrecificacao}
+                </div>
+              )}
+              {!erroRankingPrecificacao && !rankingPrecificacao && (
+                <div className="state-message painel painel-top-vendidos">
+                  Carregando vigilância de preço e margem...
+                </div>
+              )}
+              {rankingPrecificacao && (
+                <RankingPrecificacao
+                  ranking={rankingPrecificacao}
+                  lojas={lojas}
+                  lojaFiltro={lojaFiltroPrecificacao}
+                  onChangeLojaFiltro={setLojaFiltroPrecificacao}
+                />
+              )}
             </div>
             <ProdutosRanking produtos={data.produtosMaisVendidos} />
           </div>
-
-          {erroRankingPrecificacao && (
-            <div className="state-message state-error">
-              Erro ao carregar vigilância de preço e margem: {erroRankingPrecificacao}
-            </div>
-          )}
-          {!erroRankingPrecificacao && !rankingPrecificacao && (
-            <div className="state-message">Carregando vigilância de preço e margem...</div>
-          )}
-          {rankingPrecificacao && (
-            <RankingPrecificacao
-              ranking={rankingPrecificacao}
-              lojas={lojas}
-              lojaFiltro={lojaFiltroPrecificacao}
-              onChangeLojaFiltro={setLojaFiltroPrecificacao}
-            />
-          )}
         </>
       )}
     </div>
