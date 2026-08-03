@@ -20,6 +20,11 @@ export interface Lancamento {
   criadoEm: string;
   atualizadoEm: string;
   atrasado: boolean;
+  contatoId: number | null;
+  contatoNome: string | null;
+  grupoParcelamentoId: number | null;
+  parcelaNumero: number | null;
+  parcelaTotal: number | null;
 }
 
 export interface FiltroLancamentos {
@@ -56,6 +61,11 @@ function linhaParaLancamento(r: Record<string, unknown>): Lancamento {
     criadoEm: r.criado_em as string,
     atualizadoEm: r.atualizado_em as string,
     atrasado: r.status === "pendente" && vencimento < hojeISO,
+    contatoId: (r.contato_id as number | null) ?? null,
+    contatoNome: (r.contato_nome as string | null) ?? null,
+    grupoParcelamentoId: (r.grupo_parcelamento_id as number | null) ?? null,
+    parcelaNumero: (r.parcela_numero as number | null) ?? null,
+    parcelaTotal: (r.parcela_total as number | null) ?? null,
   };
 }
 
@@ -95,10 +105,11 @@ export async function listarLancamentos(filtro: FiltroLancamentos): Promise<Lanc
   const params: unknown[] = [];
   const where = montarFiltro(filtro, params);
   const { rows } = await pool.query(
-    `SELECT cl.*, l.nome AS loja_nome, u.nome AS criado_por_nome
+    `SELECT cl.*, l.nome AS loja_nome, u.nome AS criado_por_nome, cc.nome AS contato_nome
      FROM contas_lancamentos cl
      JOIN lojas l ON l.id = cl.loja_id
      LEFT JOIN usuarios u ON u.id = cl.criado_por
+     LEFT JOIN contas_contatos cc ON cc.id = cl.contato_id
      ${where}
      ORDER BY cl.vencimento ASC, cl.id ASC`,
     params
@@ -108,10 +119,11 @@ export async function listarLancamentos(filtro: FiltroLancamentos): Promise<Lanc
 
 async function buscarLancamentoPorId(id: number): Promise<Lancamento | null> {
   const { rows } = await pool.query(
-    `SELECT cl.*, l.nome AS loja_nome, u.nome AS criado_por_nome
+    `SELECT cl.*, l.nome AS loja_nome, u.nome AS criado_por_nome, cc.nome AS contato_nome
      FROM contas_lancamentos cl
      JOIN lojas l ON l.id = cl.loja_id
      LEFT JOIN usuarios u ON u.id = cl.criado_por
+     LEFT JOIN contas_contatos cc ON cc.id = cl.contato_id
      WHERE cl.id = $1`,
     [id]
   );
@@ -128,6 +140,7 @@ export interface NovoLancamento {
   tipo: TipoLancamento;
   descricao: string;
   categoria?: string | null;
+  contatoId?: number | null;
   valor: number;
   vencimento: string;
   observacao?: string | null;
@@ -135,14 +148,15 @@ export interface NovoLancamento {
 
 export async function criarLancamento(criadoPorId: number, dados: NovoLancamento): Promise<Lancamento> {
   const { rows } = await pool.query(
-    `INSERT INTO contas_lancamentos (loja_id, tipo, descricao, categoria, valor, vencimento, observacao, criado_por)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO contas_lancamentos (loja_id, tipo, descricao, categoria, contato_id, valor, vencimento, observacao, criado_por)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       dados.lojaId,
       dados.tipo,
       dados.descricao,
       dados.categoria ?? null,
+      dados.contatoId ?? null,
       dados.valor,
       dados.vencimento,
       dados.observacao ?? null,
@@ -150,6 +164,71 @@ export async function criarLancamento(criadoPorId: number, dados: NovoLancamento
     ]
   );
   return buscarLancamentoPorId(rows[0].id) as Promise<Lancamento>;
+}
+
+// Cria N parcelas: a primeira insere e vira a "âncora" do grupo (seu próprio
+// id em grupo_parcelamento_id), as demais seguem com vencimento +1 mês por
+// parcela e o mesmo grupo. Loop sequencial (não Promise.all) — poucas linhas,
+// sem necessidade de paralelismo, evita disputa de conexão do pool à toa.
+export interface NovoLancamentoParcelado {
+  lojaId: number;
+  tipo: TipoLancamento;
+  descricao: string;
+  categoria?: string | null;
+  contatoId?: number | null;
+  valorParcela: number;
+  primeiroVencimento: string;
+  quantidadeParcelas: number;
+  observacao?: string | null;
+}
+
+function somarMeses(dataISO: string, meses: number): string {
+  const d = new Date(`${dataISO}T00:00:00`);
+  d.setMonth(d.getMonth() + meses);
+  return d.toISOString().slice(0, 10);
+}
+
+export async function criarLancamentoParcelado(criadoPorId: number, dados: NovoLancamentoParcelado): Promise<Lancamento[]> {
+  const primeira = await criarLancamento(criadoPorId, {
+    lojaId: dados.lojaId,
+    tipo: dados.tipo,
+    descricao: dados.descricao,
+    categoria: dados.categoria,
+    contatoId: dados.contatoId,
+    valor: dados.valorParcela,
+    vencimento: dados.primeiroVencimento,
+    observacao: dados.observacao,
+  });
+  await pool.query(
+    "UPDATE contas_lancamentos SET grupo_parcelamento_id = $1, parcela_numero = 1, parcela_total = $2 WHERE id = $1",
+    [primeira.id, dados.quantidadeParcelas]
+  );
+
+  const parcelas: Lancamento[] = [(await buscarLancamentoPorId(primeira.id)) as Lancamento];
+  for (let numero = 2; numero <= dados.quantidadeParcelas; numero++) {
+    const { rows } = await pool.query(
+      `INSERT INTO contas_lancamentos
+         (loja_id, tipo, descricao, categoria, contato_id, valor, vencimento, observacao, criado_por, grupo_parcelamento_id, parcela_numero, parcela_total)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id`,
+      [
+        dados.lojaId,
+        dados.tipo,
+        dados.descricao,
+        dados.categoria ?? null,
+        dados.contatoId ?? null,
+        dados.valorParcela,
+        somarMeses(dados.primeiroVencimento, numero - 1),
+        dados.observacao ?? null,
+        criadoPorId,
+        primeira.id,
+        numero,
+        dados.quantidadeParcelas,
+      ]
+    );
+    parcelas.push((await buscarLancamentoPorId(rows[0].id)) as Lancamento);
+  }
+  return parcelas;
 }
 
 export interface AtualizacaoLancamento {

@@ -18,6 +18,38 @@ export interface Lancamento {
   criadoEm: string;
   atualizadoEm: string;
   atrasado: boolean;
+  contatoId: number | null;
+  contatoNome: string | null;
+  grupoParcelamentoId: number | null;
+  parcelaNumero: number | null;
+  parcelaTotal: number | null;
+}
+
+export type TipoContato = "fornecedor" | "cliente";
+
+export interface Contato {
+  id: number;
+  tipo: TipoContato;
+  nome: string;
+  documento: string | null;
+  dadosBancarios: string | null;
+  contato: string | null;
+  criadoEm: string;
+}
+
+export interface NovoContatoInput {
+  tipo: TipoContato;
+  nome: string;
+  documento?: string | null;
+  dadosBancarios?: string | null;
+  contato?: string | null;
+}
+
+export interface EdicaoContatoInput {
+  nome?: string;
+  documento?: string | null;
+  dadosBancarios?: string | null;
+  contato?: string | null;
 }
 
 export interface ResumoContas {
@@ -35,8 +67,21 @@ export interface NovoLancamentoInput {
   tipo: TipoLancamento;
   descricao: string;
   categoria?: string | null;
+  contatoId?: number | null;
   valor: number;
   vencimento: string;
+  observacao?: string | null;
+}
+
+export interface NovoLancamentoParceladoInput {
+  lojaId: number;
+  tipo: TipoLancamento;
+  descricao: string;
+  categoria?: string | null;
+  contatoId?: number | null;
+  valorParcela: number;
+  primeiroVencimento: string;
+  quantidadeParcelas: number;
   observacao?: string | null;
 }
 

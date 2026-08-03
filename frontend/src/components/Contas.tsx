@@ -3,12 +3,16 @@ import {
   fetchLancamentos,
   fetchResumoContas,
   criarLancamento,
+  criarLancamentoParcelado,
   atualizarLancamento,
   marcarComoPago,
   excluirLancamento,
+  fetchContatos,
+  criarContato,
+  excluirContato,
 } from "../api/contas";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { Lancamento, ResumoContas, TipoLancamento, StatusLancamento } from "../types/contas";
+import type { Lancamento, ResumoContas, TipoLancamento, StatusLancamento, Contato, TipoContato } from "../types/contas";
 import type { Usuario } from "../types/usuarios";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -49,9 +53,12 @@ interface FormState {
   tipo: TipoLancamento;
   descricao: string;
   categoria: string;
+  contatoId: number | null;
   valor: string;
   vencimento: string;
   observacao: string;
+  parcelado: boolean;
+  quantidadeParcelas: string;
 }
 
 function formVazio(lojaPadrao: number | null): FormState {
@@ -60,10 +67,150 @@ function formVazio(lojaPadrao: number | null): FormState {
     tipo: "pagar",
     descricao: "",
     categoria: "",
+    contatoId: null,
     valor: "",
     vencimento: hojeISO(),
     observacao: "",
+    parcelado: false,
+    quantidadeParcelas: "2",
   };
+}
+
+function GerenciarContatos({ onFechar, onAtualizado }: { onFechar: () => void; onAtualizado: () => void }) {
+  const [tipo, setTipo] = useState<TipoContato>("fornecedor");
+  const [contatos, setContatos] = useState<Contato[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoDocumento, setNovoDocumento] = useState("");
+  const [novoDadosBancarios, setNovoDadosBancarios] = useState("");
+  const [novoContato, setNovoContato] = useState("");
+  const [criando, setCriando] = useState(false);
+  const [excluindoId, setExcluindoId] = useState<number | null>(null);
+
+  const carregar = useCallback(() => {
+    fetchContatos(tipo)
+      .then(setContatos)
+      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar."));
+  }, [tipo]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function criar() {
+    if (!novoNome.trim()) {
+      setErro("Informe o nome.");
+      return;
+    }
+    setCriando(true);
+    setErro(null);
+    try {
+      await criarContato({
+        tipo,
+        nome: novoNome.trim(),
+        documento: novoDocumento.trim() || null,
+        dadosBancarios: novoDadosBancarios.trim() || null,
+        contato: novoContato.trim() || null,
+      });
+      setNovoNome("");
+      setNovoDocumento("");
+      setNovoDadosBancarios("");
+      setNovoContato("");
+      carregar();
+      onAtualizado();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao criar.");
+    } finally {
+      setCriando(false);
+    }
+  }
+
+  async function excluir(id: number) {
+    if (!confirm("Excluir esse contato? Lançamentos já vinculados a ele continuam, só perdem o vínculo.")) return;
+    setExcluindoId(id);
+    setErro(null);
+    try {
+      await excluirContato(id);
+      carregar();
+      onAtualizado();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir.");
+    } finally {
+      setExcluindoId(null);
+    }
+  }
+
+  return (
+    <div className="financeiro-impostos">
+      <div className="financeiro-impostos-header">
+        <span>Fornecedores e clientes</span>
+        <button type="button" className="btn-excluir" onClick={onFechar}>
+          Fechar
+        </button>
+      </div>
+      <div className="precificacao-abas">
+        <button
+          type="button"
+          className={`precificacao-aba ${tipo === "fornecedor" ? "precificacao-aba-ativa" : ""}`}
+          onClick={() => setTipo("fornecedor")}
+        >
+          Fornecedores
+        </button>
+        <button
+          type="button"
+          className={`precificacao-aba ${tipo === "cliente" ? "precificacao-aba-ativa" : ""}`}
+          onClick={() => setTipo("cliente")}
+        >
+          Clientes
+        </button>
+      </div>
+      {erro && <div className="state-message state-error">{erro}</div>}
+      <div className="financeiro-busca">
+        <input className="clonar-input" placeholder="Nome" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
+        <input
+          className="clonar-input"
+          placeholder="Documento (CPF/CNPJ)"
+          value={novoDocumento}
+          onChange={(e) => setNovoDocumento(e.target.value)}
+        />
+        <input
+          className="clonar-input"
+          placeholder="Contato (telefone/e-mail)"
+          value={novoContato}
+          onChange={(e) => setNovoContato(e.target.value)}
+        />
+        <input
+          className="clonar-input"
+          placeholder="Dados bancários (opcional)"
+          value={novoDadosBancarios}
+          onChange={(e) => setNovoDadosBancarios(e.target.value)}
+        />
+        <button type="button" className="btn-responder" disabled={criando} onClick={criar}>
+          {criando ? "..." : "Adicionar"}
+        </button>
+      </div>
+      {contatos === null && <div className="state-message">Carregando...</div>}
+      {contatos?.map((c) => (
+        <div key={c.id} className="financeiro-impostos-linha">
+          <span>
+            {c.nome}
+            {c.documento ? ` · ${c.documento}` : ""}
+          </span>
+          <button
+            type="button"
+            className="btn-excluir"
+            disabled={excluindoId === c.id}
+            onClick={() => excluir(c.id)}
+          >
+            {excluindoId === c.id ? "..." : "Excluir"}
+          </button>
+        </div>
+      ))}
+      {contatos?.length === 0 && (
+        <div className="state-message">Nenhum {tipo === "fornecedor" ? "fornecedor" : "cliente"} cadastrado.</div>
+      )}
+    </div>
+  );
 }
 
 export function Contas({ usuario: _usuario }: Props) {
@@ -80,12 +227,26 @@ export function Contas({ usuario: _usuario }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [erroForm, setErroForm] = useState<string | null>(null);
   const [excluindoId, setExcluindoId] = useState<number | null>(null);
+  const [contatos, setContatos] = useState<Contato[]>([]);
+  const [gerenciandoContatos, setGerenciandoContatos] = useState(false);
 
   useEffect(() => {
     fetchLojas()
       .then(setLojas)
       .catch(() => {});
   }, []);
+
+  const recarregarContatos = useCallback(() => {
+    fetchContatos()
+      .then(setContatos)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    recarregarContatos();
+  }, [recarregarContatos]);
+
+  const contatosDoTipo = contatos.filter((c) => c.tipo === (form.tipo === "pagar" ? "fornecedor" : "cliente"));
 
   const statusParaApi = statusFiltro === "atrasado" ? "pendente" : statusFiltro || undefined;
 
@@ -138,9 +299,12 @@ export function Contas({ usuario: _usuario }: Props) {
       tipo: l.tipo,
       descricao: l.descricao,
       categoria: l.categoria ?? "",
+      contatoId: l.contatoId,
       valor: String(l.valor),
       vencimento: l.vencimento,
       observacao: l.observacao ?? "",
+      parcelado: false,
+      quantidadeParcelas: "2",
     });
     setErroForm(null);
     setFormAberto(true);
@@ -166,6 +330,14 @@ export function Contas({ usuario: _usuario }: Props) {
       setErroForm("Informe a data de vencimento.");
       return;
     }
+    let quantidadeParcelas = 0;
+    if (form.parcelado && editandoId === null) {
+      quantidadeParcelas = Number(form.quantidadeParcelas);
+      if (!Number.isInteger(quantidadeParcelas) || quantidadeParcelas < 2 || quantidadeParcelas > 60) {
+        setErroForm("Informe uma quantidade de parcelas entre 2 e 60.");
+        return;
+      }
+    }
 
     setSalvando(true);
     setErroForm(null);
@@ -184,15 +356,30 @@ export function Contas({ usuario: _usuario }: Props) {
           setSalvando(false);
           return;
         }
-        await criarLancamento({
-          lojaId: form.lojaId,
-          tipo: form.tipo,
-          descricao: form.descricao.trim(),
-          categoria: form.categoria.trim() || null,
-          valor: valorNum,
-          vencimento: form.vencimento,
-          observacao: form.observacao.trim() || null,
-        });
+        if (form.parcelado) {
+          await criarLancamentoParcelado({
+            lojaId: form.lojaId,
+            tipo: form.tipo,
+            descricao: form.descricao.trim(),
+            categoria: form.categoria.trim() || null,
+            contatoId: form.contatoId,
+            valorParcela: valorNum,
+            primeiroVencimento: form.vencimento,
+            quantidadeParcelas,
+            observacao: form.observacao.trim() || null,
+          });
+        } else {
+          await criarLancamento({
+            lojaId: form.lojaId,
+            tipo: form.tipo,
+            descricao: form.descricao.trim(),
+            categoria: form.categoria.trim() || null,
+            contatoId: form.contatoId,
+            valor: valorNum,
+            vencimento: form.vencimento,
+            observacao: form.observacao.trim() || null,
+          });
+        }
       }
       fecharForm();
       recarregarTudo();
@@ -268,11 +455,22 @@ export function Contas({ usuario: _usuario }: Props) {
             <option value="pago">Pago</option>
             <option value="cancelado">Cancelado</option>
           </select>
+          <button
+            type="button"
+            className="painel-estudo-gerenciar-btn"
+            onClick={() => setGerenciandoContatos((g) => !g)}
+          >
+            {gerenciandoContatos ? "Fechar cadastro" : "Fornecedores/Clientes"}
+          </button>
           <button type="button" className="painel-estudo-gerenciar-btn" onClick={abrirNovo}>
             Novo lançamento
           </button>
         </div>
       </div>
+
+      {gerenciandoContatos && (
+        <GerenciarContatos onFechar={() => setGerenciandoContatos(false)} onAtualizado={recarregarContatos} />
+      )}
 
       <div className="financeiro-filtro-datas">
         <input type="date" className="dashboard-select" value={dataInicio} max={dataFim || undefined} onChange={(e) => setDataInicio(e.target.value)} />
@@ -322,10 +520,22 @@ export function Contas({ usuario: _usuario }: Props) {
               className="dashboard-select"
               value={form.tipo}
               disabled={editandoId !== null}
-              onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoLancamento }))}
+              onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoLancamento, contatoId: null }))}
             >
               <option value="pagar">A pagar</option>
               <option value="receber">A receber</option>
+            </select>
+            <select
+              className="dashboard-select"
+              value={form.contatoId ?? ""}
+              onChange={(e) => setForm((f) => ({ ...f, contatoId: e.target.value ? Number(e.target.value) : null }))}
+            >
+              <option value="">{form.tipo === "pagar" ? "Fornecedor (opcional)" : "Cliente (opcional)"}</option>
+              {contatosDoTipo.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
             </select>
             <input
               className="clonar-input"
@@ -348,7 +558,7 @@ export function Contas({ usuario: _usuario }: Props) {
             <input
               className="clonar-input"
               inputMode="decimal"
-              placeholder="Valor"
+              placeholder={form.parcelado ? "Valor de cada parcela" : "Valor"}
               value={form.valor}
               onChange={(e) => setForm((f) => ({ ...f, valor: e.target.value }))}
             />
@@ -358,7 +568,28 @@ export function Contas({ usuario: _usuario }: Props) {
               value={form.vencimento}
               onChange={(e) => setForm((f) => ({ ...f, vencimento: e.target.value }))}
             />
+            {form.parcelado && (
+              <input
+                type="number"
+                min={2}
+                max={60}
+                className="clonar-input"
+                placeholder="Qtd. parcelas"
+                value={form.quantidadeParcelas}
+                onChange={(e) => setForm((f) => ({ ...f, quantidadeParcelas: e.target.value }))}
+              />
+            )}
           </div>
+          {editandoId === null && (
+            <label className="financeiro-checkbox-parcelar">
+              <input
+                type="checkbox"
+                checked={form.parcelado}
+                onChange={(e) => setForm((f) => ({ ...f, parcelado: e.target.checked }))}
+              />
+              Parcelar (o vencimento acima vira o da 1ª parcela; as seguintes vencem 1 mês depois, uma da outra)
+            </label>
+          )}
           <textarea
             className="clonar-input"
             placeholder="Observação (opcional)"
@@ -451,9 +682,17 @@ export function Contas({ usuario: _usuario }: Props) {
                   <td>{l.tipo === "pagar" ? "A pagar" : "A receber"}</td>
                   <td className="financeiro-td-titulo" title={l.descricao}>
                     {l.descricao}
+                    {l.contatoNome && <div className="financeiro-td-mudo financeiro-td-sublinha">{l.contatoNome}</div>}
                   </td>
                   <td className="financeiro-td-mudo">{l.categoria ?? "—"}</td>
-                  <td>{formatDataCurta(l.vencimento)}</td>
+                  <td>
+                    {formatDataCurta(l.vencimento)}
+                    {l.parcelaTotal && (
+                      <div className="financeiro-td-mudo financeiro-td-sublinha">
+                        Parcela {l.parcelaNumero}/{l.parcelaTotal}
+                      </div>
+                    )}
+                  </td>
                   <td className="financeiro-th-numero">{formatCurrency(l.valor)}</td>
                   <td className={classeStatus(l)}>{labelStatus(l)}</td>
                   <td className="financeiro-acoes">

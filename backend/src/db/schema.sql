@@ -221,3 +221,28 @@ CREATE TABLE IF NOT EXISTS contas_lancamentos (
 );
 CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_loja_status ON contas_lancamentos (loja_id, status);
 CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_vencimento ON contas_lancamentos (vencimento);
+
+-- Contas a pagar e receber (fase 1.5): cadastro central de fornecedores e
+-- clientes (uma tabela só, discriminada por `tipo` — a estrutura é idêntica
+-- pros dois, então duas tabelas gêmeas seriam duplicação). Global, não por
+-- loja: um fornecedor normalmente atende mais de uma loja.
+CREATE TABLE IF NOT EXISTS contas_contatos (
+  id SERIAL PRIMARY KEY,
+  tipo TEXT NOT NULL CHECK (tipo IN ('fornecedor', 'cliente')),
+  nome TEXT NOT NULL,
+  documento TEXT,
+  dados_bancarios TEXT,
+  contato TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_contas_contatos_tipo ON contas_contatos (tipo);
+
+-- Liga um lançamento a um fornecedor/cliente cadastrado (opcional — lançamento
+-- avulso sem cadastro continua funcionando, só com a descrição). Parcelamento:
+-- sem tabela de grupo separada — a primeira parcela criada é a "âncora"
+-- (grupo_parcelamento_id de todas, incluindo ela mesma, aponta pro id dela).
+ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS contato_id INTEGER REFERENCES contas_contatos(id) ON DELETE SET NULL;
+ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS grupo_parcelamento_id INTEGER REFERENCES contas_lancamentos(id) ON DELETE SET NULL;
+ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS parcela_numero INTEGER;
+ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS parcela_total INTEGER;
+CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_grupo_parcelamento ON contas_lancamentos (grupo_parcelamento_id);

@@ -1,4 +1,14 @@
-import type { Lancamento, ResumoContas, NovoLancamentoInput, EdicaoLancamentoInput } from "../types/contas";
+import type {
+  Lancamento,
+  ResumoContas,
+  NovoLancamentoInput,
+  NovoLancamentoParceladoInput,
+  EdicaoLancamentoInput,
+  Contato,
+  TipoContato,
+  NovoContatoInput,
+  EdicaoContatoInput,
+} from "../types/contas";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -69,5 +79,48 @@ export async function marcarComoPago(id: number, dataPagamento?: string): Promis
 
 export async function excluirLancamento(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/contas/${id}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta(res);
+}
+
+export async function criarLancamentoParcelado(dados: NovoLancamentoParceladoInput): Promise<Lancamento[]> {
+  const res = await fetch(`${API_BASE}/api/contas/parcelado`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(dados),
+  });
+  return tratarResposta(res);
+}
+
+export async function fetchContatos(tipo?: TipoContato): Promise<Contato[]> {
+  const params = new URLSearchParams();
+  if (tipo) params.set("tipo", tipo);
+  const query = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${API_BASE}/api/contas/contatos${query}`, { credentials: "include" });
+  return tratarResposta(res);
+}
+
+export async function criarContato(dados: NovoContatoInput): Promise<Contato> {
+  const res = await fetch(`${API_BASE}/api/contas/contatos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(dados),
+  });
+  return tratarResposta(res);
+}
+
+export async function atualizarContato(id: number, dados: EdicaoContatoInput): Promise<Contato> {
+  const res = await fetch(`${API_BASE}/api/contas/contatos/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(dados),
+  });
+  return tratarResposta(res);
+}
+
+export async function excluirContato(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/contas/contatos/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta(res);
 }

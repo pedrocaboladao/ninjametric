@@ -3372,6 +3372,20 @@
   flex-wrap: wrap;
 }
 
+.financeiro-td-sublinha {
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.financeiro-checkbox-parcelar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
 .financeiro-margem-positiva {
   color: var(--good-text);
 }
