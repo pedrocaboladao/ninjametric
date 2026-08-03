@@ -181,6 +181,10 @@ export function RankingPrecificacao({
                 <div>
                   <b className="financeiro-margem-negativa">{formatCurrency(p.impactoEstimado)}</b>
                   <span className="financeiro-td-mudo"> impacto</span>
+                  <span className={classeMargem(p.margemPercentual)}>
+                    {" "}
+                    · margem {p.margemPercentual !== null ? `${p.margemPercentual.toFixed(1)}%` : "—"}
+                  </span>
                 </div>
                 <div className="financeiro-td-mudo precificacao-detalhe">
                   {p.quantidadeVendida} un. · {formatCurrency(p.precoLoja)} vs {formatCurrency(p.precoReferenciaGrupo)} (-

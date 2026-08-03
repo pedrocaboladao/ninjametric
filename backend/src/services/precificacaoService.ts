@@ -17,6 +17,7 @@ export interface RankingMenorPreco {
   // desconto menor com muito volume pode pesar mais — é o critério de
   // ordenação principal, não só o % de desconto isolado.
   impactoEstimado: number;
+  margemPercentual: number | null;
 }
 
 export interface RankingMenorMargem {
@@ -53,6 +54,8 @@ export async function calcularRankingPrecificacao(
     quantidade: number;
     lojaNome: string;
     titulo: string;
+    somaMargem: number;
+    qtdComMargem: number;
   }
   const porSkuLoja = new Map<string, Map<number, AgregadoLoja>>();
 
@@ -61,9 +64,20 @@ export async function calcularRankingPrecificacao(
     const skuNorm = normalizarSku(v.sku);
     if (!porSkuLoja.has(skuNorm)) porSkuLoja.set(skuNorm, new Map());
     const porLoja = porSkuLoja.get(skuNorm)!;
-    const atual = porLoja.get(v.lojaId) ?? { somaPreco: 0, quantidade: 0, lojaNome: v.lojaNome, titulo: v.titulo };
+    const atual = porLoja.get(v.lojaId) ?? {
+      somaPreco: 0,
+      quantidade: 0,
+      lojaNome: v.lojaNome,
+      titulo: v.titulo,
+      somaMargem: 0,
+      qtdComMargem: 0,
+    };
     atual.somaPreco += v.valorUnitario * v.quantidade;
     atual.quantidade += v.quantidade;
+    if (v.margemPercentual !== null) {
+      atual.somaMargem += v.margemPercentual;
+      atual.qtdComMargem += 1;
+    }
     porLoja.set(v.lojaId, atual);
   }
 
@@ -77,6 +91,7 @@ export async function calcularRankingPrecificacao(
       titulo: d.titulo,
       precoMedio: d.somaPreco / d.quantidade,
       quantidade: d.quantidade,
+      margemPercentual: d.qtdComMargem > 0 ? d.somaMargem / d.qtdComMargem : null,
     }));
     const referencia = Math.max(...precosPorLoja.map((p) => p.precoMedio));
 
@@ -94,6 +109,7 @@ export async function calcularRankingPrecificacao(
         percentualAbaixo,
         quantidadeVendida: p.quantidade,
         impactoEstimado: (referencia - p.precoMedio) * p.quantidade,
+        margemPercentual: p.margemPercentual,
       });
     }
   }

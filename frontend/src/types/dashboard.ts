@@ -61,6 +61,7 @@ export interface RankingMenorPreco {
   percentualAbaixo: number;
   quantidadeVendida: number;
   impactoEstimado: number;
+  margemPercentual: number | null;
 }
 
 export interface RankingMenorMargem {
