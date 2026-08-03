@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { listarCampanhasAds } from "../services/adsService";
-import { listarTacosPorProduto } from "../services/tacosService";
+import { listarReceitaRealPorCampanha } from "../services/tacosService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const adsRouter = Router();
@@ -58,10 +58,10 @@ adsRouter.get("/tacos", async (req, res) => {
   const { dataInicio, dataFim } = extrairDatas(req);
 
   try {
-    const produtos = await listarTacosPorProduto(filtro.lojaId, filtro.lojasPermitidas, dataInicio, dataFim);
-    res.json({ produtos });
+    const receitas = await listarReceitaRealPorCampanha(filtro.lojaId, filtro.lojasPermitidas, dataInicio, dataFim);
+    res.json({ receitas });
   } catch (err) {
-    console.error("Erro ao calcular TACOS por produto:", err);
-    res.status(500).json({ error: "Falha ao calcular TACOS por produto." });
+    console.error("Erro ao calcular receita real por campanha:", err);
+    res.status(500).json({ error: "Falha ao calcular receita real por campanha." });
   }
 });

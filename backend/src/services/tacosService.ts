@@ -5,29 +5,23 @@ import { janelaEntre, janelaUltimosDias } from "./dateUtils";
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 const DIAS_JANELA = 7;
 
-export interface TacosProduto {
+export interface ReceitaRealCampanha {
   lojaId: number;
-  lojaNome: string;
-  itemId: string;
-  titulo: string;
-  gastoAds: number;
-  vendasAtribuidasAds: number;
+  campanhaId: number;
   receitaTotalReal: number;
-  acos: number | null;
-  tacos: number | null;
 }
 
-// TACOS real = gasto de Ads dividido pela receita REAL do produto (todas as
-// vendas, incluindo as orgânicas) — diferente do ACOS, que só compara com
-// as vendas que o próprio Mercado Livre credita ao Ads. Cruza por item_id
-// (o mesmo id do MLB usado nas vendas do Financeiro), não por nome de
-// campanha — correspondência exata, sem heurística de texto.
-export async function listarTacosPorProduto(
+// Receita REAL (todas as vendas, incluindo orgânicas) dos produtos
+// anunciados em cada campanha — pra calcular o TACOS (gasto de Ads ÷
+// receita real) ao lado do ACOS na tabela de campanhas. Cruza os anúncios
+// (que trazem o item_id do MLB) com as vendas do Financeiro por ID exato,
+// depois soma por campanha — não por nome, por ID.
+export async function listarReceitaRealPorCampanha(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
   dataFim?: string
-): Promise<TacosProduto[]> {
+): Promise<ReceitaRealCampanha[]> {
   const lojas = (await listLojas()).filter(
     (l) =>
       l.ml_user_id !== null &&
@@ -40,7 +34,7 @@ export async function listarTacosPorProduto(
   const dataFimReal = janela.agora.slice(0, 10);
 
   const porLoja = await Promise.all(
-    lojas.map(async (loja) => {
+    lojas.map(async (loja): Promise<ReceitaRealCampanha[]> => {
       const [orders, advertiserId] = await Promise.all([
         searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora),
         getAdvertiserId(loja.id),
@@ -63,27 +57,18 @@ export async function listarTacosPorProduto(
         return [];
       }
 
-      return anuncios
-        .filter((a) => a.metrics.cost > 0 || a.metrics.total_amount > 0)
-        .map((a): TacosProduto => {
-          const receitaTotalReal = receitaPorItem.get(a.item_id) ?? 0;
-          // TACOS não pode ficar menor que a receita já creditada ao Ads
-          // (diferença de fuso/janela entre as duas buscas pode fazer a
-          // nossa contagem de pedidos ficar levemente atrás da do ML) — usa
-          // o maior dos dois como base, pra não mostrar TACOS abaixo do ACOS.
-          const receitaBase = Math.max(receitaTotalReal, a.metrics.total_amount);
-          return {
-            lojaId: loja.id,
-            lojaNome: loja.nome,
-            itemId: a.item_id,
-            titulo: a.title,
-            gastoAds: a.metrics.cost,
-            vendasAtribuidasAds: a.metrics.total_amount,
-            receitaTotalReal,
-            acos: a.metrics.total_amount > 0 ? (a.metrics.cost / a.metrics.total_amount) * 100 : null,
-            tacos: receitaBase > 0 ? (a.metrics.cost / receitaBase) * 100 : null,
-          };
-        });
+      const receitaPorCampanha = new Map<number, number>();
+      for (const a of anuncios) {
+        const receitaTotalReal = receitaPorItem.get(a.item_id) ?? 0;
+        if (receitaTotalReal === 0) continue;
+        receitaPorCampanha.set(a.campaign_id, (receitaPorCampanha.get(a.campaign_id) ?? 0) + receitaTotalReal);
+      }
+
+      return Array.from(receitaPorCampanha.entries()).map(([campanhaId, receitaTotalReal]) => ({
+        lojaId: loja.id,
+        campanhaId,
+        receitaTotalReal,
+      }));
     })
   );
 
