@@ -38,7 +38,12 @@ clonarAnuncioRouter.get("/debug-ads-campanhas", async (req, res) => {
       );
       resultado.campanhas = data;
     } catch (e: any) {
-      resultado.campanhasError = e?.response?.data ?? e.message;
+      resultado.campanhasError = {
+        status: e?.response?.status,
+        data: e?.response?.data,
+        headers: e?.response?.headers,
+        message: e.message,
+      };
     }
   }
 
