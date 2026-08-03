@@ -1,9 +1,48 @@
 import { Router } from "express";
+import axios from "axios";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, getValidAccessToken } from "../services/tokenStore";
+import { getAdvertiserId } from "../services/mercadoLivreApi";
 
 export const clonarAnuncioRouter = Router();
+
+// TEMP: investigar se o endpoint de "ads" (anuncio individual dentro da
+// campanha) traz o item_id do MLB — se trouxer, da pra ligar Ads com
+// Financeiro por ID exato, sem depender do nome da campanha.
+clonarAnuncioRouter.get("/debug-ads-item-id", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const dataInicio = String(req.query.dataInicio ?? "");
+  const dataFim = String(req.query.dataFim ?? "");
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    res.status(404).json({ error: "loja não encontrada" });
+    return;
+  }
+  const token = await getValidAccessToken(loja.id);
+  const headers = { Authorization: `Bearer ${token}`, "api-version": "2" };
+  const advertiserId = await getAdvertiserId(loja.id);
+  if (!advertiserId) {
+    res.status(404).json({ error: "sem conta de anunciante" });
+    return;
+  }
+
+  const resultado: any = { advertiserId };
+  const metrics = "clicks,prints,cost,cpc,acos,direct_amount,indirect_amount,total_amount";
+  const url = `https://api.mercadolibre.com/marketplace/advertising/MLB/advertisers/${advertiserId}/product_ads/ads/search`;
+
+  try {
+    const { data } = await axios.get(url, {
+      headers,
+      params: { limit: 5, offset: 0, date_from: dataInicio, date_to: dataFim, metrics },
+    });
+    resultado.data = data;
+  } catch (e: any) {
+    resultado.error = { status: e?.response?.status, data: e?.response?.data, message: e.message };
+  }
+
+  res.json(resultado);
+});
 
 // Lista de lojas disponíveis como destino do clone — usa a regra específica de
 // clonagem (temAcessoLojaParaClonagem), que pode ser mais ampla que a lista
