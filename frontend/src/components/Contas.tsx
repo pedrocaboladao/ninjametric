@@ -15,6 +15,7 @@ import {
 import { fetchLojas, type Loja } from "../api/lojas";
 import type { Lancamento, ResumoContas, TipoLancamento, StatusLancamento, Contato, TipoContato } from "../types/contas";
 import type { Usuario } from "../types/usuarios";
+import { IconPlus } from "./icons";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
@@ -483,7 +484,8 @@ export function Contas({ usuario: _usuario }: Props) {
           >
             {gerenciandoContatos ? "Fechar cadastro" : "Fornecedores/Clientes"}
           </button>
-          <button type="button" className="painel-estudo-gerenciar-btn" onClick={abrirNovo}>
+          <button type="button" className="contas-btn-novo" onClick={abrirNovo}>
+            <IconPlus size={15} />
             Novo lançamento
           </button>
         </div>
