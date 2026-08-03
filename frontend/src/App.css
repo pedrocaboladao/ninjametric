@@ -983,6 +983,17 @@
   white-space: nowrap;
 }
 
+.precificacao-busca {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.precificacao-busca input {
+  flex: 1;
+}
+
 .top-vendido-info {
   flex: 1;
   min-width: 0;

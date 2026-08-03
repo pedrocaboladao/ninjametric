@@ -1,23 +1,19 @@
-import { Router } from "express";
+import { Router, Request, Response } from "express";
 import { getDashboardData, getTopVendidosPromocoes } from "../services/dashboardService";
-import { calcularRankingPrecificacao } from "../services/precificacaoService";
+import { calcularRankingPrecificacao, buscarComparacaoPorSku } from "../services/precificacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const dashboardRouter = Router();
 
-dashboardRouter.get("/", async (req, res) => {
+// Resolve o filtro de loja (id específico, "todas" ou "minhas") pro usuário
+// logado — devolve null e já responde o erro se a loja pedida não é
+// permitida.
+function resolverLojaFiltro(req: Request, res: Response): { lojaId?: number; lojasPermitidas?: number[] } | null {
   const lojaIdParam = req.query.lojaId;
   const usuario = req.usuario!;
 
   if (lojaIdParam === "minhas") {
-    try {
-      const data = await getDashboardData(undefined, usuario.lojas);
-      res.json(data);
-    } catch (err) {
-      console.error("Erro ao montar dashboard:", err);
-      res.status(500).json({ error: "Falha ao carregar dados do dashboard." });
-    }
-    return;
+    return { lojaId: undefined, lojasPermitidas: usuario.lojas };
   }
 
   const lojaId =
@@ -25,11 +21,18 @@ dashboardRouter.get("/", async (req, res) => {
 
   if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
     res.status(403).json({ error: "Você não tem acesso a essa loja." });
-    return;
+    return null;
   }
 
+  return { lojaId, lojasPermitidas: lojasEfetivas(usuario) };
+}
+
+dashboardRouter.get("/", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
   try {
-    const data = await getDashboardData(lojaId, lojasEfetivas(usuario));
+    const data = await getDashboardData(filtro.lojaId, filtro.lojasPermitidas);
     res.json(data);
   } catch (err) {
     console.error("Erro ao montar dashboard:", err);
@@ -38,30 +41,11 @@ dashboardRouter.get("/", async (req, res) => {
 });
 
 dashboardRouter.get("/top-vendidos", async (req, res) => {
-  const lojaIdParam = req.query.lojaId;
-  const usuario = req.usuario!;
-
-  if (lojaIdParam === "minhas") {
-    try {
-      const produtos = await getTopVendidosPromocoes(undefined, usuario.lojas);
-      res.json({ produtos });
-    } catch (err) {
-      console.error("Erro ao montar top vendidos:", err);
-      res.status(500).json({ error: "Falha ao carregar top vendidos." });
-    }
-    return;
-  }
-
-  const lojaId =
-    typeof lojaIdParam === "string" && Number.isInteger(Number(lojaIdParam)) ? Number(lojaIdParam) : undefined;
-
-  if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
-    res.status(403).json({ error: "Você não tem acesso a essa loja." });
-    return;
-  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
 
   try {
-    const produtos = await getTopVendidosPromocoes(lojaId, lojasEfetivas(usuario));
+    const produtos = await getTopVendidosPromocoes(filtro.lojaId, filtro.lojasPermitidas);
     res.json({ produtos });
   } catch (err) {
     console.error("Erro ao montar top vendidos:", err);
@@ -70,33 +54,33 @@ dashboardRouter.get("/top-vendidos", async (req, res) => {
 });
 
 dashboardRouter.get("/precificacao", async (req, res) => {
-  const lojaIdParam = req.query.lojaId;
-  const usuario = req.usuario!;
-
-  if (lojaIdParam === "minhas") {
-    try {
-      const ranking = await calcularRankingPrecificacao(undefined, usuario.lojas);
-      res.json(ranking);
-    } catch (err) {
-      console.error("Erro ao montar ranking de precificação:", err);
-      res.status(500).json({ error: "Falha ao carregar ranking de precificação." });
-    }
-    return;
-  }
-
-  const lojaId =
-    typeof lojaIdParam === "string" && Number.isInteger(Number(lojaIdParam)) ? Number(lojaIdParam) : undefined;
-
-  if (lojaId !== undefined && !temAcessoLoja(usuario, lojaId)) {
-    res.status(403).json({ error: "Você não tem acesso a essa loja." });
-    return;
-  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
 
   try {
-    const ranking = await calcularRankingPrecificacao(lojaId, lojasEfetivas(usuario));
+    const ranking = await calcularRankingPrecificacao(filtro.lojaId, filtro.lojasPermitidas);
     res.json(ranking);
   } catch (err) {
     console.error("Erro ao montar ranking de precificação:", err);
     res.status(500).json({ error: "Falha ao carregar ranking de precificação." });
+  }
+});
+
+dashboardRouter.get("/precificacao/sku", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  const sku = String(req.query.sku ?? "").trim();
+  if (!sku) {
+    res.status(400).json({ error: "Informe um SKU pra buscar." });
+    return;
+  }
+
+  try {
+    const comparacao = await buscarComparacaoPorSku(sku, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ comparacao });
+  } catch (err) {
+    console.error("Erro ao buscar comparação por SKU:", err);
+    res.status(500).json({ error: "Falha ao buscar comparação por SKU." });
   }
 });

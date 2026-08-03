@@ -1,5 +1,7 @@
-import type { RankingPrecificacao as RankingPrecificacaoTipo } from "../types/dashboard";
+import { useState } from "react";
+import type { RankingPrecificacao as RankingPrecificacaoTipo, ComparacaoSkuLoja } from "../types/dashboard";
 import type { Loja } from "../api/lojas";
+import { fetchComparacaoPorSku } from "../api/dashboard";
 import { formatCurrency, formatDataHora } from "../utils/format";
 
 interface Props {
@@ -9,13 +11,36 @@ interface Props {
   onChangeLojaFiltro: (valor: number | "todas" | "minhas") => void;
 }
 
-function classeMargem(margemPercentual: number): string {
+function classeMargem(margemPercentual: number | null): string {
+  if (margemPercentual === null) return "financeiro-margem-neutra";
   if (margemPercentual < 0) return "financeiro-margem-negativa";
   if (margemPercentual < 15) return "financeiro-margem-alerta";
   return "financeiro-margem-positiva";
 }
 
 export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFiltro }: Props) {
+  const [buscaSku, setBuscaSku] = useState("");
+  const [resultadoBusca, setResultadoBusca] = useState<ComparacaoSkuLoja[] | null>(null);
+  const [buscando, setBuscando] = useState(false);
+  const [erroBusca, setErroBusca] = useState<string | null>(null);
+
+  function buscar() {
+    const sku = buscaSku.trim();
+    if (!sku) return;
+    setBuscando(true);
+    setErroBusca(null);
+    fetchComparacaoPorSku(sku, lojaFiltro === "todas" ? undefined : lojaFiltro)
+      .then(setResultadoBusca)
+      .catch((err) => setErroBusca(err instanceof Error ? err.message : "Falha ao buscar SKU."))
+      .finally(() => setBuscando(false));
+  }
+
+  function limparBusca() {
+    setBuscaSku("");
+    setResultadoBusca(null);
+    setErroBusca(null);
+  }
+
   return (
     <div className="painel painel-top-vendidos">
       <div className="top-vendidos-header">
@@ -45,58 +70,108 @@ export function RankingPrecificacao({ ranking, lojas, lojaFiltro, onChangeLojaFi
         </select>
       </div>
 
-      <div className="precificacao-colunas">
-        <div className="precificacao-coluna">
-          <h3 className="precificacao-subtitulo">Menor preço do grupo</h3>
-          <div className="top-vendidos-lista">
-            {ranking.menorPreco.map((p) => (
-              <div key={`${p.lojaId}-${p.sku}`} className="top-vendido-item top-vendido-alerta">
-                <div className="top-vendido-info">
-                  <div className="produto-titulo" title={p.titulo}>
-                    {p.titulo}
-                  </div>
-                  <div className="produto-mlb">
-                    {p.lojaNome} · SKU {p.sku}
-                  </div>
-                </div>
-                <div className="precificacao-numeros">
-                  <span className="financeiro-margem-negativa">{formatCurrency(p.precoLoja)}</span>
-                  <span className="financeiro-td-mudo"> vs {formatCurrency(p.precoReferenciaGrupo)} do grupo</span>
-                  <b className="financeiro-margem-negativa"> ({p.percentualAbaixo.toFixed(1)}% abaixo)</b>
-                </div>
-              </div>
-            ))}
-            {ranking.menorPreco.length === 0 && (
-              <div className="state-message">Nenhum SKU vendido por mais de uma loja com preço divergente.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="precificacao-coluna">
-          <h3 className="precificacao-subtitulo">Menores margens</h3>
-          <div className="top-vendidos-lista">
-            {ranking.menorMargem.map((v, i) => (
-              <div key={`${v.lojaId}-${v.sku}-${v.dataCriacao}-${i}`} className="top-vendido-item">
-                <div className="top-vendido-info">
-                  <div className="produto-titulo" title={v.titulo}>
-                    {v.titulo}
-                  </div>
-                  <div className="produto-mlb">
-                    {v.lojaNome} · {formatDataHora(v.dataCriacao)}
-                  </div>
-                </div>
-                <div className="precificacao-numeros">
-                  <b className={classeMargem(v.margemPercentual)}>{v.margemPercentual.toFixed(1)}%</b>
-                  <span className="financeiro-td-mudo"> · {formatCurrency(v.receitaTotal)}</span>
-                </div>
-              </div>
-            ))}
-            {ranking.menorMargem.length === 0 && (
-              <div className="state-message">Nenhuma venda com custo cadastrado no período.</div>
-            )}
-          </div>
-        </div>
+      <div className="precificacao-busca">
+        <input
+          type="text"
+          className="dashboard-select"
+          placeholder="Buscar por SKU específico..."
+          value={buscaSku}
+          onChange={(e) => setBuscaSku(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") buscar();
+          }}
+        />
+        <button type="button" className="btn-responder" onClick={buscar} disabled={buscando || !buscaSku.trim()}>
+          {buscando ? "Buscando..." : "Buscar"}
+        </button>
+        {resultadoBusca !== null && (
+          <button type="button" className="btn-excluir" onClick={limparBusca}>
+            Limpar
+          </button>
+        )}
       </div>
+
+      {erroBusca && <div className="state-message state-error">{erroBusca}</div>}
+
+      {resultadoBusca !== null ? (
+        <div className="top-vendidos-lista">
+          {resultadoBusca.map((c) => (
+            <div key={`${c.lojaId}`} className="top-vendido-item">
+              <div className="top-vendido-info">
+                <div className="produto-titulo" title={c.titulo}>
+                  {c.titulo}
+                </div>
+                <div className="produto-mlb">
+                  {c.lojaNome} · {c.quantidadeVendida} unid. no período
+                </div>
+              </div>
+              <div className="precificacao-numeros">
+                <b>{formatCurrency(c.precoMedio)}</b>
+                <span className={classeMargem(c.margemPercentualMedia)}>
+                  {" "}
+                  · margem {c.margemPercentualMedia !== null ? `${c.margemPercentualMedia.toFixed(1)}%` : "—"}
+                </span>
+              </div>
+            </div>
+          ))}
+          {resultadoBusca.length === 0 && (
+            <div className="state-message">Nenhuma venda desse SKU no período (últimos 7 dias).</div>
+          )}
+        </div>
+      ) : (
+        <div className="precificacao-colunas">
+          <div className="precificacao-coluna">
+            <h3 className="precificacao-subtitulo">Menor preço do grupo</h3>
+            <div className="top-vendidos-lista">
+              {ranking.menorPreco.map((p) => (
+                <div key={`${p.lojaId}-${p.sku}`} className="top-vendido-item top-vendido-alerta">
+                  <div className="top-vendido-info">
+                    <div className="produto-titulo" title={p.titulo}>
+                      {p.titulo}
+                    </div>
+                    <div className="produto-mlb">
+                      {p.lojaNome} · SKU {p.sku}
+                    </div>
+                  </div>
+                  <div className="precificacao-numeros">
+                    <span className="financeiro-margem-negativa">{formatCurrency(p.precoLoja)}</span>
+                    <span className="financeiro-td-mudo"> vs {formatCurrency(p.precoReferenciaGrupo)} do grupo</span>
+                    <b className="financeiro-margem-negativa"> ({p.percentualAbaixo.toFixed(1)}% abaixo)</b>
+                  </div>
+                </div>
+              ))}
+              {ranking.menorPreco.length === 0 && (
+                <div className="state-message">Nenhum SKU vendido por mais de uma loja com preço divergente.</div>
+              )}
+            </div>
+          </div>
+
+          <div className="precificacao-coluna">
+            <h3 className="precificacao-subtitulo">Menores margens</h3>
+            <div className="top-vendidos-lista">
+              {ranking.menorMargem.map((v, i) => (
+                <div key={`${v.lojaId}-${v.sku}-${v.dataCriacao}-${i}`} className="top-vendido-item">
+                  <div className="top-vendido-info">
+                    <div className="produto-titulo" title={v.titulo}>
+                      {v.titulo}
+                    </div>
+                    <div className="produto-mlb">
+                      {v.lojaNome} · {formatDataHora(v.dataCriacao)}
+                    </div>
+                  </div>
+                  <div className="precificacao-numeros">
+                    <b className={classeMargem(v.margemPercentual)}>{v.margemPercentual.toFixed(1)}%</b>
+                    <span className="financeiro-td-mudo"> · {formatCurrency(v.receitaTotal)}</span>
+                  </div>
+                </div>
+              ))}
+              {ranking.menorMargem.length === 0 && (
+                <div className="state-message">Nenhuma venda com custo cadastrado no período.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

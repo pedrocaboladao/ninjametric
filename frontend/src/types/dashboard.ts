@@ -75,3 +75,12 @@ export interface RankingPrecificacao {
   menorPreco: RankingMenorPreco[];
   menorMargem: RankingMenorMargem[];
 }
+
+export interface ComparacaoSkuLoja {
+  lojaId: number;
+  lojaNome: string;
+  titulo: string;
+  precoMedio: number;
+  margemPercentualMedia: number | null;
+  quantidadeVendida: number;
+}

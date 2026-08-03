@@ -103,3 +103,66 @@ export async function calcularRankingPrecificacao(
 
   return { menorPreco: menorPreco.slice(0, 20), menorMargem };
 }
+
+export interface ComparacaoSkuLoja {
+  lojaId: number;
+  lojaNome: string;
+  titulo: string;
+  precoMedio: number;
+  margemPercentualMedia: number | null;
+  quantidadeVendida: number;
+}
+
+// Busca pontual: pra um SKU específico (ou parte dele), mostra o preço
+// médio e a margem média de cada loja que vendeu no período, ordenado do
+// mais barato pro mais caro — pra responder direto "quem tá vendendo esse
+// produto mais barato e com pior margem".
+export async function buscarComparacaoPorSku(
+  skuBusca: string,
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<ComparacaoSkuLoja[]> {
+  const { vendas } = await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas);
+  const buscaNorm = normalizarSku(skuBusca);
+  if (!buscaNorm) return [];
+
+  interface Agregado {
+    somaPreco: number;
+    quantidade: number;
+    somaMargem: number;
+    qtdComMargem: number;
+    lojaNome: string;
+    titulo: string;
+  }
+  const porLoja = new Map<number, Agregado>();
+
+  for (const v of vendas) {
+    if (!v.sku || !normalizarSku(v.sku).includes(buscaNorm)) continue;
+    const atual = porLoja.get(v.lojaId) ?? {
+      somaPreco: 0,
+      quantidade: 0,
+      somaMargem: 0,
+      qtdComMargem: 0,
+      lojaNome: v.lojaNome,
+      titulo: v.titulo,
+    };
+    atual.somaPreco += v.valorUnitario * v.quantidade;
+    atual.quantidade += v.quantidade;
+    if (v.margemPercentual !== null) {
+      atual.somaMargem += v.margemPercentual;
+      atual.qtdComMargem += 1;
+    }
+    porLoja.set(v.lojaId, atual);
+  }
+
+  return Array.from(porLoja.entries())
+    .map(([lojaId, d]) => ({
+      lojaId,
+      lojaNome: d.lojaNome,
+      titulo: d.titulo,
+      precoMedio: d.somaPreco / d.quantidade,
+      margemPercentualMedia: d.qtdComMargem > 0 ? d.somaMargem / d.qtdComMargem : null,
+      quantidadeVendida: d.quantidade,
+    }))
+    .sort((a, b) => a.precoMedio - b.precoMedio);
+}
