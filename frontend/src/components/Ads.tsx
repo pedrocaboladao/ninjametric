@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchCampanhasAds, fetchReceitaRealPorCampanha } from "../api/ads";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { CampanhaAds } from "../types/ads";
+import type { CampanhaAds, ReceitaRealCampanha } from "../types/ads";
 import { formatCurrency } from "../utils/format";
+import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
 function dataISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -139,9 +140,6 @@ interface DadosReceitaCampanha {
 }
 
 export function Ads() {
-  const [campanhas, setCampanhas] = useState<CampanhaAds[] | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-  const [receitaRealPorCampanha, setReceitaRealPorCampanha] = useState<Map<string, DadosReceitaCampanha>>(new Map());
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
@@ -151,44 +149,38 @@ export function Ads() {
     direcao: -1,
   });
   const [filtroNome, setFiltroNome] = useState("");
-  const [atualizando, setAtualizando] = useState(false);
   const [grupoFiltro, setGrupoFiltro] = useState<Grupo | "todos">("todos");
+
+  const periodoValido = Boolean(dataInicio && dataFim && dataInicio <= dataFim);
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
-    setCampanhas(null);
-    setErro(null);
-    fetchCampanhasAds(lojaFiltro, dataInicio, dataFim)
-      .then(setCampanhas)
-      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar campanhas."));
-  }, [lojaFiltro, dataInicio, dataFim]);
+  const buscarCampanhas = useCallback(
+    (forcar: boolean) => fetchCampanhasAds(lojaFiltro, dataInicio, dataFim, forcar),
+    [lojaFiltro, dataInicio, dataFim]
+  );
+  const {
+    dados: campanhas,
+    erro,
+    atualizando,
+    atualizarAgora,
+  } = useBuscaComCancelamento<CampanhaAds[]>(buscarCampanhas, periodoValido);
 
-  useEffect(() => {
-    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
-    fetchReceitaRealPorCampanha(lojaFiltro, dataInicio, dataFim)
-      .then((receitas) => {
-        const mapa = new Map<string, DadosReceitaCampanha>();
-        for (const r of receitas) {
-          mapa.set(`${r.lojaId}-${r.campanhaId}`, { receitaTotalReal: r.receitaTotalReal, acosIdeal: r.acosIdeal });
-        }
-        setReceitaRealPorCampanha(mapa);
-      })
-      .catch(() => {}); // TACOS/ACOS Ideal são extras nas colunas — se falhar, a tabela principal continua funcionando
-  }, [lojaFiltro, dataInicio, dataFim]);
+  const buscarReceitaReal = useCallback(
+    () => fetchReceitaRealPorCampanha(lojaFiltro, dataInicio, dataFim),
+    [lojaFiltro, dataInicio, dataFim]
+  );
+  const { dados: receitasReais } = useBuscaComCancelamento<ReceitaRealCampanha[]>(buscarReceitaReal, periodoValido);
 
-  function atualizarAgora() {
-    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
-    setAtualizando(true);
-    setErro(null);
-    fetchCampanhasAds(lojaFiltro, dataInicio, dataFim, true)
-      .then(setCampanhas)
-      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar campanhas."))
-      .finally(() => setAtualizando(false));
-  }
+  const receitaRealPorCampanha = useMemo(() => {
+    const mapa = new Map<string, DadosReceitaCampanha>();
+    for (const r of receitasReais ?? []) {
+      mapa.set(`${r.lojaId}-${r.campanhaId}`, { receitaTotalReal: r.receitaTotalReal, acosIdeal: r.acosIdeal });
+    }
+    return mapa;
+  }, [receitasReais]);
 
   function ordenarPor(chave: ChaveOrdenacao) {
     setOrdenacao((atual) =>

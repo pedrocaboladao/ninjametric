@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchVendasFinanceiras, fetchPontoEquilibrio } from "../api/financeiro";
 import {
   fetchLojas,
@@ -8,9 +8,10 @@ import {
   type Loja,
   type LojaTodas,
 } from "../api/lojas";
-import type { VendaFinanceira, ResumoPedidos, PontoEquilibrio } from "../types/financeiro";
+import type { VendaFinanceira, ResultadoFinanceiro, PontoEquilibrio } from "../types/financeiro";
 import type { Usuario } from "../types/usuarios";
 import { formatCurrency, formatDataHora } from "../utils/format";
+import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
 interface Props {
   usuario: Usuario;
@@ -230,14 +231,8 @@ function GerenciarCustoFixo({ onFechar }: { onFechar: () => void }) {
 }
 
 function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
-  const [dados, setDados] = useState<PontoEquilibrio | null>(null);
-  const [erro, setErro] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetchPontoEquilibrio(lojaFiltro)
-      .then(setDados)
-      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar ponto de equilíbrio."));
-  }, [lojaFiltro]);
+  const buscar = useCallback(() => fetchPontoEquilibrio(lojaFiltro), [lojaFiltro]);
+  const { dados, erro } = useBuscaComCancelamento<PontoEquilibrio>(buscar, true);
 
   if (erro) return <div className="state-message state-error">{erro}</div>;
   if (!dados) return <div className="state-message">Carregando ponto de equilíbrio...</div>;
@@ -323,10 +318,6 @@ function DonutFinanceiro({ fatias, total }: { fatias: FatiaDonut[]; total: numbe
 }
 
 export function Financeiro({ usuario }: Props) {
-  const [vendas, setVendas] = useState<VendaFinanceira[] | null>(null);
-  const [resumoPedidos, setResumoPedidos] = useState<ResumoPedidos | null>(null);
-  const [gastoAdsTotal, setGastoAdsTotal] = useState(0);
-  const [erro, setErro] = useState<string | null>(null);
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
@@ -340,39 +331,26 @@ export function Financeiro({ usuario }: Props) {
   const [filtroPedido, setFiltroPedido] = useState("");
   const [filtroTitulo, setFiltroTitulo] = useState("");
   const [filtroSku, setFiltroSku] = useState("");
-  const [atualizando, setAtualizando] = useState(false);
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
-    setVendas(null);
-    setResumoPedidos(null);
-    setErro(null);
-    fetchVendasFinanceiras(lojaFiltro, dataInicio, dataFim)
-      .then((r) => {
-        setVendas(r.vendas);
-        setResumoPedidos(r.resumoPedidos);
-        setGastoAdsTotal(r.gastoAdsTotal);
-      })
-      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."));
-  }, [lojaFiltro, dataInicio, dataFim]);
+  const periodoValido = Boolean(dataInicio && dataFim && dataInicio <= dataFim);
+  const buscarVendas = useCallback(
+    (forcar: boolean) => fetchVendasFinanceiras(lojaFiltro, dataInicio, dataFim, forcar),
+    [lojaFiltro, dataInicio, dataFim]
+  );
+  const {
+    dados: resultado,
+    erro,
+    atualizando,
+    atualizarAgora,
+  } = useBuscaComCancelamento<ResultadoFinanceiro>(buscarVendas, periodoValido);
 
-  function atualizarAgora() {
-    if (!dataInicio || !dataFim || dataInicio > dataFim) return;
-    setAtualizando(true);
-    setErro(null);
-    fetchVendasFinanceiras(lojaFiltro, dataInicio, dataFim, true)
-      .then((r) => {
-        setVendas(r.vendas);
-        setResumoPedidos(r.resumoPedidos);
-        setGastoAdsTotal(r.gastoAdsTotal);
-      })
-      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar vendas."))
-      .finally(() => setAtualizando(false));
-  }
+  const vendas = resultado?.vendas ?? null;
+  const resumoPedidos = resultado?.resumoPedidos ?? null;
+  const gastoAdsTotal = resultado?.gastoAdsTotal ?? 0;
 
   function ordenarPor(chave: ChaveOrdenacao) {
     setOrdenacao((atual) =>
