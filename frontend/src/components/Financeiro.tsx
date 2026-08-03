@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchVendasFinanceiras, fetchPontoEquilibrio, atualizarCustoFixoMensal } from "../api/financeiro";
-import { fetchLojas, fetchLojasTodas, atualizarImpostoLoja, type Loja, type LojaTodas } from "../api/lojas";
+import { fetchVendasFinanceiras, fetchPontoEquilibrio } from "../api/financeiro";
+import {
+  fetchLojas,
+  fetchLojasTodas,
+  atualizarImpostoLoja,
+  atualizarCustoFixoLoja,
+  type Loja,
+  type LojaTodas,
+} from "../api/lojas";
 import type { VendaFinanceira, ResumoPedidos, PontoEquilibrio } from "../types/financeiro";
 import type { Usuario } from "../types/usuarios";
 import { formatCurrency, formatDataHora } from "../utils/format";
@@ -152,42 +159,85 @@ function GerenciarImpostos({ onFechar }: { onFechar: () => void }) {
   );
 }
 
-function PontoEquilibrioCard({ lojaFiltro, admin }: { lojaFiltro: number | "todas" | "minhas"; admin: boolean }) {
-  const [dados, setDados] = useState<PontoEquilibrio | null>(null);
+function GerenciarCustoFixo({ onFechar }: { onFechar: () => void }) {
+  const [lojas, setLojas] = useState<LojaTodas[] | null>(null);
+  const [valores, setValores] = useState<Record<number, string>>({});
+  const [salvandoId, setSalvandoId] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [editando, setEditando] = useState(false);
-  const [valorEdicao, setValorEdicao] = useState("");
-  const [salvando, setSalvando] = useState(false);
-
-  function carregar() {
-    fetchPontoEquilibrio(lojaFiltro)
-      .then(setDados)
-      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar ponto de equilíbrio."));
-  }
 
   useEffect(() => {
-    carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lojaFiltro]);
+    fetchLojasTodas()
+      .then((ls) => {
+        setLojas(ls);
+        setValores(Object.fromEntries(ls.map((l) => [l.id, String(l.custoFixoMensal)])));
+      })
+      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar lojas."));
+  }, []);
 
-  async function salvarCustoFixo() {
-    const valor = Number(valorEdicao.replace(",", "."));
+  async function salvar(id: number) {
+    const valor = Number(valores[id]?.replace(",", "."));
     if (Number.isNaN(valor) || valor < 0) {
       setErro("Informe um valor válido.");
       return;
     }
-    setSalvando(true);
+    setSalvandoId(id);
     setErro(null);
     try {
-      await atualizarCustoFixoMensal(valor);
-      setEditando(false);
-      carregar();
+      await atualizarCustoFixoLoja(id, valor);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao salvar.");
     } finally {
-      setSalvando(false);
+      setSalvandoId(null);
     }
   }
+
+  return (
+    <div className="financeiro-impostos">
+      <div className="financeiro-impostos-header">
+        <span>Custo fixo mensal por loja</span>
+        <button type="button" className="btn-excluir" onClick={onFechar}>
+          Fechar
+        </button>
+      </div>
+      <p className="painel-sub">Aluguel, salários etc. — cada loja é um negócio próprio, com o seu.</p>
+      {erro && <div className="state-message state-error">{erro}</div>}
+      {lojas === null && <div className="state-message">Carregando...</div>}
+      {lojas?.map((l) => (
+        <div key={l.id} className="financeiro-impostos-linha">
+          <span>{l.nome}</span>
+          <div className="financeiro-impostos-campo">
+            <span>R$</span>
+            <input
+              type="text"
+              inputMode="decimal"
+              className="clonar-input"
+              value={valores[l.id] ?? ""}
+              onChange={(e) => setValores((v) => ({ ...v, [l.id]: e.target.value }))}
+            />
+            <button
+              type="button"
+              className="btn-responder"
+              disabled={salvandoId === l.id}
+              onClick={() => salvar(l.id)}
+            >
+              {salvandoId === l.id ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
+  const [dados, setDados] = useState<PontoEquilibrio | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchPontoEquilibrio(lojaFiltro)
+      .then(setDados)
+      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao carregar ponto de equilíbrio."));
+  }, [lojaFiltro]);
 
   if (erro) return <div className="state-message state-error">{erro}</div>;
   if (!dados) return <div className="state-message">Carregando ponto de equilíbrio...</div>;
@@ -204,39 +254,9 @@ function PontoEquilibrioCard({ lojaFiltro, admin }: { lojaFiltro: number | "toda
           <div className="financeiro-equilibrio-valores">
             <b>{formatCurrency(dados.margemAposAds)}</b>
             <span> de </span>
-            {admin && editando ? (
-              <span className="financeiro-equilibrio-edicao">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="clonar-input"
-                  value={valorEdicao}
-                  onChange={(e) => setValorEdicao(e.target.value)}
-                  autoFocus
-                />
-                <button type="button" className="btn-responder" disabled={salvando} onClick={salvarCustoFixo}>
-                  {salvando ? "Salvando..." : "Salvar"}
-                </button>
-                <button type="button" className="btn-excluir" onClick={() => setEditando(false)}>
-                  Cancelar
-                </button>
-              </span>
-            ) : (
-              <span
-                className={admin ? "financeiro-equilibrio-meta-editavel" : undefined}
-                onClick={
-                  admin
-                    ? () => {
-                        setValorEdicao(String(dados.custoFixoMensal));
-                        setEditando(true);
-                      }
-                    : undefined
-                }
-                title={admin ? "Clique pra editar o custo fixo mensal" : undefined}
-              >
-                {temMeta ? `${formatCurrency(dados.custoFixoMensal)} (custo fixo)` : admin ? "definir custo fixo" : "custo fixo não configurado"}
-              </span>
-            )}
+            <span>
+              {temMeta ? `${formatCurrency(dados.custoFixoMensal)} (custo fixo somado das lojas do filtro)` : "custo fixo não configurado nessas lojas"}
+            </span>
           </div>
         </div>
         <div className={`financeiro-equilibrio-status ${noRitmo ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
@@ -312,6 +332,7 @@ export function Financeiro({ usuario }: Props) {
   const [dataInicio, setDataInicio] = useState(() => diasAtrasISO(7));
   const [dataFim, setDataFim] = useState(() => hojeISO());
   const [gerenciandoImpostos, setGerenciandoImpostos] = useState(false);
+  const [gerenciandoCustoFixo, setGerenciandoCustoFixo] = useState(false);
   const [ordenacao, setOrdenacao] = useState<{ chave: ChaveOrdenacao; direcao: 1 | -1 }>({
     chave: "dataCriacao",
     direcao: -1,
@@ -474,12 +495,22 @@ export function Financeiro({ usuario }: Props) {
               {gerenciandoImpostos ? "Fechar" : "Imposto por loja"}
             </button>
           )}
+          {usuario.admin && (
+            <button
+              type="button"
+              className="painel-estudo-gerenciar-btn"
+              onClick={() => setGerenciandoCustoFixo((g) => !g)}
+            >
+              {gerenciandoCustoFixo ? "Fechar" : "Custo fixo por loja"}
+            </button>
+          )}
         </div>
       </div>
 
       {gerenciandoImpostos && usuario.admin && <GerenciarImpostos onFechar={() => setGerenciandoImpostos(false)} />}
+      {gerenciandoCustoFixo && usuario.admin && <GerenciarCustoFixo onFechar={() => setGerenciandoCustoFixo(false)} />}
 
-      <PontoEquilibrioCard lojaFiltro={lojaFiltro} admin={usuario.admin} />
+      <PontoEquilibrioCard lojaFiltro={lojaFiltro} />
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}

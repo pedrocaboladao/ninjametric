@@ -1,4 +1,3 @@
-import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
 import { searchOrders, getCustoFreteDoEnvio, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
@@ -259,19 +258,6 @@ export async function listarVendasFinanceiras(
   return resultado;
 }
 
-export async function obterCustoFixoMensal(): Promise<number> {
-  const { rows } = await pool.query("SELECT custo_fixo_mensal FROM financeiro_config WHERE id = 1");
-  return Number(rows[0]?.custo_fixo_mensal ?? 0);
-}
-
-export async function atualizarCustoFixoMensal(valor: number): Promise<void> {
-  await pool.query(
-    `INSERT INTO financeiro_config (id, custo_fixo_mensal) VALUES (1, $1)
-     ON CONFLICT (id) DO UPDATE SET custo_fixo_mensal = $1`,
-    [valor]
-  );
-}
-
 export interface PontoEquilibrio {
   margemAposAds: number;
   custoFixoMensal: number;
@@ -292,10 +278,20 @@ export async function calcularPontoEquilibrio(
   const dataInicio = mes.inicioDia.slice(0, 10);
   const dataFim = mes.agora.slice(0, 10);
 
-  const [{ vendas, gastoAdsTotal }, custoFixoMensal] = await Promise.all([
+  const [{ vendas, gastoAdsTotal }, lojas] = await Promise.all([
     listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
-    obterCustoFixoMensal(),
+    listLojas(),
   ]);
+  // Custo fixo é por loja — soma só das lojas que entram no filtro atual
+  // (uma loja específica, ou o total de "todas"/"minhas lojas").
+  const custoFixoMensal = lojas
+    .filter(
+      (l) =>
+        l.ml_user_id !== null &&
+        (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
+        (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+    )
+    .reduce((soma, l) => soma + l.custo_fixo_mensal, 0);
 
   const margemContribuicao = vendas.reduce((soma, v) => soma + (v.margemContribuicao ?? 0), 0);
   const margemAposAds = margemContribuicao - gastoAdsTotal;

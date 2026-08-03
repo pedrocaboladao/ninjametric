@@ -27,16 +27,3 @@ export async function fetchPontoEquilibrio(lojaFiltro: number | "todas" | "minha
   }
   return res.json();
 }
-
-export async function atualizarCustoFixoMensal(valor: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/financeiro/custo-fixo`, {
-    method: "PUT",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ custoFixoMensal: valor }),
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(data?.error ?? `Erro ${res.status}`);
-  }
-}

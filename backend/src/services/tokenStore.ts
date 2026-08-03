@@ -8,19 +8,32 @@ export interface Loja {
   nome: string;
   ml_user_id: number | null;
   imposto_percentual: number;
+  custo_fixo_mensal: number;
 }
 
 export async function listLojas(): Promise<Loja[]> {
-  const { rows } = await pool.query<{ id: number; nome: string; ml_user_id: number | null; imposto_percentual: string }>(
-    "SELECT id, nome, ml_user_id, imposto_percentual FROM lojas ORDER BY id"
-  );
+  const { rows } = await pool.query<{
+    id: number;
+    nome: string;
+    ml_user_id: number | null;
+    imposto_percentual: string;
+    custo_fixo_mensal: string;
+  }>("SELECT id, nome, ml_user_id, imposto_percentual, custo_fixo_mensal FROM lojas ORDER BY id");
   // NUMERIC do Postgres volta como string pro driver não perder precisão —
   // convertendo aqui uma vez só, pra quem consome não precisar lembrar disso.
-  return rows.map((r) => ({ ...r, imposto_percentual: Number(r.imposto_percentual) }));
+  return rows.map((r) => ({
+    ...r,
+    imposto_percentual: Number(r.imposto_percentual),
+    custo_fixo_mensal: Number(r.custo_fixo_mensal),
+  }));
 }
 
 export async function atualizarImpostoLoja(lojaId: number, impostoPercentual: number): Promise<void> {
   await pool.query("UPDATE lojas SET imposto_percentual = $1 WHERE id = $2", [impostoPercentual, lojaId]);
+}
+
+export async function atualizarCustoFixoLoja(lojaId: number, custoFixoMensal: number): Promise<void> {
+  await pool.query("UPDATE lojas SET custo_fixo_mensal = $1 WHERE id = $2", [custoFixoMensal, lojaId]);
 }
 
 export async function saveTokens(lojaId: number, token: MlTokenResponse): Promise<void> {

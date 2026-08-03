@@ -6,6 +6,7 @@ export interface Loja {
 export interface LojaTodas extends Loja {
   autorizada: boolean;
   impostoPercentual: number;
+  custoFixoMensal: number;
 }
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -30,6 +31,19 @@ export async function atualizarImpostoLoja(id: number, impostoPercentual: number
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ impostoPercentual }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? `Erro ${res.status}`);
+  }
+}
+
+export async function atualizarCustoFixoLoja(id: number, custoFixoMensal: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/lojas/${id}/custo-fixo`, {
+    method: "PUT",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ custoFixoMensal }),
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);

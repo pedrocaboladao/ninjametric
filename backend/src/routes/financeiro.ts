@@ -1,7 +1,6 @@
 import { Router, Request, Response } from "express";
-import { listarVendasFinanceiras, atualizarCustoFixoMensal, calcularPontoEquilibrio } from "../services/financeiroService";
+import { listarVendasFinanceiras, calcularPontoEquilibrio } from "../services/financeiroService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
-import { requireAdmin } from "../middleware/requireAuth";
 
 export const financeiroRouter = Router();
 
@@ -58,24 +57,9 @@ financeiroRouter.get("/", async (req, res) => {
   }
 });
 
-// Custo fixo mensal (aluguel, salários etc.) — da empresa toda, usado no
-// ponto de equilíbrio (devolvido junto de /ponto-equilibrio). Só admin edita.
-financeiroRouter.put("/custo-fixo", requireAdmin, async (req, res) => {
-  const { custoFixoMensal } = req.body;
-  if (typeof custoFixoMensal !== "number" || custoFixoMensal < 0) {
-    res.status(400).json({ error: "Informe um valor de custo fixo válido." });
-    return;
-  }
-  try {
-    await atualizarCustoFixoMensal(custoFixoMensal);
-    res.json({ ok: true });
-  } catch (err) {
-    console.error("Erro ao atualizar custo fixo:", err);
-    res.status(500).json({ error: "Falha ao atualizar custo fixo." });
-  }
-});
-
 // Ponto de equilíbrio: sempre o mês corrente, não usa dataInicio/dataFim.
+// Custo fixo é por loja (editável em /api/lojas/:id/custo-fixo) — aqui só
+// soma o das lojas que entram no filtro atual.
 financeiroRouter.get("/ponto-equilibrio", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;

@@ -3366,25 +3366,6 @@
   color: var(--text-muted);
 }
 
-.financeiro-equilibrio-meta-editavel {
-  cursor: pointer;
-  border-bottom: 1px dashed var(--text-muted);
-}
-
-.financeiro-equilibrio-meta-editavel:hover {
-  color: var(--text-primary);
-}
-
-.financeiro-equilibrio-edicao {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.financeiro-equilibrio-edicao input {
-  width: 110px;
-}
-
 .financeiro-equilibrio-status {
   text-align: right;
   font-weight: 700;

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { listLojas, atualizarImpostoLoja } from "../services/tokenStore";
+import { listLojas, atualizarImpostoLoja, atualizarCustoFixoLoja } from "../services/tokenStore";
 import { temAcessoLoja } from "../services/usuariosService";
 import { requireAdmin } from "../middleware/requireAuth";
 
@@ -31,6 +31,7 @@ lojasRouter.get("/todas", requireAdmin, async (_req, res) => {
         nome: l.nome,
         autorizada: l.ml_user_id !== null,
         impostoPercentual: l.imposto_percentual,
+        custoFixoMensal: l.custo_fixo_mensal,
       })),
     });
   } catch (err) {
@@ -55,5 +56,24 @@ lojasRouter.put("/:id/imposto", requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Erro ao atualizar imposto da loja:", err);
     res.status(500).json({ error: "Falha ao atualizar imposto." });
+  }
+});
+
+// Custo fixo mensal (aluguel, salários etc.) dessa loja — usado no ponto de
+// equilíbrio do Financeiro. Editável por loja, só admin.
+lojasRouter.put("/:id/custo-fixo", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  const { custoFixoMensal } = req.body;
+  if (!Number.isInteger(id) || typeof custoFixoMensal !== "number" || custoFixoMensal < 0) {
+    res.status(400).json({ error: "Informe um valor de custo fixo válido." });
+    return;
+  }
+
+  try {
+    await atualizarCustoFixoLoja(id, custoFixoMensal);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Erro ao atualizar custo fixo da loja:", err);
+    res.status(500).json({ error: "Falha ao atualizar custo fixo." });
   }
 });

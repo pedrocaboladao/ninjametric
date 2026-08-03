@@ -177,12 +177,8 @@ CREATE TABLE IF NOT EXISTS canais_youtube (
 -- loja (cada empresa/CNPJ pode ter um regime tributário diferente).
 ALTER TABLE lojas ADD COLUMN IF NOT EXISTS imposto_percentual NUMERIC(5, 2) NOT NULL DEFAULT 7.00;
 
--- Financeiro: custo fixo mensal (aluguel, salários etc.) — é da empresa
--- como um todo, não por loja, então fica numa linha única (id fixo = 1),
--- usada pro ponto de equilíbrio no topo do Financeiro.
-CREATE TABLE IF NOT EXISTS financeiro_config (
-  id INTEGER PRIMARY KEY DEFAULT 1,
-  custo_fixo_mensal NUMERIC(12, 2) NOT NULL DEFAULT 0,
-  CONSTRAINT financeiro_config_singleton CHECK (id = 1)
-);
-INSERT INTO financeiro_config (id, custo_fixo_mensal) VALUES (1, 0) ON CONFLICT (id) DO NOTHING;
+-- Financeiro: custo fixo mensal (aluguel, salários etc.) — por loja, cada
+-- uma é um negócio próprio. O ponto de equilíbrio de "todas"/"minhas lojas"
+-- soma o custo fixo das lojas incluídas no filtro.
+ALTER TABLE lojas ADD COLUMN IF NOT EXISTS custo_fixo_mensal NUMERIC(12, 2) NOT NULL DEFAULT 0;
+DROP TABLE IF EXISTS financeiro_config;
