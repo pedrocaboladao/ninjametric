@@ -224,6 +224,16 @@ function GerenciarCustoFixo({ onFechar }: { onFechar: () => void }) {
   );
 }
 
+// 4 etapas fixas (25% cada) pensando nas 4 semanas do mês — não são datas
+// reais, é só uma divisão do valor do custo fixo em marcos pra dar um
+// apelo de "fase batida" conforme a margem do mês vai enchendo a barra.
+const ETAPAS_TERMOMETRO = [
+  { pct: 25, emoji: "🌱" },
+  { pct: 50, emoji: "🌿" },
+  { pct: 75, emoji: "🌳" },
+  { pct: 100, emoji: "🏆" },
+];
+
 function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
   const buscar = useCallback(() => fetchPontoEquilibrio(lojaFiltro), [lojaFiltro]);
   const { dados, erro } = useBuscaComCancelamento<PontoEquilibrio>(buscar, true);
@@ -256,11 +266,27 @@ function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "m
           </span>
         </div>
       </div>
-      <div className="financeiro-equilibrio-barra">
-        <div
-          className={`financeiro-equilibrio-barra-preenchida ${noRitmo ? "financeiro-equilibrio-barra-ok" : ""}`}
-          style={{ width: `${percentual}%` }}
-        />
+      <div className="financeiro-equilibrio-barra-wrap">
+        <div className="financeiro-equilibrio-barra">
+          <div
+            className={`financeiro-equilibrio-barra-preenchida ${noRitmo ? "financeiro-equilibrio-barra-ok" : ""}`}
+            style={{ width: `${percentual}%` }}
+          />
+        </div>
+        {temMeta &&
+          ETAPAS_TERMOMETRO.map((etapa) => {
+            const atingida = percentual >= etapa.pct;
+            return (
+              <div
+                key={etapa.pct}
+                className={`financeiro-equilibrio-marco ${atingida ? "financeiro-equilibrio-marco-atingido" : ""}`}
+                style={{ left: `${etapa.pct}%` }}
+                title={`Etapa ${etapa.pct}% · ${formatCurrency((dados.custoFixoMensal * etapa.pct) / 100)}`}
+              >
+                <span className="financeiro-equilibrio-marco-emoji">{etapa.emoji}</span>
+              </div>
+            );
+          })}
       </div>
     </div>
   );

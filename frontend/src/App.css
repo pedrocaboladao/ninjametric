@@ -3429,6 +3429,11 @@
   margin-top: 2px;
 }
 
+.financeiro-equilibrio-barra-wrap {
+  position: relative;
+  padding-top: 22px;
+}
+
 .financeiro-equilibrio-barra {
   height: 10px;
   border-radius: 999px;
@@ -3446,6 +3451,37 @@
 
 .financeiro-equilibrio-barra-preenchida.financeiro-equilibrio-barra-ok {
   background: var(--good-text);
+}
+
+.financeiro-equilibrio-marco {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  opacity: 0.45;
+  filter: grayscale(1);
+  transition: transform 0.25s ease, opacity 0.25s ease, filter 0.25s ease, box-shadow 0.25s ease;
+  cursor: default;
+}
+
+.financeiro-equilibrio-marco-emoji {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.financeiro-equilibrio-marco-atingido {
+  opacity: 1;
+  filter: none;
+  transform: translateX(-50%) scale(1.15);
+  border-color: var(--good-text);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good-text) 25%, transparent);
 }
 
 .ads-triagem {
