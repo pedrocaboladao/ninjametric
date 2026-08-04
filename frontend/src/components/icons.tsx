@@ -243,6 +243,15 @@ export function IconWallet({ size = 18 }: IconProps) {
   );
 }
 
+export function IconReport({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M6 3h9l4 4v14a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+      <path d="M9 13h6M9 17h6M9 9h2" />
+    </svg>
+  );
+}
+
 export function IconMegaphone({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

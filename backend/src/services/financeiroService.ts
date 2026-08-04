@@ -90,6 +90,7 @@ export interface ResumoPedidos {
   totalPedidos: number;
   pedidosAprovados: number;
   pedidosCancelados: number;
+  valorCancelado: number;
 }
 
 export interface ResultadoFinanceiro {
@@ -163,10 +164,12 @@ export async function listarVendasFinanceiras(
   const custoPorSku = new Map(produtos.map((p) => [normalizarSku(p.sku), p.custo]));
 
   const todosOsPedidos = ordersPorLoja.flatMap((l) => l.orders);
+  const pedidosCancelados = todosOsPedidos.filter((o) => o.status === STATUS_CANCELADO);
   const resumoPedidos: ResumoPedidos = {
     totalPedidos: todosOsPedidos.length,
     pedidosAprovados: todosOsPedidos.filter((o) => STATUS_VALIDOS.has(o.status)).length,
-    pedidosCancelados: todosOsPedidos.filter((o) => o.status === STATUS_CANCELADO).length,
+    pedidosCancelados: pedidosCancelados.length,
+    valorCancelado: pedidosCancelados.reduce((soma, o) => soma + Number(o.total_amount), 0),
   };
 
   // Pedidos válidos (pagos/confirmados) de todas as lojas, achatados numa

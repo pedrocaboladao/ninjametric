@@ -505,3 +505,36 @@ export async function calcularRankingPorLoja(lojasPermitidas?: number[]): Promis
     emAbertoReceber: Number(r.em_aberto_receber),
   }));
 }
+
+export interface CustoFixoMes {
+  mes: number; // 1-12
+  valor: number;
+}
+
+// Usado pelo DRE: soma os lançamentos "a pagar" por mês de vencimento
+// (competência), num ano específico — não considera se já foi pago ou
+// ainda está pendente, só a que mês o custo pertence. Cancelado não conta.
+export async function calcularCustoFixoPorMes(
+  ano: number,
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<CustoFixoMes[]> {
+  const params: unknown[] = [ano];
+  const condicoes = ["tipo = 'pagar'", "status != 'cancelado'", "EXTRACT(YEAR FROM vencimento) = $1"];
+  if (lojaIdFiltro !== undefined) {
+    params.push(lojaIdFiltro);
+    condicoes.push(`loja_id = $${params.length}`);
+  } else if (lojasPermitidas !== undefined) {
+    params.push(lojasPermitidas);
+    condicoes.push(`loja_id = ANY($${params.length}::int[])`);
+  }
+
+  const { rows } = await pool.query<{ mes: number; valor: string | null }>(
+    `SELECT EXTRACT(MONTH FROM vencimento)::int AS mes, SUM(valor) AS valor
+     FROM contas_lancamentos
+     WHERE ${condicoes.join(" AND ")}
+     GROUP BY mes`,
+    params
+  );
+  return rows.map((r) => ({ mes: r.mes, valor: Number(r.valor ?? 0) }));
+}

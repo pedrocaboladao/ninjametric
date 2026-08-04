@@ -3470,6 +3470,52 @@
   flex-shrink: 0;
 }
 
+.dre-tabela th:first-child,
+.dre-tabela td:first-child {
+  min-width: 220px;
+}
+
+.dre-linha-entrada td {
+  background: var(--good-bg);
+  color: var(--good-text);
+  font-weight: 700;
+}
+
+.dre-linha-custo-total td {
+  background: var(--critical-bg);
+  color: var(--critical-text);
+  font-weight: 700;
+}
+
+.dre-linha-detalhe td:first-child {
+  padding-left: 28px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.dre-linha-detalhe td {
+  color: var(--text-secondary);
+}
+
+.dre-linha-resultado td {
+  background: var(--bg-panel-alt);
+  font-weight: 700;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.dre-linha-lucro td {
+  background: var(--good-bg);
+  color: var(--good-text);
+  font-weight: 700;
+  border-top: 2px solid var(--good-text);
+}
+
+.dre-linha-percentual td {
+  font-size: 11px;
+  padding-top: 0;
+}
+
 .contas-badge-vence-breve {
   display: inline-block;
   margin-top: 2px;
