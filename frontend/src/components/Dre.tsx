@@ -43,6 +43,22 @@ function LinhaValores({
   );
 }
 
+// Uma linha de custo fixo detalhado: rótulo (descrição do lançamento) + valor
+// por mês (array de 12 posições, índice 0 = janeiro, sem DreMes por trás).
+function LinhaCustoFixoDetalhe({ descricao, porMes, total }: { descricao: string; porMes: number[]; total: number }) {
+  return (
+    <tr className="dre-linha-detalhe">
+      <td>{descricao}</td>
+      {porMes.map((v, i) => (
+        <td key={i} className="financeiro-th-numero">
+          {v !== 0 ? formatCurrency(v) : "—"}
+        </td>
+      ))}
+      <td className="financeiro-th-numero">{formatCurrency(total)}</td>
+    </tr>
+  );
+}
+
 function LinhaPercentual({ meses, valor }: { meses: DreMes[]; valor: (m: DreMes) => number | null }) {
   return (
     <tr className="dre-linha-percentual">
@@ -204,13 +220,14 @@ export function Dre() {
                 valor={(m) => m.gastoAds}
                 classe="dre-linha-detalhe"
               />
-              <LinhaValores
-                label="Outros custos fixos (Contas a pagar)"
-                meses={dados.meses}
-                total={dados.totais.custoFixoManual}
-                valor={(m) => m.custoFixoManual}
-                classe="dre-linha-detalhe"
-              />
+              {dados.custoFixoDetalhado.map((linha) => (
+                <LinhaCustoFixoDetalhe
+                  key={linha.descricao}
+                  descricao={linha.descricao}
+                  porMes={linha.porMes}
+                  total={linha.total}
+                />
+              ))}
 
               <LinhaValores
                 label="(=) Lucro Líquido"

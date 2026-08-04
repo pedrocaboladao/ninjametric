@@ -506,19 +506,23 @@ export async function calcularRankingPorLoja(lojasPermitidas?: number[]): Promis
   }));
 }
 
-export interface CustoFixoMes {
+export interface CustoFixoLinha {
+  descricao: string;
   mes: number; // 1-12
   valor: number;
 }
 
-// Usado pelo DRE: soma os lançamentos "a pagar" por mês de vencimento
-// (competência), num ano específico — não considera se já foi pago ou
-// ainda está pendente, só a que mês o custo pertence. Cancelado não conta.
-export async function calcularCustoFixoPorMes(
+// Usado pelo DRE: soma os lançamentos "a pagar" por descrição + mês de
+// vencimento (competência), num ano específico — não considera se já foi
+// pago ou ainda está pendente, só a que mês o custo pertence. Cancelado
+// não conta. Agrupa por descrição (em vez de só somar tudo) pra o DRE
+// mostrar cada custo fixo linha por linha, igual o financeiro tradicional
+// — lançamentos com a mesma descrição no mesmo mês somam numa linha só.
+export async function calcularCustoFixoDetalhado(
   ano: number,
   lojaIdFiltro?: number,
   lojasPermitidas?: number[]
-): Promise<CustoFixoMes[]> {
+): Promise<CustoFixoLinha[]> {
   const params: unknown[] = [ano];
   const condicoes = ["tipo = 'pagar'", "status != 'cancelado'", "EXTRACT(YEAR FROM vencimento) = $1"];
   if (lojaIdFiltro !== undefined) {
@@ -529,12 +533,12 @@ export async function calcularCustoFixoPorMes(
     condicoes.push(`loja_id = ANY($${params.length}::int[])`);
   }
 
-  const { rows } = await pool.query<{ mes: number; valor: string | null }>(
-    `SELECT EXTRACT(MONTH FROM vencimento)::int AS mes, SUM(valor) AS valor
+  const { rows } = await pool.query<{ descricao: string; mes: number; valor: string | null }>(
+    `SELECT descricao, EXTRACT(MONTH FROM vencimento)::int AS mes, SUM(valor) AS valor
      FROM contas_lancamentos
      WHERE ${condicoes.join(" AND ")}
-     GROUP BY mes`,
+     GROUP BY descricao, mes`,
     params
   );
-  return rows.map((r) => ({ mes: r.mes, valor: Number(r.valor ?? 0) }));
+  return rows.map((r) => ({ descricao: r.descricao, mes: r.mes, valor: Number(r.valor ?? 0) }));
 }

@@ -15,8 +15,15 @@ export interface DreMes {
   lucroPercentual: number | null;
 }
 
+export interface CustoFixoLinhaDre {
+  descricao: string;
+  porMes: number[]; // 12 posições, índice 0 = janeiro
+  total: number;
+}
+
 export interface Dre {
   ano: number;
   meses: DreMes[];
   totais: DreMes;
+  custoFixoDetalhado: CustoFixoLinhaDre[];
 }

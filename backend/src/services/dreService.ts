@@ -1,5 +1,5 @@
 import { listarVendasFinanceiras } from "./financeiroService";
-import { calcularCustoFixoPorMes } from "./contasService";
+import { calcularCustoFixoDetalhado } from "./contasService";
 
 export interface DreMes {
   mes: number; // 1-12
@@ -18,10 +18,17 @@ export interface DreMes {
   lucroPercentual: number | null;
 }
 
+export interface CustoFixoLinhaDre {
+  descricao: string;
+  porMes: number[]; // 12 posições, índice 0 = janeiro
+  total: number;
+}
+
 export interface Dre {
   ano: number;
   meses: DreMes[];
   totais: DreMes;
+  custoFixoDetalhado: CustoFixoLinhaDre[];
 }
 
 function mesVazio(mes: number): DreMes {
@@ -135,10 +142,22 @@ export async function calcularDre(ano: number, lojaIdFiltro?: number, lojasPermi
       };
       return dreMes;
     }),
-    calcularCustoFixoPorMes(ano, lojaIdFiltro, lojasPermitidas),
+    calcularCustoFixoDetalhado(ano, lojaIdFiltro, lojasPermitidas),
   ]);
 
-  const custoFixoPorMesMap = new Map(custoFixoPorMes.map((c) => [c.mes, c.valor]));
+  // Agrega por descrição pro DRE mostrar linha por linha (ex.: "Aluguel
+  // Barracão" com o valor de cada mês) — e separado por mês só pra somar
+  // no custoFixoManual/custoFixoTotal de cada DreMes.
+  const custoFixoPorMesMap = new Map<number, number>();
+  const custoFixoPorDescricao = new Map<string, number[]>();
+  for (const linha of custoFixoPorMes) {
+    custoFixoPorMesMap.set(linha.mes, (custoFixoPorMesMap.get(linha.mes) ?? 0) + linha.valor);
+    if (!custoFixoPorDescricao.has(linha.descricao)) custoFixoPorDescricao.set(linha.descricao, new Array(12).fill(0));
+    custoFixoPorDescricao.get(linha.descricao)![linha.mes - 1] += linha.valor;
+  }
+  const custoFixoDetalhado: CustoFixoLinhaDre[] = Array.from(custoFixoPorDescricao.entries())
+    .map(([descricao, porMes]) => ({ descricao, porMes, total: porMes.reduce((s, v) => s + v, 0) }))
+    .sort((a, b) => b.total - a.total);
 
   const meses: DreMes[] = Array.from({ length: 12 }, (_, i) => {
     const mes = i + 1;
@@ -172,5 +191,5 @@ export async function calcularDre(ano: number, lojaIdFiltro?: number, lojasPermi
   totais.margemPercentual = totais.faturamento > 0 ? (totais.margemContribuicao / totais.faturamento) * 100 : null;
   totais.lucroPercentual = totais.faturamento > 0 ? (totais.lucroLiquido / totais.faturamento) * 100 : null;
 
-  return { ano, meses, totais };
+  return { ano, meses, totais, custoFixoDetalhado };
 }
