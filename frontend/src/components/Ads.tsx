@@ -35,20 +35,20 @@ function diasNoPeriodo(dataInicio: string, dataFim: string): number {
 interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
   acosIdeal: number | null;
-  resultado: "lucrando" | "negativando" | null;
+  lucroReais: number | null;
 }
 
-// Lucrando/negativando: compara TACOS real (gasto ÷ receita total do
-// produto) com o ACOS Ideal (margem de contribuição real, em %) — enquanto
-// o TACOS ficar dentro do que a margem aguenta, a campanha está dando
-// lucro mesmo com todos os custos reais já embutidos na margem. Sem
-// acosIdeal (produto sem custo cadastrado) não dá pra julgar. Gastou sem
-// nenhuma receita atribuída (tacosReal null com custo > 0) é sempre
-// prejuízo, mesmo sem saber a margem exata.
-function calcularResultado(c: { custo: number; tacosReal: number | null; acosIdeal: number | null }): "lucrando" | "negativando" | null {
+// Lucro em R$: receita total do produto (receitaBase, a mesma usada no
+// TACOS) vezes o ACOS Ideal (margem de contribuição real, em %) dá o
+// "orçamento de Ads" que a margem aguenta sem virar prejuízo — subtraindo
+// o gasto real, sobra o lucro (ou prejuízo, se negativo) já considerando
+// todos os custos reais embutidos na margem. Sem acosIdeal (produto sem
+// custo cadastrado) não dá pra julgar. Campanha sem gasto e sem receita
+// nenhuma (nada aconteceu) também fica sem valor, em vez de mostrar R$ 0.
+function calcularLucroReais(c: { custo: number; receitaBase: number; acosIdeal: number | null }): number | null {
   if (c.acosIdeal === null) return null;
-  if (c.tacosReal === null) return c.custo > 0 ? "negativando" : null;
-  return c.tacosReal <= c.acosIdeal ? "lucrando" : "negativando";
+  if (c.custo === 0 && c.receitaBase === 0) return null;
+  return c.receitaBase * (c.acosIdeal / 100) - c.custo;
 }
 
 type ChaveOrdenacao =
@@ -329,7 +329,7 @@ export function Ads() {
         ...c,
         tacosReal,
         acosIdeal,
-        resultado: calcularResultado({ custo: c.custo, tacosReal, acosIdeal }),
+        lucroReais: calcularLucroReais({ custo: c.custo, receitaBase, acosIdeal }),
       };
     });
   }, [campanhas, receitaRealPorCampanha]);
@@ -585,7 +585,10 @@ export function Ads() {
                       {col.label} {ordenacao.chave === col.chave ? (ordenacao.direcao === 1 ? "▲" : "▼") : ""}
                     </th>
                   ))}
-                  <th title="TACOS real comparado com o ACOS Ideal (margem) — enquanto o TACOS ficar dentro do que a margem aguenta, a campanha dá lucro.">
+                  <th
+                    className="financeiro-th-numero"
+                    title="Receita do produto × ACOS Ideal (margem) menos o gasto de Ads — lucro real da campanha, já considerando a margem do produto."
+                  >
                     Lucro
                   </th>
                 </tr>
@@ -621,15 +624,15 @@ export function Ads() {
                         {c.acosIdeal !== null ? `${c.acosIdeal.toFixed(1)}%` : "—"}
                       </td>
                       <td
-                        className={
-                          c.resultado === "lucrando"
-                            ? "financeiro-margem-positiva"
-                            : c.resultado === "negativando"
-                              ? "financeiro-margem-negativa"
-                              : "financeiro-margem-neutra"
-                        }
+                        className={`financeiro-th-numero ${
+                          c.lucroReais === null
+                            ? "financeiro-margem-neutra"
+                            : c.lucroReais >= 0
+                              ? "financeiro-margem-positiva"
+                              : "financeiro-margem-negativa"
+                        }`}
                       >
-                        {c.resultado === "lucrando" ? "Lucrando" : c.resultado === "negativando" ? "Negativando" : "—"}
+                        {c.lucroReais !== null ? formatCurrency(c.lucroReais) : "—"}
                       </td>
                     </tr>
                   );
