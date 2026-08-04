@@ -245,6 +245,14 @@ function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "m
   const percentual = temMeta ? Math.min(100, Math.max(0, (dados.margemAposAds / dados.custoFixoMensal) * 100)) : 0;
   const noRitmo = temMeta && dados.projecaoFechamento >= dados.custoFixoMensal;
 
+  // Projeção simples: no ritmo médio diário de margem até agora, em que dia
+  // do mês a meta seria batida. Matematicamente equivalente ao `noRitmo`
+  // (mesma reta), só que expresso como "dia N" em vez de "R$ até o fim do
+  // mês" — mais fácil de agir em cima (ex: "faltam 6 dias pra bater").
+  const mediaDiaria = dados.diasDecorridos > 0 ? dados.margemAposAds / dados.diasDecorridos : 0;
+  const diaPrevisto = temMeta && mediaDiaria > 0 ? Math.ceil(dados.custoFixoMensal / mediaDiaria) : null;
+  const bateEsseMes = diaPrevisto !== null && diaPrevisto <= dados.diasNoMes;
+
   return (
     <div className="financeiro-equilibrio">
       <div className="financeiro-equilibrio-header">
@@ -288,6 +296,15 @@ function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "m
             );
           })}
       </div>
+      {temMeta && (
+        <div className={`financeiro-equilibrio-previsibilidade ${bateEsseMes ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
+          {diaPrevisto === null
+            ? "No ritmo atual, ainda sem margem acumulada pra projetar o dia."
+            : bateEsseMes
+            ? `No ritmo atual, bate o ponto de equilíbrio no dia ${diaPrevisto}.`
+            : `No ritmo atual, não deve bater a meta esse mês (precisaria até o dia ${diaPrevisto}).`}
+        </div>
+      )}
     </div>
   );
 }

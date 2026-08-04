@@ -3599,6 +3599,12 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--good-text) 25%, transparent);
 }
 
+.financeiro-equilibrio-previsibilidade {
+  margin-top: 14px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .ads-triagem {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
