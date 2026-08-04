@@ -3,7 +3,7 @@ import { useDashboardData } from "../hooks/useDashboardData";
 import { useTopVendidosPromocoes } from "../hooks/useTopVendidosPromocoes";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 import { fetchLojas, type Loja } from "../api/lojas";
-import { fetchRankingPrecificacao } from "../api/dashboard";
+import { fetchRankingPrecificacao, fetchLojasVigilancia } from "../api/dashboard";
 import type { RankingPrecificacao as RankingPrecificacaoTipo } from "../types/dashboard";
 import { DashboardHeader } from "./DashboardHeader";
 import { HeroFaturamento } from "./HeroFaturamento";
@@ -31,6 +31,7 @@ interface Props {
 
 export function Dashboard({ usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
+  const [lojasVigilancia, setLojasVigilancia] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPromocoes, setLojaFiltroPromocoes] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPrecificacao, setLojaFiltroPrecificacao] = useState<number | "todas" | "minhas">("todas");
@@ -40,6 +41,9 @@ export function Dashboard({ usuario }: Props) {
   useEffect(() => {
     fetchLojas()
       .then(setLojas)
+      .catch(() => {});
+    fetchLojasVigilancia()
+      .then(setLojasVigilancia)
       .catch(() => {});
   }, []);
 
@@ -158,7 +162,7 @@ export function Dashboard({ usuario }: Props) {
               {rankingPrecificacao && (
                 <RankingPrecificacao
                   ranking={rankingPrecificacao}
-                  lojas={lojas}
+                  lojas={lojasVigilancia}
                   lojaFiltro={lojaFiltroPrecificacao}
                   onChangeLojaFiltro={setLojaFiltroPrecificacao}
                   modoData={modoDataPrecificacao}

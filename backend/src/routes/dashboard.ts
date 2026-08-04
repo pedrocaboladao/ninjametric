@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { getDashboardData, getTopVendidosPromocoes } from "../services/dashboardService";
 import { calcularRankingPrecificacao, buscarComparacaoPorSku } from "../services/precificacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
+import { listLojas } from "../services/tokenStore";
 
 export const dashboardRouter = Router();
 
@@ -37,6 +38,22 @@ function resolverLojaFiltro(req: Request, res: Response): { lojaId?: number; loj
   return { lojaId, lojasPermitidas: lojasEfetivas(usuario) };
 }
 
+// Vigilância de preço é intencionalmente aberta pra todo mundo enxergar
+// todas as lojas — a ideia é o grupo fiscalizar preço/margem uns dos
+// outros, então diferente do resto do Dashboard aqui NÃO restringe por
+// temAcessoLoja nem lojasEfetivas(usuario). "minhas" continua restrito de
+// propósito, como opção de quem só quer ver a própria loja.
+function resolverLojaFiltroVigilancia(req: Request): { lojaId?: number; lojasPermitidas?: number[] } {
+  const lojaIdParam = req.query.lojaId;
+  const usuario = req.usuario!;
+  if (lojaIdParam === "minhas") {
+    return { lojaId: undefined, lojasPermitidas: usuario.lojas };
+  }
+  const lojaId =
+    typeof lojaIdParam === "string" && Number.isInteger(Number(lojaIdParam)) ? Number(lojaIdParam) : undefined;
+  return { lojaId, lojasPermitidas: undefined };
+}
+
 dashboardRouter.get("/", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;
@@ -64,8 +81,7 @@ dashboardRouter.get("/top-vendidos", async (req, res) => {
 });
 
 dashboardRouter.get("/precificacao", async (req, res) => {
-  const filtro = resolverLojaFiltro(req, res);
-  if (!filtro) return;
+  const filtro = resolverLojaFiltroVigilancia(req);
   const { dataInicio, dataFim } = extrairDatas(req);
 
   try {
@@ -78,8 +94,7 @@ dashboardRouter.get("/precificacao", async (req, res) => {
 });
 
 dashboardRouter.get("/precificacao/sku", async (req, res) => {
-  const filtro = resolverLojaFiltro(req, res);
-  if (!filtro) return;
+  const filtro = resolverLojaFiltroVigilancia(req);
   const { dataInicio, dataFim } = extrairDatas(req);
 
   const sku = String(req.query.sku ?? "").trim();
@@ -94,5 +109,18 @@ dashboardRouter.get("/precificacao/sku", async (req, res) => {
   } catch (err) {
     console.error("Erro ao buscar comparação por SKU:", err);
     res.status(500).json({ error: "Falha ao buscar comparação por SKU." });
+  }
+});
+
+// Lista todas as lojas ativas, sem filtrar por permissão do usuário — só
+// usado pelo seletor de loja da Vigilância de preço, que é intencionalmente
+// aberto pra todos.
+dashboardRouter.get("/precificacao/lojas", async (_req, res) => {
+  try {
+    const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+    res.json({ lojas: lojas.map((l) => ({ id: l.id, nome: l.nome })) });
+  } catch (err) {
+    console.error("Erro ao listar lojas pra vigilância:", err);
+    res.status(500).json({ error: "Falha ao listar lojas." });
   }
 });

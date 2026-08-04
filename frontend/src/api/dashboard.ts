@@ -1,4 +1,5 @@
 import type { DashboardData, TopVendidoPromocao, RankingPrecificacao, ComparacaoSkuLoja } from "../types/dashboard";
+import type { Loja } from "./lojas";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -36,6 +37,15 @@ export async function fetchRankingPrecificacao(
     throw new Error(`Falha ao buscar ranking de precificação: ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchLojasVigilancia(): Promise<Loja[]> {
+  const res = await fetch(`${API_BASE}/api/dashboard/precificacao/lojas`, { credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar lojas: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.lojas;
 }
 
 export async function fetchComparacaoPorSku(
