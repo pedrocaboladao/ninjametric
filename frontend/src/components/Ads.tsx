@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { fetchCampanhasAds, fetchReceitaRealPorCampanha } from "../api/ads";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type { CampanhaAds, ReceitaRealCampanha } from "../types/ads";
@@ -133,6 +133,116 @@ interface DadosReceitaCampanha {
   acosIdeal: number | null;
 }
 
+// Insights: recomendações concretas ("o que fazer"), não só sinalização de
+// grupo. Reaproveita 100% dados que a tela já busca (TACOS real, ACOS
+// ideal, orçamento, triagem) — nenhuma chamada nova à API do Mercado Livre
+// nem ao banco, é só mais lógica em cima do que já está em memória.
+type TipoInsight = "prejuizo" | "semVenda" | "margemSobra" | "orcamentoParado" | "organico";
+
+const INSIGHT_INFO: Record<TipoInsight, { tag: string; cor: string; acao: string }> = {
+  prejuizo: { tag: "Prejuízo líquido", cor: "var(--critical-text)", acao: "Cortar orçamento ou pausar agora" },
+  semVenda: { tag: "Sem venda, gastando", cor: "#fbbf24", acao: "Pausar ou revisar o anúncio" },
+  margemSobra: { tag: "Margem sobrando", cor: "#38bdf8", acao: "Considerar subir a meta de ACOS" },
+  orcamentoParado: { tag: "Orçamento parado", cor: "var(--good-text)", acao: "Aumentar orçamento — oportunidade de escalar" },
+  organico: { tag: "Pode ser orgânico", cor: "#fbbf24", acao: "Testar reduzir investimento e comparar" },
+};
+
+// TACOS bem abaixo do ACOS configurado sugere que a maior parte da venda já
+// aconteceria sem o anúncio — usa metade do ACOS meta como limiar.
+const LIMIAR_TACOS_ORGANICO = 0.5;
+// Ignora ruído de campanhas com gasto irrisório sem venda.
+const GASTO_MINIMO_SEM_VENDA = 20;
+
+interface Insight {
+  chave: string;
+  tipo: TipoInsight;
+  tag: string;
+  cor: string;
+  produto: string;
+  loja: string;
+  contexto: ReactNode;
+  acao: string;
+}
+
+// Uma campanha pode bater em mais de uma regra — escolhe só a mais
+// relevante (prejuízo líquido é mais grave que "sem venda", que por sua vez
+// é mais acionável que "pode escalar"), pra não empilhar insight repetido
+// da mesma campanha.
+function gerarInsight(c: CampanhaComTacos, diasPeriodo: number): Insight | null {
+  const grupo = grupoDaCampanha(c, diasPeriodo);
+  let tipo: TipoInsight | null = null;
+  let contexto: ReactNode = null;
+
+  if (c.acosIdeal !== null && c.vendasTotais > 0 && c.acos > c.acosIdeal) {
+    tipo = "prejuizo";
+    contexto = (
+      <>
+        ACOS em <b>{c.acos.toFixed(0)}%</b>, acima até da margem real (<b>{c.acosIdeal.toFixed(0)}%</b>) — cada venda
+        está dando prejuízo.
+      </>
+    );
+  } else if (grupo === "semVenda" && c.custo >= GASTO_MINIMO_SEM_VENDA) {
+    tipo = "semVenda";
+    contexto = (
+      <>
+        Gastou <b>{formatCurrency(c.custo)}</b> em <b>{diasPeriodo} dia{diasPeriodo > 1 ? "s" : ""}</b> sem nenhuma
+        venda atribuída.
+      </>
+    );
+  } else if (grupo === "acimaMeta" && c.acosIdeal !== null && c.acosIdeal > c.acosMeta) {
+    tipo = "margemSobra";
+    contexto = (
+      <>
+        ACOS em <b>{c.acos.toFixed(0)}%</b> vs meta de <b>{c.acosMeta.toFixed(0)}%</b> — mas a margem real
+        aguentaria até <b>{c.acosIdeal.toFixed(0)}%</b>.
+      </>
+    );
+  } else if (grupo === "orcamentoParado") {
+    const pctOrcamento = c.orcamento > 0 ? (c.custo / (c.orcamento * diasPeriodo)) * 100 : 0;
+    tipo = "orcamentoParado";
+    contexto = (
+      <>
+        Gastando só <b>{pctOrcamento.toFixed(0)}%</b> do orçamento diário, com ACOS saudável de{" "}
+        <b>{c.acos.toFixed(0)}%</b>.
+      </>
+    );
+  } else if (
+    c.tacosReal !== null &&
+    c.acosMeta > 0 &&
+    c.vendasTotais > 0 &&
+    c.tacosReal < c.acosMeta * LIMIAR_TACOS_ORGANICO
+  ) {
+    tipo = "organico";
+    contexto = (
+      <>
+        TACOS real de <b>{c.tacosReal.toFixed(0)}%</b> vs ACOS configurado de <b>{c.acosMeta.toFixed(0)}%</b> — a
+        maior parte da venda parece já vir sem o anúncio.
+      </>
+    );
+  }
+
+  if (tipo === null) return null;
+  const info = INSIGHT_INFO[tipo];
+  return {
+    chave: `${c.lojaId}-${c.campanhaId}`,
+    tipo,
+    tag: info.tag,
+    cor: info.cor,
+    produto: c.nome,
+    loja: c.lojaNome,
+    contexto,
+    acao: info.acao,
+  };
+}
+
+const PRIORIDADE_INSIGHT: Record<TipoInsight, number> = {
+  prejuizo: 0,
+  semVenda: 1,
+  margemSobra: 2,
+  orcamentoParado: 3,
+  organico: 4,
+};
+
 export function Ads() {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -215,6 +325,14 @@ export function Ads() {
       orcamentoParado: somarGrupo(base.filter((c) => grupoDaCampanha(c, diasPeriodo) === "orcamentoParado")),
       dentroMeta: somarGrupo(base.filter((c) => grupoDaCampanha(c, diasPeriodo) === "dentroMeta")),
     };
+  }, [campanhasBase, diasPeriodo]);
+
+  const insights = useMemo(() => {
+    const base = campanhasBase ?? [];
+    return base
+      .map((c) => gerarInsight(c, diasPeriodo))
+      .filter((i): i is Insight => i !== null)
+      .sort((a, b) => PRIORIDADE_INSIGHT[a.tipo] - PRIORIDADE_INSIGHT[b.tipo]);
   }, [campanhasBase, diasPeriodo]);
 
   const campanhasFiltradas = useMemo(() => {
@@ -386,6 +504,29 @@ export function Ads() {
               </span>
             </button>
           </div>
+
+          {insights.length > 0 && (
+            <div className="ads-insights-secao">
+              <span className="ads-insights-titulo">💡 Insights</span>
+              <div className="ads-insights-grid">
+                {insights.map((i) => (
+                  <div key={i.chave} className="ads-insight-card" style={{ borderLeftColor: i.cor }}>
+                    <span className="ads-insight-tag" style={{ color: i.cor }}>
+                      {i.tag}
+                    </span>
+                    <span className="ads-insight-produto" title={i.produto}>
+                      {i.produto}
+                    </span>
+                    <span className="ads-insight-loja">{i.loja}</span>
+                    <p className="ads-insight-contexto">{i.contexto}</p>
+                    <div className="ads-insight-acao" style={{ color: i.cor }}>
+                      → {i.acao}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <input
             type="text"

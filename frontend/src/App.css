@@ -3652,3 +3652,73 @@
   background: var(--bg-panel-alt);
   border-color: var(--border-strong);
 }
+
+.ads-insights-secao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ads-insights-titulo {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.ads-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.ads-insight-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 13px 15px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  border-left: 4px solid transparent;
+}
+
+.ads-insight-tag {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ads-insight-produto {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ads-insight-loja {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: -4px;
+}
+
+.ads-insight-contexto {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.ads-insight-contexto b {
+  color: var(--text-primary);
+}
+
+.ads-insight-acao {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-top: 2px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
