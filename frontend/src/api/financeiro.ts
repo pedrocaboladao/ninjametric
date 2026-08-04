@@ -18,8 +18,12 @@ export async function fetchVendasFinanceiras(
   return res.json();
 }
 
-export async function fetchPontoEquilibrio(lojaFiltro: number | "todas" | "minhas"): Promise<PontoEquilibrio> {
+export async function fetchPontoEquilibrio(
+  lojaFiltro: number | "todas" | "minhas",
+  forcar = false
+): Promise<PontoEquilibrio> {
   const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  if (forcar) params.set("forcar", "1");
   const res = await fetch(`${API_BASE}/api/financeiro/ponto-equilibrio?${params}`, { credentials: "include" });
   if (!res.ok) {
     const data = await res.json().catch(() => null);

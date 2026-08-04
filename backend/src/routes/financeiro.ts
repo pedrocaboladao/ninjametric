@@ -63,9 +63,10 @@ financeiroRouter.get("/", async (req, res) => {
 financeiroRouter.get("/ponto-equilibrio", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;
+  const forcar = req.query.forcar === "1";
 
   try {
-    const resultado = await calcularPontoEquilibrio(filtro.lojaId, filtro.lojasPermitidas);
+    const resultado = await calcularPontoEquilibrio(filtro.lojaId, filtro.lojasPermitidas, forcar);
     res.json(resultado);
   } catch (err) {
     console.error("Erro ao calcular ponto de equilíbrio:", err);

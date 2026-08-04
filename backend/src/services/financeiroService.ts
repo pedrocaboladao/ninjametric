@@ -272,14 +272,15 @@ export interface PontoEquilibrio {
 // não faz sentido variar com um filtro de data arbitrário.
 export async function calcularPontoEquilibrio(
   lojaIdFiltro?: number,
-  lojasPermitidas?: number[]
+  lojasPermitidas?: number[],
+  forcarAtualizacao = false
 ): Promise<PontoEquilibrio> {
   const mes = janelaMesAtual();
   const dataInicio = mes.inicioDia.slice(0, 10);
   const dataFim = mes.agora.slice(0, 10);
 
   const [{ vendas, gastoAdsTotal }, lojas] = await Promise.all([
-    listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
+    listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim, forcarAtualizacao),
     listLojas(),
   ]);
   // Custo fixo é por loja — soma só das lojas que entram no filtro atual

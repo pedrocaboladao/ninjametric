@@ -240,10 +240,7 @@ const ETAPAS_TERMOMETRO = [
   { pct: 100, emoji: "🏆" },
 ];
 
-function PontoEquilibrioCard({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
-  const buscar = useCallback(() => fetchPontoEquilibrio(lojaFiltro), [lojaFiltro]);
-  const { dados, erro } = useBuscaComCancelamento<PontoEquilibrio>(buscar, true);
-
+function PontoEquilibrioCard({ dados, erro }: { dados: PontoEquilibrio | null; erro: string | null }) {
   if (erro) return <div className="state-message state-error">{erro}</div>;
   if (!dados) return <div className="state-message">Carregando ponto de equilíbrio...</div>;
 
@@ -391,6 +388,25 @@ export function Financeiro({ usuario }: Props) {
     atualizarAgora,
   } = useBuscaComCancelamento<ResultadoFinanceiro>(buscarVendas, periodoValido);
 
+  const buscarPontoEquilibrio = useCallback(
+    (forcar: boolean) => fetchPontoEquilibrio(lojaFiltro, forcar),
+    [lojaFiltro]
+  );
+  const {
+    dados: pontoEquilibrio,
+    erro: erroPontoEquilibrio,
+    atualizarAgora: atualizarPontoEquilibrioAgora,
+  } = useBuscaComCancelamento<PontoEquilibrio>(buscarPontoEquilibrio, true);
+
+  // O botão "Atualizar" da tela representa "buscar tudo de novo, sem
+  // esperar cache" — precisa forçar as duas buscas independentes (feed de
+  // vendas e ponto de equilíbrio), senão o termômetro fica com dado velho
+  // mesmo depois do usuário pedir atualização.
+  function atualizarTudoAgora() {
+    atualizarAgora();
+    atualizarPontoEquilibrioAgora();
+  }
+
   const vendas = resultado?.vendas ?? null;
   const resumoPedidos = resultado?.resumoPedidos ?? null;
   const gastoAdsTotal = resultado?.gastoAdsTotal ?? 0;
@@ -494,7 +510,7 @@ export function Financeiro({ usuario }: Props) {
             <button
               type="button"
               className="btn-responder financeiro-btn-hoje"
-              onClick={atualizarAgora}
+              onClick={atualizarTudoAgora}
               disabled={atualizando}
               title="Buscar dados novos agora, sem esperar o cache"
             >
@@ -541,7 +557,7 @@ export function Financeiro({ usuario }: Props) {
       {gerenciandoImpostos && usuario.admin && <GerenciarImpostos onFechar={() => setGerenciandoImpostos(false)} />}
       {gerenciandoCustoFixo && usuario.admin && <GerenciarCustoFixo onFechar={() => setGerenciandoCustoFixo(false)} />}
 
-      <PontoEquilibrioCard lojaFiltro={lojaFiltro} />
+      <PontoEquilibrioCard dados={pontoEquilibrio} erro={erroPontoEquilibrio} />
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}
