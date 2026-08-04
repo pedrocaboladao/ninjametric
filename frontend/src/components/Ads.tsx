@@ -35,6 +35,20 @@ function diasNoPeriodo(dataInicio: string, dataFim: string): number {
 interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
   acosIdeal: number | null;
+  resultado: "lucrando" | "negativando" | null;
+}
+
+// Lucrando/negativando: compara TACOS real (gasto ÷ receita total do
+// produto) com o ACOS Ideal (margem de contribuição real, em %) — enquanto
+// o TACOS ficar dentro do que a margem aguenta, a campanha está dando
+// lucro mesmo com todos os custos reais já embutidos na margem. Sem
+// acosIdeal (produto sem custo cadastrado) não dá pra julgar. Gastou sem
+// nenhuma receita atribuída (tacosReal null com custo > 0) é sempre
+// prejuízo, mesmo sem saber a margem exata.
+function calcularResultado(c: { custo: number; tacosReal: number | null; acosIdeal: number | null }): "lucrando" | "negativando" | null {
+  if (c.acosIdeal === null) return null;
+  if (c.tacosReal === null) return c.custo > 0 ? "negativando" : null;
+  return c.tacosReal <= c.acosIdeal ? "lucrando" : "negativando";
 }
 
 type ChaveOrdenacao =
@@ -309,10 +323,13 @@ export function Ads() {
       // busca de receita real é independente da de campanhas, pequena
       // diferença de fuso pode deixar uma levemente atrás da outra).
       const receitaBase = Math.max(receitaReal, c.vendasTotais);
+      const tacosReal = receitaBase > 0 ? (c.custo / receitaBase) * 100 : null;
+      const acosIdeal = dados?.acosIdeal ?? null;
       return {
         ...c,
-        tacosReal: receitaBase > 0 ? (c.custo / receitaBase) * 100 : null,
-        acosIdeal: dados?.acosIdeal ?? null,
+        tacosReal,
+        acosIdeal,
+        resultado: calcularResultado({ custo: c.custo, tacosReal, acosIdeal }),
       };
     });
   }, [campanhas, receitaRealPorCampanha]);
@@ -568,12 +585,15 @@ export function Ads() {
                       {col.label} {ordenacao.chave === col.chave ? (ordenacao.direcao === 1 ? "▲" : "▼") : ""}
                     </th>
                   ))}
+                  <th title="TACOS real comparado com o ACOS Ideal (margem) — enquanto o TACOS ficar dentro do que a margem aguenta, a campanha dá lucro.">
+                    Lucro
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {campanhasOrdenadas.length === 0 && (
                   <tr>
-                    <td colSpan={COLUNAS.length} className="financeiro-td-mudo">
+                    <td colSpan={COLUNAS.length + 1} className="financeiro-td-mudo">
                       Nenhuma campanha encontrada nesse período.
                     </td>
                   </tr>
@@ -599,6 +619,17 @@ export function Ads() {
                       <td className="financeiro-th-numero">{c.tacosReal !== null ? `${c.tacosReal.toFixed(1)}%` : "—"}</td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
                         {c.acosIdeal !== null ? `${c.acosIdeal.toFixed(1)}%` : "—"}
+                      </td>
+                      <td
+                        className={
+                          c.resultado === "lucrando"
+                            ? "financeiro-margem-positiva"
+                            : c.resultado === "negativando"
+                              ? "financeiro-margem-negativa"
+                              : "financeiro-margem-neutra"
+                        }
+                      >
+                        {c.resultado === "lucrando" ? "Lucrando" : c.resultado === "negativando" ? "Negativando" : "—"}
                       </td>
                     </tr>
                   );
