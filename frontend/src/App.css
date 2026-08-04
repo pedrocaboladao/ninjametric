@@ -3475,6 +3475,20 @@
   min-width: 220px;
 }
 
+.dre-tabela thead th {
+  text-align: center;
+}
+
+.dre-coluna-atual {
+  border-left: 2px solid var(--accent);
+  border-right: 2px solid var(--accent);
+}
+
+.dre-tabela thead th.dre-coluna-atual {
+  background: var(--bg-panel-alt);
+  color: var(--accent);
+}
+
 .dre-linha-entrada td {
   background: var(--good-bg);
   color: var(--good-text);
@@ -3506,14 +3520,23 @@
 
 .dre-linha-lucro td {
   background: var(--good-bg);
-  color: var(--good-text);
+  color: #fff;
   font-weight: 700;
   border-top: 2px solid var(--good-text);
+}
+
+.dre-linha-lucro td.dre-valor-positivo {
+  color: #fff;
+}
+
+.dre-linha-lucro td.dre-valor-negativo {
+  color: var(--critical-text);
 }
 
 .dre-linha-percentual td {
   font-size: 11px;
   padding-top: 0;
+  color: var(--good-text);
 }
 
 .contas-badge-vence-breve {

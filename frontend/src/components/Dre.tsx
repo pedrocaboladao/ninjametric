@@ -15,42 +15,78 @@ function custoOperacionalTotal(m: DreMes): number {
   return m.freteVendedor + m.custoProdutos + m.taxaMl + m.imposto + m.cancelamentos;
 }
 
+function classes(...c: (string | undefined | false)[]): string {
+  return c.filter(Boolean).join(" ");
+}
+
 // Uma linha de valores em R$: rótulo + 12 meses + total, todas colunas
-// alinhadas com o cabeçalho da tabela.
+// alinhadas com o cabeçalho da tabela. corPorSinal pinta cada valor de
+// branco (positivo) ou vermelho (negativo) — usado só no Lucro Líquido.
 function LinhaValores({
   label,
   meses,
   total,
   valor,
   classe,
+  corPorSinal,
+  mesDestaque,
 }: {
   label: string;
   meses: DreMes[];
   total: number;
   valor: (m: DreMes) => number;
   classe?: string;
+  corPorSinal?: boolean;
+  mesDestaque?: number;
 }) {
   return (
     <tr className={classe}>
       <td>{label}</td>
-      {meses.map((m) => (
-        <td key={m.mes} className="financeiro-th-numero">
-          {valor(m) !== 0 ? formatCurrency(valor(m)) : "—"}
-        </td>
-      ))}
-      <td className="financeiro-th-numero">{formatCurrency(total)}</td>
+      {meses.map((m) => {
+        const v = valor(m);
+        return (
+          <td
+            key={m.mes}
+            className={classes(
+              "financeiro-th-numero",
+              m.mes === mesDestaque && "dre-coluna-atual",
+              corPorSinal && (v < 0 ? "dre-valor-negativo" : "dre-valor-positivo")
+            )}
+          >
+            {v !== 0 ? formatCurrency(v) : "—"}
+          </td>
+        );
+      })}
+      <td
+        className={classes(
+          "financeiro-th-numero",
+          corPorSinal && (total < 0 ? "dre-valor-negativo" : "dre-valor-positivo")
+        )}
+      >
+        {formatCurrency(total)}
+      </td>
     </tr>
   );
 }
 
 // Uma linha de custo fixo detalhado: rótulo (descrição do lançamento) + valor
 // por mês (array de 12 posições, índice 0 = janeiro, sem DreMes por trás).
-function LinhaCustoFixoDetalhe({ descricao, porMes, total }: { descricao: string; porMes: number[]; total: number }) {
+function LinhaCustoFixoDetalhe({
+  descricao,
+  porMes,
+  total,
+  mesDestaque,
+}: {
+  descricao: string;
+  porMes: number[];
+  total: number;
+  mesDestaque?: number;
+}) {
   return (
     <tr className="dre-linha-detalhe">
       <td>{descricao}</td>
       {porMes.map((v, i) => (
-        <td key={i} className="financeiro-th-numero">
+        <td key={i} className={classes("financeiro-th-numero", i + 1 === mesDestaque && "dre-coluna-atual")}>
           {v !== 0 ? formatCurrency(v) : "—"}
         </td>
       ))}
@@ -59,14 +95,24 @@ function LinhaCustoFixoDetalhe({ descricao, porMes, total }: { descricao: string
   );
 }
 
-function LinhaPercentual({ label, meses, valor }: { label: string; meses: DreMes[]; valor: (m: DreMes) => number | null }) {
+function LinhaPercentual({
+  label,
+  meses,
+  valor,
+  mesDestaque,
+}: {
+  label: string;
+  meses: DreMes[];
+  valor: (m: DreMes) => number | null;
+  mesDestaque?: number;
+}) {
   return (
     <tr className="dre-linha-percentual">
-      <td className="financeiro-td-mudo">{label}</td>
+      <td>{label}</td>
       {meses.map((m) => {
         const v = valor(m);
         return (
-          <td key={m.mes} className="financeiro-th-numero financeiro-td-mudo">
+          <td key={m.mes} className={classes("financeiro-th-numero", m.mes === mesDestaque && "dre-coluna-atual")}>
             {v !== null ? `${v.toFixed(1)}%` : "—"}
           </td>
         );
@@ -89,6 +135,8 @@ export function Dre() {
   const { dados, erro } = useBuscaComCancelamento<DreTipo>(buscar, true);
 
   const anosDisponiveis = Array.from({ length: 5 }, (_, i) => anoAtual() - i);
+  const hoje = new Date();
+  const mesDestaque = ano === hoje.getFullYear() ? hoje.getMonth() + 1 : undefined;
 
   return (
     <div className="financeiro-page">
@@ -137,8 +185,8 @@ export function Dre() {
             <thead>
               <tr>
                 <th></th>
-                {MESES_LABEL.map((m) => (
-                  <th key={m} className="financeiro-th-numero">
+                {MESES_LABEL.map((m, i) => (
+                  <th key={m} className={classes("financeiro-th-numero", i + 1 === mesDestaque && "dre-coluna-atual")}>
                     {m}
                   </th>
                 ))}
@@ -152,6 +200,7 @@ export function Dre() {
                 total={dados.totais.faturamento}
                 valor={(m) => m.faturamento}
                 classe="dre-linha-entrada"
+                mesDestaque={mesDestaque}
               />
 
               <LinhaValores
@@ -160,6 +209,7 @@ export function Dre() {
                 total={custoOperacionalTotal(dados.totais)}
                 valor={custoOperacionalTotal}
                 classe="dre-linha-custo-total"
+                mesDestaque={mesDestaque}
               />
               <LinhaValores
                 label="Frete Vendedor"
@@ -167,6 +217,7 @@ export function Dre() {
                 total={dados.totais.freteVendedor}
                 valor={(m) => m.freteVendedor}
                 classe="dre-linha-detalhe"
+                mesDestaque={mesDestaque}
               />
               <LinhaValores
                 label="Custo dos Produtos"
@@ -174,6 +225,7 @@ export function Dre() {
                 total={dados.totais.custoProdutos}
                 valor={(m) => m.custoProdutos}
                 classe="dre-linha-detalhe"
+                mesDestaque={mesDestaque}
               />
               <LinhaValores
                 label="Tarifa de Venda ML"
@@ -181,6 +233,7 @@ export function Dre() {
                 total={dados.totais.taxaMl}
                 valor={(m) => m.taxaMl}
                 classe="dre-linha-detalhe"
+                mesDestaque={mesDestaque}
               />
               <LinhaValores
                 label="Imposto"
@@ -188,6 +241,7 @@ export function Dre() {
                 total={dados.totais.imposto}
                 valor={(m) => m.imposto}
                 classe="dre-linha-detalhe"
+                mesDestaque={mesDestaque}
               />
               <LinhaValores
                 label="Vendas Canceladas"
@@ -195,6 +249,7 @@ export function Dre() {
                 total={dados.totais.cancelamentos}
                 valor={(m) => m.cancelamentos}
                 classe="dre-linha-detalhe"
+                mesDestaque={mesDestaque}
               />
 
               <LinhaValores
@@ -203,8 +258,14 @@ export function Dre() {
                 total={dados.totais.margemContribuicao}
                 valor={(m) => m.margemContribuicao}
                 classe="dre-linha-resultado"
+                mesDestaque={mesDestaque}
               />
-              <LinhaPercentual label="% sobre faturamento" meses={dados.meses} valor={(m) => m.margemPercentual} />
+              <LinhaPercentual
+                label="% sobre faturamento"
+                meses={dados.meses}
+                valor={(m) => m.margemPercentual}
+                mesDestaque={mesDestaque}
+              />
 
               <LinhaValores
                 label="(-) Custo Fixo"
@@ -212,6 +273,7 @@ export function Dre() {
                 total={dados.totais.custoFixoTotal}
                 valor={(m) => m.custoFixoTotal}
                 classe="dre-linha-custo-total"
+                mesDestaque={mesDestaque}
               />
               <LinhaValores
                 label="Campanhas Ads ML"
@@ -219,6 +281,7 @@ export function Dre() {
                 total={dados.totais.gastoAds}
                 valor={(m) => m.gastoAds}
                 classe="dre-linha-detalhe"
+                mesDestaque={mesDestaque}
               />
               {dados.custoFixoDetalhado.map((linha) => (
                 <LinhaCustoFixoDetalhe
@@ -226,6 +289,7 @@ export function Dre() {
                   descricao={linha.descricao}
                   porMes={linha.porMes}
                   total={linha.total}
+                  mesDestaque={mesDestaque}
                 />
               ))}
 
@@ -235,8 +299,15 @@ export function Dre() {
                 total={dados.totais.lucroLiquido}
                 valor={(m) => m.lucroLiquido}
                 classe="dre-linha-lucro"
+                corPorSinal
+                mesDestaque={mesDestaque}
               />
-              <LinhaPercentual label="% sobre faturamento" meses={dados.meses} valor={(m) => m.lucroPercentual} />
+              <LinhaPercentual
+                label="% sobre faturamento"
+                meses={dados.meses}
+                valor={(m) => m.lucroPercentual}
+                mesDestaque={mesDestaque}
+              />
             </tbody>
           </table>
         </div>
