@@ -59,10 +59,10 @@ function LinhaCustoFixoDetalhe({ descricao, porMes, total }: { descricao: string
   );
 }
 
-function LinhaPercentual({ meses, valor }: { meses: DreMes[]; valor: (m: DreMes) => number | null }) {
+function LinhaPercentual({ label, meses, valor }: { label: string; meses: DreMes[]; valor: (m: DreMes) => number | null }) {
   return (
     <tr className="dre-linha-percentual">
-      <td />
+      <td className="financeiro-td-mudo">{label}</td>
       {meses.map((m) => {
         const v = valor(m);
         return (
@@ -204,7 +204,7 @@ export function Dre() {
                 valor={(m) => m.margemContribuicao}
                 classe="dre-linha-resultado"
               />
-              <LinhaPercentual meses={dados.meses} valor={(m) => m.margemPercentual} />
+              <LinhaPercentual label="% sobre faturamento" meses={dados.meses} valor={(m) => m.margemPercentual} />
 
               <LinhaValores
                 label="(-) Custo Fixo"
@@ -236,7 +236,7 @@ export function Dre() {
                 valor={(m) => m.lucroLiquido}
                 classe="dre-linha-lucro"
               />
-              <LinhaPercentual meses={dados.meses} valor={(m) => m.lucroPercentual} />
+              <LinhaPercentual label="% sobre faturamento" meses={dados.meses} valor={(m) => m.lucroPercentual} />
             </tbody>
           </table>
         </div>
