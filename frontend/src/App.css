@@ -3666,9 +3666,10 @@
 }
 
 .ads-insights-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  display: flex;
   gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 8px;
 }
 
 .ads-insight-card {
@@ -3680,6 +3681,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   border-left: 4px solid transparent;
+  flex: 0 0 280px;
 }
 
 .ads-insight-tag {

@@ -327,19 +327,22 @@ export function Ads() {
     };
   }, [campanhasBase, diasPeriodo]);
 
-  const insights = useMemo(() => {
-    const base = campanhasBase ?? [];
-    return base
-      .map((c) => gerarInsight(c, diasPeriodo))
-      .filter((i): i is Insight => i !== null)
-      .sort((a, b) => PRIORIDADE_INSIGHT[a.tipo] - PRIORIDADE_INSIGHT[b.tipo]);
-  }, [campanhasBase, diasPeriodo]);
-
   const campanhasFiltradas = useMemo(() => {
     if (!campanhasBase) return null;
     if (grupoFiltro === "todos") return campanhasBase;
     return campanhasBase.filter((c) => grupoDaCampanha(c, diasPeriodo) === grupoFiltro);
   }, [campanhasBase, grupoFiltro, diasPeriodo]);
+
+  // Só aparece quando um card de cor da triagem está selecionado — os
+  // insights ficam restritos ao grupo escolhido, em vez de misturar tudo.
+  const insights = useMemo(() => {
+    if (grupoFiltro === "todos") return [];
+    const base = campanhasFiltradas ?? [];
+    return base
+      .map((c) => gerarInsight(c, diasPeriodo))
+      .filter((i): i is Insight => i !== null)
+      .sort((a, b) => PRIORIDADE_INSIGHT[a.tipo] - PRIORIDADE_INSIGHT[b.tipo]);
+  }, [campanhasFiltradas, grupoFiltro, diasPeriodo]);
 
   const campanhasOrdenadas = useMemo(() => {
     if (!campanhasFiltradas) return null;
