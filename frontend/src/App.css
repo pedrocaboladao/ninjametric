@@ -3489,13 +3489,13 @@
   color: var(--accent);
 }
 
-.dre-linha-entrada td {
+.dre-tabela .dre-linha-entrada td {
   background: var(--good-bg);
   color: var(--good-text);
   font-weight: 700;
 }
 
-.dre-linha-custo-total td {
+.dre-tabela .dre-linha-custo-total td {
   background: var(--critical-bg);
   color: var(--critical-text);
   font-weight: 700;
@@ -3507,33 +3507,34 @@
   font-weight: 400;
 }
 
-.dre-linha-detalhe td {
+.dre-tabela .dre-linha-detalhe td {
   color: var(--text-secondary);
 }
 
-.dre-linha-resultado td {
-  background: var(--bg-panel-alt);
+.dre-tabela .dre-linha-resultado td {
+  background: var(--good-bg);
+  color: var(--good-text);
   font-weight: 700;
   border-top: 1px solid var(--border-strong);
   border-bottom: 1px solid var(--border-strong);
 }
 
-.dre-linha-lucro td {
+.dre-tabela .dre-linha-lucro td {
   background: var(--good-bg);
   color: #fff;
   font-weight: 700;
   border-top: 2px solid var(--good-text);
 }
 
-.dre-linha-lucro td.dre-valor-positivo {
+.dre-tabela .dre-linha-lucro td.dre-valor-positivo {
   color: #fff;
 }
 
-.dre-linha-lucro td.dre-valor-negativo {
+.dre-tabela .dre-linha-lucro td.dre-valor-negativo {
   color: var(--critical-text);
 }
 
-.dre-linha-percentual td {
+.dre-tabela .dre-linha-percentual td {
   font-size: 11px;
   padding-top: 0;
   color: var(--good-text);
