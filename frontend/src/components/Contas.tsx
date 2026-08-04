@@ -285,6 +285,184 @@ function GerenciarContatos({ onFechar, onAtualizado }: { onFechar: () => void; o
   );
 }
 
+interface ItemImportacao {
+  descricao: string;
+  valor: number;
+  categoria: string | null;
+}
+
+// Aceita colar direto de uma planilha/tabela: "Descrição<TAB>R$ 1.234,56"
+// por linha. Se não tiver TAB (ex.: coisas espaçadas manualmente), separa
+// pelo último "R$" da linha como fallback.
+function parseLinhaImportacao(linha: string): ItemImportacao | null {
+  const bruta = linha.trim();
+  if (!bruta) return null;
+
+  let partes = bruta
+    .split("\t")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (partes.length < 2) {
+    const idx = bruta.lastIndexOf("R$");
+    if (idx <= 0) return null;
+    partes = [bruta.slice(0, idx).trim(), bruta.slice(idx).trim()];
+  }
+
+  const descricao = partes[0];
+  const valorTexto = partes[partes.length - 1]
+    .replace(/R\$\s?/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".")
+    .trim();
+  const valor = Number(valorTexto);
+  if (!descricao || Number.isNaN(valor) || valor <= 0) return null;
+
+  return { descricao, valor, categoria: categoriaSugerida(descricao) };
+}
+
+// Só um empurrãozinho pra não precisar categorizar tudo na mão depois —
+// continua editável por lançamento a qualquer momento.
+function categoriaSugerida(descricao: string): string | null {
+  const d = descricao
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase();
+  if (d.includes("SALARIO") || d.includes("VALE ") || d.includes("RESCISAO") || d.includes("HONORARIO")) return "Salário";
+  if (d.includes("ALUGUEL")) return "Aluguel";
+  if (d.includes("IMPOSTO") || d.includes("DARF") || d.includes("INSS") || d.includes("FGTS") || d.includes("PARCELAMENTO"))
+    return "Imposto";
+  if (d.includes("FRETE") || d.includes("UBER") || d.includes("COMBUSTIVEL")) return "Frete";
+  return null;
+}
+
+function ImportarListaLancamentos({
+  lojas,
+  onFechar,
+  onImportado,
+}: {
+  lojas: Loja[];
+  onFechar: () => void;
+  onImportado: () => void;
+}) {
+  const [lojaId, setLojaId] = useState<number | null>(lojas[0]?.id ?? null);
+  const [tipo, setTipo] = useState<TipoLancamento>("pagar");
+  const [vencimento, setVencimento] = useState(hojeISO());
+  const [texto, setTexto] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [progresso, setProgresso] = useState<{ feitos: number; total: number } | null>(null);
+  const [erros, setErros] = useState<string[]>([]);
+
+  const itens = texto
+    .split("\n")
+    .map(parseLinhaImportacao)
+    .filter((i): i is ItemImportacao => i !== null);
+  const totalItens = itens.reduce((s, i) => s + i.valor, 0);
+
+  async function importar() {
+    if (lojaId === null || itens.length === 0) return;
+    setImportando(true);
+    setErros([]);
+    setProgresso({ feitos: 0, total: itens.length });
+
+    const falhas: string[] = [];
+    for (let i = 0; i < itens.length; i++) {
+      const item = itens[i];
+      try {
+        await criarLancamento({
+          lojaId,
+          tipo,
+          descricao: item.descricao,
+          categoria: item.categoria,
+          valor: item.valor,
+          vencimento,
+        });
+      } catch (err) {
+        falhas.push(`${item.descricao}: ${err instanceof Error ? err.message : "falha desconhecida"}`);
+      }
+      setProgresso({ feitos: i + 1, total: itens.length });
+    }
+
+    setErros(falhas);
+    setImportando(false);
+    onImportado();
+    if (falhas.length === 0) onFechar();
+  }
+
+  return (
+    <div className="financeiro-impostos">
+      <div className="financeiro-impostos-header">
+        <span>Importar lista de lançamentos</span>
+        <button type="button" className="btn-excluir" onClick={onFechar}>
+          Fechar
+        </button>
+      </div>
+      <p className="painel-sub">
+        Cole uma lista com "Descrição" e "Valor" por linha (funciona colando direto de uma planilha/tabela) — cada
+        linha vira um lançamento.
+      </p>
+      <div className="financeiro-busca">
+        <select
+          className="dashboard-select"
+          value={lojaId ?? ""}
+          onChange={(e) => setLojaId(Number(e.target.value))}
+        >
+          <option value="" disabled>
+            Loja...
+          </option>
+          {lojas.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.nome}
+            </option>
+          ))}
+        </select>
+        <select className="dashboard-select" value={tipo} onChange={(e) => setTipo(e.target.value as TipoLancamento)}>
+          <option value="pagar">A pagar</option>
+          <option value="receber">A receber</option>
+        </select>
+        <input
+          type="date"
+          className="dashboard-select"
+          value={vencimento}
+          onChange={(e) => setVencimento(e.target.value)}
+        />
+      </div>
+      <textarea
+        className="clonar-input"
+        placeholder={"Cole aqui, uma linha por lançamento. Ex:\nAluguel Barracão\tR$ 3.343,22"}
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        rows={8}
+        style={{ width: "100%", marginTop: 8, resize: "vertical", fontFamily: "monospace" }}
+      />
+      <div className="financeiro-stat-sub" style={{ marginTop: 6 }}>
+        {itens.length > 0
+          ? `${itens.length} lançamento${itens.length > 1 ? "s" : ""} reconhecido${itens.length > 1 ? "s" : ""} · total ${formatCurrency(totalItens)}`
+          : "Nenhum lançamento reconhecido ainda."}
+      </div>
+      {progresso && (
+        <div className="financeiro-stat-sub">
+          Importando... {progresso.feitos}/{progresso.total}
+        </div>
+      )}
+      {erros.length > 0 && (
+        <div className="state-message state-error">
+          {erros.length} falharam: {erros.join("; ")}
+        </div>
+      )}
+      <div style={{ marginTop: 10 }}>
+        <button
+          type="button"
+          className="btn-responder"
+          disabled={importando || lojaId === null || itens.length === 0}
+          onClick={importar}
+        >
+          {importando ? "Importando..." : `Importar ${itens.length || ""} lançamento${itens.length === 1 ? "" : "s"}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function Contas({ usuario: _usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -301,6 +479,7 @@ export function Contas({ usuario: _usuario }: Props) {
   const [excluindoId, setExcluindoId] = useState<number | null>(null);
   const [contatos, setContatos] = useState<Contato[]>([]);
   const [gerenciandoContatos, setGerenciandoContatos] = useState(false);
+  const [importandoLista, setImportandoLista] = useState(false);
 
   useEffect(() => {
     fetchLojas()
@@ -581,6 +760,13 @@ export function Contas({ usuario: _usuario }: Props) {
           >
             {gerenciandoContatos ? "Fechar cadastro" : "Fornecedores/Clientes"}
           </button>
+          <button
+            type="button"
+            className="painel-estudo-gerenciar-btn"
+            onClick={() => setImportandoLista((g) => !g)}
+          >
+            {importandoLista ? "Fechar importação" : "Importar lista"}
+          </button>
           <button type="button" className="contas-btn-novo" onClick={abrirNovo}>
             <IconPlus size={15} />
             Novo lançamento
@@ -590,6 +776,13 @@ export function Contas({ usuario: _usuario }: Props) {
 
       {gerenciandoContatos && (
         <GerenciarContatos onFechar={() => setGerenciandoContatos(false)} onAtualizado={recarregarContatos} />
+      )}
+      {importandoLista && (
+        <ImportarListaLancamentos
+          lojas={lojas}
+          onFechar={() => setImportandoLista(false)}
+          onImportado={recarregarTudo}
+        />
       )}
 
       <div className="financeiro-filtro-datas">
