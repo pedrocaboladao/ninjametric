@@ -20,6 +20,7 @@ export interface Lancamento {
   criadoEm: string;
   atualizadoEm: string;
   atrasado: boolean;
+  diasParaVencer: number | null;
   contatoId: number | null;
   contatoNome: string | null;
   grupoParcelamentoId: number | null;
@@ -43,9 +44,15 @@ function dataParaISO(valor: unknown): string | null {
   return valor instanceof Date ? valor.toISOString().slice(0, 10) : String(valor).slice(0, 10);
 }
 
+function calcularDiasParaVencer(vencimento: string, hojeISO: string): number {
+  const dias = (new Date(`${vencimento}T00:00:00`).getTime() - new Date(`${hojeISO}T00:00:00`).getTime()) / 86400000;
+  return Math.round(dias);
+}
+
 function linhaParaLancamento(r: Record<string, unknown>): Lancamento {
   const vencimento = dataParaISO(r.vencimento) as string;
   const hojeISO = new Date().toISOString().slice(0, 10);
+  const atrasado = r.status === "pendente" && vencimento < hojeISO;
   return {
     id: r.id as number,
     lojaId: r.loja_id as number,
@@ -62,7 +69,8 @@ function linhaParaLancamento(r: Record<string, unknown>): Lancamento {
     criadoPorNome: (r.criado_por_nome as string | null) ?? null,
     criadoEm: r.criado_em as string,
     atualizadoEm: r.atualizado_em as string,
-    atrasado: r.status === "pendente" && vencimento < hojeISO,
+    atrasado,
+    diasParaVencer: r.status === "pendente" && !atrasado ? calcularDiasParaVencer(vencimento, hojeISO) : null,
     contatoId: (r.contato_id as number | null) ?? null,
     contatoNome: (r.contato_nome as string | null) ?? null,
     grupoParcelamentoId: (r.grupo_parcelamento_id as number | null) ?? null,
@@ -439,4 +447,61 @@ export async function calcularResumo(filtro: FiltroLancamentos): Promise<ResumoC
     recebidoPeriodo,
     saldoPeriodo: recebidoPeriodo - pagoPeriodo,
   };
+}
+
+export interface GastoCategoria {
+  categoria: string;
+  valor: number;
+}
+
+// Não força tipo — reflete o filtro que a tela já está usando (aba/filtro
+// "a pagar" mostra despesas por categoria, "a receber" mostra recebimentos).
+export async function calcularGastoPorCategoria(filtro: FiltroLancamentos): Promise<GastoCategoria[]> {
+  const params: unknown[] = [];
+  const where = montarFiltro(filtro, params);
+  const { rows } = await pool.query(
+    `SELECT COALESCE(categoria, 'Sem categoria') AS categoria, SUM(valor) AS valor
+     FROM contas_lancamentos cl
+     ${where}
+     GROUP BY categoria
+     ORDER BY valor DESC`,
+    params
+  );
+  return rows.map((r) => ({ categoria: r.categoria as string, valor: Number(r.valor) }));
+}
+
+export interface RankingLojaContas {
+  lojaId: number;
+  lojaNome: string;
+  emAbertoPagar: number;
+  emAbertoReceber: number;
+}
+
+// Só considera lançamentos pendentes (em aberto) — "quem tem mais pra pagar
+// agora", não histórico. Mesma ideia do rankingLojas do Dashboard, aplicada
+// aos lançamentos deste módulo.
+export async function calcularRankingPorLoja(lojasPermitidas?: number[]): Promise<RankingLojaContas[]> {
+  const params: unknown[] = [];
+  let where = "";
+  if (lojasPermitidas !== undefined) {
+    params.push(lojasPermitidas);
+    where = `AND cl.loja_id = ANY($${params.length}::int[])`;
+  }
+  const { rows } = await pool.query(
+    `SELECT l.id AS loja_id, l.nome AS loja_nome,
+       COALESCE(SUM(cl.valor) FILTER (WHERE cl.tipo = 'pagar'), 0) AS em_aberto_pagar,
+       COALESCE(SUM(cl.valor) FILTER (WHERE cl.tipo = 'receber'), 0) AS em_aberto_receber
+     FROM contas_lancamentos cl
+     JOIN lojas l ON l.id = cl.loja_id
+     WHERE cl.status = 'pendente' ${where}
+     GROUP BY l.id, l.nome
+     ORDER BY em_aberto_pagar DESC`,
+    params
+  );
+  return rows.map((r) => ({
+    lojaId: r.loja_id as number,
+    lojaNome: r.loja_nome as string,
+    emAbertoPagar: Number(r.em_aberto_pagar),
+    emAbertoReceber: Number(r.em_aberto_receber),
+  }));
 }

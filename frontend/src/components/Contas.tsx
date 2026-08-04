@@ -11,13 +11,79 @@ import {
   fetchContatos,
   criarContato,
   excluirContato,
+  fetchGastoPorCategoria,
+  fetchRankingLojasContas,
 } from "../api/contas";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { Lancamento, ResumoContas, TipoLancamento, StatusLancamento, Contato, TipoContato } from "../types/contas";
+import type {
+  Lancamento,
+  ResumoContas,
+  TipoLancamento,
+  StatusLancamento,
+  Contato,
+  TipoContato,
+  GastoCategoria,
+  RankingLojaContas,
+} from "../types/contas";
 import type { Usuario } from "../types/usuarios";
 import { IconPlus } from "./icons";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, corDaLoja } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
+
+const CORES_CATEGORIA = ["#f87171", "#38bdf8", "#facc15", "#4ade80", "#a78bfa", "#f472b6", "#94a3b8"];
+
+function DonutCategoria({ dados }: { dados: GastoCategoria[] }) {
+  const total = dados.reduce((s, d) => s + d.valor, 0);
+  if (total <= 0) return null;
+  let acumulado = 0;
+  const stops = dados.map((d, i) => {
+    const inicio = (acumulado / total) * 360;
+    acumulado += d.valor;
+    const fim = (acumulado / total) * 360;
+    return `${CORES_CATEGORIA[i % CORES_CATEGORIA.length]} ${inicio}deg ${fim}deg`;
+  });
+  return (
+    <div className="financeiro-donut-card">
+      <span className="financeiro-stat-label">Gasto por categoria</span>
+      <div className="financeiro-donut-corpo">
+        <div className="financeiro-donut" style={{ background: `conic-gradient(${stops.join(", ")})` }}>
+          <div className="financeiro-donut-furo" />
+        </div>
+        <div className="financeiro-donut-legenda">
+          {dados.map((d, i) => (
+            <div key={d.categoria} className="financeiro-donut-item">
+              <i className="financeiro-donut-dot" style={{ background: CORES_CATEGORIA[i % CORES_CATEGORIA.length] }} />
+              <span>{d.categoria}</span>
+              <b>{formatCurrency(d.valor)}</b>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RankingLojasContas({ dados }: { dados: RankingLojaContas[] }) {
+  if (dados.length === 0) return null;
+  const maior = Math.max(...dados.map((d) => d.emAbertoPagar), 1);
+  return (
+    <div className="financeiro-donut-card">
+      <span className="financeiro-stat-label">Em aberto por loja (a pagar)</span>
+      {dados.map((d) => (
+        <div key={d.lojaId} className="contas-ranking-item">
+          <span className="contas-ranking-nome">{d.lojaNome}</span>
+          <div className="contas-ranking-barra-wrap">
+            <div
+              className="contas-ranking-barra"
+              style={{ width: `${(d.emAbertoPagar / maior) * 100}%`, background: corDaLoja(d.lojaId) }}
+            />
+          </div>
+          <span className="contas-ranking-valor">{formatCurrency(d.emAbertoPagar)}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 interface Props {
   usuario: Usuario;
@@ -223,7 +289,7 @@ export function Contas({ usuario: _usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [tipoFiltro, setTipoFiltro] = useState<"" | TipoLancamento>("");
-  const [statusFiltro, setStatusFiltro] = useState<"" | StatusLancamento | "atrasado">("");
+  const [statusFiltro, setStatusFiltro] = useState<"" | StatusLancamento | "atrasado" | "vence_breve">("");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
 
@@ -254,7 +320,8 @@ export function Contas({ usuario: _usuario }: Props) {
 
   const contatosDoTipo = contatos.filter((c) => c.tipo === (form.tipo === "pagar" ? "fornecedor" : "cliente"));
 
-  const statusParaApi = statusFiltro === "atrasado" ? "pendente" : statusFiltro || undefined;
+  const statusParaApi =
+    statusFiltro === "atrasado" || statusFiltro === "vence_breve" ? "pendente" : statusFiltro || undefined;
 
   const buscarLista = useCallback(
     () =>
@@ -284,9 +351,38 @@ export function Contas({ usuario: _usuario }: Props) {
   );
   const { dados: resumo, atualizarAgora: recarregarResumo } = useBuscaComCancelamento<ResumoContas>(buscarResumo, true);
 
-  const listaExibida = (lancamentos ?? []).filter((l) => statusFiltro !== "atrasado" || l.atrasado);
+  const buscarCategorias = useCallback(
+    () =>
+      fetchGastoPorCategoria({
+        lojaFiltro,
+        tipo: tipoFiltro || undefined,
+        status: statusParaApi,
+        dataInicio: dataInicio && dataFim ? dataInicio : undefined,
+        dataFim: dataInicio && dataFim ? dataFim : undefined,
+      }),
+    [lojaFiltro, tipoFiltro, statusParaApi, dataInicio, dataFim]
+  );
+  const { dados: gastoPorCategoria, atualizarAgora: recarregarCategorias } = useBuscaComCancelamento<GastoCategoria[]>(
+    buscarCategorias,
+    true
+  );
+
+  const rankingAtivo = lojaFiltro === "todas" || lojaFiltro === "minhas";
+  const buscarRanking = useCallback(() => fetchRankingLojasContas(lojaFiltro), [lojaFiltro]);
+  const { dados: rankingLojas, atualizarAgora: recarregarRanking } = useBuscaComCancelamento<RankingLojaContas[]>(
+    buscarRanking,
+    rankingAtivo
+  );
+
+  const listaExibida = (lancamentos ?? []).filter((l) => {
+    if (statusFiltro === "atrasado") return l.atrasado;
+    if (statusFiltro === "vence_breve") return l.diasParaVencer !== null && l.diasParaVencer <= 5;
+    return true;
+  });
 
   function recarregarTudo() {
+    recarregarCategorias();
+    if (rankingAtivo) recarregarRanking();
     recarregarLista();
     recarregarResumo();
   }
@@ -469,10 +565,11 @@ export function Contas({ usuario: _usuario }: Props) {
           <select
             className="dashboard-select"
             value={statusFiltro}
-            onChange={(e) => setStatusFiltro(e.target.value as "" | StatusLancamento | "atrasado")}
+            onChange={(e) => setStatusFiltro(e.target.value as "" | StatusLancamento | "atrasado" | "vence_breve")}
           >
             <option value="">Todos os status</option>
             <option value="pendente">Pendente</option>
+            <option value="vence_breve">Vence em breve</option>
             <option value="atrasado">Atrasado</option>
             <option value="pago">Pago</option>
             <option value="cancelado">Cancelado</option>
@@ -729,6 +826,13 @@ export function Contas({ usuario: _usuario }: Props) {
         </div>
       )}
 
+      {((gastoPorCategoria && gastoPorCategoria.length > 0) || (rankingAtivo && rankingLojas && rankingLojas.length > 0)) && (
+        <div className="contas-linha-2col">
+          {gastoPorCategoria && <DonutCategoria dados={gastoPorCategoria} />}
+          {rankingAtivo && rankingLojas && <RankingLojasContas dados={rankingLojas} />}
+        </div>
+      )}
+
       {erroLista && <div className="state-message state-error">{erroLista}</div>}
       {!erroLista && lancamentos === null && <div className="state-message">Carregando lançamentos...</div>}
 
@@ -773,7 +877,14 @@ export function Contas({ usuario: _usuario }: Props) {
                     )}
                   </td>
                   <td className="financeiro-th-numero">{formatCurrency(l.valor)}</td>
-                  <td className={classeStatus(l)}>{labelStatus(l)}</td>
+                  <td className={classeStatus(l)}>
+                    {labelStatus(l)}
+                    {l.diasParaVencer !== null && l.diasParaVencer <= 5 && (
+                      <div className="contas-badge-vence-breve">
+                        Vence em {l.diasParaVencer === 0 ? "hoje" : `${l.diasParaVencer}d`}
+                      </div>
+                    )}
+                  </td>
                   <td className="financeiro-acoes">
                     {l.status === "pendente" && (
                       <button type="button" className="btn-responder" onClick={() => marcarPago(l.id)}>

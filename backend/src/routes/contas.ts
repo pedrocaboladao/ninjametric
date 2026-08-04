@@ -8,6 +8,8 @@ import {
   marcarComoPago,
   excluirLancamento,
   calcularResumo,
+  calcularGastoPorCategoria,
+  calcularRankingPorLoja,
   obterLojaDoLancamento,
   type TipoLancamento,
   type StatusLancamento,
@@ -107,6 +109,29 @@ contasRouter.get("/resumo", async (req, res) => {
     res.json(await calcularResumo({ ...filtroLoja, dataInicio, dataFim }));
   } catch (err) {
     erro(res, err, "Falha ao calcular resumo.");
+  }
+});
+
+contasRouter.get("/por-categoria", async (req, res) => {
+  const filtroLoja = resolverLojaFiltro(req, res);
+  if (!filtroLoja) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
+  const { tipo, status } = extrairTipoStatus(req);
+  try {
+    res.json(await calcularGastoPorCategoria({ ...filtroLoja, tipo, status, dataInicio, dataFim }));
+  } catch (err) {
+    erro(res, err, "Falha ao calcular gasto por categoria.");
+  }
+});
+
+contasRouter.get("/ranking-lojas", async (req, res) => {
+  const filtroLoja = resolverLojaFiltro(req, res);
+  if (!filtroLoja) return;
+  const lojasPermitidas = filtroLoja.lojaId !== undefined ? [filtroLoja.lojaId] : filtroLoja.lojasPermitidas;
+  try {
+    res.json(await calcularRankingPorLoja(lojasPermitidas));
+  } catch (err) {
+    erro(res, err, "Falha ao calcular ranking por loja.");
   }
 });
 

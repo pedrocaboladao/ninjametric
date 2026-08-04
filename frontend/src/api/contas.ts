@@ -9,6 +9,8 @@ import type {
   TipoContato,
   NovoContatoInput,
   EdicaoContatoInput,
+  GastoCategoria,
+  RankingLojaContas,
 } from "../types/contas";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -134,4 +136,15 @@ export async function atualizarContato(id: number, dados: EdicaoContatoInput): P
 export async function excluirContato(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/contas/contatos/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta(res);
+}
+
+export async function fetchGastoPorCategoria(f: FiltrosLancamentos): Promise<GastoCategoria[]> {
+  const res = await fetch(`${API_BASE}/api/contas/por-categoria?${montarParams(f)}`, { credentials: "include" });
+  return tratarResposta(res);
+}
+
+export async function fetchRankingLojasContas(lojaFiltro: number | "todas" | "minhas"): Promise<RankingLojaContas[]> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  const res = await fetch(`${API_BASE}/api/contas/ranking-lojas?${params}`, { credentials: "include" });
+  return tratarResposta(res);
 }

@@ -3422,6 +3422,65 @@
   margin-top: 4px;
 }
 
+.contas-linha-2col {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.contas-ranking-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+
+.contas-ranking-item:last-child {
+  border-bottom: none;
+}
+
+.contas-ranking-nome {
+  width: 110px;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+}
+
+.contas-ranking-barra-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-panel-alt);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.contas-ranking-barra {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.contas-ranking-valor {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: 12px;
+  width: 80px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.contas-badge-vence-breve {
+  display: inline-block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.15);
+  color: #facc15;
+}
+
 .financeiro-margem-positiva {
   color: var(--good-text);
 }

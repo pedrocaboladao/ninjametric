@@ -18,6 +18,7 @@ export interface Lancamento {
   criadoEm: string;
   atualizadoEm: string;
   atrasado: boolean;
+  diasParaVencer: number | null;
   contatoId: number | null;
   contatoNome: string | null;
   grupoParcelamentoId: number | null;
@@ -106,4 +107,16 @@ export interface EdicaoLancamentoInput {
   observacao?: string | null;
   status?: StatusLancamento;
   dataPagamento?: string | null;
+}
+
+export interface GastoCategoria {
+  categoria: string;
+  valor: number;
+}
+
+export interface RankingLojaContas {
+  lojaId: number;
+  lojaNome: string;
+  emAbertoPagar: number;
+  emAbertoReceber: number;
 }
