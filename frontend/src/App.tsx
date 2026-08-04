@@ -18,6 +18,29 @@ import { temPermissao } from "./constants/modulos";
 import type { Usuario } from "./types/usuarios";
 import "./App.css";
 
+const CHAVE_ULTIMA_VIEW = "painel_ultima_view";
+const VIEWS_VALIDAS: View[] = [
+  "dashboard",
+  "perguntas",
+  "clonar",
+  "produtos",
+  "financeiro",
+  "contas",
+  "dre",
+  "ads",
+  "tarefas",
+  "funcionarios",
+  "usuarios",
+];
+
+function viewInicial(usuario: Usuario): View {
+  const salva = localStorage.getItem(CHAVE_ULTIMA_VIEW) as View | null;
+  if (salva && VIEWS_VALIDAS.includes(salva) && (salva === "usuarios" ? usuario.admin : temPermissao(usuario, salva))) {
+    return salva;
+  }
+  return primeiraViewPermitida(usuario);
+}
+
 function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "dashboard")) return "dashboard";
   if (temPermissao(usuario, "perguntas")) return "perguntas";
@@ -34,8 +57,12 @@ function primeiraViewPermitida(usuario: Usuario): View {
 }
 
 function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => void }) {
-  const [view, setView] = useState<View>(() => primeiraViewPermitida(usuario));
+  const [view, setView] = useState<View>(() => viewInicial(usuario));
   const perguntas = usePerguntas(temPermissao(usuario, "perguntas"));
+
+  useEffect(() => {
+    localStorage.setItem(CHAVE_ULTIMA_VIEW, view);
+  }, [view]);
 
   async function handleSair() {
     await logout();
