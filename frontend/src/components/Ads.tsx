@@ -13,6 +13,12 @@ function hojeISO(): string {
   return dataISO(new Date());
 }
 
+function diasAtrasISO(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return dataISO(d);
+}
+
 function diasNoPeriodo(dataInicio: string, dataFim: string): number {
   const inicio = new Date(`${dataInicio}T00:00:00Z`);
   const fim = new Date(`${dataFim}T00:00:00Z`);
@@ -399,6 +405,16 @@ export function Ads() {
               }}
             >
               Hoje
+            </button>
+            <button
+              type="button"
+              className="btn-responder financeiro-btn-hoje"
+              onClick={() => {
+                setDataInicio(diasAtrasISO(7));
+                setDataFim(hojeISO());
+              }}
+            >
+              7 dias
             </button>
             <button
               type="button"

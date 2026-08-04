@@ -32,6 +32,12 @@ function hojeISO(): string {
   return dataISO(new Date());
 }
 
+function diasAtrasISO(dias: number): string {
+  const d = new Date();
+  d.setDate(d.getDate() - dias);
+  return dataISO(d);
+}
+
 type ChaveOrdenacao =
   | "titulo"
   | "lojaNome"
@@ -474,6 +480,16 @@ export function Financeiro({ usuario }: Props) {
               }}
             >
               Hoje
+            </button>
+            <button
+              type="button"
+              className="btn-responder financeiro-btn-hoje"
+              onClick={() => {
+                setDataInicio(diasAtrasISO(7));
+                setDataFim(hojeISO());
+              }}
+            >
+              7 dias
             </button>
             <button
               type="button"
