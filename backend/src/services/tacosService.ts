@@ -59,14 +59,22 @@ export async function listarReceitaRealPorCampanha(
         return [];
       }
 
-      const porCampanha = new Map<number, { receita: number; margem: number }>();
+      // A API de Ads pode devolver mais de um "anúncio" (linha) pro mesmo
+      // item_id dentro da mesma campanha (ex.: mais de um formato/posição
+      // anunciando o mesmo produto) — sem esse controle, a receita real
+      // daquele item entrava somada de novo a cada linha repetida,
+      // inflando a receita e o ACOS Ideal da campanha. Cada item só pode
+      // contar sua receita/margem uma vez por campanha.
+      const porCampanha = new Map<number, { receita: number; margem: number; itensContados: Set<string> }>();
       for (const a of anuncios) {
         const receitaTotalReal = receitaPorItem.get(a.item_id) ?? 0;
         if (receitaTotalReal === 0) continue;
-        const margem = margemPorItem.get(a.item_id) ?? 0;
-        const atual = porCampanha.get(a.campaign_id) ?? { receita: 0, margem: 0 };
-        atual.receita += receitaTotalReal;
-        atual.margem += margem;
+        const atual = porCampanha.get(a.campaign_id) ?? { receita: 0, margem: 0, itensContados: new Set<string>() };
+        if (!atual.itensContados.has(a.item_id)) {
+          atual.itensContados.add(a.item_id);
+          atual.receita += receitaTotalReal;
+          atual.margem += margemPorItem.get(a.item_id) ?? 0;
+        }
         porCampanha.set(a.campaign_id, atual);
       }
 
