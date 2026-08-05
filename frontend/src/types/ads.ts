@@ -6,6 +6,7 @@ export interface CampanhaAds {
   status: string;
   orcamento: number;
   acosMeta: number;
+  acosMetaAnterior: number | null;
   cliques: number;
   impressoes: number;
   custo: number;

@@ -11,6 +11,11 @@ export interface CampanhaAds {
   status: string;
   orcamento: number;
   acosMeta: number;
+  // Meta capturada no snapshot mais antigo dentro do período consultado —
+  // só vem preenchida quando é diferente da meta atual (acosMeta), pra
+  // avisar que a meta mudou em algum momento durante o período em vez de
+  // mostrar sempre a meta "de agora" como se tivesse valido o período todo.
+  acosMetaAnterior: number | null;
   cliques: number;
   impressoes: number;
   custo: number;
@@ -21,7 +26,12 @@ export interface CampanhaAds {
   acos: number;
 }
 
-function mapearCampanha(lojaId: number, lojaNome: string, c: MlCampanhaAds): CampanhaAds {
+function mapearCampanha(
+  lojaId: number,
+  lojaNome: string,
+  c: MlCampanhaAds,
+  acosMetaAnterior: number | null
+): CampanhaAds {
   return {
     lojaId,
     lojaNome,
@@ -30,6 +40,7 @@ function mapearCampanha(lojaId: number, lojaNome: string, c: MlCampanhaAds): Cam
     status: c.status,
     orcamento: c.budget,
     acosMeta: c.acos_target,
+    acosMetaAnterior: acosMetaAnterior !== null && acosMetaAnterior !== c.acos_target ? acosMetaAnterior : null,
     cliques: c.metrics.clicks,
     impressoes: c.metrics.prints,
     custo: c.metrics.cost,
@@ -39,6 +50,33 @@ function mapearCampanha(lojaId: number, lojaNome: string, c: MlCampanhaAds): Cam
     vendasTotais: c.metrics.total_amount,
     acos: c.metrics.acos,
   };
+}
+
+// Busca, pra cada campanha, a meta capturada no snapshot MAIS ANTIGO dentro
+// do período consultado — representa a meta que estava valendo no começo
+// da janela. Comparado com a meta atual (que a API sempre devolve "de
+// agora"), dá pra perceber quando o usuário mudou a meta no meio do
+// período, em vez de aplicar retroativamente a meta atual pro período
+// inteiro (foi exatamente essa confusão que gerou uma análise errada antes
+// dessa feature existir).
+async function obterMetaAntigaPorCampanha(
+  lojaIds: number[],
+  dataInicio: string,
+  dataFim: string
+): Promise<Map<string, number>> {
+  if (lojaIds.length === 0) return new Map();
+  const { rows } = await pool.query<{ loja_id: number; campanha_id: string; acos_meta: string | null }>(
+    `SELECT DISTINCT ON (loja_id, campanha_id) loja_id, campanha_id, acos_meta
+     FROM ads_gasto_diario
+     WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3 AND acos_meta IS NOT NULL
+     ORDER BY loja_id, campanha_id, data ASC`,
+    [lojaIds, dataInicio, dataFim]
+  );
+  const mapa = new Map<string, number>();
+  for (const r of rows) {
+    mapa.set(`${r.loja_id}-${r.campanha_id}`, Number(r.acos_meta));
+  }
+  return mapa;
 }
 
 // Cache curto — mesma lógica do Financeiro: janela de 15 min, com opção de
@@ -74,13 +112,21 @@ export async function listarCampanhasAds(
   const dateFrom = dataInicio ?? seteDiasAtras;
   const dateTo = dataFim ?? hoje;
 
+  const metaAnteriorPorCampanha = await obterMetaAntigaPorCampanha(
+    lojas.map((l) => l.id),
+    dateFrom,
+    dateTo
+  );
+
   const porLoja = await Promise.all(
     lojas.map(async (loja) => {
       const advertiserId = await getAdvertiserId(loja.id);
       if (advertiserId === null) return [];
       try {
         const campanhas = await getCampanhasAds(loja.id, advertiserId, dateFrom, dateTo);
-        return campanhas.map((c) => mapearCampanha(loja.id, loja.nome, c));
+        return campanhas.map((c) =>
+          mapearCampanha(loja.id, loja.nome, c, metaAnteriorPorCampanha.get(`${loja.id}-${c.id}`) ?? null)
+        );
       } catch {
         return [];
       }
@@ -107,10 +153,10 @@ export async function capturarGastoAdsDoDia(): Promise<void> {
       const campanhas = await getCampanhasAds(loja.id, advertiserId, hoje, hoje);
       for (const c of campanhas) {
         await pool.query(
-          `INSERT INTO ads_gasto_diario (loja_id, campanha_id, data, nome, custo, atualizado_em)
-           VALUES ($1, $2, $3, $4, $5, now())
-           ON CONFLICT (loja_id, campanha_id, data) DO UPDATE SET custo = $5, nome = $4, atualizado_em = now()`,
-          [loja.id, c.id, hoje, c.name, c.metrics.cost]
+          `INSERT INTO ads_gasto_diario (loja_id, campanha_id, data, nome, custo, acos_meta, atualizado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, now())
+           ON CONFLICT (loja_id, campanha_id, data) DO UPDATE SET custo = $5, nome = $4, acos_meta = $6, atualizado_em = now()`,
+          [loja.id, c.id, hoje, c.name, c.metrics.cost, c.acos_target]
         );
       }
     } catch (err) {

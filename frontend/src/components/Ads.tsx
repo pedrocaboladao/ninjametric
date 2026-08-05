@@ -635,7 +635,18 @@ export function Ads() {
                       <td className={`financeiro-th-numero financeiro-linha-margem ${classeLinha(c, diasPeriodo)}`}>
                         {c.acos.toFixed(1)}%
                       </td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">{c.acosMeta.toFixed(1)}%</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {c.acosMeta.toFixed(1)}%
+                        {c.acosMetaAnterior !== null && (
+                          <span
+                            className="ads-meta-mudou"
+                            title={`A meta era ${c.acosMetaAnterior.toFixed(1)}% no início do período e mudou pra ${c.acosMeta.toFixed(1)}% em algum momento — os números desse período misturam as duas metas.`}
+                          >
+                            {" "}
+                            (mudou de {c.acosMetaAnterior.toFixed(1)}%)
+                          </span>
+                        )}
+                      </td>
                       <td className="financeiro-th-numero">{c.tacosReal !== null ? `${c.tacosReal.toFixed(1)}%` : "—"}</td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
                         {c.acosIdeal !== null ? `${c.acosIdeal.toFixed(1)}%` : "—"}

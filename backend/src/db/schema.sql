@@ -197,6 +197,11 @@ CREATE TABLE IF NOT EXISTS ads_gasto_diario (
   PRIMARY KEY (loja_id, campanha_id, data)
 );
 CREATE INDEX IF NOT EXISTS idx_ads_gasto_diario_loja_data ON ads_gasto_diario (loja_id, data);
+-- ACOS Meta capturado junto no mesmo snapshot — a API do Mercado Livre só
+-- devolve a meta ATUAL configurada, sem histórico; guardando aqui a cada
+-- captura dá pra comparar "meta de então" com "meta de agora" num período
+-- passado (ver acosMetaAnterior em listarCampanhasAds).
+ALTER TABLE ads_gasto_diario ADD COLUMN IF NOT EXISTS acos_meta NUMERIC(6, 2);
 
 -- Contas a pagar e receber: lançamentos manuais de despesas/receitas que não
 -- vêm de pedidos do Mercado Livre (essas já são rastreadas automaticamente

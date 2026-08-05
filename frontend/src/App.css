@@ -3762,6 +3762,12 @@
   letter-spacing: 0.03em;
 }
 
+.ads-meta-mudou {
+  font-size: 10.5px;
+  color: #fbbf24;
+  cursor: help;
+}
+
 .ads-insight-produto {
   font-size: 13px;
   font-weight: 600;
