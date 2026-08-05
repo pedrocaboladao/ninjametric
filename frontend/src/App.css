@@ -3125,7 +3125,8 @@
   color: transparent;
 }
 
-.financeiro-stat-valor-grande.financeiro-margem-negativa {
+.financeiro-stat-valor-grande.financeiro-margem-negativa,
+.financeiro-stat-valor-grande.financeiro-margem-positiva {
   background: none;
   -webkit-background-clip: unset;
   background-clip: unset;

@@ -378,6 +378,8 @@ export function Ads() {
   const impressoesTotais = campanhasFiltradas?.reduce((s, c) => s + c.impressoes, 0) ?? 0;
   const acosMedio = vendasTotais > 0 ? (custoTotal / vendasTotais) * 100 : null;
   const campanhasComProblema = buckets.semVenda.qtd + buckets.acimaMeta.qtd;
+  const lucroTotal = campanhasFiltradas?.reduce((s, c) => s + (c.lucroReais ?? 0), 0) ?? 0;
+  const campanhasSemMargem = campanhasFiltradas?.filter((c) => c.lucroReais === null).length ?? 0;
 
   function alternarGrupo(grupo: Grupo) {
     setGrupoFiltro((atual) => (atual === grupo ? "todos" : grupo));
@@ -469,8 +471,23 @@ export function Ads() {
         <>
           <div className="financeiro-stats">
             <div className="financeiro-stat-card financeiro-stat-card-destaque">
+              <span className="financeiro-stat-label">Lucro</span>
+              <span
+                className={`financeiro-stat-valor financeiro-stat-valor-grande ${
+                  lucroTotal >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"
+                }`}
+              >
+                {formatCurrency(lucroTotal)}
+              </span>
+              <span className="financeiro-stat-sub">
+                {campanhasSemMargem > 0
+                  ? `TACOS vs ACOS Ideal — ${campanhasSemMargem} campanha${campanhasSemMargem > 1 ? "s" : ""} sem dado de margem`
+                  : "TACOS real vs ACOS Ideal (margem)"}
+              </span>
+            </div>
+            <div className="financeiro-stat-card">
               <span className="financeiro-stat-label">Gasto total</span>
-              <span className="financeiro-stat-valor financeiro-stat-valor-grande">{formatCurrency(custoTotal)}</span>
+              <span className="financeiro-stat-valor">{formatCurrency(custoTotal)}</span>
             </div>
             <div className="financeiro-stat-card">
               <span className="financeiro-stat-label">Vendas atribuídas</span>
