@@ -461,6 +461,16 @@ export function Financeiro({ usuario }: Props) {
   const ticketMedioVenda = vendasFiltradas && vendasFiltradas.length > 0 ? receitaTotal / vendasFiltradas.length : null;
   const ticketMedioMargem = comMargem.length > 0 ? margemTotal / comMargem.length : null;
 
+  // "Nº pedido/MLB", "título" e "SKU" filtram só as linhas de venda — não
+  // dá pra filtrar resumoPedidos (contagem de pedidos aprovados/cancelados
+  // da loja inteira) nem gastoAdsTotal (gasto de Ads não é por SKU, é por
+  // campanha no período todo) pelo mesmo critério. Sem esse aviso, esses
+  // dois cards continuavam mostrando o número da loja inteira mesmo com um
+  // filtro de produto específico ativo — parecia bugado, mas era só os
+  // dois cards ignorando o filtro silenciosamente.
+  const filtroBuscaAtivo = Boolean(filtroPedido.trim() || filtroTitulo.trim() || filtroSku.trim());
+  const pedidosAprovadosFiltrados = new Set(vendasFiltradas?.map((v) => v.orderId) ?? []).size;
+
   // Gasto de Ads não é por venda (é por campanha, no período todo) — por isso
   // só desconta aqui, no total da janela, e não em cada linha da tabela.
   const margemAposAds = margemTotal - gastoAdsTotal;
@@ -666,10 +676,14 @@ export function Financeiro({ usuario }: Props) {
             <div className="financeiro-cards-secundarios">
               <div className="financeiro-stat-card">
                 <span className="financeiro-stat-label">Qtd Vendas Aprovadas</span>
-                <span className="financeiro-stat-valor">{resumoPedidos.pedidosAprovados}</span>
-                <span className="financeiro-stat-sub">
-                  Total: {resumoPedidos.totalPedidos} · Canceladas: {resumoPedidos.pedidosCancelados}
-                </span>
+                <span className="financeiro-stat-valor">{pedidosAprovadosFiltrados}</span>
+                {filtroBuscaAtivo ? (
+                  <span className="financeiro-stat-sub">Só pedidos que batem com o filtro de busca</span>
+                ) : (
+                  <span className="financeiro-stat-sub">
+                    Total: {resumoPedidos.totalPedidos} · Canceladas: {resumoPedidos.pedidosCancelados}
+                  </span>
+                )}
                 {semCustoCadastrado > 0 && (
                   <span className="financeiro-stat-sub">{semCustoCadastrado} sem custo cadastrado</span>
                 )}
@@ -691,13 +705,24 @@ export function Financeiro({ usuario }: Props) {
               </div>
               <div className="financeiro-stat-card">
                 <span className="financeiro-stat-label">Margem após Ads</span>
-                <span className={`financeiro-stat-valor ${classeMargem(margemAposAdsPercentual)}`}>
-                  {formatCurrency(margemAposAds)}
-                </span>
-                <span className="financeiro-stat-sub">
-                  Gasto Ads: {formatCurrency(gastoAdsTotal)}
-                  {margemAposAdsPercentual !== null ? ` · ${margemAposAdsPercentual.toFixed(2)}%` : ""}
-                </span>
+                {filtroBuscaAtivo ? (
+                  <>
+                    <span className="financeiro-stat-valor financeiro-td-mudo">—</span>
+                    <span className="financeiro-stat-sub">
+                      Gasto de Ads não é por produto — limpe o filtro de busca pra ver esse número
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className={`financeiro-stat-valor ${classeMargem(margemAposAdsPercentual)}`}>
+                      {formatCurrency(margemAposAds)}
+                    </span>
+                    <span className="financeiro-stat-sub">
+                      Gasto Ads: {formatCurrency(gastoAdsTotal)}
+                      {margemAposAdsPercentual !== null ? ` · ${margemAposAdsPercentual.toFixed(2)}%` : ""}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
           )}
