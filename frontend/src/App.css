@@ -3325,6 +3325,30 @@
   border-radius: 12px;
 }
 
+.correcoes-loja-bloco {
+  margin-bottom: 20px;
+}
+
+.correcoes-loja-titulo {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 12px 16px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 12px 12px 0 0;
+}
+
+.correcoes-loja-bloco .financeiro-tabela-wrap {
+  border-radius: 0 0 12px 12px;
+}
+
+.correcoes-sem-sku {
+  color: var(--critical-text);
+  cursor: help;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;

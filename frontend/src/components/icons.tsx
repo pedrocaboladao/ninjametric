@@ -260,3 +260,11 @@ export function IconMegaphone({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconWrench({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M14.7 6.3a4 4 0 0 0-5.4 4.7L3 17.3V21h3.7l6.3-6.3a4 4 0 0 0 4.7-5.4l-2.8 2.8-2-2Z" />
+    </svg>
+  );
+}

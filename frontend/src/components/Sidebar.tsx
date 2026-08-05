@@ -15,6 +15,7 @@ import {
   IconMegaphone,
   IconWallet,
   IconReport,
+  IconWrench,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -30,7 +31,8 @@ export type View =
   | "ads"
   | "tarefas"
   | "funcionarios"
-  | "usuarios";
+  | "usuarios"
+  | "correcoes";
 
 interface Props {
   view: View;
@@ -56,7 +58,8 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeAds = temPermissao(usuario, "ads");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
-  const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos;
+  const podeCorrecoes = temPermissao(usuario, "correcoes");
+  const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes;
 
   const iniciais =
     usuario.nome
@@ -185,6 +188,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconBox size={16} />
                     <span>Produtos</span>
+                  </button>
+                )}
+                {podeCorrecoes && (
+                  <button
+                    className={`sidebar-item ${view === "correcoes" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => onChangeView("correcoes")}
+                  >
+                    <IconWrench size={16} />
+                    <span>Correções</span>
                   </button>
                 )}
               </div>
