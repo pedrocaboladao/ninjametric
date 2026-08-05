@@ -3354,6 +3354,149 @@
   font-size: 12.5px;
 }
 
+.fabricacao-secao {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.fabricacao-secao h2 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.fabricacao-secao-titulo-acao {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fabricacao-input-pequeno {
+  width: 90px;
+}
+
+.fabricacao-custo-botao {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  cursor: pointer;
+  font-size: 13.5px;
+  font-weight: 600;
+  padding: 0;
+}
+
+.fabricacao-custo-botao:hover {
+  text-decoration: underline;
+}
+
+.fabricacao-formula-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  text-align: left;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 16px;
+  cursor: pointer;
+  color: var(--text-primary);
+  font: inherit;
+}
+
+.fabricacao-formula-card:hover {
+  border-color: var(--border-strong);
+}
+
+.fabricacao-formula-nome {
+  font-weight: 700;
+  flex: 1;
+}
+
+.fabricacao-formula-custo {
+  font-weight: 700;
+  color: var(--accent-2);
+}
+
+.fabricacao-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.fabricacao-editor-topo {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+
+.fabricacao-rodape-tabela {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+
+.fabricacao-resumo-custos {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  background: var(--bg-panel-alt);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.fabricacao-resumo-custos > div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fabricacao-secao-ml {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.fabricacao-secao-ml h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
+.fabricacao-campo-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.fabricacao-margem-resultado {
+  font-size: 20px;
+  font-weight: 700;
+  padding: 12px 16px;
+  border-radius: 10px;
+  background: var(--bg-panel-alt);
+}
+
+.fabricacao-editor-acoes {
+  display: flex;
+  gap: 10px;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;

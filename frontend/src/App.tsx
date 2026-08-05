@@ -5,6 +5,7 @@ import { Perguntas } from "./components/Perguntas";
 import { ClonarAnuncio } from "./components/ClonarAnuncio";
 import { Produtos } from "./components/Produtos";
 import { Correcoes } from "./components/Correcoes";
+import { Fabricacao } from "./components/Fabricacao";
 import { Financeiro } from "./components/Financeiro";
 import { Contas } from "./components/Contas";
 import { Dre } from "./components/Dre";
@@ -30,6 +31,7 @@ const VIEWS_VALIDAS: View[] = [
   "contas",
   "dre",
   "ads",
+  "fabricacao",
   "tarefas",
   "funcionarios",
   "usuarios",
@@ -53,6 +55,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "contas")) return "contas";
   if (temPermissao(usuario, "dre")) return "dre";
   if (temPermissao(usuario, "ads")) return "ads";
+  if (temPermissao(usuario, "fabricacao")) return "fabricacao";
   if (temPermissao(usuario, "tarefas")) return "tarefas";
   if (temPermissao(usuario, "funcionarios")) return "funcionarios";
   if (usuario.admin) return "usuarios";
@@ -104,6 +107,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "contas" && temPermissao(usuario, "contas") && <Contas usuario={usuario} />}
         {view === "dre" && temPermissao(usuario, "dre") && <Dre />}
         {view === "ads" && temPermissao(usuario, "ads") && <Ads />}
+        {view === "fabricacao" && temPermissao(usuario, "fabricacao") && <Fabricacao />}
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
         {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
         {view === "usuarios" && usuario.admin && <Usuarios />}

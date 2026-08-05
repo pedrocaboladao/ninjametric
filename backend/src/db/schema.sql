@@ -259,3 +259,37 @@ CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_grupo_parcelamento ON contas_l
 ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS grupo_rateio_id INTEGER REFERENCES contas_lancamentos(id) ON DELETE SET NULL;
 ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS rateio_total INTEGER;
 CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_grupo_rateio ON contas_lancamentos (grupo_rateio_id);
+
+-- Fabricação: custo de produção das próprias fórmulas (a fábrica do grupo,
+-- não revenda) — matéria-prima cadastrada uma vez (nome + custo/kg),
+-- reaproveitada em várias fórmulas. Sem loja_id: a fábrica é única, atende
+-- todas as lojas.
+CREATE TABLE IF NOT EXISTS materias_primas (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE,
+  custo_por_kg NUMERIC(12, 4) NOT NULL DEFAULT 0,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Fórmula = receita fixa de matérias-primas em % (ver formula_itens),
+-- aplicada sobre peso_lote_kg (peso da unidade vendida, ex.: 18 pro balde
+-- de 18L) + custo_embalagem (balde/rótulo, por unidade). sku vincula à
+-- venda real no Mercado Livre (mesmo SKU do Financeiro/Produtos/
+-- Correções) pra puxar preço/frete/tarifa reais — nullable, dá pra
+-- cadastrar a fórmula antes de ter o vínculo.
+CREATE TABLE IF NOT EXISTS formulas (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  sku TEXT,
+  peso_lote_kg NUMERIC(12, 3) NOT NULL DEFAULT 1,
+  custo_embalagem NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS formula_itens (
+  id SERIAL PRIMARY KEY,
+  formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
+  materia_prima_id INTEGER NOT NULL REFERENCES materias_primas(id) ON DELETE RESTRICT,
+  percentual NUMERIC(6, 3) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_formula_itens_formula ON formula_itens (formula_id);
