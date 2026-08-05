@@ -3349,6 +3349,11 @@
   cursor: help;
 }
 
+.correcoes-motivo-alerta {
+  color: #fbbf24;
+  font-size: 12.5px;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;

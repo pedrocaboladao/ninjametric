@@ -8,4 +8,5 @@ export interface SkuSemCusto {
   receitaAfetada: number;
   primeiraOcorrencia: string;
   ultimaOcorrencia: string;
+  motivo: string;
 }

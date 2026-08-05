@@ -44,8 +44,8 @@ export function Correcoes() {
           <span className="painel-eyebrow">Correções</span>
           <h1>SKUs sem custo cadastrado</h1>
           <p className="painel-sub">
-            Anúncios que venderam nos últimos 30 dias mas cujo SKU não tem custo na planilha — sem custo cadastrado,
-            a margem dessas vendas não entra no Financeiro nem no DRE. Corrija direto na planilha; o item some daqui
+            Anúncios que venderam no mês vigente mas cujo SKU não tem custo na planilha — sem custo cadastrado, a
+            margem dessas vendas não entra no Financeiro nem no DRE. Corrija direto na planilha; o item some daqui
             sozinho na próxima atualização.
           </p>
         </div>
@@ -79,7 +79,7 @@ export function Correcoes() {
       {!erro && dados === null && <div className="state-message">Carregando...</div>}
 
       {dados !== null && totalItens === 0 && (
-        <div className="state-message">Nenhuma pendência — tudo cadastrado nos últimos 30 dias.</div>
+        <div className="state-message">Nenhuma pendência — tudo cadastrado no mês vigente.</div>
       )}
 
       {porLoja.map(({ lojaNome, itens }) => (
@@ -93,6 +93,7 @@ export function Correcoes() {
               <tr>
                 <th>Anúncio</th>
                 <th>SKU</th>
+                <th>Possível motivo</th>
                 <th className="financeiro-th-numero">Vendas afetadas</th>
                 <th className="financeiro-th-numero">Receita afetada</th>
                 <th>Desde</th>
@@ -110,6 +111,9 @@ export function Correcoes() {
                         Sem SKU no anúncio
                       </span>
                     )}
+                  </td>
+                  <td className={item.motivo.startsWith("Possível") ? "correcoes-motivo-alerta" : "financeiro-td-mudo"}>
+                    {item.motivo}
                   </td>
                   <td className="financeiro-th-numero">{item.ocorrencias}</td>
                   <td className="financeiro-th-numero">{formatCurrency(item.receitaAfetada)}</td>
