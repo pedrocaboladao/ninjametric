@@ -277,3 +277,11 @@ export function IconFlask({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconBarcode({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M4 5v14M8 5v14M11 5v14M13 5v14M16 5v14M20 5v14" />
+    </svg>
+  );
+}

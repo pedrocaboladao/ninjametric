@@ -3497,6 +3497,71 @@
   gap: 10px;
 }
 
+.ean-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.ean-codigo {
+  font-family: var(--mono);
+  font-size: 36px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+
+.ean-status {
+  font-size: 13px;
+}
+
+.ean-status-ok {
+  color: var(--good-text);
+}
+
+.ean-status-erro {
+  color: var(--critical-text);
+}
+
+.ean-historico {
+  margin-top: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ean-historico-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 4px 0;
+}
+
+.ean-historico-copiar {
+  background: none;
+  border: none;
+  color: var(--accent-2);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-family: var(--sans);
+}
+
+.ean-historico-copiar:hover {
+  text-decoration: underline;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;

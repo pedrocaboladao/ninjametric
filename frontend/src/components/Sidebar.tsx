@@ -17,6 +17,7 @@ import {
   IconReport,
   IconWrench,
   IconFlask,
+  IconBarcode,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -34,7 +35,8 @@ export type View =
   | "funcionarios"
   | "usuarios"
   | "correcoes"
-  | "fabricacao";
+  | "fabricacao"
+  | "ean";
 
 interface Props {
   view: View;
@@ -62,7 +64,8 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const podeCorrecoes = temPermissao(usuario, "correcoes");
   const podeFabricacao = temPermissao(usuario, "fabricacao");
-  const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes;
+  const podeEan = temPermissao(usuario, "ean");
+  const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
 
   const iniciais =
     usuario.nome
@@ -213,6 +216,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconWrench size={16} />
                     <span>Correções</span>
+                  </button>
+                )}
+                {podeEan && (
+                  <button
+                    className={`sidebar-item ${view === "ean" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => onChangeView("ean")}
+                  >
+                    <IconBarcode size={16} />
+                    <span>Gerador de EAN</span>
                   </button>
                 )}
               </div>
