@@ -17,6 +17,12 @@ interface Props {
   usuario: Usuario;
 }
 
+// ML resolve o anúncio só com o ID, sem precisar do slug descritivo —
+// mas exige o hífen depois do prefixo "MLB" (a API devolve sem hífen).
+function mlbParaUrl(itemId: string): string {
+  return `https://produto.mercadolivre.com.br/${itemId.replace(/^(MLB)(\d)/, "$1-$2")}`;
+}
+
 function classeMargem(margemPercentual: number | null): string {
   if (margemPercentual === null) return "financeiro-margem-neutra";
   if (margemPercentual < 0) return "financeiro-margem-negativa";
@@ -42,6 +48,7 @@ type ChaveOrdenacao =
   | "titulo"
   | "lojaNome"
   | "sku"
+  | "itemId"
   | "dataCriacao"
   | "valorUnitario"
   | "quantidade"
@@ -64,6 +71,7 @@ const COLUNAS: Coluna[] = [
   { chave: "titulo", label: "Anúncio" },
   { chave: "lojaNome", label: "Conta" },
   { chave: "sku", label: "SKU" },
+  { chave: "itemId", label: "MLB" },
   { chave: "dataCriacao", label: "Data" },
   { chave: "valorUnitario", label: "Valor Unit.", numerica: true },
   { chave: "quantidade", label: "Qtd.", numerica: true },
@@ -736,6 +744,11 @@ export function Financeiro({ usuario }: Props) {
                       </td>
                       <td>{v.lojaNome}</td>
                       <td className="financeiro-td-sku">{v.sku ?? "—"}</td>
+                      <td className="financeiro-td-sku">
+                        <a href={mlbParaUrl(v.itemId)} target="_blank" rel="noopener noreferrer">
+                          {v.itemId}
+                        </a>
+                      </td>
                       <td>{formatDataHora(v.dataCriacao)}</td>
                       <td className="financeiro-th-numero">{formatCurrency(v.valorUnitario)}</td>
                       <td className="financeiro-th-numero">{v.quantidade}</td>
