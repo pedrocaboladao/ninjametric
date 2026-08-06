@@ -169,12 +169,12 @@ async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo:
   const resposta = await client.messages.create({
     model: MODELO_IA,
     max_tokens: 8000,
-    // "adaptive" + display "summarized" pra deixar o raciocínio da IA
-    // visível (em claude-sonnet-5 o padrão é "omitted", que não devolve
-    // texto nenhum) — forçar a ferramenta é compatível com thinking
-    // adaptativo (não é com o modo manual/extended). Ver
-    // frontend/src/components/AgenciaAgentesIA.tsx pro feed que mostra isso.
-    thinking: { type: "adaptive", display: "summarized" },
+    // Thinking "adaptive" deixava a decisão de raciocinar (ou não) por conta
+    // do modelo, e na prática ele escolheu 0 tokens de raciocínio nas
+    // primeiras rodadas em produção — nada visível pro usuário. Em vez de
+    // depender disso, pedimos texto normal de análise ANTES da ferramenta
+    // (tool_choice "auto", não forçado) — instrução direta é bem mais
+    // confiável que esperar o modelo "decidir" pensar em voz alta.
     system: `Você é um analista de tráfego pago (Mercado Ads) experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre.
 
 Você recebe os dados reais das campanhas ativas (com gasto) das lojas do grupo, no período dos últimos ${diasPeriodo} dias, e decide sozinho quais merecem atenção agora.
@@ -185,7 +185,8 @@ Regras:
 - "tacos_real" bem abaixo do "acos_meta" sugere que a venda já aconteceria sem o anúncio (verba desperdiçada em venda orgânica).
 - Seja específico: cite os números reais na explicação, não generalize.
 - "contexto": 1-2 frases diretas. "acao": sugestão concreta e curta.
-- Pense em voz alta, comparando as campanhas e explicando por que cada uma entra ou não no relatório final — esse raciocínio é mostrado pro dono do negócio depois, então pode ser natural e direto, como se estivesse explicando pra ele.`,
+- Antes de usar a ferramenta, escreva um parágrafo curto em texto normal comparando as campanhas em voz alta e explicando por que cada uma entra ou não no relatório final — esse texto é mostrado pro dono do negócio depois, então pode ser natural e direto, como se estivesse explicando pra ele.
+- Depois desse texto, sempre chame a ferramenta "reportar_observacoes" pra reportar formalmente — chame mesmo se a lista vier vazia (nenhuma campanha precisando de atenção agora).`,
     messages: [
       {
         role: "user",
@@ -193,16 +194,14 @@ Regras:
       },
     ],
     tools: [FERRAMENTA_OBSERVACOES],
-    tool_choice: { type: "tool", name: "reportar_observacoes" },
+    tool_choice: { type: "auto" },
   });
 
-  console.log(
-    `Agente de Ads (IA): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída (${resposta.usage.output_tokens_details?.thinking_tokens ?? 0} de raciocínio).`
-  );
+  console.log(`Agente de Ads (IA): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída.`);
 
-  const blocosPensamento = resposta.content.filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking");
-  const pensamento = blocosPensamento
-    .map((b) => b.thinking)
+  const blocosTexto = resposta.content.filter((b): b is Anthropic.TextBlock => b.type === "text");
+  const pensamento = blocosTexto
+    .map((b) => b.text)
     .filter((t) => t.trim().length > 0)
     .join("\n\n");
   if (pensamento) {
@@ -210,7 +209,12 @@ Regras:
   }
 
   const blocoFerramenta = resposta.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
-  if (!blocoFerramenta) return [];
+  if (!blocoFerramenta) {
+    // Sem chamada de ferramenta não dá pra confiar que "não tem nada a
+    // reportar" — melhor jogar pro fallback de regras fixas (catch em
+    // verificarAgenteAds) do que arriscar reportar uma lista vazia errada.
+    throw new Error("IA respondeu só em texto, sem chamar a ferramenta de observações.");
+  }
 
   const observacoesRaw = (blocoFerramenta.input as { observacoes?: unknown }).observacoes;
   // Normalmente vem como array, mas o modelo às vezes devolve um objeto com
