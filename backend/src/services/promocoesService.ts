@@ -1,3 +1,4 @@
+import axios from "axios";
 import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
 import {
@@ -324,6 +325,9 @@ export interface ProgressoDescoberta {
   itensVerificados: number;
   totalItens: number;
   campanhasEncontradas: number;
+  itensComErro: number;
+  candidatosDescartados: number;
+  amostraErro: string | null;
   erro: string | null;
 }
 
@@ -333,6 +337,9 @@ let progressoDescoberta: ProgressoDescoberta = {
   itensVerificados: 0,
   totalItens: 0,
   campanhasEncontradas: 0,
+  itensComErro: 0,
+  candidatosDescartados: 0,
+  amostraErro: null,
   erro: null,
 };
 
@@ -368,8 +375,21 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
           promotionIdsEncontrados.add(p.promotionId);
         }
       }
-    } catch {
-      // item pontual falhou — segue o scan, não trava por causa de um anúncio
+    } catch (err) {
+      // item pontual falhou — segue o scan, não trava por causa de um
+      // anúncio, mas guardamos uma amostra do erro (ex.: 403
+      // PA_UNAUTHORIZED_RESULT_FROM_POLICIES — permissão "Preços e
+      // promoções" não habilitada/reautorizada nessa loja, ver
+      // getPromocaoStatus em mercadoLivreApi.ts) senão "0 encontradas"
+      // fica indistinguível de "deu erro em tudo silenciosamente".
+      progressoDescoberta.itensComErro++;
+      if (axios.isAxiosError(err)) {
+        progressoDescoberta.amostraErro = `HTTP ${err.response?.status}: ${
+          (err.response?.data as { message?: string })?.message ?? err.message
+        }`;
+      } else {
+        progressoDescoberta.amostraErro = err instanceof Error ? err.message : "Erro desconhecido";
+      }
     } finally {
       progressoDescoberta.itensVerificados++;
     }
@@ -415,6 +435,20 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
       }
       progressoDescoberta.campanhasEncontradas++;
     } catch (err) {
+      // Candidato tinha status "started" em consultarPromocoesDoItem, mas
+      // obterDetalhesCampanha (que exige promotion_type=SELLER_CAMPAIGN)
+      // rejeitou — normalmente porque é outro tipo de promoção do ML
+      // (oferta do dia, preço mínimo garantido, etc.), não uma campanha do
+      // vendedor. Contamos em vez de só logar no servidor, pra dar pra ver
+      // pela tela se é isso que está zerando a descoberta.
+      progressoDescoberta.candidatosDescartados++;
+      if (axios.isAxiosError(err)) {
+        progressoDescoberta.amostraErro = `Descartado ${promotionId} — HTTP ${err.response?.status}: ${
+          (err.response?.data as { message?: string })?.message ?? err.message
+        }`;
+      } else {
+        progressoDescoberta.amostraErro = `Descartado ${promotionId} — ${err instanceof Error ? err.message : "erro desconhecido"}`;
+      }
       console.error(`Erro ao registrar campanha descoberta ${promotionId}:`, err);
     }
   }
@@ -436,6 +470,9 @@ export async function iniciarDescobertaCampanhas(lojaIdFiltro?: number, lojasPer
     itensVerificados: 0,
     totalItens: 0,
     campanhasEncontradas: 0,
+    itensComErro: 0,
+    candidatosDescartados: 0,
+    amostraErro: null,
     erro: null,
   };
 

@@ -414,6 +414,14 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
           {progresso.campanhasEncontradas} campanha{progresso.campanhasEncontradas !== 1 ? "s" : ""} encontrada
           {progresso.campanhasEncontradas !== 1 ? "s" : ""} até agora. Pode levar alguns minutos, vá fazendo outra
           coisa enquanto isso.
+          {(progresso.itensComErro > 0 || progresso.candidatosDescartados > 0) && (
+            <>
+              {" "}
+              ({progresso.itensComErro} item{progresso.itensComErro !== 1 ? "ns" : ""} com erro na consulta,{" "}
+              {progresso.candidatosDescartados} candidato{progresso.candidatosDescartados !== 1 ? "s" : ""} descartado
+              {progresso.candidatosDescartados !== 1 ? "s" : ""} por não ser campanha do vendedor.)
+            </>
+          )}
         </div>
       )}
       {progresso && !emAndamento && progresso.campanhasEncontradas > 0 && (
@@ -421,6 +429,16 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
           Descoberta concluída: {progresso.campanhasEncontradas} campanha
           {progresso.campanhasEncontradas !== 1 ? "s" : ""} encontrada
           {progresso.campanhasEncontradas !== 1 ? "s" : ""}.
+        </div>
+      )}
+      {progresso && !emAndamento && progresso.campanhasEncontradas === 0 && (
+        <div className="financeiro-td-mudo">
+          Descoberta concluída: nenhuma campanha do vendedor (SELLER_CAMPAIGN) encontrada.{" "}
+          {progresso.itensComErro > 0 &&
+            `${progresso.itensComErro} de ${progresso.totalItens} anúncios deram erro na consulta — pode ser permissão da conta, não falta de campanha. `}
+          {progresso.candidatosDescartados > 0 &&
+            `${progresso.candidatosDescartados} candidato(s) foram descartados por não ser campanha do vendedor (provavelmente outro tipo de promoção do ML). `}
+          {progresso.amostraErro && <>Exemplo de erro: {progresso.amostraErro}</>}
         </div>
       )}
       {progresso?.erro && <div className="state-message state-error">{progresso.erro}</div>}
