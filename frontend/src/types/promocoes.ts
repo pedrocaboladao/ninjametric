@@ -33,3 +33,28 @@ export interface ResultadoCriarCampanha {
   nome: string;
   itens: ResultadoItemCampanha[];
 }
+
+export interface RegistroExistenteEntrada {
+  lojaId: number;
+  nome: string;
+  percentual: number;
+  dataFim: string;
+  itemIds: string[];
+  promotionId?: string;
+}
+
+export interface ResultadoRegistroLinha {
+  linha: number;
+  ok: boolean;
+  erro?: string;
+  resultado?: ResultadoCriarCampanha;
+}
+
+export interface ProgressoDescoberta {
+  emAndamento: boolean;
+  lojaAtual: string | null;
+  itensVerificados: number;
+  totalItens: number;
+  campanhasEncontradas: number;
+  erro: string | null;
+}

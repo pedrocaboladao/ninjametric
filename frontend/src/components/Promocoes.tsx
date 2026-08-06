@@ -1,7 +1,20 @@
-import { useCallback, useEffect, useState } from "react";
-import { fetchCampanhas, criarCampanha, recriarCampanha } from "../api/promocoes";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  fetchCampanhas,
+  criarCampanha,
+  recriarCampanha,
+  registrarCampanhasExistentes,
+  iniciarDescoberta,
+  fetchProgressoDescoberta,
+} from "../api/promocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { Campanha, ResultadoCriarCampanha } from "../types/promocoes";
+import type {
+  Campanha,
+  ResultadoCriarCampanha,
+  RegistroExistenteEntrada,
+  ResultadoRegistroLinha,
+  ProgressoDescoberta,
+} from "../types/promocoes";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
@@ -238,6 +251,184 @@ function LinhaCampanha({ campanha, onRecriada }: { campanha: Campanha; onRecriad
   );
 }
 
+// Data "DD/MM/AAAA" ou "DD/MM/AA" -> "AAAA-MM-DD" (formato que a API espera).
+function converterData(txt: string): string | null {
+  const m = txt.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (!m) return null;
+  const [, d, mes, a] = m;
+  const ano = a.length === 2 ? `20${a}` : a;
+  return `${ano}-${mes.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
+// Formato: Loja <TAB> Nome da campanha <TAB> % <TAB> DD/MM/AAAA <TAB> MLB1,MLB2 —
+// mesmo padrão de "colar lista" já usado em Contas a pagar/receber (linhas
+// coladas direto de uma planilha, separadas por tab).
+function parseLinhaRegistro(linha: string, lojas: Loja[]): RegistroExistenteEntrada | { erro: string } {
+  const partes = linha.split("\t").map((p) => p.trim());
+  if (partes.length < 5) return { erro: "Faltam colunas (esperado: Loja, Nome, %, Data, MLBs)." };
+  const [lojaTxt, nome, percentualTxt, dataTxt, itensTxt] = partes;
+
+  const loja = lojas.find((l) => l.nome.toLowerCase() === lojaTxt.toLowerCase());
+  if (!loja) return { erro: `Loja "${lojaTxt}" não encontrada.` };
+
+  const percentual = Number(percentualTxt.replace(",", ".").replace("%", ""));
+  if (!Number.isFinite(percentual)) return { erro: "Percentual inválido." };
+
+  const dataFim = converterData(dataTxt);
+  if (!dataFim) return { erro: "Data inválida (use DD/MM/AAAA)." };
+
+  const itemIds = itensTxt
+    .split(",")
+    .map((i) => i.trim())
+    .filter(Boolean);
+  if (itemIds.length === 0) return { erro: "Nenhum MLB informado." };
+
+  return { lojaId: loja.id, nome, percentual, dataFim, itemIds };
+}
+
+function RegistrarExistentesForm({ lojas, onRegistradas }: { lojas: Loja[]; onRegistradas: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [resultados, setResultados] = useState<ResultadoRegistroLinha[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function enviar() {
+    setErro(null);
+    setResultados(null);
+    const linhas = texto.split("\n").map((l) => l.trim()).filter(Boolean);
+    if (linhas.length === 0) {
+      setErro("Cole ao menos uma linha.");
+      return;
+    }
+    const parseados = linhas.map((l) => parseLinhaRegistro(l, lojas));
+    const invalida = parseados.findIndex((p) => "erro" in p);
+    if (invalida !== -1) {
+      setErro(`Linha ${invalida + 1}: ${(parseados[invalida] as { erro: string }).erro}`);
+      return;
+    }
+    setEnviando(true);
+    try {
+      const res = await registrarCampanhasExistentes(parseados as RegistroExistenteEntrada[]);
+      setResultados(res);
+      onRegistradas();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao registrar.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!aberto) {
+    return (
+      <button type="button" className="btn-excluir" onClick={() => setAberto(true)}>
+        Registrar campanhas que já existem
+      </button>
+    );
+  }
+
+  return (
+    <div className="promocoes-form">
+      <p className="painel-sub">
+        Uma campanha por linha, colunas separadas por TAB (cole direto de uma planilha): <b>Loja</b>, <b>Nome</b>,{" "}
+        <b>%</b>, <b>Data de vencimento (DD/MM/AAAA)</b>, <b>MLBs separados por vírgula</b>. Isso só ensina o painel
+        sobre a campanha — não cria nem muda nada no Mercado Livre.
+      </p>
+      {erro && <div className="state-message state-error">{erro}</div>}
+      {resultados && (
+        <div className="promocoes-resultado-falhas">
+          {resultados.map((r) => (
+            <div key={r.linha} className={r.ok ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}>
+              Linha {r.linha}: {r.ok ? `registrada (${r.resultado?.itens.filter((i) => i.ok).length} itens)` : r.erro}
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea
+        className="clonar-input promocoes-textarea"
+        placeholder={"Hangar\tTrava Pedra Julho\t20\t20/08/2026\tMLB123,MLB456"}
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+        rows={6}
+      />
+      <div className="fabricacao-editor-acoes">
+        <button type="button" className="btn-responder" disabled={enviando} onClick={enviar}>
+          {enviando ? "Registrando..." : "Registrar"}
+        </button>
+        <button type="button" className="btn-excluir" onClick={() => setAberto(false)}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) {
+  const [progresso, setProgresso] = useState<ProgressoDescoberta | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  function pararPolling() {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }
+
+  async function iniciar() {
+    setErro(null);
+    try {
+      await iniciarDescoberta("todas");
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao iniciar.");
+      return;
+    }
+    intervalRef.current = setInterval(async () => {
+      const p = await fetchProgressoDescoberta();
+      setProgresso(p);
+      if (!p.emAndamento) {
+        pararPolling();
+        onEncontradas();
+      }
+    }, 3000);
+  }
+
+  const emAndamento = progresso?.emAndamento ?? false;
+
+  return (
+    <div className="promocoes-descoberta">
+      {!emAndamento && (
+        <button type="button" className="btn-responder" onClick={iniciar}>
+          Descobrir campanhas automaticamente
+        </button>
+      )}
+      {emAndamento && progresso && (
+        <div className="financeiro-td-mudo">
+          Verificando {progresso.lojaAtual}... {progresso.itensVerificados}/{progresso.totalItens} anúncios —{" "}
+          {progresso.campanhasEncontradas} campanha{progresso.campanhasEncontradas !== 1 ? "s" : ""} encontrada
+          {progresso.campanhasEncontradas !== 1 ? "s" : ""} até agora. Pode levar alguns minutos, vá fazendo outra
+          coisa enquanto isso.
+        </div>
+      )}
+      {progresso && !emAndamento && progresso.campanhasEncontradas > 0 && (
+        <div className="financeiro-margem-positiva">
+          Descoberta concluída: {progresso.campanhasEncontradas} campanha
+          {progresso.campanhasEncontradas !== 1 ? "s" : ""} encontrada
+          {progresso.campanhasEncontradas !== 1 ? "s" : ""}.
+        </div>
+      )}
+      {progresso?.erro && <div className="state-message state-error">{progresso.erro}</div>}
+      {erro && <div className="state-message state-error">{erro}</div>}
+    </div>
+  );
+}
+
 export function Promocoes() {
   const [lojas, setLojas] = useState<Loja[]>([]);
 
@@ -267,7 +458,11 @@ export function Promocoes() {
         </div>
       </div>
 
-      <NovaCampanhaForm lojas={lojas} onCriada={atualizarAgora} />
+      <div className="promocoes-acoes-topo">
+        <NovaCampanhaForm lojas={lojas} onCriada={atualizarAgora} />
+        <RegistrarExistentesForm lojas={lojas} onRegistradas={atualizarAgora} />
+        <DescobertaAutomatica onEncontradas={atualizarAgora} />
+      </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && dados === null && <div className="state-message">Carregando...</div>}

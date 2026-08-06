@@ -1,5 +1,13 @@
 import { Router, Request, Response } from "express";
-import { listarCampanhas, criarCampanha, recriarCampanha } from "../services/promocoesService";
+import {
+  listarCampanhas,
+  criarCampanha,
+  recriarCampanha,
+  registrarCampanhaExistente,
+  iniciarDescobertaCampanhas,
+  obterProgressoDescoberta,
+  type ResultadoCriarCampanha,
+} from "../services/promocoesService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const promocoesRouter = Router();
@@ -29,6 +37,25 @@ function resolverLojaFiltro(req: Request, res: Response): { lojaId?: number; loj
 
   return { lojaId, lojasPermitidas: lojasEfetivas(usuario) };
 }
+
+// Descoberta automática: varre anúncio por anúncio de cada loja procurando
+// campanha já ativa (ver promocoesService.iniciarDescobertaCampanhas) — é
+// lenta de propósito (concorrência baixa), por isso roda em segundo plano;
+// a rota só dispara e devolve na hora, o front consulta o progresso à parte.
+promocoesRouter.post("/descobrir", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    await iniciarDescobertaCampanhas(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ iniciado: true });
+  } catch (err) {
+    erro(res, err, "Falha ao iniciar descoberta.");
+  }
+});
+
+promocoesRouter.get("/descobrir/status", async (_req, res) => {
+  res.json(obterProgressoDescoberta());
+});
 
 promocoesRouter.get("/", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
@@ -69,6 +96,65 @@ promocoesRouter.post("/", async (req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao criar campanha.");
   }
+});
+
+const DATA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+
+// Registra em lote campanhas que já existem no Mercado Livre — não cria
+// nada novo, não escreve nada no ML, só ensina o painel sobre elas (ver
+// registrarCampanhaExistente). Best-effort: uma linha com erro não trava
+// as outras, o resultado devolve sucesso/erro por linha.
+promocoesRouter.post("/registrar", async (req, res) => {
+  const { registros } = req.body ?? {};
+  if (!Array.isArray(registros) || registros.length === 0) {
+    res.status(400).json({ error: "Nenhum registro enviado." });
+    return;
+  }
+
+  const resultados: { linha: number; ok: boolean; erro?: string; resultado?: ResultadoCriarCampanha }[] = [];
+
+  for (let i = 0; i < registros.length; i++) {
+    const r = registros[i] ?? {};
+    const lojaIdNum = Number(r.lojaId);
+    const percentualNum = Number(r.percentual);
+
+    if (!Number.isInteger(lojaIdNum) || !temAcessoLoja(req.usuario!, lojaIdNum)) {
+      resultados.push({ linha: i + 1, ok: false, erro: "Loja inválida ou sem acesso." });
+      continue;
+    }
+    if (typeof r.nome !== "string" || !r.nome.trim()) {
+      resultados.push({ linha: i + 1, ok: false, erro: "Nome da campanha faltando." });
+      continue;
+    }
+    if (!Number.isFinite(percentualNum)) {
+      resultados.push({ linha: i + 1, ok: false, erro: "Percentual inválido." });
+      continue;
+    }
+    if (typeof r.dataFim !== "string" || !DATA_REGEX.test(r.dataFim)) {
+      resultados.push({ linha: i + 1, ok: false, erro: "Data de vencimento inválida (use AAAA-MM-DD)." });
+      continue;
+    }
+    if (!Array.isArray(r.itemIds) || r.itemIds.length === 0 || r.itemIds.some((id: unknown) => typeof id !== "string")) {
+      resultados.push({ linha: i + 1, ok: false, erro: "Lista de itens inválida." });
+      continue;
+    }
+
+    try {
+      const resultado = await registrarCampanhaExistente({
+        lojaId: lojaIdNum,
+        nome: r.nome.trim(),
+        percentualDesconto: percentualNum,
+        itemIds: r.itemIds,
+        dataFim: r.dataFim,
+        promotionId: typeof r.promotionId === "string" ? r.promotionId : undefined,
+      });
+      resultados.push({ linha: i + 1, ok: true, resultado });
+    } catch (err) {
+      resultados.push({ linha: i + 1, ok: false, erro: err instanceof Error ? err.message : "Falha ao registrar." });
+    }
+  }
+
+  res.json({ resultados });
 });
 
 promocoesRouter.post("/:id/recriar", async (req, res) => {

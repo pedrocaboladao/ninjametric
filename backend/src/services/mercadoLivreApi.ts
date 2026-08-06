@@ -153,13 +153,86 @@ export async function adicionarItemCampanha(
   );
 }
 
-export async function obterStatusCampanha(lojaId: number, promotionId: string): Promise<string> {
+export async function obterDetalhesCampanha(lojaId: number, promotionId: string): Promise<MlCampanhaVendedor> {
   const accessToken = await getValidAccessToken(lojaId);
   const { data } = await axios.get<MlCampanhaVendedor>(
     `${ML_API_BASE}/seller-promotions/promotions/${promotionId}`,
     { headers: { Authorization: `Bearer ${accessToken}` }, params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2" } }
   );
-  return data.status;
+  return data;
+}
+
+export interface MlItemCampanha {
+  itemId: string;
+  status: string;
+  price: number;
+  originalPrice: number;
+}
+
+export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<MlItemCampanha[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const itens: MlItemCampanha[] = [];
+  let offset = 0;
+  const limit = 50;
+  while (true) {
+    const { data } = await axios.get<{
+      results: Array<{ id: string; status: string; price: number; original_price: number }>;
+      paging: { total: number };
+    }>(`${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset, limit },
+    });
+    itens.push(
+      ...data.results.map((r) => ({ itemId: r.id, status: r.status, price: r.price, originalPrice: r.original_price }))
+    );
+    offset += limit;
+    if (offset >= data.paging.total || data.results.length === 0) break;
+  }
+  return itens;
+}
+
+// Lista o item_id de todos os anúncios ATIVOS de uma loja — usada só pra
+// descoberta automática de campanhas já existentes (ver
+// promocoesService.descobrirCampanhas): não tem outro jeito de achar
+// "quais anúncios estão em promoção" sem checar anúncio por anúncio, já
+// que o Mercado Livre não tem endpoint de "listar minhas campanhas".
+export async function listarItensAtivos(lojaId: number, mlUserId: number): Promise<string[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const itemIds: string[] = [];
+  let offset = 0;
+  const limit = 100;
+  while (true) {
+    const { data } = await axios.get<{ results: string[]; paging: { total: number } }>(
+      `${ML_API_BASE}/users/${mlUserId}/items/search`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, params: { status: "active", offset, limit } }
+    );
+    itemIds.push(...data.results);
+    offset += limit;
+    // A busca de itens do ML não pagina além de 1000 por essa rota — se a
+    // loja tiver mais que isso ativo, para aqui em vez de tentar offset
+    // inválido (evita erro, aceita a limitação em vez de quebrar o scan).
+    if (offset >= data.paging.total || data.results.length === 0 || offset >= 1000) break;
+  }
+  return itemIds;
+}
+
+export interface MlPromocaoDoItem {
+  promotionId: string;
+  type: string;
+  status: string;
+}
+
+// Versão mais rica de getPromocaoStatus (que só devolve um enum
+// simplificado) — devolve o promotion_id e o tipo de cada promoção que o
+// item está, usada só na descoberta automática pra saber A QUAL campanha
+// um item pertence, não só se está "em promoção" ou não.
+export async function consultarPromocoesDoItem(lojaId: number, itemId: string): Promise<MlPromocaoDoItem[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const { data } = await axios.get<Array<{ promotion_id: string; type: string; status: string }>>(
+    `${ML_API_BASE}/seller-promotions/items/${itemId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
+  );
+  return data.map((d) => ({ promotionId: d.promotion_id, type: d.type, status: d.status }));
 }
 
 export type AdsStatus = "ads_ativo" | "sem_ads" | "nao_verificado";

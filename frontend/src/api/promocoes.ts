@@ -1,4 +1,10 @@
-import type { Campanha, ResultadoCriarCampanha } from "../types/promocoes";
+import type {
+  Campanha,
+  ResultadoCriarCampanha,
+  RegistroExistenteEntrada,
+  ResultadoRegistroLinha,
+  ProgressoDescoberta,
+} from "../types/promocoes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -38,4 +44,29 @@ export async function recriarCampanha(id: number): Promise<ResultadoCriarCampanh
     credentials: "include",
   });
   return tratarResposta<ResultadoCriarCampanha>(res);
+}
+
+export async function registrarCampanhasExistentes(registros: RegistroExistenteEntrada[]): Promise<ResultadoRegistroLinha[]> {
+  const res = await fetch(`${API_BASE}/api/promocoes/registrar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ registros }),
+  });
+  const data = await tratarResposta<{ resultados: ResultadoRegistroLinha[] }>(res);
+  return data.resultados;
+}
+
+export async function iniciarDescoberta(lojaFiltro: number | "todas" | "minhas"): Promise<void> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  const res = await fetch(`${API_BASE}/api/promocoes/descobrir?${params}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  await tratarResposta(res);
+}
+
+export async function fetchProgressoDescoberta(): Promise<ProgressoDescoberta> {
+  const res = await fetch(`${API_BASE}/api/promocoes/descobrir/status`, { credentials: "include" });
+  return tratarResposta<ProgressoDescoberta>(res);
 }

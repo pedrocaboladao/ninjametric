@@ -3,8 +3,11 @@ import { listLojas } from "./tokenStore";
 import {
   criarCampanhaVendedor,
   adicionarItemCampanha,
-  obterStatusCampanha,
+  obterDetalhesCampanha,
   getItemsBasicInfo,
+  listarItensAtivos,
+  consultarPromocoesDoItem,
+  obterItensDaCampanha,
 } from "./mercadoLivreApi";
 
 export interface ResultadoItemCampanha {
@@ -125,6 +128,65 @@ export async function criarCampanha(
   return { campanhaId, promotionId: campanhaMl.id, nome, itens: itensResultado };
 }
 
+export interface RegistroExistente {
+  lojaId: number;
+  nome: string;
+  percentualDesconto: number;
+  itemIds: string[];
+  dataFim: string; // YYYY-MM-DD
+  promotionId?: string;
+}
+
+// Registra uma campanha que JÁ EXISTE no Mercado Livre (criada direto por
+// lá, antes desse módulo existir) — não cria nada novo, não chama nenhum
+// endpoint de escrita do ML. Só lê o preço atual de cada item (leitura,
+// sem risco) pra guardar um registro consistente, e grava no banco como
+// se já estivesse rodando (status "started"). A partir daqui ela passa a
+// aparecer na lista e pode ser recriada normalmente quando vencer.
+export async function registrarCampanhaExistente(reg: RegistroExistente): Promise<ResultadoCriarCampanha> {
+  if (reg.percentualDesconto < PERCENTUAL_MINIMO || reg.percentualDesconto > PERCENTUAL_MAXIMO) {
+    throw new Error(`Percentual precisa ficar entre ${PERCENTUAL_MINIMO}% e ${PERCENTUAL_MAXIMO}%.`);
+  }
+  if (reg.itemIds.length === 0) {
+    throw new Error("Informe ao menos um item.");
+  }
+
+  const promotionId = reg.promotionId?.trim() || `EXTERNA-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  const precos = await getItemsBasicInfo(reg.lojaId, reg.itemIds);
+  const itensResultado: ResultadoItemCampanha[] = [];
+
+  for (const itemId of reg.itemIds) {
+    const info = precos.get(itemId);
+    if (!info) {
+      itensResultado.push({ itemId, ok: false, erro: "Anúncio não encontrado." });
+      continue;
+    }
+    const dealPrice = arredondarCentavos(info.price * (1 - reg.percentualDesconto / 100));
+    itensResultado.push({ itemId, ok: true, precoOriginal: info.price, dealPrice });
+  }
+
+  const { rows } = await pool.query<{ id: number }>(
+    `INSERT INTO promocoes_campanhas
+       (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'started')
+     RETURNING id`,
+    [reg.lojaId, promotionId, reg.nome, reg.percentualDesconto, dataISO(new Date()), reg.dataFim]
+  );
+  const campanhaId = rows[0].id;
+
+  for (const item of itensResultado) {
+    if (!item.ok || item.precoOriginal === undefined || item.dealPrice === undefined) continue;
+    const info = precos.get(item.itemId);
+    await pool.query(
+      `INSERT INTO promocoes_itens (campanha_id, item_id, titulo, preco_original, deal_price)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [campanhaId, item.itemId, info?.title ?? null, item.precoOriginal, item.dealPrice]
+    );
+  }
+
+  return { campanhaId, promotionId, nome: reg.nome, itens: itensResultado };
+}
+
 // Lê a campanha antiga do banco e recria com o mesmo nome (+ sufixo de
 // data, pra não bater no erro "name already exists" do Mercado Livre),
 // mesmo percentual, mesmos itens — preço recalculado do zero em cima do
@@ -224,20 +286,171 @@ export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
 // mantém o status de cada campanha ainda não "finished" atualizado, sem
 // depender de uma consulta ao vivo toda vez que a tela carrega.
 export async function sincronizarStatusCampanhas(): Promise<void> {
+  // Campanhas registradas manualmente sem ID real (ver registrarCampanhaExistente)
+  // ganham um promotion_id placeholder "EXTERNA-..." — não existe no Mercado
+  // Livre, consultar isso só geraria erro toda vez sem necessidade.
   const { rows } = await pool.query<{ id: number; loja_id: number; promotion_id: string }>(
-    "SELECT id, loja_id, promotion_id FROM promocoes_campanhas WHERE status != 'finished'"
+    "SELECT id, loja_id, promotion_id FROM promocoes_campanhas WHERE status != 'finished' AND promotion_id NOT LIKE 'EXTERNA-%'"
   );
   for (const r of rows) {
     try {
-      const status = await obterStatusCampanha(r.loja_id, r.promotion_id);
+      const detalhes = await obterDetalhesCampanha(r.loja_id, r.promotion_id);
       await pool.query("UPDATE promocoes_campanhas SET status = $2, atualizado_em = now() WHERE id = $1", [
         r.id,
-        status,
+        detalhes.status,
       ]);
     } catch (err) {
       console.error(`Erro ao sincronizar status da campanha ${r.id}:`, err);
     }
   }
+}
+
+async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const resultados: R[] = new Array(itens.length);
+  let indice = 0;
+  async function worker() {
+    while (indice < itens.length) {
+      const i = indice++;
+      resultados[i] = await fn(itens[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
+  return resultados;
+}
+
+export interface ProgressoDescoberta {
+  emAndamento: boolean;
+  lojaAtual: string | null;
+  itensVerificados: number;
+  totalItens: number;
+  campanhasEncontradas: number;
+  erro: string | null;
+}
+
+let progressoDescoberta: ProgressoDescoberta = {
+  emAndamento: false,
+  lojaAtual: null,
+  itensVerificados: 0,
+  totalItens: 0,
+  campanhasEncontradas: 0,
+  erro: null,
+};
+
+export function obterProgressoDescoberta(): ProgressoDescoberta {
+  return progressoDescoberta;
+}
+
+// Concorrência bem baixa (2) e sequencial entre lojas (não roda várias
+// lojas ao mesmo tempo) — de propósito mais conservador que o resto do
+// sistema, porque aqui o volume é "todo anúncio ativo de cada loja", que
+// pode ser bem maior do que qualquer outra busca já feita no painel. Já
+// tomamos um 429 (rate limit) com um volume bem menor no DRE antes.
+const CONCORRENCIA_DESCOBERTA = 2;
+
+async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUserId: number): Promise<void> {
+  progressoDescoberta.lojaAtual = lojaNome;
+  const itemIds = await listarItensAtivos(lojaId, mlUserId);
+  progressoDescoberta.totalItens += itemIds.length;
+
+  const promotionIdsEncontrados = new Set<string>();
+  await comConcorrenciaLimitada(itemIds, CONCORRENCIA_DESCOBERTA, async (itemId) => {
+    try {
+      const promocoes = await consultarPromocoesDoItem(lojaId, itemId);
+      for (const p of promocoes) {
+        if (p.type === "SELLER_CAMPAIGN" && p.status === "started") {
+          promotionIdsEncontrados.add(p.promotionId);
+        }
+      }
+    } catch {
+      // item pontual falhou — segue o scan, não trava por causa de um anúncio
+    } finally {
+      progressoDescoberta.itensVerificados++;
+    }
+  });
+
+  for (const promotionId of promotionIdsEncontrados) {
+    const jaRastreada = await pool.query("SELECT id FROM promocoes_campanhas WHERE promotion_id = $1", [promotionId]);
+    if (jaRastreada.rows.length > 0) continue;
+
+    try {
+      const [detalhes, itensCampanha] = await Promise.all([
+        obterDetalhesCampanha(lojaId, promotionId),
+        obterItensDaCampanha(lojaId, promotionId),
+      ]);
+
+      const { rows } = await pool.query<{ id: number }>(
+        `INSERT INTO promocoes_campanhas (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status)
+         VALUES ($1, $2, $3, $4, $5::text::date, $6::text::date, $7)
+         RETURNING id`,
+        [
+          lojaId,
+          promotionId,
+          detalhes.name,
+          // percentual médio dos itens da campanha (cada item pode ter %
+          // levemente diferente, arredondado pelo preço) — guardamos um
+          // valor representativo pra exibição, não afeta o recálculo na
+          // hora de recriar (que usa o preço atual de novo).
+          itensCampanha.length > 0
+            ? itensCampanha.reduce((s, it) => s + (1 - it.price / it.originalPrice) * 100, 0) / itensCampanha.length
+            : 0,
+          detalhes.start_date.slice(0, 10),
+          detalhes.finish_date.slice(0, 10),
+          detalhes.status,
+        ]
+      );
+      const campanhaId = rows[0].id;
+
+      for (const it of itensCampanha) {
+        await pool.query(
+          `INSERT INTO promocoes_itens (campanha_id, item_id, titulo, preco_original, deal_price) VALUES ($1, $2, $3, $4, $5)`,
+          [campanhaId, it.itemId, null, it.originalPrice, it.price]
+        );
+      }
+      progressoDescoberta.campanhasEncontradas++;
+    } catch (err) {
+      console.error(`Erro ao registrar campanha descoberta ${promotionId}:`, err);
+    }
+  }
+}
+
+// Varre todo anúncio ativo de cada loja perguntando "você está em alguma
+// campanha?" — não tem outro jeito de descobrir campanhas que já existem
+// no Mercado Livre (criadas antes desse módulo, direto por lá), porque
+// não existe endpoint de "listar minhas campanhas". Roda uma loja de cada
+// vez (não em paralelo entre lojas) com concorrência baixa dentro de cada
+// uma — ver CONCORRENCIA_DESCOBERTA.
+export async function iniciarDescobertaCampanhas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<void> {
+  if (progressoDescoberta.emAndamento) {
+    throw new Error("Já tem uma descoberta em andamento.");
+  }
+  progressoDescoberta = {
+    emAndamento: true,
+    lojaAtual: null,
+    itensVerificados: 0,
+    totalItens: 0,
+    campanhasEncontradas: 0,
+    erro: null,
+  };
+
+  const lojas = (await listLojas()).filter(
+    (l) =>
+      l.ml_user_id !== null &&
+      (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
+      (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+
+  (async () => {
+    try {
+      for (const loja of lojas) {
+        await descobrirCampanhasNaLoja(loja.id, loja.nome, loja.ml_user_id as number);
+      }
+    } catch (err) {
+      progressoDescoberta.erro = err instanceof Error ? err.message : "Falha na descoberta.";
+    } finally {
+      progressoDescoberta.emAndamento = false;
+      progressoDescoberta.lojaAtual = null;
+    }
+  })();
 }
 
 export function iniciarSincronizacaoPromocoes(): void {

@@ -3631,6 +3631,20 @@
   min-width: 160px;
 }
 
+.promocoes-acoes-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.promocoes-descoberta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;
