@@ -350,6 +350,11 @@ export async function excluirCampanha(id: number, lojaIdFiltro?: number, lojasPe
     (l) => (lojaIdFiltro === undefined || l.id === lojaIdFiltro) && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
   const lojaIds = lojas.map((l) => l.id);
+  // campanha_anterior_id é auto-referenciada (corrente de renovações) — se
+  // uma campanha mais nova aponta pra essa, apagar direto bate na foreign
+  // key. Desfaz essa referência antes (a campanha nova só perde o "elo com
+  // a anterior", continua existindo normalmente).
+  await pool.query("UPDATE promocoes_campanhas SET campanha_anterior_id = NULL WHERE campanha_anterior_id = $1", [id]);
   const { rowCount } = await pool.query("DELETE FROM promocoes_campanhas WHERE id = $1 AND loja_id = ANY($2)", [id, lojaIds]);
   if (rowCount === 0) {
     throw new Error("Campanha não encontrada ou sem acesso.");
@@ -364,6 +369,14 @@ export async function limparCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
   );
   const lojaIds = lojas.map((l) => l.id);
   if (lojaIds.length === 0) return 0;
+  // Mesmo motivo do excluirCampanha: desfaz referências de campanha_anterior_id
+  // que apontam pra qualquer linha dentro do escopo sendo apagado (inclui
+  // campanhas de FORA do escopo que apontem pra uma de dentro, senão a
+  // foreign key bloqueia o delete de qualquer jeito).
+  await pool.query(
+    "UPDATE promocoes_campanhas SET campanha_anterior_id = NULL WHERE campanha_anterior_id IN (SELECT id FROM promocoes_campanhas WHERE loja_id = ANY($1))",
+    [lojaIds]
+  );
   const { rowCount } = await pool.query("DELETE FROM promocoes_campanhas WHERE loja_id = ANY($1)", [lojaIds]);
   return rowCount ?? 0;
 }
