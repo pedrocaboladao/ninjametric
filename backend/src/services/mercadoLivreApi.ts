@@ -169,6 +169,21 @@ export interface MlItemCampanha {
   originalPrice: number;
 }
 
+// Diagnóstico temporário: devolve a resposta crua de /items pra essa
+// campanha, sem tentar interpretar o formato. Usado só quando
+// obterItensDaCampanha volta 0 itens pra uma campanha que o próprio ML
+// mostra ter itens vinculados — em vez de adivinhar o formato de novo,
+// isso deixa a gente ver a resposta real na tela (ver amostraErro em
+// promocoesService.descobrirCampanhasNaLoja). Remover depois de resolvido.
+export async function obterItensDaCampanhaBruto(lojaId: number, promotionId: string): Promise<string> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const { data } = await axios.get(`${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset: 0, limit: 50 },
+  });
+  return JSON.stringify(data).slice(0, 600);
+}
+
 export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<MlItemCampanha[]> {
   const accessToken = await getValidAccessToken(lojaId);
   const itens: MlItemCampanha[] = [];

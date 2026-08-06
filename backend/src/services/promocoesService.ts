@@ -9,6 +9,7 @@ import {
   listarItensAtivos,
   consultarPromocoesDoItem,
   obterItensDaCampanha,
+  obterItensDaCampanhaBruto,
 } from "./mercadoLivreApi";
 
 export interface ResultadoItemCampanha {
@@ -396,8 +397,17 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
   });
 
   for (const promotionId of promotionIdsEncontrados) {
-    const jaRastreada = await pool.query("SELECT id FROM promocoes_campanhas WHERE promotion_id = $1", [promotionId]);
-    if (jaRastreada.rows.length > 0) continue;
+    const jaRastreada = await pool.query<{ id: number; qtd_itens: string }>(
+      `SELECT c.id, COUNT(i.id) AS qtd_itens
+       FROM promocoes_campanhas c LEFT JOIN promocoes_itens i ON i.campanha_id = c.id
+       WHERE c.promotion_id = $1 GROUP BY c.id`,
+      [promotionId]
+    );
+    // Já rastreada E já tem itens: nada a fazer. Já rastreada mas com 0
+    // itens: não pula — tenta completar de novo (pode ter sido um erro de
+    // leitura antigo, ver diagnóstico abaixo), sem duplicar a campanha.
+    const campanhaExistenteId = jaRastreada.rows.length > 0 ? jaRastreada.rows[0].id : null;
+    if (campanhaExistenteId !== null && Number(jaRastreada.rows[0].qtd_itens) > 0) continue;
 
     try {
       const [detalhes, itensCampanha] = await Promise.all([
@@ -405,27 +415,45 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
         obterItensDaCampanha(lojaId, promotionId),
       ]);
 
-      const { rows } = await pool.query<{ id: number }>(
-        `INSERT INTO promocoes_campanhas (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status)
-         VALUES ($1, $2, $3, $4, $5::text::date, $6::text::date, $7)
-         RETURNING id`,
-        [
-          lojaId,
-          promotionId,
-          detalhes.name,
-          // percentual médio dos itens da campanha (cada item pode ter %
-          // levemente diferente, arredondado pelo preço) — guardamos um
-          // valor representativo pra exibição, não afeta o recálculo na
-          // hora de recriar (que usa o preço atual de novo).
-          itensCampanha.length > 0
-            ? itensCampanha.reduce((s, it) => s + (1 - it.price / it.originalPrice) * 100, 0) / itensCampanha.length
-            : 0,
-          detalhes.start_date.slice(0, 10),
-          detalhes.finish_date.slice(0, 10),
-          detalhes.status,
-        ]
-      );
-      const campanhaId = rows[0].id;
+      // Diagnóstico temporário: campanha real do ML voltando com 0 itens
+      // aqui quando o próprio Mercado Livre mostra itens vinculados na tela
+      // (achado numa depuração ao vivo) — captura a resposta crua da API
+      // pra descobrir o formato certo, em vez de adivinhar de novo. Some
+      // com esse bloco assim que o formato for confirmado e corrigido.
+      if (itensCampanha.length === 0) {
+        try {
+          const bruto = await obterItensDaCampanhaBruto(lojaId, promotionId);
+          progressoDescoberta.amostraErro = `[diagnóstico ${promotionId}] ${bruto}`;
+        } catch {
+          // diagnóstico é best-effort, não pode travar o registro da campanha
+        }
+        if (campanhaExistenteId !== null) continue; // já registrada, só faltavam os itens — sem novidade, segue
+      }
+
+      let campanhaId = campanhaExistenteId;
+      if (campanhaId === null) {
+        const { rows } = await pool.query<{ id: number }>(
+          `INSERT INTO promocoes_campanhas (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status)
+           VALUES ($1, $2, $3, $4, $5::text::date, $6::text::date, $7)
+           RETURNING id`,
+          [
+            lojaId,
+            promotionId,
+            detalhes.name,
+            // percentual médio dos itens da campanha (cada item pode ter %
+            // levemente diferente, arredondado pelo preço) — guardamos um
+            // valor representativo pra exibição, não afeta o recálculo na
+            // hora de recriar (que usa o preço atual de novo).
+            itensCampanha.length > 0
+              ? itensCampanha.reduce((s, it) => s + (1 - it.price / it.originalPrice) * 100, 0) / itensCampanha.length
+              : 0,
+            detalhes.start_date.slice(0, 10),
+            detalhes.finish_date.slice(0, 10),
+            detalhes.status,
+          ]
+        );
+        campanhaId = rows[0].id;
+      }
 
       for (const it of itensCampanha) {
         await pool.query(
@@ -433,7 +461,7 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
           [campanhaId, it.itemId, null, it.originalPrice, it.price]
         );
       }
-      progressoDescoberta.campanhasEncontradas++;
+      if (campanhaExistenteId === null) progressoDescoberta.campanhasEncontradas++;
     } catch (err) {
       // Candidato tinha status "started" em consultarPromocoesDoItem, mas
       // obterDetalhesCampanha (que exige promotion_type=SELLER_CAMPAIGN)
