@@ -190,6 +190,8 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
   const idsVistos = new Set<string>();
   let offset = 0;
   const limit = 50;
+  let paginasSemNovidade = 0;
+  const LIMITE_PAGINAS_SEM_NOVIDADE = 5;
   // Trava de segurança (5000 itens) — visto na prática que data.paging.total
   // pode não refletir o total real de itens distintos dessa campanha.
   const MAX_PAGINAS = 100;
@@ -226,12 +228,21 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
       }
     }
 
+    if (paginaTemNovidade) {
+      paginasSemNovidade = 0;
+    } else {
+      paginasSemNovidade++;
+    }
+
     offset += limit;
-    // Página inteira repetindo ids já vistos = a API não está avançando de
-    // verdade (visto na prática: mesmo item devolvido em toda página) — para
-    // aqui em vez de insistir até bater em paging.total, evitando duplicar
-    // o mesmo item dezenas de vezes no resultado final.
-    if (data.results.length === 0 || !paginaTemNovidade || offset >= data.paging.total) break;
+    // Uma única página repetindo tudo já visto pode ser só ordenação
+    // instável do ML entre chamadas (visto em campanha grande de verdade,
+    // não pode parar aí) — só desiste depois de várias seguidas sem nada
+    // novo, que é o padrão real do bug original (item único repetido em
+    // dezenas de páginas consecutivas).
+    if (data.results.length === 0 || paginasSemNovidade >= LIMITE_PAGINAS_SEM_NOVIDADE || offset >= data.paging.total) {
+      break;
+    }
   }
   return Array.from(itensPorId.values());
 }
