@@ -329,3 +329,25 @@ CREATE TABLE IF NOT EXISTS promocoes_itens (
   deal_price NUMERIC(12, 2) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_promocoes_itens_campanha ON promocoes_itens (campanha_id);
+
+-- Agente Analista de Ads: feed persistente das mesmas regras de "Insights"
+-- que já existem na tela de Gestão de Ads (Ads.tsx), só que salvas aqui pra
+-- parecer observação contínua (não recalculada do zero a cada carregamento
+-- de tela) e pra dar pra marcar "resolvido". Chave (loja+campanha) garante
+-- no máximo 1 observação PENDENTE por campanha por vez.
+CREATE TABLE IF NOT EXISTS agente_ads_observacoes (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  campanha_id TEXT NOT NULL,
+  campanha_nome TEXT NOT NULL,
+  chave TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  contexto TEXT NOT NULL,
+  acao TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendente',
+  resolvido_por TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolvido_em TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_agente_ads_obs_status ON agente_ads_observacoes (status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agente_ads_obs_chave_pendente ON agente_ads_observacoes (chave) WHERE status = 'pendente';

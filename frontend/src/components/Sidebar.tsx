@@ -19,6 +19,7 @@ import {
   IconFlask,
   IconBarcode,
   IconTag,
+  IconRobot,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -38,7 +39,8 @@ export type View =
   | "correcoes"
   | "fabricacao"
   | "ean"
-  | "promocoes";
+  | "promocoes"
+  | "agentes";
 
 interface Props {
   view: View;
@@ -276,6 +278,13 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
 
         {usuario.admin && (
           <>
+            <button
+              className={`sidebar-item ${view === "agentes" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("agentes")}
+            >
+              <IconRobot size={16} />
+              <span>Agentes IA</span>
+            </button>
             <button
               className={`sidebar-item ${view === "usuarios" ? "sidebar-item-ativo" : ""}`}
               onClick={() => onChangeView("usuarios")}

@@ -4121,3 +4121,141 @@
   padding-top: 8px;
   border-top: 1px dashed var(--border);
 }
+
+/* Agência de Agentes IA */
+
+.agente-mesa {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 20px 24px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  margin-bottom: 20px;
+}
+
+.agente-svg {
+  width: 230px;
+  height: 169px;
+  flex-shrink: 0;
+}
+
+.agente-personagem {
+  animation: agente-flutuar 3.5s ease-in-out infinite;
+  transform-origin: center bottom;
+}
+
+@keyframes agente-flutuar {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.agente-olho {
+  animation: agente-piscar 4.5s ease-in-out infinite;
+}
+
+@keyframes agente-piscar {
+  0%,
+  92%,
+  100% {
+    opacity: 1;
+  }
+  95% {
+    opacity: 0.15;
+  }
+}
+
+.agente-balao {
+  animation: agente-balao-surgir 0.3s ease-out;
+}
+
+@keyframes agente-balao-surgir {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.agente-ponto {
+  animation: agente-digitando 1.2s ease-in-out infinite;
+}
+
+.agente-ponto-1 {
+  animation-delay: 0s;
+}
+
+.agente-ponto-2 {
+  animation-delay: 0.15s;
+}
+
+.agente-ponto-3 {
+  animation-delay: 0.3s;
+}
+
+@keyframes agente-digitando {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.5;
+  }
+  30% {
+    transform: translateY(-3px);
+    opacity: 1;
+  }
+}
+
+.agente-status {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.agente-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agente-feed-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.agente-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  border-left: 4px solid transparent;
+}
+
+.agente-card-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agente-card-resolvida {
+  opacity: 0.55;
+}
+
+.agente-card-confirmar {
+  align-self: flex-start;
+  margin-top: 4px;
+}

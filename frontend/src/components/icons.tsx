@@ -294,3 +294,17 @@ export function IconTag({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconRobot({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <rect x="4" y="9" width="16" height="11" rx="3" />
+      <path d="M12 5v4" />
+      <circle cx="12" cy="4" r="1" fill="currentColor" stroke="none" />
+      <circle cx="9" cy="14.5" r="1.2" fill="currentColor" stroke="none" />
+      <circle cx="15" cy="14.5" r="1.2" fill="currentColor" stroke="none" />
+      <path d="M9 18h6" />
+      <path d="M2 13v2M22 13v2" />
+    </svg>
+  );
+}

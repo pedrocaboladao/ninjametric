@@ -15,6 +15,7 @@ import { Ads } from "./components/Ads";
 import { Tarefas } from "./components/Tarefas";
 import { Funcionarios } from "./components/Funcionarios";
 import { Usuarios } from "./components/Usuarios";
+import { AgenciaAgentesIA } from "./components/AgenciaAgentesIA";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { checarSessao, logout } from "./api/session";
@@ -39,11 +40,16 @@ const VIEWS_VALIDAS: View[] = [
   "tarefas",
   "funcionarios",
   "usuarios",
+  "agentes",
 ];
 
 function viewInicial(usuario: Usuario): View {
   const salva = localStorage.getItem(CHAVE_ULTIMA_VIEW) as View | null;
-  if (salva && VIEWS_VALIDAS.includes(salva) && (salva === "usuarios" ? usuario.admin : temPermissao(usuario, salva))) {
+  if (
+    salva &&
+    VIEWS_VALIDAS.includes(salva) &&
+    (salva === "usuarios" || salva === "agentes" ? usuario.admin : temPermissao(usuario, salva))
+  ) {
     return salva;
   }
   return primeiraViewPermitida(usuario);
@@ -119,6 +125,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
         {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
         {view === "usuarios" && usuario.admin && <Usuarios />}
+        {view === "agentes" && usuario.admin && <AgenciaAgentesIA />}
       </main>
     </div>
   );

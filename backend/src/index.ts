@@ -20,10 +20,12 @@ import { dreRouter } from "./routes/dre";
 import { correcoesRouter } from "./routes/correcoes";
 import { fabricacaoRouter } from "./routes/fabricacao";
 import { promocoesRouter } from "./routes/promocoes";
+import { agentesRouter } from "./routes/agentes";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
 import { iniciarSincronizacaoPromocoes } from "./services/promocoesService";
+import { iniciarVerificacaoAgenteAds } from "./services/agenteAdsService";
 
 const app = express();
 
@@ -53,6 +55,9 @@ app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);
 app.use("/api/correcoes", requireAuth, requirePermissao("correcoes"), correcoesRouter);
 app.use("/api/fabricacao", requireAuth, requirePermissao("fabricacao"), fabricacaoRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
+// Admin-only (mesmo padrão de /api/usuarios) — não é módulo comum, não
+// aparece como checkbox liberável pra equipe.
+app.use("/api/agentes", requireAuth, requireAdmin, agentesRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -65,3 +70,4 @@ app.listen(env.port, () => {
 iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
 iniciarSincronizacaoPromocoes();
+iniciarVerificacaoAgenteAds();
