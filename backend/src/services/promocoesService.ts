@@ -93,7 +93,26 @@ export async function criarCampanha(
   const dataInicio = dataISO(hoje);
   const dataFim = dataISO(fim);
 
-  const campanhaMl = await criarCampanhaVendedor(lojaId, nome, dataInicio, dataFim);
+  let campanhaMl;
+  try {
+    campanhaMl = await criarCampanhaVendedor(lojaId, nome, dataInicio, dataFim);
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const status = err.response?.status;
+      const mensagemMl = (err.response?.data as { message?: string })?.message;
+      // 403 aqui costuma ser a mesma pegadinha de permissão já documentada em
+      // getPromocaoStatus (mercadoLivreApi.ts): "Preços e promoções" precisa
+      // estar habilitada no app E a conta reautorizada depois disso — mudar
+      // a permissão não atualiza tokens já emitidos.
+      if (status === 403) {
+        throw new Error(
+          `Mercado Livre recusou (403${mensagemMl ? `: ${mensagemMl}` : ""}) — provavelmente a permissão "Preços e promoções" não está habilitada/reautorizada pra essa loja no app do Mercado Livre.`
+        );
+      }
+      throw new Error(`Falha ao criar campanha no Mercado Livre (HTTP ${status}${mensagemMl ? `: ${mensagemMl}` : ""}).`);
+    }
+    throw err;
+  }
 
   const precos = await getItemsBasicInfo(
     lojaId,
