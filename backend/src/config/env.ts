@@ -19,4 +19,7 @@ export const env = {
   authUsername: required("AUTH_USERNAME"),
   authPasswordHash: required("AUTH_PASSWORD_HASH"),
   jwtSecret: required("JWT_SECRET"),
+  // Opcional — sem ela, o Agentes IA (Analista de Ads) cai nas regras fixas
+  // em vez da análise com IA de verdade.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
 };

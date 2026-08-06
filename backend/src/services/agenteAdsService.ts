@@ -1,3 +1,5 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { listarCampanhasAds, type CampanhaAds } from "./adsService";
 import { listarReceitaRealPorCampanha } from "./tacosService";
@@ -8,6 +10,9 @@ const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", curre
 // ~48-264), portadas pro backend porque o agente precisa rodar sozinho em
 // segundo plano (não só quando alguém abre a tela) e guardar histórico —
 // contexto vira string em vez de ReactNode, o resto da lógica é igual.
+// Usadas como FALLBACK quando não tem ANTHROPIC_API_KEY configurada (ex.:
+// dev local) ou quando a chamada de IA falha — o agente nunca fica
+// totalmente mudo por causa de uma indisponibilidade da API de IA.
 
 interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
@@ -46,7 +51,7 @@ const ACAO_POR_TIPO: Record<TipoInsight, string> = {
 };
 
 interface ObservacaoGerada {
-  tipo: TipoInsight;
+  tipo: string;
   contexto: string;
   acao: string;
 }
@@ -87,11 +92,133 @@ function dataISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Análise real com IA (Claude) — pega o lugar da lógica de regras fixas
+// acima quando ANTHROPIC_API_KEY está configurada. Manda os números de
+// todas as campanhas ativas com gasto numa chamada só (mais barato que uma
+// chamada por campanha) e pede pra IA decidir sozinha quais merecem
+// atenção, com "tool use" pra garantir resposta em formato estruturado.
+const MODELO_IA = "claude-sonnet-5";
+
+let clienteAnthropic: Anthropic | null | undefined;
+function obterClienteAnthropic(): Anthropic | null {
+  if (clienteAnthropic === undefined) {
+    clienteAnthropic = env.anthropicApiKey ? new Anthropic({ apiKey: env.anthropicApiKey }) : null;
+  }
+  return clienteAnthropic;
+}
+
+const TIPOS_VALIDOS = ["prejuizo", "semVenda", "margemSobra", "orcamentoParado", "organico", "atencao"] as const;
+
+const FERRAMENTA_OBSERVACOES: Anthropic.Tool = {
+  name: "reportar_observacoes",
+  description: "Reporta as campanhas de Ads que merecem atenção agora, com explicação e ação sugerida.",
+  input_schema: {
+    type: "object",
+    properties: {
+      observacoes: {
+        type: "array",
+        description: "Uma entrada por campanha que merece atenção. Campanhas saudáveis não entram aqui.",
+        items: {
+          type: "object",
+          properties: {
+            loja_id: { type: "number" },
+            campanha_id: { type: "string" },
+            tipo: { type: "string", enum: [...TIPOS_VALIDOS] },
+            contexto: { type: "string", description: "1-2 frases diretas, em português, citando os números reais da campanha." },
+            acao: { type: "string", description: "Ação concreta e curta sugerida, em português." },
+          },
+          required: ["loja_id", "campanha_id", "tipo", "contexto", "acao"],
+        },
+      },
+    },
+    required: ["observacoes"],
+  },
+};
+
+interface ObservacaoIA extends ObservacaoGerada {
+  lojaId: number;
+  campanhaId: string;
+}
+
+async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo: number): Promise<ObservacaoIA[] | null> {
+  const client = obterClienteAnthropic();
+  if (!client) return null;
+
+  const ativas = campanhas.filter((c) => c.status === "active" && c.custo > 0);
+  if (ativas.length === 0) return [];
+
+  const linhas = ativas
+    .map((c) =>
+      [
+        `loja_id=${c.lojaId}`,
+        `campanha_id=${c.campanhaId}`,
+        `loja="${c.lojaNome}"`,
+        `campanha="${c.nome}"`,
+        `acos=${c.acos.toFixed(1)}%`,
+        `acos_meta=${c.acosMeta.toFixed(1)}%`,
+        `gasto=${formatCurrency(c.custo)}`,
+        `orcamento_diario=${formatCurrency(c.orcamento)}`,
+        `vendas=${c.vendasTotais}`,
+        `acos_ideal_margem_real=${c.acosIdeal !== null ? c.acosIdeal.toFixed(1) + "%" : "sem custo cadastrado"}`,
+        `lucro_estimado=${c.lucroReais !== null ? formatCurrency(c.lucroReais) : "sem dado"}`,
+        `tacos_real=${c.tacosReal !== null ? c.tacosReal.toFixed(1) + "%" : "sem dado"}`,
+      ].join(", ")
+    )
+    .join("\n");
+
+  const resposta = await client.messages.create({
+    model: MODELO_IA,
+    max_tokens: 4096,
+    system: `Você é um analista de tráfego pago (Mercado Ads) experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre.
+
+Você recebe os dados reais das campanhas ativas (com gasto) das lojas do grupo, no período dos últimos ${diasPeriodo} dias, e decide sozinho quais merecem atenção agora.
+
+Regras:
+- Só reporte campanhas que genuinamente precisam de atenção (prejuízo real, verba parada sem retorno, ou oportunidade clara de escalar) — campanhas indo bem não entram no relatório.
+- "acos_ideal_margem_real" é o teto de ACOS que a margem real do produto aguenta — passar disso é prejuízo líquido, mesmo com venda.
+- "tacos_real" bem abaixo do "acos_meta" sugere que a venda já aconteceria sem o anúncio (verba desperdiçada em venda orgânica).
+- Seja específico: cite os números reais na explicação, não generalize.
+- "contexto": 1-2 frases diretas. "acao": sugestão concreta e curta.
+- Pode agrupar seu raciocínio como quiser, mas o relatório final é só a lista de observações via a ferramenta.`,
+    messages: [
+      {
+        role: "user",
+        content: `Campanhas ativas com gasto no período:\n\n${linhas}\n\nAnalise e reporte as que merecem atenção.`,
+      },
+    ],
+    tools: [FERRAMENTA_OBSERVACOES],
+    tool_choice: { type: "tool", name: "reportar_observacoes" },
+  });
+
+  console.log(
+    `Agente de Ads (IA): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída.`
+  );
+
+  const blocoFerramenta = resposta.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
+  if (!blocoFerramenta) return [];
+
+  const dados = blocoFerramenta.input as {
+    observacoes: Array<{ loja_id: number; campanha_id: string; tipo: string; contexto: string; acao: string }>;
+  };
+
+  return dados.observacoes.map((o) => ({
+    lojaId: o.loja_id,
+    campanhaId: o.campanha_id,
+    tipo: o.tipo,
+    contexto: o.contexto,
+    acao: o.acao,
+  }));
+}
+
 const DIAS_JANELA = 7;
 
-// Roda pra TODAS as lojas (sem filtro — o agente é admin-only, não faz
-// sentido escopar por usuário) sobre os últimos 7 dias, mesma janela que a
-// tela de Ads usa por padrão.
+// Só as 4 contas PESSOAIS do usuário — não o grupo inteiro (16 lojas). IDs
+// confirmados via GET /api/lojas/todas: Hangar=1, Catedral
+// Impermeabilizantes=2, Inga Collors=3, Perpétua=4.
+const LOJAS_AGENTE = [1, 2, 3, 4];
+
+// Roda só pras 4 lojas pessoais (ver LOJAS_AGENTE) sobre os últimos 7 dias,
+// mesma janela que a tela de Ads usa por padrão.
 export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasSozinhas: number }> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (DIAS_JANELA - 1) * 24 * 60 * 60 * 1000);
@@ -99,8 +226,8 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
   const dataFim = dataISO(hoje);
 
   const [campanhas, receitas] = await Promise.all([
-    listarCampanhasAds(undefined, undefined, dataInicio, dataFim),
-    listarReceitaRealPorCampanha(undefined, undefined, dataInicio, dataFim),
+    listarCampanhasAds(undefined, LOJAS_AGENTE, dataInicio, dataFim),
+    listarReceitaRealPorCampanha(undefined, LOJAS_AGENTE, dataInicio, dataFim),
   ]);
 
   const receitaPorChave = new Map(receitas.map((r) => [`${r.lojaId}-${r.campanhaId}`, r]));
@@ -114,13 +241,39 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
     return { ...c, tacosReal, acosIdeal, lucroReais: calcularLucroReais({ custo: c.custo, receitaBase, acosIdeal }) };
   });
 
+  // Tenta a análise com IA de verdade primeiro; sem chave configurada
+  // (obterClienteAnthropic devolve null) ou se a chamada falhar por
+  // qualquer motivo (API fora do ar, limite, etc.), cai pras regras fixas
+  // — o agente nunca fica mudo por causa de uma indisponibilidade externa.
+  let obsPorChave = new Map<string, ObservacaoGerada>();
+  try {
+    const observacoesIA = await gerarObservacoesComIA(campanhasComTacos, DIAS_JANELA);
+    if (observacoesIA !== null) {
+      for (const o of observacoesIA) {
+        obsPorChave.set(`${o.lojaId}-${o.campanhaId}`, { tipo: o.tipo, contexto: o.contexto, acao: o.acao });
+      }
+    } else {
+      for (const c of campanhasComTacos) {
+        const obs = gerarObservacao(c, DIAS_JANELA);
+        if (obs) obsPorChave.set(`${c.lojaId}-${c.campanhaId}`, obs);
+      }
+    }
+  } catch (err) {
+    console.error("Agente de Ads: falha na análise com IA, usando regras fixas:", err);
+    obsPorChave = new Map();
+    for (const c of campanhasComTacos) {
+      const obs = gerarObservacao(c, DIAS_JANELA);
+      if (obs) obsPorChave.set(`${c.lojaId}-${c.campanhaId}`, obs);
+    }
+  }
+
   let novas = 0;
   const chavesDetectadasPorLoja = new Map<number, string[]>();
 
   for (const c of campanhasComTacos) {
-    const obs = gerarObservacao(c, DIAS_JANELA);
-    if (!obs) continue;
     const chave = `${c.lojaId}-${c.campanhaId}`;
+    const obs = obsPorChave.get(chave);
+    if (!obs) continue;
     if (!chavesDetectadasPorLoja.has(c.lojaId)) chavesDetectadasPorLoja.set(c.lojaId, []);
     chavesDetectadasPorLoja.get(c.lojaId)!.push(chave);
 

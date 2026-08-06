@@ -11,6 +11,7 @@
     "seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "axios": "^1.7.9",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
