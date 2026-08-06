@@ -1,5 +1,5 @@
 import { Router, Response } from "express";
-import { verificarAgenteAds, listarObservacoes, confirmarObservacao } from "../services/agenteAdsService";
+import { verificarAgenteAds, listarObservacoes, confirmarObservacao, listarPensamentos } from "../services/agenteAdsService";
 
 export const agentesRouter = Router();
 
@@ -16,6 +16,14 @@ agentesRouter.get("/ads/feed", async (req, res) => {
     res.json({ observacoes: await listarObservacoes(statusValido) });
   } catch (err) {
     erro(res, err, "Falha ao carregar observações.");
+  }
+});
+
+agentesRouter.get("/ads/pensamentos", async (_req, res) => {
+  try {
+    res.json({ pensamentos: await listarPensamentos() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar pensamentos.");
   }
 });
 

@@ -1,4 +1,4 @@
-import type { ObservacaoAds } from "../types/agentes";
+import type { ObservacaoAds, PensamentoAds } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -25,4 +25,10 @@ export async function verificarAgenteAdsAgora(): Promise<{ novas: number; resolv
 export async function confirmarObservacaoAds(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/${id}/confirmar`, { method: "POST", credentials: "include" });
   await tratarResposta(res);
+}
+
+export async function fetchPensamentosAds(): Promise<PensamentoAds[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/ads/pensamentos`, { credentials: "include" });
+  const data = await tratarResposta<{ pensamentos: PensamentoAds[] }>(res);
+  return data.pensamentos;
 }

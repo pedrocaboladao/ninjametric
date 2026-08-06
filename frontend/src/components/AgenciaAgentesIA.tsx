@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchFeedAds, verificarAgenteAdsAgora, confirmarObservacaoAds } from "../api/agentes";
-import type { ObservacaoAds } from "../types/agentes";
+import { fetchFeedAds, verificarAgenteAdsAgora, confirmarObservacaoAds, fetchPensamentosAds } from "../api/agentes";
+import type { ObservacaoAds, PensamentoAds } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
 
 const TAG_POR_TIPO: Record<string, { tag: string; cor: string }> = {
@@ -182,15 +182,37 @@ function ObservacaoCard({
   );
 }
 
+// Raciocínio real da IA (não é texto inventado pra decoração — é o
+// conteúdo dos blocos "thinking" que a própria Claude devolve, ver
+// backend/src/services/agenteAdsService.ts). Um card por rodada de
+// verificação, texto corrido preservando as quebras de linha originais.
+function PensamentoCard({ pensamento }: { pensamento: PensamentoAds }) {
+  const [expandido, setExpandido] = useState(false);
+  return (
+    <div className="agente-pensamento-card">
+      <span className="financeiro-td-mudo">{formatDataHora(pensamento.criadoEm)}</span>
+      <p className={`agente-pensamento-texto ${expandido ? "agente-pensamento-expandido" : ""}`}>
+        {pensamento.pensamento}
+      </p>
+      <button type="button" className="agente-pensamento-toggle" onClick={() => setExpandido((v) => !v)}>
+        {expandido ? "Mostrar menos" : "Ler tudo"}
+      </button>
+    </div>
+  );
+}
+
 export function AgenciaAgentesIA() {
   const [feed, setFeed] = useState<ObservacaoAds[] | null>(null);
+  const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [verificando, setVerificando] = useState(false);
   const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
-      setFeed(await fetchFeedAds());
+      const [feedNovo, pensamentosNovos] = await Promise.all([fetchFeedAds(), fetchPensamentosAds()]);
+      setFeed(feedNovo);
+      setPensamentos(pensamentosNovos);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao carregar o feed.");
     }
@@ -257,13 +279,22 @@ export function AgenciaAgentesIA() {
         <div className="agente-status">
           {feed === null ? (
             <span className="financeiro-td-mudo">Carregando...</span>
-          ) : pendentes.length === 0 ? (
-            <span className="financeiro-margem-positiva">Tudo certo por aqui — nenhuma pendência.</span>
           ) : (
-            <span className="financeiro-margem-negativa">
-              {pendentes.length} observaç{pendentes.length !== 1 ? "ões" : "ão"} pendente
-              {pendentes.length !== 1 ? "s" : ""}.
-            </span>
+            <>
+              {pensamentos && pensamentos.length > 0 ? (
+                <p className="agente-status-pensamento">{pensamentos[0].pensamento}</p>
+              ) : (
+                <span className="financeiro-td-mudo">Ainda sem nenhuma verificação registrada.</span>
+              )}
+              {pendentes.length === 0 ? (
+                <span className="financeiro-margem-positiva">Tudo certo por aqui — nenhuma pendência.</span>
+              ) : (
+                <span className="financeiro-margem-negativa">
+                  {pendentes.length} observaç{pendentes.length !== 1 ? "ões" : "ão"} pendente
+                  {pendentes.length !== 1 ? "s" : ""}.
+                </span>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -289,6 +320,17 @@ export function AgenciaAgentesIA() {
           <ObservacaoCard key={o.id} observacao={o} onConfirmar={confirmar} />
         ))}
       </div>
+
+      {pensamentos !== null && pensamentos.length > 0 && (
+        <div className="agente-feed agente-pensamentos-secao">
+          <div className="agente-feed-topo">
+            <span className="painel-eyebrow">O que ele está pensando</span>
+          </div>
+          {pensamentos.map((p) => (
+            <PensamentoCard key={p.id} pensamento={p} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

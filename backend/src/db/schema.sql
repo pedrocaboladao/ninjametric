@@ -351,3 +351,12 @@ CREATE TABLE IF NOT EXISTS agente_ads_observacoes (
 );
 CREATE INDEX IF NOT EXISTS idx_agente_ads_obs_status ON agente_ads_observacoes (status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_agente_ads_obs_chave_pendente ON agente_ads_observacoes (chave) WHERE status = 'pendente';
+
+-- Raciocínio real da IA (Claude, "adaptive thinking") em cada verificação —
+-- separado das observações porque é um registro por RODADA (o "diário" do
+-- agente), não por campanha.
+CREATE TABLE IF NOT EXISTS agente_ads_pensamentos (
+  id SERIAL PRIMARY KEY,
+  pensamento TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);

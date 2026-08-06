@@ -12,3 +12,9 @@ export interface ObservacaoAds {
   criadoEm: string;
   resolvidoEm: string | null;
 }
+
+export interface PensamentoAds {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+}

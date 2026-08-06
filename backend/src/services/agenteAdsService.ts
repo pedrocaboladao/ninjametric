@@ -168,7 +168,13 @@ async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo:
 
   const resposta = await client.messages.create({
     model: MODELO_IA,
-    max_tokens: 4096,
+    max_tokens: 8000,
+    // "adaptive" + display "summarized" pra deixar o raciocínio da IA
+    // visível (em claude-sonnet-5 o padrão é "omitted", que não devolve
+    // texto nenhum) — forçar a ferramenta é compatível com thinking
+    // adaptativo (não é com o modo manual/extended). Ver
+    // frontend/src/components/AgenciaAgentesIA.tsx pro feed que mostra isso.
+    thinking: { type: "adaptive", display: "summarized" },
     system: `Você é um analista de tráfego pago (Mercado Ads) experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre.
 
 Você recebe os dados reais das campanhas ativas (com gasto) das lojas do grupo, no período dos últimos ${diasPeriodo} dias, e decide sozinho quais merecem atenção agora.
@@ -179,7 +185,7 @@ Regras:
 - "tacos_real" bem abaixo do "acos_meta" sugere que a venda já aconteceria sem o anúncio (verba desperdiçada em venda orgânica).
 - Seja específico: cite os números reais na explicação, não generalize.
 - "contexto": 1-2 frases diretas. "acao": sugestão concreta e curta.
-- Pode agrupar seu raciocínio como quiser, mas o relatório final é só a lista de observações via a ferramenta.`,
+- Pense em voz alta, comparando as campanhas e explicando por que cada uma entra ou não no relatório final — esse raciocínio é mostrado pro dono do negócio depois, então pode ser natural e direto, como se estivesse explicando pra ele.`,
     messages: [
       {
         role: "user",
@@ -191,8 +197,17 @@ Regras:
   });
 
   console.log(
-    `Agente de Ads (IA): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída.`
+    `Agente de Ads (IA): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída (${resposta.usage.output_tokens_details?.thinking_tokens ?? 0} de raciocínio).`
   );
+
+  const blocosPensamento = resposta.content.filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking");
+  const pensamento = blocosPensamento
+    .map((b) => b.thinking)
+    .filter((t) => t.trim().length > 0)
+    .join("\n\n");
+  if (pensamento) {
+    await pool.query("INSERT INTO agente_ads_pensamentos (pensamento) VALUES ($1)", [pensamento]);
+  }
 
   const blocoFerramenta = resposta.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   if (!blocoFerramenta) return [];
@@ -377,6 +392,20 @@ export async function confirmarObservacao(id: number): Promise<void> {
   if (!rowCount) {
     throw new Error("Observação não encontrada ou já resolvida.");
   }
+}
+
+export interface PensamentoAds {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+}
+
+export async function listarPensamentos(limite = 20): Promise<PensamentoAds[]> {
+  const { rows } = await pool.query<{ id: number; pensamento: string; criado_em: string }>(
+    "SELECT id, pensamento, criado_em FROM agente_ads_pensamentos ORDER BY criado_em DESC LIMIT $1",
+    [limite]
+  );
+  return rows.map((r) => ({ id: r.id, pensamento: r.pensamento, criadoEm: r.criado_em }));
 }
 
 const INTERVALO_MS = 4 * 60 * 60 * 1000; // 4h

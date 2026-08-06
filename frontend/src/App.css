@@ -4216,8 +4216,27 @@
 }
 
 .agente-status {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   font-size: 14.5px;
   font-weight: 600;
+  flex: 1;
+  min-width: 0;
+}
+
+.agente-status-pensamento {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
 }
 
 .agente-feed {
@@ -4258,4 +4277,46 @@
 .agente-card-confirmar {
   align-self: flex-start;
   margin-top: 4px;
+}
+
+.agente-pensamentos-secao {
+  margin-top: 24px;
+}
+
+.agente-pensamento-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  border-left: 4px solid var(--accent);
+}
+
+.agente-pensamento-texto {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+  max-height: 4.5em;
+  overflow: hidden;
+  mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+}
+
+.agente-pensamento-expandido {
+  max-height: none;
+  mask-image: none;
+}
+
+.agente-pensamento-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
 }
