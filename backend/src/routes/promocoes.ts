@@ -123,7 +123,8 @@ promocoesRouter.post("/", async (req, res) => {
     return;
   }
   try {
-    res.json(await criarCampanha(lojaIdNum, nome.trim(), percentualNum, itemIds));
+    const itens = itemIds.map((itemId: string) => ({ itemId, percentual: percentualNum }));
+    res.json(await criarCampanha(lojaIdNum, nome.trim(), itens));
   } catch (err) {
     erro(res, err, "Falha ao criar campanha.");
   }

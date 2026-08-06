@@ -60,23 +60,31 @@ function dataISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+export interface ItemComPercentual {
+  itemId: string;
+  percentual: number;
+}
+
 // Cria a campanha no Mercado Livre e adiciona cada item, um por um — um
 // item pode falhar por não ser elegível (reputação, condição, exposição
 // paga) sem travar os outros; o resultado devolve sucesso/erro por item
 // pra tela mostrar exatamente o que colou. Só grava no banco os itens que
 // entraram de fato — a campanha em si é gravada mesmo com falhas parciais,
 // já que ela existe de verdade no Mercado Livre a partir da criação.
+//
+// Percentual é POR ITEM, não um único pra todos — importante pra recriar
+// (ver recriarCampanha) uma campanha descoberta automaticamente, onde cada
+// anúncio pode ter tido um % de desconto diferente no Mercado Livre; achatar
+// tudo num percentual médio mudaria o preço real de itens que tinham um
+// desconto bem diferente da média (ticket alto com % baixo vs ticket baixo
+// com % alto, por exemplo).
 export async function criarCampanha(
   lojaId: number,
   nome: string,
-  percentualDesconto: number,
-  itemIds: string[],
+  itens: ItemComPercentual[],
   campanhaAnteriorId: number | null = null
 ): Promise<ResultadoCriarCampanha> {
-  if (percentualDesconto < PERCENTUAL_MINIMO || percentualDesconto > PERCENTUAL_MAXIMO) {
-    throw new Error(`Percentual precisa ficar entre ${PERCENTUAL_MINIMO}% e ${PERCENTUAL_MAXIMO}%.`);
-  }
-  if (itemIds.length === 0) {
+  if (itens.length === 0) {
     throw new Error("Informe ao menos um item.");
   }
 
@@ -87,16 +95,29 @@ export async function criarCampanha(
 
   const campanhaMl = await criarCampanhaVendedor(lojaId, nome, dataInicio, dataFim);
 
-  const precos = await getItemsBasicInfo(lojaId, itemIds);
+  const precos = await getItemsBasicInfo(
+    lojaId,
+    itens.map((i) => i.itemId)
+  );
   const itensResultado: ResultadoItemCampanha[] = [];
 
-  for (const itemId of itemIds) {
+  for (const { itemId, percentual } of itens) {
     const info = precos.get(itemId);
     if (!info) {
       itensResultado.push({ itemId, ok: false, erro: "Anúncio não encontrado." });
       continue;
     }
-    const dealPrice = arredondarCentavos(info.price * (1 - percentualDesconto / 100));
+    // Item fora da faixa aceita pelo ML (10-70%) não trava o lote inteiro —
+    // fica de fora só ele, com o motivo explicado.
+    if (percentual < PERCENTUAL_MINIMO || percentual > PERCENTUAL_MAXIMO) {
+      itensResultado.push({
+        itemId,
+        ok: false,
+        erro: `Percentual (${percentual.toFixed(1)}%) fora da faixa aceita pelo ML (${PERCENTUAL_MINIMO}-${PERCENTUAL_MAXIMO}%).`,
+      });
+      continue;
+    }
+    const dealPrice = arredondarCentavos(info.price * (1 - percentual / 100));
     try {
       await adicionarItemCampanha(lojaId, itemId, campanhaMl.id, dealPrice);
       itensResultado.push({ itemId, ok: true, precoOriginal: info.price, dealPrice });
@@ -108,12 +129,18 @@ export async function criarCampanha(
     }
   }
 
+  // percentual_desconto da campanha é só um valor representativo pra
+  // exibição na lista (média do que foi aplicado de fato) — o preço real de
+  // cada item usa o percentual individual dele, guardado em promocoes_itens.
+  const percentualMedio =
+    itens.length > 0 ? itens.reduce((s, i) => s + i.percentual, 0) / itens.length : 0;
+
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO promocoes_campanhas
        (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status, campanha_anterior_id)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
-    [lojaId, campanhaMl.id, nome, percentualDesconto, dataInicio, dataFim, campanhaMl.status, campanhaAnteriorId]
+    [lojaId, campanhaMl.id, nome, percentualMedio, dataInicio, dataFim, campanhaMl.status, campanhaAnteriorId]
   );
   const campanhaId = rows[0].id;
 
@@ -191,31 +218,38 @@ export async function registrarCampanhaExistente(reg: RegistroExistente): Promis
 
 // Lê a campanha antiga do banco e recria com o mesmo nome (+ sufixo de
 // data, pra não bater no erro "name already exists" do Mercado Livre),
-// mesmo percentual, mesmos itens — preço recalculado do zero em cima do
-// preço ATUAL de cada item, não repete o preço antigo (pode estar
-// desatualizado se o produto mudou de preço nesse meio tempo).
+// mesmos itens — preço recalculado do zero em cima do preço ATUAL de cada
+// item, não repete o preço antigo (pode estar desatualizado se o produto
+// mudou de preço nesse meio tempo).
+//
+// O percentual usado é o de CADA ITEM individualmente (calculado a partir
+// do preco_original/deal_price que ficou salvo dele), não a média da
+// campanha — campanhas descobertas automaticamente no Mercado Livre podem
+// ter % bem diferente por item (ticket alto com % baixo, ticket baixo com
+// % alto), e achatar tudo numa média mudaria o desconto real de cada um.
 export async function recriarCampanha(campanhaAntigaId: number): Promise<ResultadoCriarCampanha> {
   const { rows } = await pool.query<{
     loja_id: number;
     nome: string;
-    percentual_desconto: string;
-  }>("SELECT loja_id, nome, percentual_desconto FROM promocoes_campanhas WHERE id = $1", [campanhaAntigaId]);
+  }>("SELECT loja_id, nome FROM promocoes_campanhas WHERE id = $1", [campanhaAntigaId]);
   if (rows.length === 0) throw new Error("Campanha não encontrada.");
 
-  const { rows: itensRows } = await pool.query<{ item_id: string }>(
-    "SELECT item_id FROM promocoes_itens WHERE campanha_id = $1",
-    [campanhaAntigaId]
-  );
+  const { rows: itensRows } = await pool.query<{
+    item_id: string;
+    preco_original: string;
+    deal_price: string;
+  }>("SELECT item_id, preco_original, deal_price FROM promocoes_itens WHERE campanha_id = $1", [campanhaAntigaId]);
   if (itensRows.length === 0) throw new Error("Essa campanha não tem itens registrados pra recriar.");
 
+  const itens: ItemComPercentual[] = itensRows.map((r) => {
+    const precoOriginal = Number(r.preco_original);
+    const dealPrice = Number(r.deal_price);
+    const percentual = precoOriginal > 0 ? (1 - dealPrice / precoOriginal) * 100 : 0;
+    return { itemId: r.item_id, percentual };
+  });
+
   const sufixo = ` (${dataISO(new Date()).split("-").reverse().slice(0, 2).join("/")})`;
-  return criarCampanha(
-    rows[0].loja_id,
-    rows[0].nome + sufixo,
-    Number(rows[0].percentual_desconto),
-    itensRows.map((r) => r.item_id),
-    campanhaAntigaId
-  );
+  return criarCampanha(rows[0].loja_id, rows[0].nome + sufixo, itens, campanhaAntigaId);
 }
 
 export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<Campanha[]> {
