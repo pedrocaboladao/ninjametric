@@ -6,6 +6,8 @@ import {
   registrarCampanhasExistentes,
   iniciarDescoberta,
   fetchProgressoDescoberta,
+  excluirCampanha,
+  limparCampanhas,
 } from "../api/promocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type {
@@ -190,9 +192,19 @@ function NovaCampanhaForm({ lojas, onCriada }: { lojas: Loja[]; onCriada: () => 
   );
 }
 
-function LinhaCampanha({ campanha, onRecriada }: { campanha: Campanha; onRecriada: () => void }) {
+function LinhaCampanha({
+  campanha,
+  onRecriada,
+  onExcluida,
+}: {
+  campanha: Campanha;
+  onRecriada: () => void;
+  onExcluida: () => void;
+}) {
   const [confirmando, setConfirmando] = useState(false);
+  const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [excluindo, setExcluindo] = useState(false);
   const [resultado, setResultado] = useState<ResultadoCriarCampanha | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const status = statusInfo(campanha);
@@ -212,6 +224,18 @@ function LinhaCampanha({ campanha, onRecriada }: { campanha: Campanha; onRecriad
     }
   }
 
+  async function excluir() {
+    setExcluindo(true);
+    setErro(null);
+    try {
+      await excluirCampanha(campanha.id);
+      onExcluida();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir campanha.");
+      setExcluindo(false);
+    }
+  }
+
   return (
     <div className="promocoes-linha">
       <div className="promocoes-linha-topo">
@@ -220,10 +244,15 @@ function LinhaCampanha({ campanha, onRecriada }: { campanha: Campanha; onRecriad
         <span className="financeiro-td-mudo">{campanha.percentualDesconto}% off</span>
         <span className="financeiro-td-mudo">{campanha.itens.length} itens</span>
         <span className={status.classe}>{status.texto}</span>
-        {!confirmando && (
-          <button type="button" className="btn-responder" onClick={() => setConfirmando(true)}>
-            Recriar
-          </button>
+        {!confirmando && !confirmandoExclusao && (
+          <>
+            <button type="button" className="btn-responder" onClick={() => setConfirmando(true)}>
+              Recriar
+            </button>
+            <button type="button" className="btn-excluir" onClick={() => setConfirmandoExclusao(true)}>
+              Excluir
+            </button>
+          </>
         )}
       </div>
 
@@ -242,6 +271,23 @@ function LinhaCampanha({ campanha, onRecriada }: { campanha: Campanha; onRecriad
               {enviando ? "Recriando..." : "Confirmar e recriar"}
             </button>
             <button type="button" className="btn-excluir" onClick={() => setConfirmando(false)}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmandoExclusao && (
+        <div className="promocoes-confirmacao">
+          <p>
+            Remove só o rastreamento dessa campanha no painel (não mexe em nada no Mercado Livre — se ela estiver
+            ativa de verdade lá, continua ativa).
+          </p>
+          <div className="fabricacao-editor-acoes">
+            <button type="button" className="btn-excluir" disabled={excluindo} onClick={excluir}>
+              {excluindo ? "Excluindo..." : "Confirmar exclusão"}
+            </button>
+            <button type="button" className="btn-responder" onClick={() => setConfirmandoExclusao(false)}>
               Voltar
             </button>
           </div>
@@ -363,7 +409,13 @@ function RegistrarExistentesForm({ lojas, onRegistradas }: { lojas: Loja[]; onRe
   );
 }
 
-function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) {
+function DescobertaAutomatica({
+  lojaFiltro,
+  onEncontradas,
+}: {
+  lojaFiltro: number | "todas" | "minhas";
+  onEncontradas: () => void;
+}) {
   const [progresso, setProgresso] = useState<ProgressoDescoberta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -405,7 +457,7 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
   async function iniciar() {
     setErro(null);
     try {
-      await iniciarDescoberta("todas");
+      await iniciarDescoberta(lojaFiltro);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao iniciar.");
       return;
@@ -472,12 +524,13 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
 
 export function Promocoes() {
   const [lojas, setLojas] = useState<Loja[]>([]);
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
 
   useEffect(() => {
     fetchLojas().then(setLojas).catch(() => {});
   }, []);
 
-  const buscar = useCallback(() => fetchCampanhas("todas"), []);
+  const buscar = useCallback(() => fetchCampanhas(lojaFiltro), [lojaFiltro]);
   const { dados, erro, atualizarAgora } = useBuscaComCancelamento<Campanha[]>(buscar, true);
 
   return (
@@ -485,14 +538,30 @@ export function Promocoes() {
       <div className="financeiro-topo">
         <div>
           <span className="painel-eyebrow">Promoções</span>
-          <h1>Campanhas do vendedor — todas as lojas</h1>
+          <h1>Campanhas do vendedor</h1>
           <p className="painel-sub">
             Toda campanha de desconto do Mercado Livre vence em no máximo 14 dias — não existe renovação automática
-            nativa da plataforma. Aqui você vê todas as campanhas das 16 lojas numa lista só, as mais urgentes
-            primeiro, e recria com um clique quando vencer.
+            nativa da plataforma. Aqui você vê as campanhas numa lista só, as mais urgentes primeiro, e recria com um
+            clique quando vencer.
           </p>
         </div>
         <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => {
+              const valor = e.target.value;
+              setLojaFiltro(valor === "todas" || valor === "minhas" ? valor : Number(valor));
+            }}
+          >
+            <option value="todas">Todas as lojas</option>
+            <option value="minhas">Minhas lojas</option>
+            {lojas.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </select>
           <button type="button" className="btn-responder financeiro-btn-hoje" onClick={atualizarAgora}>
             Atualizar
           </button>
@@ -502,7 +571,8 @@ export function Promocoes() {
       <div className="promocoes-acoes-topo">
         <NovaCampanhaForm lojas={lojas} onCriada={atualizarAgora} />
         <RegistrarExistentesForm lojas={lojas} onRegistradas={atualizarAgora} />
-        <DescobertaAutomatica onEncontradas={atualizarAgora} />
+        <DescobertaAutomatica lojaFiltro={lojaFiltro} onEncontradas={atualizarAgora} />
+        {dados !== null && dados.length > 0 && <LimparTudo lojaFiltro={lojaFiltro} onLimpo={atualizarAgora} />}
       </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
@@ -510,8 +580,62 @@ export function Promocoes() {
       {dados?.length === 0 && <div className="state-message">Nenhuma campanha criada pelo painel ainda.</div>}
 
       {dados?.map((c) => (
-        <LinhaCampanha key={c.id} campanha={c} onRecriada={atualizarAgora} />
+        <LinhaCampanha key={c.id} campanha={c} onRecriada={atualizarAgora} onExcluida={atualizarAgora} />
       ))}
+    </div>
+  );
+}
+
+function LimparTudo({
+  lojaFiltro,
+  onLimpo,
+}: {
+  lojaFiltro: number | "todas" | "minhas";
+  onLimpo: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function limpar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await limparCampanhas(lojaFiltro);
+      setConfirmando(false);
+      onLimpo();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao limpar.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const escopo = lojaFiltro === "todas" ? "todas as lojas" : lojaFiltro === "minhas" ? "minhas lojas" : "essa loja";
+
+  if (!confirmando) {
+    return (
+      <button type="button" className="btn-excluir" onClick={() => setConfirmando(true)}>
+        Limpar {lojaFiltro === "todas" ? "tudo" : "dessa loja"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="promocoes-confirmacao">
+      <p>
+        Apaga o rastreamento de <b>todas</b> as campanhas de <b>{escopo}</b> no painel — não mexe em nada real no
+        Mercado Livre. Não dá pra desfazer.
+      </p>
+      <div className="fabricacao-editor-acoes">
+        <button type="button" className="btn-excluir" disabled={enviando} onClick={limpar}>
+          {enviando ? "Limpando..." : "Confirmar limpeza total"}
+        </button>
+        <button type="button" className="btn-responder" onClick={() => setConfirmando(false)}>
+          Voltar
+        </button>
+      </div>
+      {erro && <div className="state-message state-error">{erro}</div>}
     </div>
   );
 }

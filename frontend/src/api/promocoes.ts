@@ -70,3 +70,15 @@ export async function fetchProgressoDescoberta(): Promise<ProgressoDescoberta> {
   const res = await fetch(`${API_BASE}/api/promocoes/descobrir/status`, { credentials: "include" });
   return tratarResposta<ProgressoDescoberta>(res);
 }
+
+export async function excluirCampanha(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/promocoes/${id}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta(res);
+}
+
+export async function limparCampanhas(lojaFiltro: number | "todas" | "minhas"): Promise<number> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  const res = await fetch(`${API_BASE}/api/promocoes?${params}`, { method: "DELETE", credentials: "include" });
+  const data = await tratarResposta<{ apagadas: number }>(res);
+  return data.apagadas;
+}

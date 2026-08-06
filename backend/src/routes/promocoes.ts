@@ -6,6 +6,8 @@ import {
   registrarCampanhaExistente,
   iniciarDescobertaCampanhas,
   obterProgressoDescoberta,
+  excluirCampanha,
+  limparCampanhas,
   type ResultadoCriarCampanha,
 } from "../services/promocoesService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
@@ -64,6 +66,35 @@ promocoesRouter.get("/", async (req, res) => {
     res.json({ campanhas: await listarCampanhas(filtro.lojaId, filtro.lojasPermitidas) });
   } catch (err) {
     erro(res, err, "Falha ao carregar campanhas.");
+  }
+});
+
+// Só apaga o rastreamento no painel — não mexe em nada real no Mercado
+// Livre. Usado pra limpar registros de teste/bugs já corrigidos.
+promocoesRouter.delete("/", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    const apagadas = await limparCampanhas(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ apagadas });
+  } catch (err) {
+    erro(res, err, "Falha ao limpar campanhas.");
+  }
+});
+
+promocoesRouter.delete("/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    await excluirCampanha(id, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir campanha.");
   }
 });
 

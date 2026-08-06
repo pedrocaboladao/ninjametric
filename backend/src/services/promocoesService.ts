@@ -284,6 +284,33 @@ export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
   }));
 }
 
+// Apaga só o rastreamento no painel (promocoes_itens some junto via ON
+// DELETE CASCADE) — não mexe em nada real no Mercado Livre. Útil pra
+// limpar registros incompletos de testes/bugs já corrigidos antes de
+// rodar a descoberta de novo.
+export async function excluirCampanha(id: number, lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<void> {
+  const lojas = (await listLojas()).filter(
+    (l) => (lojaIdFiltro === undefined || l.id === lojaIdFiltro) && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+  const lojaIds = lojas.map((l) => l.id);
+  const { rowCount } = await pool.query("DELETE FROM promocoes_campanhas WHERE id = $1 AND loja_id = ANY($2)", [id, lojaIds]);
+  if (rowCount === 0) {
+    throw new Error("Campanha não encontrada ou sem acesso.");
+  }
+}
+
+// Limpa todo o rastreamento (respeitando o filtro de loja de quem pediu) —
+// mesma observação: só apaga registros do painel, não toca no Mercado Livre.
+export async function limparCampanhas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<number> {
+  const lojas = (await listLojas()).filter(
+    (l) => (lojaIdFiltro === undefined || l.id === lojaIdFiltro) && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+  const lojaIds = lojas.map((l) => l.id);
+  if (lojaIds.length === 0) return 0;
+  const { rowCount } = await pool.query("DELETE FROM promocoes_campanhas WHERE loja_id = ANY($1)", [lojaIds]);
+  return rowCount ?? 0;
+}
+
 // Job periódico (mesmo padrão de iniciarSnapshotAds em adsService.ts):
 // mantém o status de cada campanha ainda não "finished" atualizado, sem
 // depender de uma consulta ao vivo toda vez que a tela carrega.
