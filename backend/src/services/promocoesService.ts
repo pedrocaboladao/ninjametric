@@ -426,6 +426,12 @@ export interface ProgressoDescoberta {
   itensComErro: number;
   candidatosDescartados: number;
   amostraErro: string | null;
+  // Diagnóstico temporário: histórico (não só o último) da contagem por
+  // status de cada campanha processada — amostraErro sozinho sobrescrevia
+  // a cada campanha nova, escondendo o dado de campanhas anteriores da
+  // mesma varredura (ex.: loja com várias campanhas). Remover quando
+  // resolvido.
+  diagnosticos: string[];
   erro: string | null;
 }
 
@@ -439,6 +445,7 @@ let progressoDescoberta: ProgressoDescoberta = {
   itensComErro: 0,
   candidatosDescartados: 0,
   amostraErro: null,
+  diagnosticos: [],
   erro: null,
 };
 
@@ -520,7 +527,9 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
       // (achado numa depuração ao vivo, precisa de dado real pra decidir
       // se "started" é mesmo o único status que conta). Some com esse
       // bloco assim que resolvido.
-      progressoDescoberta.amostraErro = `[diagnóstico ${promotionId} / ${detalhes.name}] paginas=${resultadoItens.paginasLidas} status=${JSON.stringify(resultadoItens.contagemPorStatus)} usados(started)=${itensCampanha.length}`;
+      progressoDescoberta.diagnosticos.push(
+        `[${promotionId} / ${detalhes.name}] paginas=${resultadoItens.paginasLidas} status=${JSON.stringify(resultadoItens.contagemPorStatus)} usados(started)=${itensCampanha.length}`
+      );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
         continue; // já registrada, só faltavam os itens — sem novidade, segue
@@ -602,6 +611,7 @@ export async function iniciarDescobertaCampanhas(lojaIdFiltro?: number, lojasPer
     itensComErro: 0,
     candidatosDescartados: 0,
     amostraErro: null,
+    diagnosticos: [],
     erro: null,
   };
 

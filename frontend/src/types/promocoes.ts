@@ -60,5 +60,6 @@ export interface ProgressoDescoberta {
   itensComErro: number;
   candidatosDescartados: number;
   amostraErro: string | null;
+  diagnosticos: string[];
   erro: string | null;
 }

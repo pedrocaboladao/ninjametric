@@ -409,6 +409,20 @@ function RegistrarExistentesForm({ lojas, onRegistradas }: { lojas: Loja[]; onRe
   );
 }
 
+// Diagnóstico temporário: lista (não só o último) a contagem por status de
+// cada campanha processada na varredura — remover quando resolvido.
+function DiagnosticosLista({ diagnosticos }: { diagnosticos: string[] }) {
+  if (diagnosticos.length === 0) return null;
+  return (
+    <div className="financeiro-td-mudo">
+      Diagnóstico ({diagnosticos.length} campanha{diagnosticos.length !== 1 ? "s" : ""}):
+      {diagnosticos.map((d, i) => (
+        <div key={i}>{d}</div>
+      ))}
+    </div>
+  );
+}
+
 function DescobertaAutomatica({
   lojaFiltro,
   onEncontradas,
@@ -488,9 +502,7 @@ function DescobertaAutomatica({
               {progresso.candidatosDescartados !== 1 ? "s" : ""} por não ser campanha do vendedor.)
             </>
           )}
-          {progresso.amostraErro && (
-            <div className="financeiro-td-mudo">Exemplo de erro: {progresso.amostraErro}</div>
-          )}
+          <DiagnosticosLista diagnosticos={progresso.diagnosticos} />
         </div>
       )}
       {progresso && !emAndamento && (progresso.campanhasEncontradas > 0 || progresso.campanhasCompletadas > 0) && (
@@ -513,8 +525,11 @@ function DescobertaAutomatica({
             `${progresso.itensComErro} de ${progresso.totalItens} anúncios deram erro na consulta — pode ser permissão da conta, não falta de campanha. `}
           {progresso.candidatosDescartados > 0 &&
             `${progresso.candidatosDescartados} candidato(s) foram descartados por não ser campanha do vendedor (provavelmente outro tipo de promoção do ML). `}
-          {progresso.amostraErro && <>Exemplo de erro: {progresso.amostraErro}</>}
+          <DiagnosticosLista diagnosticos={progresso.diagnosticos} />
         </div>
+      )}
+      {progresso && !emAndamento && (progresso.campanhasEncontradas > 0 || progresso.campanhasCompletadas > 0) && (
+        <DiagnosticosLista diagnosticos={progresso.diagnosticos} />
       )}
       {progresso?.erro && <div className="state-message state-error">{progresso.erro}</div>}
       {erro && <div className="state-message state-error">{erro}</div>}
