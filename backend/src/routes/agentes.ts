@@ -7,6 +7,7 @@ import {
   perguntarAgenteAds,
   type MensagemChat,
 } from "../services/agenteAdsService";
+import { tratarFotoProduto, criarArtePromocional } from "../services/agenteImagensService";
 
 export const agentesRouter = Router();
 
@@ -58,6 +59,34 @@ agentesRouter.post("/ads/perguntar", async (req, res) => {
     res.json({ resposta });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
+  }
+});
+
+agentesRouter.post("/imagens/tratar-foto", async (req, res) => {
+  const { imagemBase64 } = req.body ?? {};
+  if (typeof imagemBase64 !== "string" || !imagemBase64) {
+    res.status(400).json({ error: "Imagem inválida." });
+    return;
+  }
+  try {
+    const resultado = await tratarFotoProduto(imagemBase64);
+    res.json({ imagemBase64: resultado });
+  } catch (err) {
+    erro(res, err, "Falha ao tratar a foto.");
+  }
+});
+
+agentesRouter.post("/imagens/criar-arte", async (req, res) => {
+  const { descricao } = req.body ?? {};
+  if (typeof descricao !== "string" || !descricao.trim()) {
+    res.status(400).json({ error: "Descrição inválida." });
+    return;
+  }
+  try {
+    const resultado = await criarArtePromocional(descricao.trim());
+    res.json({ imagemBase64: resultado });
+  } catch (err) {
+    erro(res, err, "Falha ao gerar a arte.");
   }
 });
 

@@ -22,4 +22,7 @@ export const env = {
   // Opcional — sem ela, o Agentes IA (Analista de Ads) cai nas regras fixas
   // em vez da análise com IA de verdade.
   anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? "",
+  // Opcional — sem ela, o Agente de Imagens (tratar foto / criar arte) fica
+  // indisponível, mas o resto do painel funciona normal.
+  openaiApiKey: process.env.OPENAI_API_KEY ?? "",
 };

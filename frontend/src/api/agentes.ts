@@ -43,3 +43,25 @@ export async function perguntarAgenteAds(pergunta: string, historico: MensagemCh
   const data = await tratarResposta<{ resposta: string }>(res);
   return data.resposta;
 }
+
+export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/tratar-foto`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imagemBase64 }),
+  });
+  const data = await tratarResposta<{ imagemBase64: string }>(res);
+  return data.imagemBase64;
+}
+
+export async function criarArtePromocional(descricao: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/criar-arte`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ descricao }),
+  });
+  const data = await tratarResposta<{ imagemBase64: string }>(res);
+  return data.imagemBase64;
+}

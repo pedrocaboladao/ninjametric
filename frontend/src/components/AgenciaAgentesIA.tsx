@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   fetchFeedAds,
   verificarAgenteAdsAgora,
   confirmarObservacaoAds,
   fetchPensamentosAds,
   perguntarAgenteAds,
+  tratarFotoProduto,
+  criarArtePromocional,
 } from "../api/agentes";
 import type { ObservacaoAds, PensamentoAds, MensagemChat } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
@@ -282,7 +284,7 @@ function ChatAgente() {
   );
 }
 
-export function AgenciaAgentesIA() {
+function AnalistaAds() {
   const [feed, setFeed] = useState<ObservacaoAds[] | null>(null);
   const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -330,10 +332,9 @@ export function AgenciaAgentesIA() {
   const visiveis = mostrarResolvidas ? [...pendentes, ...resolvidas] : pendentes;
 
   return (
-    <div className="financeiro-page">
+    <>
       <div className="financeiro-topo">
         <div>
-          <span className="painel-eyebrow">Agência de Agentes IA</span>
           <h1>Analista de Ads</h1>
           <p className="painel-sub">
             Observa suas campanhas de Ads sozinho e comenta aqui o que encontra — ACOS fora da meta, campanha no
@@ -414,6 +415,205 @@ export function AgenciaAgentesIA() {
           ))}
         </div>
       )}
+    </>
+  );
+}
+
+function TratarFoto() {
+  const [original, setOriginal] = useState<string | null>(null);
+  const [base64, setBase64] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<string | null>(null);
+  const [processando, setProcessando] = useState(false);
+  const [erroImg, setErroImg] = useState<string | null>(null);
+
+  function onArquivo(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    setResultado(null);
+    setErroImg(null);
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const dataUrl = leitor.result as string;
+      setOriginal(dataUrl);
+      setBase64(dataUrl.split(",")[1] ?? null);
+    };
+    leitor.readAsDataURL(arquivo);
+  }
+
+  async function tratar() {
+    if (!base64) return;
+    setProcessando(true);
+    setErroImg(null);
+    try {
+      setResultado(await tratarFotoProduto(base64));
+    } catch (err) {
+      setErroImg(err instanceof Error ? err.message : "Falha ao tratar a foto.");
+    } finally {
+      setProcessando(false);
+    }
+  }
+
+  return (
+    <div className="agente-imagens-painel">
+      <p className="painel-sub">Envie a foto real do produto — a IA troca só o fundo, sem alterar o produto.</p>
+      <input type="file" accept="image/*" onChange={onArquivo} />
+
+      {erroImg && <div className="state-message state-error">{erroImg}</div>}
+
+      {original && (
+        <div className="agente-imagens-comparacao">
+          <div className="agente-imagens-coluna">
+            <span className="financeiro-td-mudo">Original</span>
+            <img src={original} alt="Foto original do produto" className="agente-imagens-preview" />
+          </div>
+          <div className="agente-imagens-coluna">
+            <span className="financeiro-td-mudo">Tratada</span>
+            {resultado ? (
+              <img
+                src={`data:image/png;base64,${resultado}`}
+                alt="Foto do produto com fundo tratado"
+                className="agente-imagens-preview"
+              />
+            ) : (
+              <div className="agente-imagens-vazio">{processando ? "Tratando..." : "Ainda não tratada"}</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="agente-imagens-acoes">
+        <button type="button" className="btn-responder" onClick={tratar} disabled={!base64 || processando}>
+          {processando ? "Tratando..." : "Tratar foto"}
+        </button>
+        {resultado && (
+          <a className="btn-secundario" href={`data:image/png;base64,${resultado}`} download="foto-tratada.png">
+            Baixar
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CriarArte() {
+  const [descricao, setDescricao] = useState("");
+  const [resultado, setResultado] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
+  const [erroArte, setErroArte] = useState<string | null>(null);
+
+  async function gerar() {
+    const texto = descricao.trim();
+    if (!texto || gerando) return;
+    setGerando(true);
+    setErroArte(null);
+    try {
+      setResultado(await criarArtePromocional(texto));
+    } catch (err) {
+      setErroArte(err instanceof Error ? err.message : "Falha ao gerar a arte.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  return (
+    <div className="agente-imagens-painel">
+      <p className="painel-sub">Descreva a arte que você quer — a IA gera uma imagem nova do zero.</p>
+      <textarea
+        className="pergunta-textarea"
+        rows={3}
+        value={descricao}
+        onChange={(e) => setDescricao(e.target.value)}
+        placeholder="Ex: banner de promoção de tinta acrílica, 20% off, cores vermelho e branco, pra post no Instagram"
+        disabled={gerando}
+      />
+
+      {erroArte && <div className="state-message state-error">{erroArte}</div>}
+
+      <div className="agente-imagens-acoes">
+        <button type="button" className="btn-responder" onClick={gerar} disabled={!descricao.trim() || gerando}>
+          {gerando ? "Gerando..." : "Gerar arte"}
+        </button>
+        {resultado && (
+          <a className="btn-secundario" href={`data:image/png;base64,${resultado}`} download="arte-promocional.png">
+            Baixar
+          </a>
+        )}
+      </div>
+
+      {resultado && (
+        <img
+          src={`data:image/png;base64,${resultado}`}
+          alt="Arte promocional gerada"
+          className="agente-imagens-preview agente-imagens-preview-solo"
+        />
+      )}
+    </div>
+  );
+}
+
+function AgenteImagens() {
+  const [modo, setModo] = useState<"tratar" | "arte">("tratar");
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Agente de Imagens</h1>
+          <p className="painel-sub">
+            Trata fotos reais de produto (fundo limpo, sem alterar o produto) ou cria artes promocionais do zero a
+            partir de uma descrição. Sempre confira o resultado antes de usar num anúncio ou postagem — a IA pode
+            alterar pequenos detalhes.
+          </p>
+        </div>
+      </div>
+
+      <div className="agente-tabs agente-tabs-secundaria">
+        <button
+          type="button"
+          className={`agente-tab ${modo === "tratar" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setModo("tratar")}
+        >
+          Tratar foto de produto
+        </button>
+        <button
+          type="button"
+          className={`agente-tab ${modo === "arte" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setModo("arte")}
+        >
+          Criar arte promocional
+        </button>
+      </div>
+
+      {modo === "tratar" ? <TratarFoto /> : <CriarArte />}
+    </>
+  );
+}
+
+export function AgenciaAgentesIA() {
+  const [agente, setAgente] = useState<"ads" | "imagens">("ads");
+
+  return (
+    <div className="financeiro-page">
+      <span className="painel-eyebrow">Agência de Agentes IA</span>
+
+      <div className="agente-tabs">
+        <button
+          type="button"
+          className={`agente-tab ${agente === "ads" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("ads")}
+        >
+          Analista de Ads
+        </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "imagens" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("imagens")}
+        >
+          Agente de Imagens
+        </button>
+      </div>
+
+      {agente === "ads" ? <AnalistaAds /> : <AgenteImagens />}
     </div>
   );
 }

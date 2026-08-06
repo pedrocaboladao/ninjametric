@@ -4396,3 +4396,122 @@
 .agente-chat-form input:disabled {
   opacity: 0.6;
 }
+
+.btn-secundario {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  font-family: var(--sans);
+  border-radius: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.btn-secundario:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.agente-tabs {
+  display: flex;
+  gap: 8px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.agente-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 4px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.agente-tab:hover {
+  color: var(--text-primary);
+}
+
+.agente-tab-ativa {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.agente-tabs-secundaria {
+  border-bottom: none;
+  gap: 10px;
+}
+
+.agente-tabs-secundaria .agente-tab {
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 14px;
+}
+
+.agente-tabs-secundaria .agente-tab-ativa {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121a;
+}
+
+.agente-imagens-painel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.agente-imagens-comparacao {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.agente-imagens-coluna {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 220px;
+}
+
+.agente-imagens-preview {
+  width: 100%;
+  max-width: 320px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel-alt);
+}
+
+.agente-imagens-preview-solo {
+  max-width: 420px;
+}
+
+.agente-imagens-vazio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 180px;
+  max-width: 320px;
+  border-radius: 10px;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.agente-imagens-acoes {
+  display: flex;
+  gap: 10px;
+}
