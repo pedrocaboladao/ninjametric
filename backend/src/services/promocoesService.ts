@@ -9,7 +9,6 @@ import {
   listarItensAtivos,
   consultarPromocoesDoItem,
   obterItensDaCampanha,
-  obterItensDaCampanhaBruto,
 } from "./mercadoLivreApi";
 
 export interface ResultadoItemCampanha {
@@ -509,24 +508,22 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
     if (campanhaExistenteId !== null && Number(jaRastreada.rows[0].qtd_itens) > 0) continue;
 
     try {
-      const [detalhes, itensCampanha] = await Promise.all([
+      const [detalhes, resultadoItens] = await Promise.all([
         obterDetalhesCampanha(lojaId, promotionId),
         obterItensDaCampanha(lojaId, promotionId),
       ]);
+      const itensCampanha = resultadoItens.itens;
 
-      // Diagnóstico temporário: campanha real do ML voltando com 0 itens
-      // aqui quando o próprio Mercado Livre mostra itens vinculados na tela
-      // (achado numa depuração ao vivo) — captura a resposta crua da API
-      // pra descobrir o formato certo, em vez de adivinhar de novo. Some
-      // com esse bloco assim que o formato for confirmado e corrigido.
-      if (itensCampanha.length === 0) {
-        try {
-          const bruto = await obterItensDaCampanhaBruto(lojaId, promotionId);
-          progressoDescoberta.amostraErro = `[diagnóstico ${promotionId}] ${bruto}`;
-        } catch {
-          // diagnóstico é best-effort, não pode travar o registro da campanha
-        }
-        if (campanhaExistenteId !== null) continue; // já registrada, só faltavam os itens — sem novidade, segue
+      // Diagnóstico temporário: mostra sempre a contagem por status (ex.:
+      // started/candidate) e quantas páginas foram lidas — visto que o
+      // painel do ML mostra "muito mais" itens do que só os status
+      // (achado numa depuração ao vivo, precisa de dado real pra decidir
+      // se "started" é mesmo o único status que conta). Some com esse
+      // bloco assim que resolvido.
+      progressoDescoberta.amostraErro = `[diagnóstico ${promotionId} / ${detalhes.name}] paginas=${resultadoItens.paginasLidas} status=${JSON.stringify(resultadoItens.contagemPorStatus)} usados(started)=${itensCampanha.length}`;
+
+      if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
+        continue; // já registrada, só faltavam os itens — sem novidade, segue
       }
 
       let campanhaId = campanhaExistenteId;

@@ -169,25 +169,23 @@ export interface MlItemCampanha {
   originalPrice: number;
 }
 
-// Diagnóstico temporário: devolve a resposta crua de /items pra essa
-// campanha, sem tentar interpretar o formato. Usado só quando
-// obterItensDaCampanha volta 0 itens pra uma campanha que o próprio ML
-// mostra ter itens vinculados — em vez de adivinhar o formato de novo,
-// isso deixa a gente ver a resposta real na tela (ver amostraErro em
-// promocoesService.descobrirCampanhasNaLoja). Remover depois de resolvido.
-export async function obterItensDaCampanhaBruto(lojaId: number, promotionId: string): Promise<string> {
-  const accessToken = await getValidAccessToken(lojaId);
-  const { data } = await axios.get(`${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-    params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset: 0, limit: 50 },
-  });
-  return JSON.stringify(data).slice(0, 600);
+export interface ResultadoItensCampanha {
+  itens: MlItemCampanha[];
+  // Diagnóstico temporário: quantos itens distintos vistos por status (ex.:
+  // started/candidate/pending) e quantas páginas foram lidas — pra decidir
+  // com dado real, não suposição, se "started" é mesmo o único status que
+  // conta como item de fato participando da campanha. Remover depois de
+  // resolvido (ver amostraErro em promocoesService.descobrirCampanhasNaLoja).
+  contagemPorStatus: Record<string, number>;
+  paginasLidas: number;
 }
 
-export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<MlItemCampanha[]> {
+export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<ResultadoItensCampanha> {
   const accessToken = await getValidAccessToken(lojaId);
   const itensPorId = new Map<string, MlItemCampanha>();
   const idsVistos = new Set<string>();
+  const contagemPorStatus: Record<string, number> = {};
+  let paginasLidas = 0;
   let offset = 0;
   const limit = 50;
   let paginasSemNovidade = 0;
@@ -210,11 +208,13 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
       params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset, limit },
     });
 
+    paginasLidas++;
     let paginaTemNovidade = false;
     for (const r of data.results) {
       if (!idsVistos.has(r.id)) {
         idsVistos.add(r.id);
         paginaTemNovidade = true;
+        contagemPorStatus[r.status] = (contagemPorStatus[r.status] ?? 0) + 1;
       }
       // Confirmado numa resposta real: item "candidate" não tem price, só
       // min/max/suggested_discounted_price (é só uma SUGESTÃO do ML de item
@@ -246,7 +246,7 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
       break;
     }
   }
-  return Array.from(itensPorId.values());
+  return { itens: Array.from(itensPorId.values()), contagemPorStatus, paginasLidas };
 }
 
 // Lista o item_id de todos os anúncios ATIVOS de uma loja — usada só pra
