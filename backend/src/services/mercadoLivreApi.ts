@@ -191,7 +191,13 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
   const limit = 50;
   while (true) {
     const { data } = await axios.get<{
-      results: Array<{ id: string; status: string; price: number; original_price: number }>;
+      results: Array<{
+        id: string;
+        status: string;
+        price?: number;
+        deal_price?: number;
+        original_price: number;
+      }>;
       paging: { total: number };
     }>(`${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`, {
       headers: { Authorization: `Bearer ${accessToken}` },
@@ -199,12 +205,20 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
     });
     itens.push(
       ...data.results
-        // Item sem price/original_price (visto na prática num item cujo
-        // status não era "started") não pode virar deal_price NULL no
-        // banco (coluna NOT NULL) — ignora esse item específico em vez de
-        // derrubar a campanha inteira por causa de um item malformado.
-        .filter((r) => typeof r.price === "number" && typeof r.original_price === "number")
-        .map((r) => ({ itemId: r.id, status: r.status, price: r.price, originalPrice: r.original_price }))
+        // Confirmado numa resposta real: item "candidate" não tem price,
+        // só min/max/suggested_discounted_price (é só uma SUGESTÃO do ML
+        // de item elegível, não um item de fato incluído na campanha) — e
+        // não vem com o mesmo nome de campo "price" que a gente assumia,
+        // é "deal_price" (mesmo nome usado pra ENVIAR o preço em
+        // adicionarItemCampanha). Só item started conta como "na campanha"
+        // de verdade; os outros ficam de fora em vez de virar NULL no banco.
+        .filter((r) => r.status === "started" && typeof (r.deal_price ?? r.price) === "number")
+        .map((r) => ({
+          itemId: r.id,
+          status: r.status,
+          price: (r.deal_price ?? r.price) as number,
+          originalPrice: r.original_price,
+        }))
     );
     offset += limit;
     if (offset >= data.paging.total || data.results.length === 0) break;
