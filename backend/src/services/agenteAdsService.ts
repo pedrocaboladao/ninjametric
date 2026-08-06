@@ -212,11 +212,22 @@ Regras:
   const blocoFerramenta = resposta.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   if (!blocoFerramenta) return [];
 
-  const dados = blocoFerramenta.input as {
-    observacoes: Array<{ loja_id: number; campanha_id: string; tipo: string; contexto: string; acao: string }>;
-  };
+  const observacoesRaw = (blocoFerramenta.input as { observacoes?: unknown }).observacoes;
+  // Normalmente vem como array, mas o modelo às vezes devolve um objeto com
+  // chaves numéricas em vez de array de verdade — aceita os dois formatos em
+  // vez de quebrar e cair pro fallback de regras fixas à toa.
+  const lista: Array<{ loja_id: number; campanha_id: string; tipo: string; contexto: string; acao: string }> =
+    Array.isArray(observacoesRaw)
+      ? observacoesRaw
+      : observacoesRaw && typeof observacoesRaw === "object"
+        ? Object.values(observacoesRaw)
+        : [];
 
-  return dados.observacoes.map((o) => ({
+  if (!Array.isArray(observacoesRaw)) {
+    console.error("Agente de Ads (IA): 'observacoes' veio em formato inesperado, normalizando:", JSON.stringify(observacoesRaw));
+  }
+
+  return lista.map((o) => ({
     lojaId: o.loja_id,
     campanhaId: o.campanha_id,
     tipo: o.tipo,
