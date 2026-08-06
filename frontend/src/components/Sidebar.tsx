@@ -18,6 +18,7 @@ import {
   IconWrench,
   IconFlask,
   IconBarcode,
+  IconTag,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -36,7 +37,8 @@ export type View =
   | "usuarios"
   | "correcoes"
   | "fabricacao"
-  | "ean";
+  | "ean"
+  | "promocoes";
 
 interface Props {
   view: View;
@@ -65,6 +67,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeCorrecoes = temPermissao(usuario, "correcoes");
   const podeFabricacao = temPermissao(usuario, "fabricacao");
   const podeEan = temPermissao(usuario, "ean");
+  const podePromocoes = temPermissao(usuario, "promocoes");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
 
   const iniciais =
@@ -157,6 +160,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconFlask size={16} />
               <span>Fabricação</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podePromocoes && (
+          <>
+            <button
+              className={`sidebar-item ${view === "promocoes" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("promocoes")}
+            >
+              <IconTag size={16} />
+              <span>Promoções</span>
             </button>
             <div className="sidebar-divider" />
           </>

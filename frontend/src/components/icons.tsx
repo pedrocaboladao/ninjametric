@@ -285,3 +285,12 @@ export function IconBarcode({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconTag({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M12.6 3H5a1 1 0 0 0-1 1v7.6a1 1 0 0 0 .3.7l9 9a1 1 0 0 0 1.4 0l7.3-7.3a1 1 0 0 0 0-1.4l-9-9a1 1 0 0 0-.4-.3Z" />
+      <circle cx="8.3" cy="8.3" r="1.3" />
+    </svg>
+  );
+}

@@ -293,3 +293,39 @@ CREATE TABLE IF NOT EXISTS formula_itens (
   percentual NUMERIC(6, 3) NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_formula_itens_formula ON formula_itens (formula_id);
+
+-- Promoções: campanha do vendedor (SELLER_CAMPAIGN) no Mercado Livre tem
+-- prazo máximo de 14 dias — não existe renovação automática nativa da
+-- plataforma, e a API não tem endpoint pra "listar minhas campanhas" (só
+-- consulta por id já conhecido). O painel precisa ser a própria fonte de
+-- verdade de quais campanhas existem e quando vencem, senão não tem como
+-- avisar/recriar. Só rastreia campanhas criadas a partir de daqui, pelo
+-- próprio painel (v1 não importa histórico já existente no Mercado Livre).
+CREATE TABLE IF NOT EXISTS promocoes_campanhas (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  promotion_id TEXT NOT NULL,
+  nome TEXT NOT NULL,
+  percentual_desconto NUMERIC(5, 2) NOT NULL,
+  data_inicio DATE NOT NULL,
+  data_fim DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  campanha_anterior_id INTEGER REFERENCES promocoes_campanhas(id),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_promocoes_campanhas_loja ON promocoes_campanhas (loja_id);
+
+-- deal_price é o preço final calculado (percentual sobre o preço do
+-- produto NO MOMENTO da criação/renovação) — guardado aqui porque o
+-- preço do produto pode mudar depois, e a renovação precisa recalcular
+-- em cima do preço atual, não repetir esse valor congelado.
+CREATE TABLE IF NOT EXISTS promocoes_itens (
+  id SERIAL PRIMARY KEY,
+  campanha_id INTEGER NOT NULL REFERENCES promocoes_campanhas(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL,
+  titulo TEXT,
+  preco_original NUMERIC(12, 2) NOT NULL,
+  deal_price NUMERIC(12, 2) NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_promocoes_itens_campanha ON promocoes_itens (campanha_id);

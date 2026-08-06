@@ -3562,6 +3562,75 @@
   text-decoration: underline;
 }
 
+.promocoes-form {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.promocoes-textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.promocoes-confirmacao {
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.promocoes-resultado {
+  background: var(--bg-panel-alt);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.promocoes-resultado-falhas {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 12px;
+}
+
+.promocoes-linha {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.promocoes-linha-topo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.promocoes-linha-topo .financeiro-td-titulo {
+  flex: 1;
+  min-width: 160px;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;

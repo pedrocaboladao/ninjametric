@@ -101,6 +101,67 @@ export async function getPromocaoStatus(lojaId: number, itemId: string): Promise
   }
 }
 
+export interface MlCampanhaVendedor {
+  id: string;
+  type: string;
+  sub_type: string;
+  status: string;
+  start_date: string;
+  finish_date: string;
+  name: string;
+}
+
+// Cria uma campanha do vendedor (desconto por %, prazo máximo de 14 dias —
+// regra do próprio Mercado Livre, não uma limitação nossa). dataInicio e
+// dataFim vêm no formato "YYYY-MM-DD"; a API exige formato local sem fuso
+// ("YYYY-MM-DDT00:00:00"), não ISO com "Z".
+export async function criarCampanhaVendedor(
+  lojaId: number,
+  nome: string,
+  dataInicio: string,
+  dataFim: string
+): Promise<MlCampanhaVendedor> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const { data } = await axios.post<MlCampanhaVendedor>(
+    `${ML_API_BASE}/seller-promotions/promotions`,
+    {
+      promotion_type: "SELLER_CAMPAIGN",
+      name: nome,
+      sub_type: "FLEXIBLE_PERCENTAGE",
+      start_date: `${dataInicio}T00:00:00`,
+      finish_date: `${dataFim}T00:00:00`,
+    },
+    { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
+  );
+  return data;
+}
+
+// Adiciona um item à campanha com o preço final já calculado (não manda
+// percentual pra API — o Mercado Livre trabalha com preço final em R$ por
+// item, ver deal_price).
+export async function adicionarItemCampanha(
+  lojaId: number,
+  itemId: string,
+  promotionId: string,
+  dealPrice: number
+): Promise<void> {
+  const accessToken = await getValidAccessToken(lojaId);
+  await axios.post(
+    `${ML_API_BASE}/seller-promotions/items/${itemId}`,
+    { promotion_id: promotionId, promotion_type: "SELLER_CAMPAIGN", deal_price: dealPrice },
+    { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
+  );
+}
+
+export async function obterStatusCampanha(lojaId: number, promotionId: string): Promise<string> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const { data } = await axios.get<MlCampanhaVendedor>(
+    `${ML_API_BASE}/seller-promotions/promotions/${promotionId}`,
+    { headers: { Authorization: `Bearer ${accessToken}` }, params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2" } }
+  );
+  return data.status;
+}
+
 export type AdsStatus = "ads_ativo" | "sem_ads" | "nao_verificado";
 
 // Consulta o Product Ads (publicidade paga) do Mercado Livre pra um anúncio.

@@ -15,6 +15,7 @@ export const MODULOS_VALIDOS = [
   "correcoes",
   "fabricacao",
   "ean",
+  "promocoes",
 ] as const;
 
 export interface Usuario {

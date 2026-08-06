@@ -19,9 +19,11 @@ import { contasRouter } from "./routes/contas";
 import { dreRouter } from "./routes/dre";
 import { correcoesRouter } from "./routes/correcoes";
 import { fabricacaoRouter } from "./routes/fabricacao";
+import { promocoesRouter } from "./routes/promocoes";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
+import { iniciarSincronizacaoPromocoes } from "./services/promocoesService";
 
 const app = express();
 
@@ -50,6 +52,7 @@ app.use("/api/contas", requireAuth, requirePermissao("contas"), contasRouter);
 app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);
 app.use("/api/correcoes", requireAuth, requirePermissao("correcoes"), correcoesRouter);
 app.use("/api/fabricacao", requireAuth, requirePermissao("fabricacao"), fabricacaoRouter);
+app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -61,3 +64,4 @@ app.listen(env.port, () => {
 
 iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
+iniciarSincronizacaoPromocoes();
