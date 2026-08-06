@@ -58,6 +58,175 @@ function sombrear(hex: string, fator: number): string {
   return `#${paraHex(r)}${paraHex(g)}${paraHex(b)}`;
 }
 
+function misturar(p1: Ponto, p2: Ponto, t: number): Ponto {
+  return { x: p1.x + (p2.x - p1.x) * t, y: p1.y + (p2.y - p1.y) * t };
+}
+
+// Interpola um ponto dentro de um quadrilátero (A=canto 0,0 · B=canto 1,0 ·
+// C=canto 1,1 · D=canto 0,1) — usado pra encaixar conteúdo (gráfico da
+// tela, lombada dos livros) alinhado com a face isométrica certa, em vez de
+// desenhar "colado" por cima sem respeitar a perspectiva.
+function dentroDaFace(A: Ponto, B: Ponto, C: Ponto, D: Ponto, u: number, v: number): Ponto {
+  return misturar(misturar(A, B, u), misturar(D, C, u), v);
+}
+
+interface FaceQuad {
+  A: Ponto;
+  B: Ponto;
+  C: Ponto;
+  D: Ponto;
+}
+
+// Caixa 3D no grid isométrico — base de toda a mobília (mesa, monitor,
+// estante, cadeira). "elevar" empilha caixas em cima de outras (ex.:
+// monitor em cima da mesa). Devolve as 3 faces prontas pra desenhar mais a
+// face direita "crua" (4 cantos), pra quem precisar encaixar conteúdo nela.
+function caixaIso(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  altura: number,
+  elevar: number,
+  corBase: string,
+  projetar: (x: number, y: number) => Ponto = isoPoint
+) {
+  const subir = (p: Ponto, h: number) => ({ x: p.x, y: p.y - h });
+  const A = subir(projetar(x0, y0), elevar);
+  const B = subir(projetar(x1, y0), elevar);
+  const C = subir(projetar(x1, y1), elevar);
+  const D = subir(projetar(x0, y1), elevar);
+  const Ac = subir(A, altura);
+  const Bc = subir(B, altura);
+  const Cc = subir(C, altura);
+  const Dc = subir(D, altura);
+  const borda = sombrear(corBase, 0.5);
+  // "esquerda" é a face voltada pra frente-esquerda (aresta D-C, onde x
+  // varia) — normalmente a mais larga e a que fica de frente pro
+  // personagem, então é nela que encaixamos conteúdo (tela do monitor,
+  // lombada dos livros). "direita" (aresta B-C, y varia) fica de perfil.
+  const faceEsquerda: FaceQuad = { A: D, B: C, C: Cc, D: Dc };
+  const faceDireita: FaceQuad = { A: B, B: C, C: Cc, D: Bc };
+  return {
+    esquerda: (
+      <polygon points={pontosStr([D, C, Cc, Dc])} fill={sombrear(corBase, 0.62)} stroke={borda} strokeWidth="0.5" />
+    ),
+    direita: <polygon points={pontosStr([B, C, Cc, Bc])} fill={sombrear(corBase, 0.85)} stroke={borda} strokeWidth="0.5" />,
+    topo: <polygon points={pontosStr([Ac, Bc, Cc, Dc])} fill={sombrear(corBase, 1.18)} stroke={borda} strokeWidth="0.5" />,
+    faceEsquerda,
+    faceDireita,
+  };
+}
+
+function Mobilia({
+  x0,
+  y0,
+  x1,
+  y1,
+  altura,
+  elevar = 0,
+  cor,
+}: {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  altura: number;
+  elevar?: number;
+  cor: string;
+}) {
+  const caixa = caixaIso(x0, y0, x1, y1, altura, elevar, cor);
+  return (
+    <g>
+      {caixa.esquerda}
+      {caixa.direita}
+      {caixa.topo}
+    </g>
+  );
+}
+
+// Mesa com monitor em cima — a "tela" é um gráfico de linha ascendente
+// encaixado na face isométrica certa (via dentroDaFace), com um ponto
+// pulsando no fim pra dar a sensação de dado ao vivo.
+function MesaComMonitor({ alerta }: { alerta: boolean }) {
+  const mesa = caixaIso(2.3, 0.3, 4.3, 1.0, 24, 0, "#2b2f3a");
+  const monitor = caixaIso(2.9, 0.42, 3.7, 0.6, 18, 24, "#14161d");
+  const { A, B, C, D } = monitor.faceEsquerda;
+  const valores = [0.15, 0.38, 0.3, 0.58, 0.48, 0.72, 0.9];
+  const pontosGrafico = valores.map((v, i) => dentroDaFace(A, B, C, D, 0.12 + (i / (valores.length - 1)) * 0.76, 0.82 - v * 0.62));
+  const linha = pontosGrafico.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const ponta = pontosGrafico[pontosGrafico.length - 1];
+  const corLinha = alerta ? "var(--critical-text)" : "var(--good-text)";
+  return (
+    <g>
+      {mesa.esquerda}
+      {mesa.direita}
+      {mesa.topo}
+      {monitor.esquerda}
+      {monitor.direita}
+      {monitor.topo}
+      <polygon points={pontosStr([A, B, C, D])} fill="#0c2a22" />
+      <polyline
+        points={linha}
+        fill="none"
+        stroke={corLinha}
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="agente-grafico-linha"
+      />
+      <circle cx={ponta.x} cy={ponta.y} r={2.2} fill={corLinha} className="agente-grafico-ponto" />
+    </g>
+  );
+}
+
+// Estante contra a parede esquerda, com "lombadas" de livro encaixadas na
+// face isométrica e um vasinho de planta no topo.
+function Estante() {
+  const caixa = caixaIso(0.2, 1.0, 0.9, 1.8, 58, 0, "#3a2e22");
+  const { A, B, C, D } = caixa.faceEsquerda;
+  const cores = ["#b0463c", "#3f66c4", "#e8b84b"];
+  const livros = cores.map((cor, i) => {
+    const p0 = dentroDaFace(A, B, C, D, 0.14 + i * 0.24, 0.5);
+    const p1 = dentroDaFace(A, B, C, D, 0.3 + i * 0.24, 0.86);
+    return (
+      <rect
+        key={cor}
+        x={Math.min(p0.x, p1.x)}
+        y={p0.y}
+        width={Math.max(2, Math.abs(p1.x - p0.x))}
+        height={Math.abs(p1.y - p0.y)}
+        fill={cor}
+      />
+    );
+  });
+  const topoCentro = dentroDaFace(A, B, C, D, 0.5, 0);
+  return (
+    <g>
+      {caixa.esquerda}
+      {caixa.direita}
+      {caixa.topo}
+      {livros}
+      <circle cx={topoCentro.x - 4} cy={topoCentro.y - 5} r={4.5} fill="#3f8f5c" />
+      <circle cx={topoCentro.x + 3} cy={topoCentro.y - 7} r={3.5} fill="#4aa568" />
+    </g>
+  );
+}
+
+// Luminária de chão, com um brilho quentinho pulsando devagar.
+function Luminaria() {
+  const base = isoPoint(4.7, 1.1);
+  const topo = { x: base.x, y: base.y - 56 };
+  return (
+    <g>
+      <ellipse cx={base.x} cy={base.y} rx={5} ry={2.4} fill={sombrear("#5b4a35", 0.6)} />
+      <line x1={base.x} y1={base.y} x2={topo.x} y2={topo.y} stroke="#5b4a35" strokeWidth="2" />
+      <ellipse cx={topo.x} cy={topo.y - 6} rx={9} ry={5} fill="#f2e2b8" stroke={sombrear("#f2e2b8", 0.7)} strokeWidth="1" />
+      <ellipse cx={topo.x} cy={topo.y - 3} rx={12} ry={9} fill="#fff4d6" opacity={0.3} className="agente-luz-brilho" />
+    </g>
+  );
+}
+
 // Balão de chat com 3 pontinhos que "pulsam" em sequência, tipo indicador
 // de "digitando" de app de mensagem.
 function BalaoFala() {
@@ -77,34 +246,93 @@ function BalaoFala() {
   );
 }
 
-// Personagem robô, estilo ilustração plana (formas arredondadas, cores
-// vivas). Olhos reagem a ter pendência ou não.
-function Personagem({ pe, cor }: { pe: Ponto; cor: string }) {
+// Corpo do personagem humano, estilo ilustração plana (formas arredondadas,
+// cores vivas) — usado tanto parado (sala pequena) quanto andando (sala
+// grande do Modo TV). "corStatus" é o crachá colorido no peito que reage a
+// ter pendência ou não; sem ele, o personagem não carrega esse tipo de sinal.
+function CorpoHumano({ cor, corStatus }: { cor: string; corStatus?: string }) {
   return (
-    <g transform={`translate(${pe.x}, ${pe.y})`}>
-      <ellipse cx={0} cy={2} rx={26} ry={7} fill="rgba(0,0,0,0.3)" />
-      {/* CSS anima o transform do grupo interno (flutuar) — se fosse no
-          mesmo <g> do translate de posicionamento acima, a animação
-          substituiria esse posicionamento em vez de somar. */}
-      <g className="agente-personagem">
-        <rect x={-21} y={-52} width={42} height={39} rx={13} fill="#eef2fb" stroke="#aebfe0" strokeWidth="2" />
-        <rect x={-14} y={-41} width={28} height={8} rx={4} fill="var(--accent)" />
-        <circle cx={-9} cy={-25} r={6} fill={cor} className="agente-olho" />
-        <circle cx={9} cy={-25} r={6} fill={cor} className="agente-olho" />
-        <rect x={-2} y={-63} width={4} height={12} fill="#aebfe0" />
-        <circle cx={0} cy={-64} r={5.5} fill={cor} />
-        <rect x={-17} y={-13} width={34} height={29} rx={10} fill="#dbe4f5" stroke="#aebfe0" strokeWidth="2" />
-        <rect x={-10} y={-3} width={20} height={7} rx={3.5} fill="var(--accent)" />
-      </g>
-      <g transform="translate(24, -104)">
+    <g className="agente-personagem">
+      <rect x={-9} y={-24} width={7} height={26} rx={3} fill="#2b2f3a" />
+      <rect x={2} y={-24} width={7} height={26} rx={3} fill="#2b2f3a" />
+      <rect x={-13} y={-52} width={26} height={32} rx={9} fill={cor} stroke={sombrear(cor, 0.7)} strokeWidth="1.5" />
+      <rect x={-17} y={-49} width={6} height={22} rx={3} fill={cor} />
+      <rect x={11} y={-49} width={6} height={22} rx={3} fill={cor} />
+      <circle cx={0} cy={-62} r={12} fill="#e8b892" stroke="#c99569" strokeWidth="1.2" />
+      <path d="M -12 -66 A 12 12 0 0 1 12 -66 L 12 -71 A 13 13 0 0 0 -12 -71 Z" fill="#3b2a1e" />
+      <circle cx={-4} cy={-61} r={1.4} fill="#20232b" />
+      <circle cx={4} cy={-61} r={1.4} fill="#20232b" />
+      {corStatus && <circle cx={0} cy={-39} r={4} fill={corStatus} stroke="#fff" strokeWidth="1.2" />}
+    </g>
+  );
+}
+
+// Personagem humano parado, com balão de fala — usado na sala pequena de
+// cada agente (um personagem só, sem animação de andar).
+function PersonagemHumano({
+  pe,
+  cor,
+  corStatus,
+  escala = 1,
+}: {
+  pe: Ponto;
+  cor: string;
+  corStatus?: string;
+  escala?: number;
+}) {
+  return (
+    <g transform={`translate(${pe.x}, ${pe.y}) scale(${escala})`}>
+      <ellipse cx={0} cy={2} rx={17} ry={5} fill="rgba(0,0,0,0.3)" />
+      <CorpoHumano cor={cor} corStatus={corStatus} />
+      <g transform="translate(16, -78) scale(0.75)">
         <BalaoFala />
       </g>
     </g>
   );
 }
 
+// Personagem humano andando de um lado pro outro (mesa ↔ área comum) — sem
+// atributo "transform" estático no grupo animado (só a animação CSS cuida
+// da posição), pra não repetir o gotcha de atributo x animação brigando.
+function PersonagemAndante({
+  id,
+  deskPe,
+  comumPe,
+  cor,
+  corStatus,
+  escala = 1,
+}: {
+  id: string;
+  deskPe: Ponto;
+  comumPe: Ponto;
+  cor: string;
+  corStatus?: string;
+  escala?: number;
+}) {
+  const anim = `agente-andar-${id}`;
+  return (
+    <>
+      <style>{`
+        @keyframes ${anim} {
+          0%, 14% { transform: translate(${deskPe.x}px, ${deskPe.y}px); }
+          40%, 60% { transform: translate(${comumPe.x}px, ${comumPe.y}px); }
+          86%, 100% { transform: translate(${deskPe.x}px, ${deskPe.y}px); }
+        }
+      `}</style>
+      <g style={{ animation: `${anim} 18s ease-in-out infinite` }}>
+        <g transform={`scale(${escala})`}>
+          <ellipse cx={0} cy={2} rx={17} ry={5} fill="rgba(0,0,0,0.3)" />
+          <CorpoHumano cor={cor} corStatus={corStatus} />
+        </g>
+      </g>
+    </>
+  );
+}
+
+const COR_ADS = "#3b82c4";
+
 function IlustracaoAgente({ alerta }: { alerta: boolean }) {
-  const cor = alerta ? "var(--critical-text)" : "var(--good-text)";
+  const corStatus = alerta ? "var(--critical-text)" : "var(--good-text)";
 
   const costas = isoPoint(0, 0);
   const cantoDireito = isoPoint(GRID, 0);
@@ -142,14 +370,230 @@ function IlustracaoAgente({ alerta }: { alerta: boolean }) {
     }
   }
 
-  const pePersonagem = isoPoint(2, 3.4);
+  const pePersonagem = isoPoint(1.7, 3.6);
 
   return (
     <svg viewBox="0 0 300 220" className="agente-svg" role="img" aria-label="Sala do agente Analista de Ads">
       <polygon points={paredeEsquerda} fill={sombrear(COR_PAREDE, 0.65)} stroke={sombrear(COR_PAREDE, 0.4)} strokeWidth="1" />
       <polygon points={paredeDireita} fill={sombrear(COR_PAREDE, 0.9)} stroke={sombrear(COR_PAREDE, 0.4)} strokeWidth="1" />
       {tiles}
-      <Personagem pe={pePersonagem} cor={cor} />
+      <Estante />
+      <MesaComMonitor alerta={alerta} />
+      <Luminaria />
+      <Mobilia x0={2.9} y0={1.5} x1={3.7} y1={2.1} altura={9} cor="#1c1f26" />
+      <Mobilia x0={3.0} y0={1.95} x1={3.6} y1={2.1} altura={28} elevar={9} cor="#20232b" />
+      <PersonagemHumano pe={pePersonagem} cor={COR_ADS} corStatus={corStatus} escala={0.65} />
+    </svg>
+  );
+}
+
+// Escritório grande e compartilhado (Modo TV) — mesma técnica isométrica da
+// sala pequena, mas com sua própria projeção (grid maior, origem própria)
+// pra caber 3 mesas: Analista de Ads, Agente de Imagens e uma vaga pra um
+// futuro agente. Os dois personagens reais andam da mesa deles até uma área
+// comum no meio da sala e voltam, num loop.
+const GRID_G = 8;
+const TILE_W_G = 26;
+const TILE_H_G = 13;
+const WALL_H_G = 85;
+const ORIGEM_X_G = 210;
+const ORIGEM_Y_G = 90;
+
+function isoPointG(x: number, y: number): Ponto {
+  return { x: ORIGEM_X_G + (x - y) * (TILE_W_G / 2), y: ORIGEM_Y_G + (x + y) * (TILE_H_G / 2) };
+}
+
+const COR_IMAGENS = "#a855c9";
+
+// Mesa com monitor mostrando um gráfico (Ads) ou um ícone de foto (Imagens)
+// — mesma estrutura da MesaComMonitor da sala pequena, só que deslocável no
+// grid maior e com conteúdo de tela configurável.
+function MesaGrande({
+  x0,
+  tipo,
+  alerta,
+}: {
+  x0: number;
+  tipo: "ads" | "imagens" | "vaga";
+  alerta?: boolean;
+}) {
+  const mesa = caixaIso(x0, 0.3, x0 + 1.6, 1.0, 22, 0, "#2b2f3a", isoPointG);
+  const monitor =
+    tipo !== "vaga" ? caixaIso(x0 + 0.5, 0.42, x0 + 1.1, 0.6, 16, 22, "#14161d", isoPointG) : null;
+  const telaConteudo = (() => {
+    if (!monitor) return null;
+    const { A, B, C, D } = monitor.faceEsquerda;
+    if (tipo === "ads") {
+      const valores = [0.15, 0.38, 0.3, 0.58, 0.48, 0.72, 0.9];
+      const pontos = valores.map((v, i) => dentroDaFace(A, B, C, D, 0.12 + (i / (valores.length - 1)) * 0.76, 0.82 - v * 0.62));
+      const linha = pontos.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const ponta = pontos[pontos.length - 1];
+      const corLinha = alerta ? "var(--critical-text)" : "var(--good-text)";
+      return (
+        <>
+          <polygon points={pontosStr([A, B, C, D])} fill="#0c2a22" />
+          <polyline
+            points={linha}
+            fill="none"
+            stroke={corLinha}
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="agente-grafico-linha"
+          />
+          <circle cx={ponta.x} cy={ponta.y} r={1.9} fill={corLinha} className="agente-grafico-ponto" />
+        </>
+      );
+    }
+    // Agente de Imagens: um "ícone de foto" simples (retângulo + montanha +
+    // sol) em vez de gráfico, já que o trabalho dele não é métrica.
+    const centro = dentroDaFace(A, B, C, D, 0.5, 0.5);
+    const canto1 = dentroDaFace(A, B, C, D, 0.2, 0.75);
+    const canto2 = dentroDaFace(A, B, C, D, 0.5, 0.4);
+    const canto3 = dentroDaFace(A, B, C, D, 0.8, 0.75);
+    return (
+      <>
+        <polygon points={pontosStr([A, B, C, D])} fill="#1a1030" />
+        <polygon points={pontosStr([canto1, canto2, canto3])} fill="#a855c9" opacity={0.8} />
+        <circle cx={centro.x + 4} cy={centro.y - 5} r={2} fill="#f2e2b8" />
+      </>
+    );
+  })();
+  return (
+    <g>
+      {mesa.esquerda}
+      {mesa.direita}
+      {mesa.topo}
+      {monitor && (
+        <>
+          {monitor.esquerda}
+          {monitor.direita}
+          {monitor.topo}
+          {telaConteudo}
+        </>
+      )}
+      {tipo === "vaga" && (
+        <text
+          x={isoPointG(x0 + 0.8, 0.65).x}
+          y={isoPointG(x0 + 0.8, 0.65).y - 26}
+          textAnchor="middle"
+          fontSize="7"
+          fill="var(--text-muted)"
+        >
+          Em breve
+        </text>
+      )}
+    </g>
+  );
+}
+
+function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
+  const costas = isoPointG(0, 0);
+  const cantoDireito = isoPointG(GRID_G, 0);
+  const cantoEsquerdo = isoPointG(0, GRID_G);
+  const paredeEsquerda = pontosStr([
+    cantoEsquerdo,
+    costas,
+    { x: costas.x, y: costas.y - WALL_H_G },
+    { x: cantoEsquerdo.x, y: cantoEsquerdo.y - WALL_H_G },
+  ]);
+  const paredeDireita = pontosStr([
+    costas,
+    cantoDireito,
+    { x: cantoDireito.x, y: cantoDireito.y - WALL_H_G },
+    { x: costas.x, y: costas.y - WALL_H_G },
+  ]);
+
+  const tiles = [];
+  for (let gx = 0; gx < GRID_G; gx++) {
+    for (let gy = 0; gy < GRID_G; gy++) {
+      const p0 = isoPointG(gx, gy);
+      const p1 = isoPointG(gx + 1, gy);
+      const p2 = isoPointG(gx + 1, gy + 1);
+      const p3 = isoPointG(gx, gy + 1);
+      const escuro = (gx + gy) % 2 === 0;
+      tiles.push(
+        <polygon
+          key={`${gx}-${gy}`}
+          points={pontosStr([p0, p1, p2, p3])}
+          fill={escuro ? COR_PISO_1 : COR_PISO_2}
+          stroke={sombrear(COR_PISO_2, 0.7)}
+          strokeWidth="0.5"
+        />
+      );
+    }
+  }
+
+  const bookshelfCaixa = caixaIso(0.2, 2.0, 0.9, 2.8, 58, 0, "#3a2e22", isoPointG);
+  const bookshelfFace = bookshelfCaixa.faceEsquerda;
+  const cores = ["#b0463c", "#3f66c4", "#e8b84b"];
+  const livros = cores.map((cor, i) => {
+    const p0 = dentroDaFace(bookshelfFace.A, bookshelfFace.B, bookshelfFace.C, bookshelfFace.D, 0.14 + i * 0.24, 0.5);
+    const p1 = dentroDaFace(bookshelfFace.A, bookshelfFace.B, bookshelfFace.C, bookshelfFace.D, 0.3 + i * 0.24, 0.86);
+    return (
+      <rect
+        key={cor}
+        x={Math.min(p0.x, p1.x)}
+        y={p0.y}
+        width={Math.max(2, Math.abs(p1.x - p0.x))}
+        height={Math.abs(p1.y - p0.y)}
+        fill={cor}
+      />
+    );
+  });
+  const topoEstante = dentroDaFace(bookshelfFace.A, bookshelfFace.B, bookshelfFace.C, bookshelfFace.D, 0.5, 0);
+
+  const lampadaBase = isoPointG(7.2, 3.8);
+  const lampadaTopo = { x: lampadaBase.x, y: lampadaBase.y - 60 };
+
+  const deskAds = isoPointG(1.6, 3.0);
+  const deskImagens = isoPointG(4.6, 3.0);
+  const comumAds = isoPointG(2.8, 5.8);
+  const comumImagens = isoPointG(4.4, 5.8);
+
+  return (
+    <svg viewBox="0 0 420 260" className="agente-svg agente-svg-grande" role="img" aria-label="Escritório compartilhado dos agentes">
+      <polygon points={paredeEsquerda} fill={sombrear(COR_PAREDE, 0.65)} stroke={sombrear(COR_PAREDE, 0.4)} strokeWidth="1" />
+      <polygon points={paredeDireita} fill={sombrear(COR_PAREDE, 0.9)} stroke={sombrear(COR_PAREDE, 0.4)} strokeWidth="1" />
+      {tiles}
+
+      <g>
+        {bookshelfCaixa.esquerda}
+        {bookshelfCaixa.direita}
+        {bookshelfCaixa.topo}
+        {livros}
+        <circle cx={topoEstante.x - 4} cy={topoEstante.y - 5} r={4.5} fill="#3f8f5c" />
+        <circle cx={topoEstante.x + 3} cy={topoEstante.y - 7} r={3.5} fill="#4aa568" />
+      </g>
+
+      <MesaGrande x0={1.0} tipo="ads" alerta={alertaAds} />
+      <MesaGrande x0={3.4} tipo="imagens" />
+      <MesaGrande x0={5.8} tipo="vaga" />
+
+      <g>
+        <ellipse cx={lampadaBase.x} cy={lampadaBase.y} rx={5} ry={2.4} fill={sombrear("#5b4a35", 0.6)} />
+        <line x1={lampadaBase.x} y1={lampadaBase.y} x2={lampadaTopo.x} y2={lampadaTopo.y} stroke="#5b4a35" strokeWidth="2" />
+        <ellipse
+          cx={lampadaTopo.x}
+          cy={lampadaTopo.y - 6}
+          rx={9}
+          ry={5}
+          fill="#f2e2b8"
+          stroke={sombrear("#f2e2b8", 0.7)}
+          strokeWidth="1"
+        />
+        <ellipse cx={lampadaTopo.x} cy={lampadaTopo.y - 3} rx={12} ry={9} fill="#fff4d6" opacity={0.3} className="agente-luz-brilho" />
+      </g>
+
+      <PersonagemAndante
+        id="ads"
+        deskPe={deskAds}
+        comumPe={comumAds}
+        cor={COR_ADS}
+        corStatus={alertaAds ? "var(--critical-text)" : "var(--good-text)"}
+        escala={0.6}
+      />
+      <PersonagemAndante id="imagens" deskPe={deskImagens} comumPe={comumImagens} cor={COR_IMAGENS} escala={0.6} />
     </svg>
   );
 }
@@ -589,12 +1033,73 @@ function AgenteImagens() {
   );
 }
 
+// Modo TV do escritório compartilhado — busca o feed do Analista de Ads por
+// conta própria (não depende de qual aba está ativa), atualiza sozinho a
+// cada 1 min e sai com Esc. O Agente de Imagens não tem "pendência" pra
+// carregar, então só o Ads alimenta o crachá de status do personagem dele.
+function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
+  const [pendentes, setPendentes] = useState(0);
+  const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      const [feedNovo, pensamentosNovos] = await Promise.all([fetchFeedAds("pendente"), fetchPensamentosAds()]);
+      setPendentes(feedNovo.length);
+      setPensamentos(pensamentosNovos);
+    } catch {
+      // Modo TV não mostra erro — só mantém o último estado conhecido na tela.
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+    const intervalo = setInterval(carregar, 60000);
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onSair();
+    };
+    window.addEventListener("keydown", aoTeclar);
+    return () => {
+      clearInterval(intervalo);
+      window.removeEventListener("keydown", aoTeclar);
+    };
+  }, [carregar, onSair]);
+
+  return (
+    <div className="agente-tv-overlay">
+      <button type="button" className="agente-tv-sair" onClick={onSair}>
+        Sair (Esc)
+      </button>
+      <EscritorioCompartilhado alertaAds={pendentes > 0} />
+      <div className="agente-tv-status">
+        {pensamentos && pensamentos.length > 0 ? (
+          <p className="agente-tv-pensamento">{pensamentos[0].pensamento}</p>
+        ) : (
+          <span className="financeiro-td-mudo">Analista de Ads ainda sem nenhuma verificação registrada.</span>
+        )}
+        {pendentes === 0 ? (
+          <span className="financeiro-margem-positiva">Ads: tudo certo — nenhuma pendência.</span>
+        ) : (
+          <span className="financeiro-margem-negativa">
+            Ads: {pendentes} observaç{pendentes !== 1 ? "ões" : "ão"} pendente{pendentes !== 1 ? "s" : ""}.
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AgenciaAgentesIA() {
   const [agente, setAgente] = useState<"ads" | "imagens">("ads");
+  const [modoTV, setModoTV] = useState(false);
 
   return (
     <div className="financeiro-page">
-      <span className="painel-eyebrow">Agência de Agentes IA</span>
+      <div className="agente-topo-hub">
+        <span className="painel-eyebrow">Agência de Agentes IA</span>
+        <button type="button" className="btn-secundario" onClick={() => setModoTV(true)}>
+          Modo TV
+        </button>
+      </div>
 
       <div className="agente-tabs">
         <button
@@ -614,6 +1119,8 @@ export function AgenciaAgentesIA() {
       </div>
 
       {agente === "ads" ? <AnalistaAds /> : <AgenteImagens />}
+
+      {modoTV && <ModoTVEscritorio onSair={() => setModoTV(false)} />}
     </div>
   );
 }
