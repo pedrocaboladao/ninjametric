@@ -357,7 +357,14 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
     try {
       const promocoes = await consultarPromocoesDoItem(lojaId, itemId);
       for (const p of promocoes) {
-        if (p.type === "SELLER_CAMPAIGN" && p.status === "started") {
+        // Não filtramos por p.type aqui: o valor exato que o ML devolve pra
+        // SELLER_CAMPAIGN não foi confirmado contra uma resposta real (só
+        // documentação), e getPromocaoStatus (já em produção há tempos, ver
+        // mercadoLivreApi.ts) confia só em status === "started" pra esse
+        // mesmo endpoint. Falsos positivos (outro tipo de promoção) não
+        // registram: obterDetalhesCampanha pede promotion_type=SELLER_CAMPAIGN
+        // e falha/pula silenciosamente (catch abaixo) se não bater.
+        if (p.status === "started") {
           promotionIdsEncontrados.add(p.promotionId);
         }
       }
