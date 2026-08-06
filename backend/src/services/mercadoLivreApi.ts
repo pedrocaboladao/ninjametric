@@ -198,7 +198,13 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
       params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset, limit },
     });
     itens.push(
-      ...data.results.map((r) => ({ itemId: r.id, status: r.status, price: r.price, originalPrice: r.original_price }))
+      ...data.results
+        // Item sem price/original_price (visto na prática num item cujo
+        // status não era "started") não pode virar deal_price NULL no
+        // banco (coluna NOT NULL) — ignora esse item específico em vez de
+        // derrubar a campanha inteira por causa de um item malformado.
+        .filter((r) => typeof r.price === "number" && typeof r.original_price === "number")
+        .map((r) => ({ itemId: r.id, status: r.status, price: r.price, originalPrice: r.original_price }))
     );
     offset += limit;
     if (offset >= data.paging.total || data.results.length === 0) break;
