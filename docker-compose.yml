@@ -29,6 +29,7 @@ services:
       AUTH_USERNAME: ${AUTH_USERNAME}
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH}
       JWT_SECRET: ${JWT_SECRET}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       NODE_ENV: production
     ports:
       - "127.0.0.1:4000:4000"
