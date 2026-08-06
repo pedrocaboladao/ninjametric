@@ -373,10 +373,10 @@ export async function listarObservacoes(status?: "pendente" | "resolvida"): Prom
             o.resolvido_por, o.criado_em, o.resolvido_em, l.nome AS loja_nome
      FROM agente_ads_observacoes o
      JOIN lojas l ON l.id = o.loja_id
-     WHERE $1::text IS NULL OR o.status = $1
+     WHERE o.loja_id = ANY($1::int[]) AND ($2::text IS NULL OR o.status = $2)
      ORDER BY (o.status = 'pendente') DESC, o.criado_em DESC
      LIMIT 200`,
-    [status ?? null]
+    [LOJAS_AGENTE, status ?? null]
   );
   return rows.map((r) => ({
     id: r.id,
