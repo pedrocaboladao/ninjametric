@@ -235,12 +235,14 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
     }
 
     offset += limit;
-    // Uma única página repetindo tudo já visto pode ser só ordenação
-    // instável do ML entre chamadas (visto em campanha grande de verdade,
-    // não pode parar aí) — só desiste depois de várias seguidas sem nada
-    // novo, que é o padrão real do bug original (item único repetido em
-    // dezenas de páginas consecutivas).
-    if (data.results.length === 0 || paginasSemNovidade >= LIMITE_PAGINAS_SEM_NOVIDADE || offset >= data.paging.total) {
+    // Não confia em data.paging.total pra decidir quando parar — visto na
+    // prática que esse número não reflete de forma confiável o total real
+    // de itens distintos da campanha (campanha real ficou faltando itens
+    // parando nele). Só para com página vazia de verdade (fim real da
+    // paginação) ou várias páginas seguidas sem nada novo (o padrão do bug
+    // original: item único repetido em dezenas de páginas), o que vier
+    // primeiro — MAX_PAGINAS é a trava final de segurança.
+    if (data.results.length === 0 || paginasSemNovidade >= LIMITE_PAGINAS_SEM_NOVIDADE) {
       break;
     }
   }
