@@ -368,18 +368,39 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
   const [erro, setErro] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, []);
-
   function pararPolling() {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
   }
+
+  function comecarPolling() {
+    if (intervalRef.current) return;
+    intervalRef.current = setInterval(async () => {
+      const p = await fetchProgressoDescoberta();
+      setProgresso(p);
+      if (!p.emAndamento) {
+        pararPolling();
+        onEncontradas();
+      }
+    }, 3000);
+  }
+
+  // Ao abrir/recarregar a tela, checa se já tinha uma descoberta rodando
+  // de um clique anterior (o scan continua no servidor mesmo se a página
+  // for fechada) — sem isso, só descobria isso ao clicar de novo e tomar
+  // o erro "Já tem uma descoberta em andamento".
+  useEffect(() => {
+    (async () => {
+      const p = await fetchProgressoDescoberta();
+      setProgresso(p);
+      if (p.emAndamento) comecarPolling();
+    })();
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
 
   async function iniciar() {
     setErro(null);
@@ -389,14 +410,7 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
       setErro(err instanceof Error ? err.message : "Falha ao iniciar.");
       return;
     }
-    intervalRef.current = setInterval(async () => {
-      const p = await fetchProgressoDescoberta();
-      setProgresso(p);
-      if (!p.emAndamento) {
-        pararPolling();
-        onEncontradas();
-      }
-    }, 3000);
+    comecarPolling();
   }
 
   const emAndamento = progresso?.emAndamento ?? false;
