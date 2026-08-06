@@ -441,14 +441,20 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
           )}
         </div>
       )}
-      {progresso && !emAndamento && progresso.campanhasEncontradas > 0 && (
+      {progresso && !emAndamento && (progresso.campanhasEncontradas > 0 || progresso.campanhasCompletadas > 0) && (
         <div className="financeiro-margem-positiva">
-          Descoberta concluída: {progresso.campanhasEncontradas} campanha
-          {progresso.campanhasEncontradas !== 1 ? "s" : ""} encontrada
-          {progresso.campanhasEncontradas !== 1 ? "s" : ""}.
+          Descoberta concluída:{" "}
+          {progresso.campanhasEncontradas > 0 &&
+            `${progresso.campanhasEncontradas} campanha${progresso.campanhasEncontradas !== 1 ? "s" : ""} nova${
+              progresso.campanhasEncontradas !== 1 ? "s" : ""
+            } encontrada${progresso.campanhasEncontradas !== 1 ? "s" : ""}. `}
+          {progresso.campanhasCompletadas > 0 &&
+            `${progresso.campanhasCompletadas} campanha${progresso.campanhasCompletadas !== 1 ? "s" : ""} já rastreada${
+              progresso.campanhasCompletadas !== 1 ? "s" : ""
+            } teve${progresso.campanhasCompletadas !== 1 ? "ram" : ""} os itens completados.`}
         </div>
       )}
-      {progresso && !emAndamento && progresso.campanhasEncontradas === 0 && (
+      {progresso && !emAndamento && progresso.campanhasEncontradas === 0 && progresso.campanhasCompletadas === 0 && (
         <div className="financeiro-td-mudo">
           Descoberta concluída: nenhuma campanha do vendedor (SELLER_CAMPAIGN) encontrada.{" "}
           {progresso.itensComErro > 0 &&

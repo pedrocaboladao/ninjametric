@@ -56,6 +56,7 @@ export interface ProgressoDescoberta {
   itensVerificados: number;
   totalItens: number;
   campanhasEncontradas: number;
+  campanhasCompletadas: number;
   itensComErro: number;
   candidatosDescartados: number;
   amostraErro: string | null;

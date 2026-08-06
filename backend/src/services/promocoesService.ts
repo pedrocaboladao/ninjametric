@@ -326,6 +326,7 @@ export interface ProgressoDescoberta {
   itensVerificados: number;
   totalItens: number;
   campanhasEncontradas: number;
+  campanhasCompletadas: number;
   itensComErro: number;
   candidatosDescartados: number;
   amostraErro: string | null;
@@ -338,6 +339,7 @@ let progressoDescoberta: ProgressoDescoberta = {
   itensVerificados: 0,
   totalItens: 0,
   campanhasEncontradas: 0,
+  campanhasCompletadas: 0,
   itensComErro: 0,
   candidatosDescartados: 0,
   amostraErro: null,
@@ -461,7 +463,11 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
           [campanhaId, it.itemId, null, it.originalPrice, it.price]
         );
       }
-      if (campanhaExistenteId === null) progressoDescoberta.campanhasEncontradas++;
+      if (campanhaExistenteId === null) {
+        progressoDescoberta.campanhasEncontradas++;
+      } else if (itensCampanha.length > 0) {
+        progressoDescoberta.campanhasCompletadas++;
+      }
     } catch (err) {
       // Candidato tinha status "started" em consultarPromocoesDoItem, mas
       // obterDetalhesCampanha (que exige promotion_type=SELLER_CAMPAIGN)
@@ -498,6 +504,7 @@ export async function iniciarDescobertaCampanhas(lojaIdFiltro?: number, lojasPer
     itensVerificados: 0,
     totalItens: 0,
     campanhasEncontradas: 0,
+    campanhasCompletadas: 0,
     itensComErro: 0,
     candidatosDescartados: 0,
     amostraErro: null,
