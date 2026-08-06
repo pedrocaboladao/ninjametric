@@ -422,6 +422,9 @@ function DescobertaAutomatica({ onEncontradas }: { onEncontradas: () => void }) 
               {progresso.candidatosDescartados !== 1 ? "s" : ""} por não ser campanha do vendedor.)
             </>
           )}
+          {progresso.amostraErro && (
+            <div className="financeiro-td-mudo">Exemplo de erro: {progresso.amostraErro}</div>
+          )}
         </div>
       )}
       {progresso && !emAndamento && progresso.campanhasEncontradas > 0 && (
