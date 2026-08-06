@@ -269,7 +269,9 @@ export async function recriarCampanha(campanhaAntigaId: number): Promise<Resulta
     return { itemId: r.item_id, percentual };
   });
 
-  const sufixo = ` (${dataISO(new Date()).split("-").reverse().slice(0, 2).join("/")})`;
+  // "/" no sufixo já causou "Invalid name" (HTTP 400) numa campanha real -
+  // ML parece não aceitar barra no nome da promoção. Usa "-" em vez de "/".
+  const sufixo = ` (${dataISO(new Date()).split("-").reverse().slice(0, 2).join("-")})`;
   return criarCampanha(rows[0].loja_id, rows[0].nome + sufixo, itens, campanhaAntigaId);
 }
 
