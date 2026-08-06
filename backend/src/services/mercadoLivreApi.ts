@@ -186,10 +186,14 @@ export async function obterItensDaCampanhaBruto(lojaId: number, promotionId: str
 
 export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<MlItemCampanha[]> {
   const accessToken = await getValidAccessToken(lojaId);
-  const itens: MlItemCampanha[] = [];
+  const itensPorId = new Map<string, MlItemCampanha>();
+  const idsVistos = new Set<string>();
   let offset = 0;
   const limit = 50;
-  while (true) {
+  // Trava de segurança (5000 itens) — visto na prática que data.paging.total
+  // pode não refletir o total real de itens distintos dessa campanha.
+  const MAX_PAGINAS = 100;
+  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
     const { data } = await axios.get<{
       results: Array<{
         id: string;
@@ -203,27 +207,33 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
       headers: { Authorization: `Bearer ${accessToken}` },
       params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset, limit },
     });
-    itens.push(
-      ...data.results
-        // Confirmado numa resposta real: item "candidate" não tem price,
-        // só min/max/suggested_discounted_price (é só uma SUGESTÃO do ML
-        // de item elegível, não um item de fato incluído na campanha) — e
-        // não vem com o mesmo nome de campo "price" que a gente assumia,
-        // é "deal_price" (mesmo nome usado pra ENVIAR o preço em
-        // adicionarItemCampanha). Só item started conta como "na campanha"
-        // de verdade; os outros ficam de fora em vez de virar NULL no banco.
-        .filter((r) => r.status === "started" && typeof (r.deal_price ?? r.price) === "number")
-        .map((r) => ({
-          itemId: r.id,
-          status: r.status,
-          price: (r.deal_price ?? r.price) as number,
-          originalPrice: r.original_price,
-        }))
-    );
+
+    let paginaTemNovidade = false;
+    for (const r of data.results) {
+      if (!idsVistos.has(r.id)) {
+        idsVistos.add(r.id);
+        paginaTemNovidade = true;
+      }
+      // Confirmado numa resposta real: item "candidate" não tem price, só
+      // min/max/suggested_discounted_price (é só uma SUGESTÃO do ML de item
+      // elegível, não um item de fato incluído na campanha) — e não vem com
+      // o mesmo nome de campo "price" que a gente assumia, é "deal_price"
+      // (mesmo nome usado pra ENVIAR o preço em adicionarItemCampanha). Só
+      // item started conta como "na campanha" de verdade.
+      const preco = r.deal_price ?? r.price;
+      if (r.status === "started" && typeof preco === "number" && !itensPorId.has(r.id)) {
+        itensPorId.set(r.id, { itemId: r.id, status: r.status, price: preco, originalPrice: r.original_price });
+      }
+    }
+
     offset += limit;
-    if (offset >= data.paging.total || data.results.length === 0) break;
+    // Página inteira repetindo ids já vistos = a API não está avançando de
+    // verdade (visto na prática: mesmo item devolvido em toda página) — para
+    // aqui em vez de insistir até bater em paging.total, evitando duplicar
+    // o mesmo item dezenas de vezes no resultado final.
+    if (data.results.length === 0 || !paginaTemNovidade || offset >= data.paging.total) break;
   }
-  return itens;
+  return Array.from(itensPorId.values());
 }
 
 // Lista o item_id de todos os anúncios ATIVOS de uma loja — usada só pra
