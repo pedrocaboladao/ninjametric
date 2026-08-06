@@ -109,7 +109,9 @@ export async function criarCampanha(
           `Mercado Livre recusou (403${mensagemMl ? `: ${mensagemMl}` : ""}) — provavelmente a permissão "Preços e promoções" não está habilitada/reautorizada pra essa loja no app do Mercado Livre.`
         );
       }
-      throw new Error(`Falha ao criar campanha no Mercado Livre (HTTP ${status}${mensagemMl ? `: ${mensagemMl}` : ""}).`);
+      throw new Error(
+        `Falha ao criar campanha no Mercado Livre (HTTP ${status}${mensagemMl ? `: ${mensagemMl}` : ""}) — nome enviado: "${nome}" (${nome.length} caracteres).`
+      );
     }
     throw err;
   }
