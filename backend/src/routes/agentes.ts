@@ -1,5 +1,12 @@
 import { Router, Response } from "express";
-import { verificarAgenteAds, listarObservacoes, confirmarObservacao, listarPensamentos } from "../services/agenteAdsService";
+import {
+  verificarAgenteAds,
+  listarObservacoes,
+  confirmarObservacao,
+  listarPensamentos,
+  perguntarAgenteAds,
+  type MensagemChat,
+} from "../services/agenteAdsService";
 
 export const agentesRouter = Router();
 
@@ -32,6 +39,25 @@ agentesRouter.post("/ads/verificar", async (_req, res) => {
     res.json(await verificarAgenteAds());
   } catch (err) {
     erro(res, err, "Falha ao verificar.");
+  }
+});
+
+agentesRouter.post("/ads/perguntar", async (req, res) => {
+  const { pergunta, historico } = req.body ?? {};
+  if (typeof pergunta !== "string" || !pergunta.trim()) {
+    res.status(400).json({ error: "Pergunta inválida." });
+    return;
+  }
+  const historicoValido: MensagemChat[] = Array.isArray(historico)
+    ? historico.filter(
+        (m): m is MensagemChat => !!m && (m.papel === "usuario" || m.papel === "agente") && typeof m.texto === "string"
+      )
+    : [];
+  try {
+    const resposta = await perguntarAgenteAds(pergunta.trim(), historicoValido);
+    res.json({ resposta });
+  } catch (err) {
+    erro(res, err, "Falha ao perguntar pro agente.");
   }
 });
 

@@ -1,6 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
-import { fetchFeedAds, verificarAgenteAdsAgora, confirmarObservacaoAds, fetchPensamentosAds } from "../api/agentes";
-import type { ObservacaoAds, PensamentoAds } from "../types/agentes";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
+import {
+  fetchFeedAds,
+  verificarAgenteAdsAgora,
+  confirmarObservacaoAds,
+  fetchPensamentosAds,
+  perguntarAgenteAds,
+} from "../api/agentes";
+import type { ObservacaoAds, PensamentoAds, MensagemChat } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
 
 const TAG_POR_TIPO: Record<string, { tag: string; cor: string }> = {
@@ -201,6 +207,81 @@ function PensamentoCard({ pensamento }: { pensamento: PensamentoAds }) {
   );
 }
 
+// Pergunta livre pro agente — mantém o histórico só na memória da página
+// (não persiste como o feed/pensamentos), a cada pergunta ele busca os
+// dados atuais das campanhas de novo no backend, então a resposta nunca
+// fica desatualizada.
+function ChatAgente() {
+  const [mensagens, setMensagens] = useState<MensagemChat[]>([]);
+  const [input, setInput] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erroChat, setErroChat] = useState<string | null>(null);
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault();
+    const pergunta = input.trim();
+    if (!pergunta || enviando) return;
+
+    const historico = mensagens;
+    setMensagens((m) => [...m, { papel: "usuario", texto: pergunta }]);
+    setInput("");
+    setErroChat(null);
+    setEnviando(true);
+    try {
+      const resposta = await perguntarAgenteAds(pergunta, historico);
+      setMensagens((m) => [...m, { papel: "agente", texto: resposta }]);
+    } catch (err) {
+      setErroChat(err instanceof Error ? err.message : "Falha ao perguntar pro agente.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  return (
+    <div className="agente-chat">
+      <div className="agente-feed-topo">
+        <span className="painel-eyebrow">Perguntar pro agente</span>
+      </div>
+
+      {mensagens.length === 0 && (
+        <div className="state-message">
+          Pergunte algo sobre suas campanhas de Ads — ele responde com os dados atuais das suas 4 lojas.
+        </div>
+      )}
+
+      {mensagens.length > 0 && (
+        <div className="agente-chat-mensagens">
+          {mensagens.map((m, i) => (
+            <div key={i} className={`agente-chat-msg agente-chat-msg-${m.papel}`}>
+              <p>{m.texto}</p>
+            </div>
+          ))}
+          {enviando && (
+            <div className="agente-chat-msg agente-chat-msg-agente agente-chat-msg-carregando">
+              <p>Pensando...</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {erroChat && <div className="state-message state-error">{erroChat}</div>}
+
+      <form className="agente-chat-form" onSubmit={enviar}>
+        <input
+          type="text"
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          placeholder="Ex: qual campanha está no prejuízo agora?"
+          disabled={enviando}
+        />
+        <button type="submit" className="btn-responder" disabled={enviando || !input.trim()}>
+          Enviar
+        </button>
+      </form>
+    </div>
+  );
+}
+
 export function AgenciaAgentesIA() {
   const [feed, setFeed] = useState<ObservacaoAds[] | null>(null);
   const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
@@ -298,6 +379,8 @@ export function AgenciaAgentesIA() {
           )}
         </div>
       </div>
+
+      <ChatAgente />
 
       <div className="agente-feed">
         <div className="agente-feed-topo">

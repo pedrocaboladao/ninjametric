@@ -140,20 +140,18 @@ interface ObservacaoIA extends ObservacaoGerada {
   campanhaId: string;
 }
 
-async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo: number): Promise<ObservacaoIA[] | null> {
-  const client = obterClienteAnthropic();
-  if (!client) return null;
-
-  const ativas = campanhas.filter((c) => c.status === "active" && c.custo > 0);
-  if (ativas.length === 0) return [];
-
-  const linhas = ativas
+// Reaproveitado tanto na verificação automática (só campanhas ativas com
+// gasto) quanto no chat do agente (todas, pra dar pro dono perguntar sobre
+// qualquer campanha, inclusive pausada).
+function construirLinhasCampanhas(campanhas: CampanhaComTacos[]): string {
+  return campanhas
     .map((c) =>
       [
         `loja_id=${c.lojaId}`,
         `campanha_id=${c.campanhaId}`,
         `loja="${c.lojaNome}"`,
         `campanha="${c.nome}"`,
+        `status=${c.status}`,
         `acos=${c.acos.toFixed(1)}%`,
         `acos_meta=${c.acosMeta.toFixed(1)}%`,
         `gasto=${formatCurrency(c.custo)}`,
@@ -165,6 +163,16 @@ async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo:
       ].join(", ")
     )
     .join("\n");
+}
+
+async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo: number): Promise<ObservacaoIA[] | null> {
+  const client = obterClienteAnthropic();
+  if (!client) return null;
+
+  const ativas = campanhas.filter((c) => c.status === "active" && c.custo > 0);
+  if (ativas.length === 0) return [];
+
+  const linhas = construirLinhasCampanhas(ativas);
 
   const resposta = await client.messages.create({
     model: MODELO_IA,
@@ -247,9 +255,9 @@ const DIAS_JANELA = 7;
 // Impermeabilizantes=2, Inga Collors=3, Perpétua=4.
 const LOJAS_AGENTE = [1, 2, 3, 4];
 
-// Roda só pras 4 lojas pessoais (ver LOJAS_AGENTE) sobre os últimos 7 dias,
-// mesma janela que a tela de Ads usa por padrão.
-export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasSozinhas: number }> {
+// Busca as campanhas das 4 lojas pessoais (ver LOJAS_AGENTE) com TACOS/lucro
+// já calculados — reaproveitada pela verificação automática e pelo chat.
+async function buscarCampanhasComTacos(): Promise<CampanhaComTacos[]> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (DIAS_JANELA - 1) * 24 * 60 * 60 * 1000);
   const dataInicio = dataISO(inicio);
@@ -262,7 +270,7 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
 
   const receitaPorChave = new Map(receitas.map((r) => [`${r.lojaId}-${r.campanhaId}`, r]));
 
-  const campanhasComTacos: CampanhaComTacos[] = campanhas.map((c) => {
+  return campanhas.map((c) => {
     const dados = receitaPorChave.get(`${c.lojaId}-${c.campanhaId}`);
     const receitaReal = dados?.receitaTotalReal ?? 0;
     const receitaBase = Math.max(receitaReal, c.vendasTotais);
@@ -270,6 +278,12 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
     const acosIdeal = dados?.acosIdeal ?? null;
     return { ...c, tacosReal, acosIdeal, lucroReais: calcularLucroReais({ custo: c.custo, receitaBase, acosIdeal }) };
   });
+}
+
+// Roda só pras 4 lojas pessoais (ver LOJAS_AGENTE) sobre os últimos 7 dias,
+// mesma janela que a tela de Ads usa por padrão.
+export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasSozinhas: number }> {
+  const campanhasComTacos = await buscarCampanhasComTacos();
 
   // Tenta a análise com IA de verdade primeiro; sem chave configurada
   // (obterClienteAnthropic devolve null) ou se a chamada falhar por
@@ -421,6 +435,50 @@ export async function listarPensamentos(limite = 20): Promise<PensamentoAds[]> {
     [limite]
   );
   return rows.map((r) => ({ id: r.id, pensamento: r.pensamento, criadoEm: r.criado_em }));
+}
+
+export interface MensagemChat {
+  papel: "usuario" | "agente";
+  texto: string;
+}
+
+// Chat direto com o agente — pergunta livre do dono, respondida com os
+// dados reais e atuais das campanhas das 4 lojas pessoais como contexto
+// (buscados na hora, não reaproveita cache do feed automático).
+export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<string> {
+  const client = obterClienteAnthropic();
+  if (!client) {
+    throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
+  }
+
+  const campanhasComTacos = await buscarCampanhasComTacos();
+  const linhas = construirLinhasCampanhas(campanhasComTacos);
+
+  const resposta = await client.messages.create({
+    model: MODELO_IA,
+    max_tokens: 2000,
+    system: `Você é um analista de tráfego pago (Mercado Ads) experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre. Está conversando direto com o dono do negócio sobre as campanhas de Ads das 4 lojas pessoais dele.
+
+Responda com base nos dados reais abaixo, citando números quando fizer sentido. Seja direto e responda sempre em português.
+
+Dados atuais das campanhas (últimos ${DIAS_JANELA} dias):
+
+${linhas || "Nenhuma campanha encontrada no período."}`,
+    messages: [
+      ...historico.map((m) => ({
+        role: (m.papel === "usuario" ? "user" : "assistant") as "user" | "assistant",
+        content: m.texto,
+      })),
+      { role: "user", content: pergunta },
+    ],
+  });
+
+  const texto = resposta.content
+    .filter((b): b is Anthropic.TextBlock => b.type === "text")
+    .map((b) => b.text)
+    .join("\n\n");
+
+  return texto || "Não consegui gerar uma resposta.";
 }
 
 const INTERVALO_MS = 4 * 60 * 60 * 1000; // 4h

@@ -18,3 +18,8 @@ export interface PensamentoAds {
   pensamento: string;
   criadoEm: string;
 }
+
+export interface MensagemChat {
+  papel: "usuario" | "agente";
+  texto: string;
+}
