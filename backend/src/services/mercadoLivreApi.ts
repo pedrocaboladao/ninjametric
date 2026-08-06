@@ -228,11 +228,15 @@ export interface MlPromocaoDoItem {
 // um item pertence, não só se está "em promoção" ou não.
 export async function consultarPromocoesDoItem(lojaId: number, itemId: string): Promise<MlPromocaoDoItem[]> {
   const accessToken = await getValidAccessToken(lojaId);
-  const { data } = await axios.get<Array<{ promotion_id: string; type: string; status: string }>>(
+  const { data } = await axios.get<Array<{ id?: string; promotion_id?: string; type: string; status: string }>>(
     `${ML_API_BASE}/seller-promotions/items/${itemId}`,
     { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
   );
-  return data.map((d) => ({ promotionId: d.promotion_id, type: d.type, status: d.status }));
+  // MlCampanhaVendedor (resposta de criar/consultar uma promoção) usa "id",
+  // não "promotion_id" — essa rota provavelmente segue o mesmo padrão. Não
+  // temos uma resposta real confirmada pra essa rota especificamente, então
+  // aceitamos os dois nomes em vez de arriscar quebrar de novo.
+  return data.map((d) => ({ promotionId: d.id ?? d.promotion_id ?? "", type: d.type, status: d.status }));
 }
 
 export type AdsStatus = "ads_ativo" | "sem_ads" | "nao_verificado";

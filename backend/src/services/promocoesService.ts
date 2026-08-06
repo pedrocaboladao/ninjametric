@@ -371,7 +371,7 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
         // mesmo endpoint. Falsos positivos (outro tipo de promoção) não
         // registram: obterDetalhesCampanha pede promotion_type=SELLER_CAMPAIGN
         // e falha/pula silenciosamente (catch abaixo) se não bater.
-        if (p.status === "started") {
+        if (p.status === "started" && p.promotionId) {
           promotionIdsEncontrados.add(p.promotionId);
         }
       }
