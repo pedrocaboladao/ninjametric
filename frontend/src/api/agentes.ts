@@ -1,4 +1,4 @@
-import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens } from "../types/agentes";
+import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens, Oportunidade } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -15,6 +15,17 @@ export async function fetchFeedAds(status?: "pendente" | "resolvida"): Promise<O
   const res = await fetch(`${API_BASE}/api/agentes/ads/feed${params}`, { credentials: "include" });
   const data = await tratarResposta<{ observacoes: ObservacaoAds[] }>(res);
   return data.observacoes;
+}
+
+export async function fetchOportunidades(): Promise<Oportunidade[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/oportunidades`, { credentials: "include" });
+  const data = await tratarResposta<{ oportunidades: Oportunidade[] }>(res);
+  return data.oportunidades;
+}
+
+export async function verificarOportunidadesAgora(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/oportunidades/verificar`, { method: "POST", credentials: "include" });
+  await tratarResposta(res);
 }
 
 export async function verificarAgenteAdsAgora(): Promise<{ novas: number; resolvidasSozinhas: number }> {

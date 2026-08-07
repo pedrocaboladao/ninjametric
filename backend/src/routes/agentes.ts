@@ -16,6 +16,7 @@ import {
   listarReferencias,
 } from "../services/agenteImagensPerfilService";
 import { buscarDadosAnuncio, registrarCorrecoes, type CamposSugeridosKit } from "../services/agenteImagensAnuncioService";
+import { verificarOportunidades, listarOportunidades } from "../services/agenteOportunidadesService";
 
 export const agentesRouter = Router();
 
@@ -67,6 +68,23 @@ agentesRouter.post("/ads/perguntar", async (req, res) => {
     res.json({ resposta });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
+  }
+});
+
+agentesRouter.get("/oportunidades", async (_req, res) => {
+  try {
+    res.json({ oportunidades: await listarOportunidades() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar oportunidades.");
+  }
+});
+
+agentesRouter.post("/oportunidades/verificar", async (_req, res) => {
+  try {
+    await verificarOportunidades();
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao verificar oportunidades.");
   }
 });
 

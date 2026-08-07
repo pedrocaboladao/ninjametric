@@ -416,3 +416,19 @@ CREATE TABLE IF NOT EXISTS estoque_snapshot (
   UNIQUE (loja_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_estoque_snapshot_estoque ON estoque_snapshot (estoque);
+
+-- Agente de Oportunidades: SKUs que vendem bem no GRUPO INTEIRO (16 lojas)
+-- mas têm pouca ou nenhuma representação nas 4 lojas pessoais do dono —
+-- sinal de produto que ele poderia adicionar/dar mais destaque. Sem IA de
+-- propósito (o número já conta a história sozinho, e o dono já pediu pra
+-- evitar chamada de IA de alto volume) — recalculado do zero 1x por dia,
+-- a tabela sempre reflete só a leitura mais recente.
+CREATE TABLE IF NOT EXISTS agente_oportunidades (
+  id SERIAL PRIMARY KEY,
+  sku TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  quantidade_grupo INTEGER NOT NULL,
+  quantidade_minhas_lojas INTEGER NOT NULL,
+  contexto TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);

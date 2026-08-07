@@ -24,6 +24,16 @@ export interface MensagemChat {
   texto: string;
 }
 
+export interface Oportunidade {
+  id: number;
+  sku: string;
+  titulo: string;
+  quantidadeGrupo: number;
+  quantidadeMinhasLojas: number;
+  contexto: string;
+  criadoEm: string;
+}
+
 export interface PerfilImagens {
   id: number;
   nome: string;

@@ -14,9 +14,11 @@ import {
   buscarDadosAnuncio,
   fetchReferenciasPerfil,
   favoritarReferenciaPerfil,
+  fetchOportunidades,
+  verificarOportunidadesAgora,
   type SugestaoOriginalKit,
 } from "../api/agentes";
-import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens } from "../types/agentes";
+import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens, Oportunidade } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
 
 const TAG_POR_TIPO: Record<string, { tag: string; cor: string }> = {
@@ -1575,8 +1577,86 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
   );
 }
 
+// Sem IA de propósito — o número já conta a história sozinha (vendeu X no
+// grupo, você vendeu Y), e a IA seria uma chamada por atualização (1x/dia)
+// que não agrega precisão suficiente pra justificar o custo.
+function AgenteOportunidades() {
+  const [oportunidades, setOportunidades] = useState<Oportunidade[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [verificando, setVerificando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      setOportunidades(await fetchOportunidades());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar oportunidades.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function verificarAgora() {
+    setVerificando(true);
+    setErro(null);
+    try {
+      await verificarOportunidadesAgora();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao verificar.");
+    } finally {
+      setVerificando(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Agente de Oportunidades</h1>
+          <p className="painel-sub">
+            Compara vendas por SKU dos últimos 30 dias entre o grupo inteiro (16 lojas) e suas 4 lojas pessoais —
+            sinaliza produto que vende bem no grupo mas tem pouca ou nenhuma representação nas suas lojas.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <button
+            type="button"
+            className="btn-responder financeiro-btn-hoje"
+            onClick={verificarAgora}
+            disabled={verificando}
+          >
+            {verificando ? "Verificando..." : "Verificar agora"}
+          </button>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="agente-feed">
+        {oportunidades !== null && oportunidades.length === 0 && (
+          <div className="state-message">Nenhuma oportunidade encontrada agora.</div>
+        )}
+        {oportunidades?.map((o) => (
+          <div key={o.id} className="agente-card" style={{ borderLeftColor: "var(--good-text)" }}>
+            <div className="agente-card-topo">
+              <span className="ads-insight-tag" style={{ color: "var(--good-text)" }}>
+                {o.sku}
+              </span>
+              <span className="financeiro-td-mudo">{formatDataHora(o.criadoEm)}</span>
+            </div>
+            <div className="financeiro-td-titulo">{o.titulo}</div>
+            <p className="ads-insight-contexto">{o.contexto}</p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 export function AgenciaAgentesIA() {
-  const [agente, setAgente] = useState<"ads" | "imagens">("ads");
+  const [agente, setAgente] = useState<"ads" | "imagens" | "oportunidades">("ads");
   const [modoTV, setModoTV] = useState(false);
 
   return (
@@ -1603,9 +1683,18 @@ export function AgenciaAgentesIA() {
         >
           Agente de Imagens
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "oportunidades" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("oportunidades")}
+        >
+          Agente de Oportunidades
+        </button>
       </div>
 
-      {agente === "ads" ? <AnalistaAds /> : <AgenteImagens />}
+      {agente === "ads" && <AnalistaAds />}
+      {agente === "imagens" && <AgenteImagens />}
+      {agente === "oportunidades" && <AgenteOportunidades />}
 
       {modoTV && <ModoTVEscritorio onSair={() => setModoTV(false)} />}
     </div>
