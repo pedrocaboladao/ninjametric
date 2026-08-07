@@ -259,16 +259,17 @@ const LOJAS_AGENTE = [1, 2, 3, 4];
 
 // Busca as campanhas das 4 lojas pessoais (ver LOJAS_AGENTE) com TACOS/lucro
 // já calculados — reaproveitada pela verificação automática (janela de 7
-// dias e a diária de hoje) e pelo chat.
-async function buscarCampanhasComTacos(diasPeriodo: number): Promise<CampanhaComTacos[]> {
+// dias e a diária de hoje) e pelo chat. "lojaId" opcional restringe a busca
+// a uma única loja (usado pela verificação, que analisa loja por loja).
+async function buscarCampanhasComTacos(diasPeriodo: number, lojaId?: number): Promise<CampanhaComTacos[]> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
   const dataInicio = dataISO(inicio);
   const dataFim = dataISO(hoje);
 
   const [campanhas, receitas] = await Promise.all([
-    listarCampanhasAds(undefined, LOJAS_AGENTE, dataInicio, dataFim),
-    listarReceitaRealPorCampanha(undefined, LOJAS_AGENTE, dataInicio, dataFim),
+    listarCampanhasAds(lojaId, LOJAS_AGENTE, dataInicio, dataFim),
+    listarReceitaRealPorCampanha(lojaId, LOJAS_AGENTE, dataInicio, dataFim),
   ]);
 
   const receitaPorChave = new Map(receitas.map((r) => [`${r.lojaId}-${r.campanhaId}`, r]));
@@ -292,28 +293,38 @@ async function executarVerificacao(
   janela: string,
   chaveSufixo: string
 ): Promise<{ novas: number; resolvidasSozinhas: number }> {
-  const campanhasComTacos = await buscarCampanhasComTacos(diasPeriodo);
-
-  // Só a análise com IA de verdade — sem fallback de regras fixas. Se não
-  // tiver ANTHROPIC_API_KEY configurada ou a chamada falhar por qualquer
-  // motivo (API fora do ar, limite, etc.), a rodada é pulada por completo
-  // em vez de reportar algo que não veio da IA.
-  let observacoesIA: ObservacaoIA[];
-  try {
-    const resultado = await gerarObservacoesComIA(campanhasComTacos, diasPeriodo);
-    if (resultado === null) {
-      console.error(`Agente de Ads (${janela}): ANTHROPIC_API_KEY não configurada — rodada pulada.`);
-      return { novas: 0, resolvidasSozinhas: 0 };
-    }
-    observacoesIA = resultado;
-  } catch (err) {
-    console.error(`Agente de Ads (${janela}): falha na análise com IA, rodada pulada:`, err);
+  // Sem chave, nem vale buscar as campanhas — pula a rodada inteira de uma
+  // vez em vez de repetir o mesmo aviso 4x (uma por loja).
+  if (!obterClienteAnthropic()) {
+    console.error(`Agente de Ads (${janela}): ANTHROPIC_API_KEY não configurada — rodada pulada.`);
     return { novas: 0, resolvidasSozinhas: 0 };
   }
 
+  // Uma chamada de IA POR LOJA, em vez de uma chamada só com as campanhas
+  // das 4 juntas — com tudo misturado no mesmo prompt a atenção da IA se
+  // dilui entre as contas; separada por loja, cada uma recebe uma análise
+  // dedicada, sem competir por espaço com as campanhas das outras 3. Se uma
+  // loja falhar (API fora do ar, erro pontual), só ela é pulada nessa
+  // rodada — as outras 3 seguem normalmente.
+  const campanhasComTacos: CampanhaComTacos[] = [];
   const obsPorChave = new Map<string, ObservacaoGerada>();
-  for (const o of observacoesIA) {
-    obsPorChave.set(`${o.lojaId}-${o.campanhaId}`, { tipo: o.tipo, contexto: o.contexto, acao: o.acao });
+  // Loja cuja chamada de IA falhou nessa rodada — não pode entrar no
+  // "fechar pendências sem detecção" mais abaixo, senão uma falha pontual
+  // da API seria lida como "está tudo bem" e fecharia observações reais.
+  const lojasComFalha = new Set<number>();
+
+  for (const lojaId of LOJAS_AGENTE) {
+    const campanhasDaLoja = await buscarCampanhasComTacos(diasPeriodo, lojaId);
+    campanhasComTacos.push(...campanhasDaLoja);
+    try {
+      const observacoesIA = await gerarObservacoesComIA(campanhasDaLoja, diasPeriodo);
+      for (const o of observacoesIA ?? []) {
+        obsPorChave.set(`${o.lojaId}-${o.campanhaId}`, { tipo: o.tipo, contexto: o.contexto, acao: o.acao });
+      }
+    } catch (err) {
+      console.error(`Agente de Ads (${janela}, loja ${lojaId}): falha na análise com IA, loja pulada nessa rodada:`, err);
+      lojasComFalha.add(lojaId);
+    }
   }
 
   let novas = 0;
@@ -348,9 +359,12 @@ async function executarVerificacao(
   }
   // Lojas sem nenhuma observação detectada nesta rodada não entram no mapa
   // acima — fecha as pendentes delas também (senão nunca seriam resolvidas).
-  // Restrito à mesma "janela" pra não fechar pendências da outra verificação.
+  // Restrito à mesma "janela" pra não fechar pendências da outra verificação,
+  // e exclui lojas cuja chamada de IA falhou (ver lojasComFalha acima).
   const lojaIdsComCampanha = new Set(campanhasComTacos.map((c) => c.lojaId));
-  const lojaIdsSemDeteccao = [...lojaIdsComCampanha].filter((id) => !chavesDetectadasPorLoja.has(id));
+  const lojaIdsSemDeteccao = [...lojaIdsComCampanha].filter(
+    (id) => !chavesDetectadasPorLoja.has(id) && !lojasComFalha.has(id)
+  );
   for (const lojaId of lojaIdsSemDeteccao) {
     const { rowCount } = await pool.query(
       `UPDATE agente_ads_observacoes
@@ -505,41 +519,44 @@ ${linhas || "Nenhuma campanha encontrada no período."}`,
   return texto || "Não consegui gerar uma resposta.";
 }
 
-const INTERVALO_MS = 4 * 60 * 60 * 1000; // 4h
-const HORARIOS_DIARIOS = [10, 16, 22]; // horário de Brasília
+const HORARIOS_7DIAS = [7, 13, 19]; // horário de Brasília — 3x/dia
+const HORARIOS_DIARIOS = [9, 14, 21]; // horário de Brasília — 3x/dia
 const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
 
+// Dispara "acao" uma única vez por horário-âncora cruzado (ver
+// HORARIOS_7DIAS/HORARIOS_DIARIOS), reaproveitando a mesma técnica de
+// "janela por horário-âncora" do prewarm de promoções (chaveJanelaDoDia,
+// dateUtils.ts) — a chave só muda quando o relógio cruza uma das horas,
+// então checar a cada 5min dispara exatamente uma vez por âncora, não uma
+// vez por checagem. Começa já sincronizado com a janela atual (em vez de
+// null) pra não disparar uma rodada extra a cada reinício/deploy.
+function agendarPorHorario(horarios: number[], acao: () => Promise<void>): void {
+  let ultimaJanela = chaveJanelaDoDia(horarios);
+  async function checar() {
+    const janela = chaveJanelaDoDia(horarios);
+    if (janela === ultimaJanela) return;
+    ultimaJanela = janela;
+    await acao();
+  }
+  setInterval(checar, INTERVALO_CHECAGEM_HORARIO_MS);
+}
+
 export function iniciarVerificacaoAgenteAds(): void {
-  async function verificar() {
+  agendarPorHorario(HORARIOS_7DIAS, async () => {
     try {
       const resultado = await verificarAgenteAds();
       console.log(`Agente de Ads (7dias): ${resultado.novas} nova(s), ${resultado.resolvidasSozinhas} resolvida(s) sozinha(s).`);
     } catch (err) {
       console.error("Erro na verificação do agente de Ads (7dias):", err);
     }
-  }
+  });
 
-  // Roda 3x por dia, em horários fixos de Brasília (ver HORARIOS_DIARIOS),
-  // reaproveitando a mesma técnica de "janela por horário-âncora" do
-  // prewarm de promoções (chaveJanelaDoDia, dateUtils.ts): a chave só muda
-  // quando o relógio cruza um dos horários, então checando a cada 5min a
-  // gente dispara exatamente uma vez por âncora — não uma vez por checagem.
-  // Começa já sincronizado com a janela atual (em vez de null) pra não
-  // disparar uma rodada extra toda vez que o servidor reinicia/faz deploy.
-  let ultimaJanelaDiaria = chaveJanelaDoDia(HORARIOS_DIARIOS);
-  async function verificarDiarioSeForHora() {
-    const janela = chaveJanelaDoDia(HORARIOS_DIARIOS);
-    if (janela === ultimaJanelaDiaria) return;
-    ultimaJanelaDiaria = janela;
+  agendarPorHorario(HORARIOS_DIARIOS, async () => {
     try {
       const resultado = await verificarAgenteAdsDiario();
-      console.log(`Agente de Ads (hoje, janela ${janela}): ${resultado.novas} nova(s), ${resultado.resolvidasSozinhas} resolvida(s) sozinha(s).`);
+      console.log(`Agente de Ads (hoje): ${resultado.novas} nova(s), ${resultado.resolvidasSozinhas} resolvida(s) sozinha(s).`);
     } catch (err) {
-      console.error(`Erro na verificação do agente de Ads (hoje, janela ${janela}):`, err);
+      console.error("Erro na verificação do agente de Ads (hoje):", err);
     }
-  }
-
-  verificar();
-  setInterval(verificar, INTERVALO_MS);
-  setInterval(verificarDiarioSeForHora, INTERVALO_CHECAGEM_HORARIO_MS);
+  });
 }
