@@ -421,6 +421,32 @@ CREATE TABLE IF NOT EXISTS estoque_snapshot (
 );
 CREATE INDEX IF NOT EXISTS idx_estoque_snapshot_estoque ON estoque_snapshot (estoque);
 
+-- Foto (snapshot) das vendas cuja margem real deu negativa (últimos 7 dias),
+-- capturada periodicamente em segundo plano (ver iniciarSnapshotVendasNegativas)
+-- — mesma ideia do estoque_snapshot: reaproveita o cálculo já pronto do
+-- Financeiro (custo/taxa/frete reais, não estimados) só que roda 1x a cada
+-- 4h em vez de recalcular ao vivo toda vez que alguém abre o Dashboard.
+CREATE TABLE IF NOT EXISTS vendas_negativas_snapshot (
+  id SERIAL PRIMARY KEY,
+  order_id BIGINT NOT NULL,
+  item_id TEXT NOT NULL,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  data_criacao TIMESTAMPTZ NOT NULL,
+  titulo TEXT NOT NULL,
+  sku TEXT,
+  quantidade INTEGER NOT NULL,
+  receita_total NUMERIC(12, 2) NOT NULL,
+  custo_total NUMERIC(12, 2),
+  taxa_ml_total NUMERIC(12, 2) NOT NULL,
+  frete_vendedor_total NUMERIC(12, 2),
+  imposto_total NUMERIC(12, 2) NOT NULL,
+  margem_contribuicao NUMERIC(12, 2) NOT NULL,
+  margem_percentual NUMERIC(6, 2),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (order_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_vendas_negativas_snapshot_loja ON vendas_negativas_snapshot (loja_id);
+
 -- Agente de Oportunidades: SKUs que vendem bem no GRUPO INTEIRO (16 lojas)
 -- mas têm pouca ou nenhuma representação nas 4 lojas pessoais do dono —
 -- sinal de produto que ele poderia adicionar/dar mais destaque. Sem IA de

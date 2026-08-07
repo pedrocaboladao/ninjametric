@@ -90,6 +90,24 @@ export interface ProdutoEstoqueBaixo {
   atualizadoEm: string;
 }
 
+export interface VendaNegativa {
+  orderId: number;
+  itemId: string;
+  dataCriacao: string;
+  lojaId: number;
+  lojaNome: string;
+  titulo: string;
+  sku: string | null;
+  quantidade: number;
+  receitaTotal: number;
+  custoTotal: number | null;
+  taxaMlTotal: number;
+  freteVendedorTotal: number | null;
+  impostoTotal: number;
+  margemContribuicao: number;
+  margemPercentual: number | null;
+}
+
 export interface ComparacaoSkuLoja {
   lojaId: number;
   lojaNome: string;

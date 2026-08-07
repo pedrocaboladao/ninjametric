@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getDashboardData, getTopVendidosPromocoes } from "../services/dashboardService";
 import { listarEstoqueBaixo } from "../services/estoqueService";
+import { listarVendasNegativas } from "../services/vendasNegativasService";
 import { calcularRankingPrecificacao, buscarComparacaoPorSku } from "../services/precificacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
@@ -96,6 +97,19 @@ dashboardRouter.get("/estoque-baixo", async (req, res) => {
   } catch (err) {
     console.error("Erro ao montar estoque baixo:", err);
     res.status(500).json({ error: "Falha ao carregar estoque baixo." });
+  }
+});
+
+dashboardRouter.get("/vendas-negativas", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  try {
+    const vendas = await listarVendasNegativas(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ vendas });
+  } catch (err) {
+    console.error("Erro ao montar vendas negativas:", err);
+    res.status(500).json({ error: "Falha ao carregar vendas negativas." });
   }
 });
 

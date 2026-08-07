@@ -4,6 +4,7 @@ import type {
   RankingPrecificacao,
   ComparacaoSkuLoja,
   ProdutoEstoqueBaixo,
+  VendaNegativa,
 } from "../types/dashboard";
 import type { Loja } from "./lojas";
 
@@ -39,6 +40,16 @@ export async function fetchEstoqueBaixo(lojaId?: number | "minhas", limite?: num
   }
   const data = await res.json();
   return data.produtos;
+}
+
+export async function fetchVendasNegativas(lojaId?: number | "minhas"): Promise<VendaNegativa[]> {
+  const query = lojaId ? `?lojaId=${lojaId}` : "";
+  const res = await fetch(`${API_BASE}/api/dashboard/vendas-negativas${query}`, { credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar vendas negativas: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.vendas;
 }
 
 export async function fetchRankingPrecificacao(
