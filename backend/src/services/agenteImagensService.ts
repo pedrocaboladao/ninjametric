@@ -23,9 +23,10 @@ const PROMPT_TRATAMENTO =
   "Não altere o produto em si: mantenha exatamente a mesma embalagem, rótulo, texto, cores e proporções do produto " +
   "original — mexa só no ambiente ao redor.";
 
-// Recebe a foto original em base64 (qualquer formato comum), normaliza pro
-// tamanho exigido pela API e pede pra IA limpar só o fundo.
-export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
+// Normaliza a foto original (qualquer formato/tamanho) pro quadrado exigido
+// pela API e manda editar com o prompt dado — usado tanto pra limpar fundo
+// quanto pra montar cada slide do kit de fotos.
+async function editarFoto(imagemBase64: string, prompt: string): Promise<string> {
   const client = obterClienteOpenAI();
   if (!client) {
     throw new Error("IA de imagens não configurada neste ambiente (falta OPENAI_API_KEY).");
@@ -40,15 +41,21 @@ export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
   const resposta = await client.images.edit({
     model: MODELO_IMAGEM,
     image: await toFile(bufferNormalizado, "foto.png", { type: "image/png" }),
-    prompt: PROMPT_TRATAMENTO,
+    prompt,
     size: "1024x1024",
   });
 
   const resultado = resposta.data?.[0]?.b64_json;
   if (!resultado) {
-    throw new Error("IA não devolveu imagem tratada.");
+    throw new Error("IA não devolveu imagem.");
   }
   return resultado;
+}
+
+// Recebe a foto original em base64 (qualquer formato comum) e pede pra IA
+// limpar só o fundo, mantendo o produto idêntico.
+export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
+  return editarFoto(imagemBase64, PROMPT_TRATAMENTO);
 }
 
 const PROMPT_ARTE_BASE =
@@ -74,4 +81,45 @@ export async function criarArtePromocional(descricao: string): Promise<string> {
     throw new Error("IA não devolveu a arte gerada.");
   }
   return resultado;
+}
+
+export interface DadosKitFotos {
+  nomeProduto: string;
+  subtitulo: string;
+  cores: string;
+  beneficios: string[];
+  especificacaoPrincipal: string;
+  specsSecundarias: string[];
+  ondeAplicar: string[];
+}
+
+// Pedido explícito em todo slide com texto — o modelo já errou ortografia
+// em português em testes reais (ex.: "TELNADOS" em vez de "TELHADOS"), essa
+// instrução não elimina o risco mas ajuda a reduzir.
+const AVISO_TEXTO =
+  "Revise a ortografia com atenção — todo o texto da imagem deve estar em português correto, sem erros de digitação.";
+
+function listaTexto(itens: string[]): string {
+  return itens.filter((i) => i.trim().length > 0).join(", ");
+}
+
+// Kit de 5 fotos pra anúncio do Mercado Livre a partir de 1 foto real do
+// produto: capa, benefícios, especificações, onde aplicar e a foto tratada
+// (fundo limpo). Cada slide é uma edição separada da mesma foto original —
+// não inclui "antes/depois" de propósito, porque isso implicaria fabricar
+// uma prova de resultado que não existe de verdade.
+export async function gerarKitFotos(imagemBase64: string, dados: DadosKitFotos): Promise<string[]> {
+  const prompts = [
+    `Crie uma arte de capa de anúncio de e-commerce brasileiro usando o produto da foto fornecida. Título grande e chamativo: "${dados.nomeProduto}". Subtítulo: "${dados.subtitulo}". ${dados.cores}. Produto centralizado e em destaque. ${AVISO_TEXTO}`,
+    `Crie uma arte de e-commerce em lista mostrando os benefícios do produto da foto fornecida, com um ícone simples ao lado de cada item: ${listaTexto(dados.beneficios)}. ${dados.cores}. Produto em destaque ao lado da lista. ${AVISO_TEXTO}`,
+    `Crie uma arte de e-commerce destacando em fonte bem grande a especificação principal "${dados.especificacaoPrincipal}", com especificações menores abaixo: ${listaTexto(dados.specsSecundarias)}. ${dados.cores}. Produto da foto fornecida em destaque. ${AVISO_TEXTO}`,
+    `Crie uma arte de e-commerce em grade/colagem mostrando onde o produto da foto fornecida pode ser usado, com um ícone e legenda curta por item: ${listaTexto(dados.ondeAplicar)}. ${dados.cores}. Produto em destaque num canto. ${AVISO_TEXTO}`,
+  ];
+
+  const [slides, fotoLimpa] = await Promise.all([
+    Promise.all(prompts.map((prompt) => editarFoto(imagemBase64, prompt))),
+    tratarFotoProduto(imagemBase64),
+  ]);
+
+  return [fotoLimpa, ...slides];
 }

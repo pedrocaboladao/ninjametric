@@ -7,6 +7,7 @@ import {
   perguntarAgenteAds,
   tratarFotoProduto,
   criarArtePromocional,
+  gerarKitFotos,
 } from "../api/agentes";
 import type { ObservacaoAds, PensamentoAds, MensagemChat } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
@@ -995,8 +996,185 @@ function CriarArte() {
   );
 }
 
+const NOMES_SLIDES = ["Foto limpa (fundo branco)", "Capa", "Benefícios", "Especificações", "Onde aplicar"];
+
+function KitFotos() {
+  const [original, setOriginal] = useState<string | null>(null);
+  const [base64, setBase64] = useState<string | null>(null);
+  const [nomeProduto, setNomeProduto] = useState("");
+  const [subtitulo, setSubtitulo] = useState("");
+  const [cores, setCores] = useState("");
+  const [beneficios, setBeneficios] = useState("");
+  const [especificacaoPrincipal, setEspecificacaoPrincipal] = useState("");
+  const [specsSecundarias, setSpecsSecundarias] = useState("");
+  const [ondeAplicar, setOndeAplicar] = useState("");
+  const [resultados, setResultados] = useState<string[] | null>(null);
+  const [gerando, setGerando] = useState(false);
+  const [erroKit, setErroKit] = useState<string | null>(null);
+
+  function onArquivo(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    setResultados(null);
+    setErroKit(null);
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const dataUrl = leitor.result as string;
+      setOriginal(dataUrl);
+      setBase64(dataUrl.split(",")[1] ?? null);
+    };
+    leitor.readAsDataURL(arquivo);
+  }
+
+  function paraLinhas(texto: string): string[] {
+    return texto
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  }
+
+  async function gerar() {
+    if (!base64 || !nomeProduto.trim() || gerando) return;
+    setGerando(true);
+    setErroKit(null);
+    setResultados(null);
+    try {
+      const imagens = await gerarKitFotos(base64, {
+        nomeProduto: nomeProduto.trim(),
+        subtitulo: subtitulo.trim(),
+        cores: cores.trim(),
+        beneficios: paraLinhas(beneficios),
+        especificacaoPrincipal: especificacaoPrincipal.trim(),
+        specsSecundarias: paraLinhas(specsSecundarias),
+        ondeAplicar: paraLinhas(ondeAplicar),
+      });
+      setResultados(imagens);
+    } catch (err) {
+      setErroKit(err instanceof Error ? err.message : "Falha ao gerar o kit.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  return (
+    <div className="agente-imagens-painel">
+      <p className="painel-sub">
+        Sobe a foto real do produto, preenche as informações abaixo e a IA gera 5 imagens pro anúncio: foto tratada,
+        capa, benefícios, especificações e onde aplicar. Confira o texto de cada uma antes de usar — a IA pode errar
+        ortografia.
+      </p>
+
+      <input type="file" accept="image/*" onChange={onArquivo} />
+      {original && <img src={original} alt="Foto original do produto" className="agente-imagens-preview" />}
+
+      <label className="agente-imagens-campo">
+        Nome do produto
+        <input
+          type="text"
+          className="pergunta-textarea"
+          value={nomeProduto}
+          onChange={(e) => setNomeProduto(e.target.value)}
+          placeholder="Ex: Resiflex Manta Líquida Emborrachada 18kg"
+        />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Subtítulo / uso principal
+        <input
+          type="text"
+          className="pergunta-textarea"
+          value={subtitulo}
+          onChange={(e) => setSubtitulo(e.target.value)}
+          placeholder="Ex: Proteção e impermeabilização para telhados e lajes"
+        />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Cores da marca (opcional)
+        <input
+          type="text"
+          className="pergunta-textarea"
+          value={cores}
+          onChange={(e) => setCores(e.target.value)}
+          placeholder="Ex: preto e amarelo, como no rótulo do produto"
+        />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Benefícios (um por linha)
+        <textarea
+          className="pergunta-textarea"
+          rows={3}
+          value={beneficios}
+          onChange={(e) => setBeneficios(e.target.value)}
+          placeholder={"Impermeável\nResistente a sol e chuva\nFácil aplicação\nSecagem rápida"}
+        />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Especificação principal (número grande em destaque)
+        <input
+          type="text"
+          className="pergunta-textarea"
+          value={especificacaoPrincipal}
+          onChange={(e) => setEspecificacaoPrincipal(e.target.value)}
+          placeholder="Ex: Rende até 150m²"
+        />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Especificações menores (uma por linha)
+        <textarea
+          className="pergunta-textarea"
+          rows={3}
+          value={specsSecundarias}
+          onChange={(e) => setSpecsSecundarias(e.target.value)}
+          placeholder={"Ao toque: 2h\nEntre demãos: 4h\nLiberação: 12-24h"}
+        />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Onde aplicar (um por linha)
+        <textarea
+          className="pergunta-textarea"
+          rows={3}
+          value={ondeAplicar}
+          onChange={(e) => setOndeAplicar(e.target.value)}
+          placeholder={"Telhados\nParedes\nLajes\nConcreto"}
+        />
+      </label>
+
+      {erroKit && <div className="state-message state-error">{erroKit}</div>}
+
+      <div className="agente-imagens-acoes">
+        <button type="button" className="btn-responder" onClick={gerar} disabled={!base64 || !nomeProduto.trim() || gerando}>
+          {gerando ? "Gerando kit (pode levar um tempinho)..." : "Gerar kit de fotos"}
+        </button>
+      </div>
+
+      {resultados && (
+        <div className="agente-kit-grade">
+          {resultados.map((img, i) => (
+            <div key={i} className="agente-imagens-coluna">
+              <span className="financeiro-td-mudo">{NOMES_SLIDES[i] ?? `Slide ${i + 1}`}</span>
+              <img src={`data:image/png;base64,${img}`} alt={NOMES_SLIDES[i] ?? `Slide ${i + 1}`} className="agente-imagens-preview" />
+              <a
+                className="btn-secundario"
+                href={`data:image/png;base64,${img}`}
+                download={`kit-${i + 1}-${(NOMES_SLIDES[i] ?? "slide").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`}
+              >
+                Baixar
+              </a>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AgenteImagens() {
-  const [modo, setModo] = useState<"tratar" | "arte">("tratar");
+  const [modo, setModo] = useState<"tratar" | "arte" | "kit">("tratar");
 
   return (
     <>
@@ -1026,9 +1204,18 @@ function AgenteImagens() {
         >
           Criar arte promocional
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${modo === "kit" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setModo("kit")}
+        >
+          Kit de fotos p/ anúncio
+        </button>
       </div>
 
-      {modo === "tratar" ? <TratarFoto /> : <CriarArte />}
+      {modo === "tratar" && <TratarFoto />}
+      {modo === "arte" && <CriarArte />}
+      {modo === "kit" && <KitFotos />}
     </>
   );
 }

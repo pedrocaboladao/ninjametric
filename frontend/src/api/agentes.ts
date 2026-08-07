@@ -65,3 +65,24 @@ export async function criarArtePromocional(descricao: string): Promise<string> {
   const data = await tratarResposta<{ imagemBase64: string }>(res);
   return data.imagemBase64;
 }
+
+export interface DadosKitFotos {
+  nomeProduto: string;
+  subtitulo: string;
+  cores: string;
+  beneficios: string[];
+  especificacaoPrincipal: string;
+  specsSecundarias: string[];
+  ondeAplicar: string[];
+}
+
+export async function gerarKitFotos(imagemBase64: string, dados: DadosKitFotos): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/kit`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imagemBase64, ...dados }),
+  });
+  const data = await tratarResposta<{ imagens: string[] }>(res);
+  return data.imagens;
+}

@@ -7,7 +7,7 @@ import {
   perguntarAgenteAds,
   type MensagemChat,
 } from "../services/agenteAdsService";
-import { tratarFotoProduto, criarArtePromocional } from "../services/agenteImagensService";
+import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
 
 export const agentesRouter = Router();
 
@@ -87,6 +87,38 @@ agentesRouter.post("/imagens/criar-arte", async (req, res) => {
     res.json({ imagemBase64: resultado });
   } catch (err) {
     erro(res, err, "Falha ao gerar a arte.");
+  }
+});
+
+function paraLista(valor: unknown): string[] {
+  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === "string") : [];
+}
+
+agentesRouter.post("/imagens/kit", async (req, res) => {
+  const { imagemBase64, nomeProduto, subtitulo, cores, beneficios, especificacaoPrincipal, specsSecundarias, ondeAplicar } =
+    req.body ?? {};
+  if (typeof imagemBase64 !== "string" || !imagemBase64) {
+    res.status(400).json({ error: "Imagem inválida." });
+    return;
+  }
+  if (typeof nomeProduto !== "string" || !nomeProduto.trim()) {
+    res.status(400).json({ error: "Nome do produto é obrigatório." });
+    return;
+  }
+  const dados: DadosKitFotos = {
+    nomeProduto: nomeProduto.trim(),
+    subtitulo: typeof subtitulo === "string" ? subtitulo.trim() : "",
+    cores: typeof cores === "string" && cores.trim() ? cores.trim() : "cores vivas e legíveis, estilo e-commerce brasileiro",
+    beneficios: paraLista(beneficios),
+    especificacaoPrincipal: typeof especificacaoPrincipal === "string" ? especificacaoPrincipal.trim() : "",
+    specsSecundarias: paraLista(specsSecundarias),
+    ondeAplicar: paraLista(ondeAplicar),
+  };
+  try {
+    const imagens = await gerarKitFotos(imagemBase64, dados);
+    res.json({ imagens });
+  } catch (err) {
+    erro(res, err, "Falha ao gerar o kit de fotos.");
   }
 });
 
