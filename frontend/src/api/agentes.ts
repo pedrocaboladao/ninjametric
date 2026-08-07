@@ -66,6 +66,23 @@ export async function criarArtePromocional(descricao: string): Promise<string> {
   return data.imagemBase64;
 }
 
+export interface DadosAnuncioParaKit {
+  titulo: string;
+  descricao: string;
+  atributos: string[];
+  fotoBase64: string | null;
+}
+
+export async function buscarDadosAnuncio(url: string): Promise<DadosAnuncioParaKit> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/buscar-anuncio`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  return tratarResposta<DadosAnuncioParaKit>(res);
+}
+
 export interface DadosKitFotos {
   nomeProduto: string;
   subtitulo: string;

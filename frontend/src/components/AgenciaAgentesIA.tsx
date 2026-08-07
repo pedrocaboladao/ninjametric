@@ -11,6 +11,7 @@ import {
   fetchPerfisImagens,
   criarPerfilImagens,
   excluirPerfilImagens,
+  buscarDadosAnuncio,
 } from "../api/agentes";
 import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
@@ -1016,6 +1017,9 @@ function KitFotos() {
   const [resultados, setResultados] = useState<string[] | null>(null);
   const [gerando, setGerando] = useState(false);
   const [erroKit, setErroKit] = useState<string | null>(null);
+  const [urlAnuncio, setUrlAnuncio] = useState("");
+  const [buscandoAnuncio, setBuscandoAnuncio] = useState(false);
+  const [erroAnuncio, setErroAnuncio] = useState<string | null>(null);
   const [perfis, setPerfis] = useState<PerfilImagens[]>([]);
   const [perfilSelecionado, setPerfilSelecionado] = useState<number | "">("");
   const [nomeNovoPerfil, setNomeNovoPerfil] = useState("");
@@ -1110,6 +1114,25 @@ function KitFotos() {
       .filter((l) => l.length > 0);
   }
 
+  async function buscarDoAnuncio() {
+    if (!urlAnuncio.trim() || buscandoAnuncio) return;
+    setBuscandoAnuncio(true);
+    setErroAnuncio(null);
+    try {
+      const dados = await buscarDadosAnuncio(urlAnuncio.trim());
+      setNomeProduto(dados.titulo);
+      if (dados.atributos.length > 0) setSpecsSecundarias(dados.atributos.join("\n"));
+      if (dados.fotoBase64) {
+        setBase64(dados.fotoBase64);
+        setOriginal(`data:image/jpeg;base64,${dados.fotoBase64}`);
+      }
+    } catch (err) {
+      setErroAnuncio(err instanceof Error ? err.message : "Falha ao buscar o anúncio.");
+    } finally {
+      setBuscandoAnuncio(false);
+    }
+  }
+
   async function gerar() {
     if (!base64 || !nomeProduto.trim() || gerando) return;
     setGerando(true);
@@ -1176,7 +1199,30 @@ function KitFotos() {
       )}
 
       <label className="agente-imagens-campo">
-        Foto do produto (obrigatória)
+        Link de um anúncio seu no Mercado Livre (opcional) — puxa nome, foto e ficha técnica automaticamente
+        <div className="agente-imagens-acoes">
+          <input
+            type="text"
+            className="pergunta-textarea"
+            value={urlAnuncio}
+            onChange={(e) => setUrlAnuncio(e.target.value)}
+            placeholder="Cole o link do anúncio aqui"
+            disabled={buscandoAnuncio}
+          />
+          <button
+            type="button"
+            className="btn-secundario"
+            onClick={buscarDoAnuncio}
+            disabled={!urlAnuncio.trim() || buscandoAnuncio}
+          >
+            {buscandoAnuncio ? "Buscando..." : "Buscar"}
+          </button>
+        </div>
+      </label>
+      {erroAnuncio && <div className="state-message state-error">{erroAnuncio}</div>}
+
+      <label className="agente-imagens-campo">
+        Foto do produto (obrigatória — ou puxada automaticamente acima)
         <input type="file" accept="image/*" onChange={onArquivo} />
       </label>
       {original && <img src={original} alt="Foto original do produto" className="agente-imagens-preview" />}

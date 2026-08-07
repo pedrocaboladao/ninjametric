@@ -9,6 +9,7 @@ import {
 } from "../services/agenteAdsService";
 import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
 import { listarPerfis, criarPerfil, excluirPerfil } from "../services/agenteImagensPerfilService";
+import { buscarDadosAnuncio } from "../services/agenteImagensAnuncioService";
 
 export const agentesRouter = Router();
 
@@ -130,6 +131,20 @@ agentesRouter.post("/imagens/kit", async (req, res) => {
     res.json({ imagens });
   } catch (err) {
     erro(res, err, "Falha ao gerar o kit de fotos.");
+  }
+});
+
+agentesRouter.post("/imagens/buscar-anuncio", async (req, res) => {
+  const { url } = req.body ?? {};
+  if (typeof url !== "string" || !url.trim()) {
+    res.status(400).json({ error: "Link do anúncio é obrigatório." });
+    return;
+  }
+  try {
+    const dados = await buscarDadosAnuncio(url.trim());
+    res.json(dados);
+  } catch (err) {
+    erro(res, err, "Falha ao buscar dados do anúncio.");
   }
 });
 
