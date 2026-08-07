@@ -1675,8 +1675,12 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
       ].sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
 
       setFeed(itens.slice(0, 30));
-    } catch {
-      // Modo TV não mostra erro — só mantém o último estado conhecido na tela.
+    } catch (err) {
+      // Modo TV não mostra erro na tela — só mantém o último estado
+      // conhecido — mas loga no console pra dar pra diagnosticar se o
+      // feed parar de atualizar de novo (senão falha silenciosa demais
+      // pra notar de longe).
+      console.error("Modo TV: falha ao atualizar feed", err);
     }
   }, []);
 
@@ -1840,6 +1844,13 @@ function AgenteOportunidades() {
 export function AgenciaAgentesIA() {
   const [agente, setAgente] = useState<"ads" | "imagens" | "oportunidades">("ads");
   const [modoTV, setModoTV] = useState(false);
+  // Estável de propósito — se fosse uma arrow function inline no JSX, toda
+  // vez que este componente re-renderiza (ex.: algo mudando mais acima na
+  // árvore) o ModoTVEscritorio recebia uma prop "onSair" com identidade
+  // nova, o que reinicia o useEffect de polling dele (limpa o setInterval
+  // de 60s e começa de novo) — na prática o feed nunca chegava a atualizar
+  // sozinho, só reabrindo o Modo TV.
+  const sairDoModoTV = useCallback(() => setModoTV(false), []);
 
   return (
     <div className="financeiro-page">
@@ -1878,7 +1889,7 @@ export function AgenciaAgentesIA() {
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}
 
-      {modoTV && <ModoTVEscritorio onSair={() => setModoTV(false)} />}
+      {modoTV && <ModoTVEscritorio onSair={sairDoModoTV} />}
     </div>
   );
 }
