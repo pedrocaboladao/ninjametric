@@ -6,14 +6,6 @@ import { listarReceitaRealPorCampanha } from "./tacosService";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
-// Mesmas regras de "Insights" de frontend/src/components/Ads.tsx (linhas
-// ~48-264), portadas pro backend porque o agente precisa rodar sozinho em
-// segundo plano (não só quando alguém abre a tela) e guardar histórico —
-// contexto vira string em vez de ReactNode, o resto da lógica é igual.
-// Usadas como FALLBACK quando não tem ANTHROPIC_API_KEY configurada (ex.:
-// dev local) ou quando a chamada de IA falha — o agente nunca fica
-// totalmente mudo por causa de uma indisponibilidade da API de IA.
-
 interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
   acosIdeal: number | null;
@@ -26,66 +18,10 @@ function calcularLucroReais(c: { custo: number; receitaBase: number; acosIdeal: 
   return c.receitaBase * (c.acosIdeal / 100) - c.custo;
 }
 
-const LIMIAR_ORCAMENTO_PARADO = 0.2;
-const LIMIAR_TACOS_ORGANICO = 0.5;
-const GASTO_MINIMO_SEM_VENDA = 20;
-
-type Grupo = "semVenda" | "acimaMeta" | "orcamentoParado" | "dentroMeta" | null;
-
-function grupoDaCampanha(c: CampanhaAds, diasPeriodo: number): Grupo {
-  if (c.status !== "active" || c.custo === 0) return null;
-  if (c.vendasTotais === 0) return "semVenda";
-  if (c.acos > c.acosMeta) return "acimaMeta";
-  if (c.orcamento > 0 && c.custo / (c.orcamento * diasPeriodo) < LIMIAR_ORCAMENTO_PARADO) return "orcamentoParado";
-  return "dentroMeta";
-}
-
-type TipoInsight = "prejuizo" | "semVenda" | "margemSobra" | "orcamentoParado" | "organico";
-
-const ACAO_POR_TIPO: Record<TipoInsight, string> = {
-  prejuizo: "Cortar orçamento ou pausar agora",
-  semVenda: "Pausar ou revisar o anúncio",
-  margemSobra: "Considerar subir a meta de ACOS",
-  orcamentoParado: "Aumentar orçamento — oportunidade de escalar",
-  organico: "Testar reduzir investimento e comparar",
-};
-
 interface ObservacaoGerada {
   tipo: string;
   contexto: string;
   acao: string;
-}
-
-function gerarObservacao(c: CampanhaComTacos, diasPeriodo: number): ObservacaoGerada | null {
-  const grupo = grupoDaCampanha(c, diasPeriodo);
-  let tipo: TipoInsight | null = null;
-  let contexto = "";
-
-  if (c.acosIdeal !== null && c.vendasTotais > 0 && c.acos > c.acosIdeal) {
-    tipo = "prejuizo";
-    contexto = `ACOS em ${c.acos.toFixed(0)}%, acima até da margem real (${c.acosIdeal.toFixed(0)}%) — cada venda está dando prejuízo.`;
-  } else if (grupo === "semVenda" && c.custo >= GASTO_MINIMO_SEM_VENDA) {
-    tipo = "semVenda";
-    contexto = `Gastou ${formatCurrency(c.custo)} em ${diasPeriodo} dia${diasPeriodo > 1 ? "s" : ""} sem nenhuma venda atribuída.`;
-  } else if (grupo === "acimaMeta" && c.acosIdeal !== null && c.acosIdeal > c.acosMeta) {
-    tipo = "margemSobra";
-    contexto = `ACOS em ${c.acos.toFixed(0)}% vs meta de ${c.acosMeta.toFixed(0)}% — mas a margem real aguentaria até ${c.acosIdeal.toFixed(0)}%.`;
-  } else if (grupo === "orcamentoParado") {
-    const pctOrcamento = c.orcamento > 0 ? (c.custo / (c.orcamento * diasPeriodo)) * 100 : 0;
-    tipo = "orcamentoParado";
-    contexto = `Gastando só ${pctOrcamento.toFixed(0)}% do orçamento diário, com ACOS saudável de ${c.acos.toFixed(0)}%.`;
-  } else if (
-    c.tacosReal !== null &&
-    c.acosMeta > 0 &&
-    c.vendasTotais > 0 &&
-    c.tacosReal < c.acosMeta * LIMIAR_TACOS_ORGANICO
-  ) {
-    tipo = "organico";
-    contexto = `TACOS real de ${c.tacosReal.toFixed(0)}% vs ACOS configurado de ${c.acosMeta.toFixed(0)}% — a maior parte da venda parece já vir sem o anúncio.`;
-  }
-
-  if (tipo === null) return null;
-  return { tipo, contexto, acao: ACAO_POR_TIPO[tipo] };
 }
 
 function dataISO(d: Date): string {
@@ -280,8 +216,8 @@ ${historico}`,
   const blocoFerramenta = resposta.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
   if (!blocoFerramenta) {
     // Sem chamada de ferramenta não dá pra confiar que "não tem nada a
-    // reportar" — melhor jogar pro fallback de regras fixas (catch em
-    // verificarAgenteAds) do que arriscar reportar uma lista vazia errada.
+    // reportar" — melhor pular a rodada inteira (catch em verificarAgenteAds)
+    // do que arriscar reportar uma lista vazia errada.
     throw new Error("IA respondeu só em texto, sem chamar a ferramenta de observações.");
   }
 
@@ -346,30 +282,26 @@ async function buscarCampanhasComTacos(): Promise<CampanhaComTacos[]> {
 export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasSozinhas: number }> {
   const campanhasComTacos = await buscarCampanhasComTacos();
 
-  // Tenta a análise com IA de verdade primeiro; sem chave configurada
-  // (obterClienteAnthropic devolve null) ou se a chamada falhar por
-  // qualquer motivo (API fora do ar, limite, etc.), cai pras regras fixas
-  // — o agente nunca fica mudo por causa de uma indisponibilidade externa.
-  let obsPorChave = new Map<string, ObservacaoGerada>();
+  // Só a análise com IA de verdade — sem fallback de regras fixas. Se não
+  // tiver ANTHROPIC_API_KEY configurada ou a chamada falhar por qualquer
+  // motivo (API fora do ar, limite, etc.), a rodada é pulada por completo
+  // em vez de reportar algo que não veio da IA.
+  let observacoesIA: ObservacaoIA[];
   try {
-    const observacoesIA = await gerarObservacoesComIA(campanhasComTacos, DIAS_JANELA);
-    if (observacoesIA !== null) {
-      for (const o of observacoesIA) {
-        obsPorChave.set(`${o.lojaId}-${o.campanhaId}`, { tipo: o.tipo, contexto: o.contexto, acao: o.acao });
-      }
-    } else {
-      for (const c of campanhasComTacos) {
-        const obs = gerarObservacao(c, DIAS_JANELA);
-        if (obs) obsPorChave.set(`${c.lojaId}-${c.campanhaId}`, obs);
-      }
+    const resultado = await gerarObservacoesComIA(campanhasComTacos, DIAS_JANELA);
+    if (resultado === null) {
+      console.error("Agente de Ads: ANTHROPIC_API_KEY não configurada — rodada pulada.");
+      return { novas: 0, resolvidasSozinhas: 0 };
     }
+    observacoesIA = resultado;
   } catch (err) {
-    console.error("Agente de Ads: falha na análise com IA, usando regras fixas:", err);
-    obsPorChave = new Map();
-    for (const c of campanhasComTacos) {
-      const obs = gerarObservacao(c, DIAS_JANELA);
-      if (obs) obsPorChave.set(`${c.lojaId}-${c.campanhaId}`, obs);
-    }
+    console.error("Agente de Ads: falha na análise com IA, rodada pulada:", err);
+    return { novas: 0, resolvidasSozinhas: 0 };
+  }
+
+  const obsPorChave = new Map<string, ObservacaoGerada>();
+  for (const o of observacoesIA) {
+    obsPorChave.set(`${o.lojaId}-${o.campanhaId}`, { tipo: o.tipo, contexto: o.contexto, acao: o.acao });
   }
 
   let novas = 0;
