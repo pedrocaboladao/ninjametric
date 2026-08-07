@@ -620,9 +620,12 @@ function ObservacaoCard({
   return (
     <div className={`agente-card ${resolvida ? "agente-card-resolvida" : ""}`} style={{ borderLeftColor: info.cor }}>
       <div className="agente-card-topo">
-        <span className="ads-insight-tag" style={{ color: info.cor }}>
-          {info.tag}
-        </span>
+        <div className="agente-card-tags">
+          <span className="ads-insight-tag" style={{ color: info.cor }}>
+            {info.tag}
+          </span>
+          <span className="agente-card-janela">{o.janela === "hoje" ? "Hoje" : "7 dias"}</span>
+        </div>
         <span className="financeiro-td-mudo">{formatDataHora(o.criadoEm)}</span>
       </div>
       <div className="financeiro-td-titulo">{o.campanhaNome}</div>

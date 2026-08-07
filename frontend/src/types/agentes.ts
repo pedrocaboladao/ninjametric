@@ -11,6 +11,7 @@ export interface ObservacaoAds {
   resolvidoPor: "usuario" | "sistema" | null;
   criadoEm: string;
   resolvidoEm: string | null;
+  janela: string;
 }
 
 export interface PensamentoAds {

@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { listarCampanhasAds, type CampanhaAds } from "./adsService";
 import { listarReceitaRealPorCampanha } from "./tacosService";
+import { chaveJanelaDoDia } from "./dateUtils";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
@@ -22,6 +23,10 @@ interface ObservacaoGerada {
   tipo: string;
   contexto: string;
   acao: string;
+}
+
+function descricaoJanela(diasPeriodo: number): string {
+  return diasPeriodo === 1 ? "de hoje" : `dos últimos ${diasPeriodo} dias`;
 }
 
 function dataISO(d: Date): string {
@@ -179,7 +184,7 @@ async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo:
     // confiável que esperar o modelo "decidir" pensar em voz alta.
     system: `Você é um analista de tráfego pago (Mercado Ads) experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre.
 
-Você recebe os dados reais das campanhas ativas (com gasto) das lojas do grupo, no período dos últimos ${diasPeriodo} dias, e decide sozinho quais merecem atenção agora.
+Você recebe os dados reais das campanhas ativas (com gasto) das lojas do grupo, no período ${descricaoJanela(diasPeriodo)}, e decide sozinho quais merecem atenção agora.
 
 Regras:
 - Só reporte campanhas que genuinamente precisam de atenção (prejuízo real, verba parada sem retorno, ou oportunidade clara de escalar) — campanhas indo bem não entram no relatório.
@@ -195,7 +200,7 @@ ${historico}`,
     messages: [
       {
         role: "user",
-        content: `Campanhas ativas com gasto no período:\n\n${linhas}\n\nAnalise e reporte as que merecem atenção.`,
+        content: `Campanhas ativas com gasto no período ${descricaoJanela(diasPeriodo)}:\n\n${linhas}\n\nAnalise e reporte as que merecem atenção.`,
       },
     ],
     tools: [FERRAMENTA_OBSERVACOES],
@@ -224,7 +229,7 @@ ${historico}`,
   const observacoesRaw = (blocoFerramenta.input as { observacoes?: unknown }).observacoes;
   // Normalmente vem como array, mas o modelo às vezes devolve um objeto com
   // chaves numéricas em vez de array de verdade — aceita os dois formatos em
-  // vez de quebrar e cair pro fallback de regras fixas à toa.
+  // vez de quebrar a rodada à toa.
   const lista: Array<{ loja_id: number; campanha_id: string; tipo: string; contexto: string; acao: string }> =
     Array.isArray(observacoesRaw)
       ? observacoesRaw
@@ -253,10 +258,11 @@ const DIAS_JANELA = 7;
 const LOJAS_AGENTE = [1, 2, 3, 4];
 
 // Busca as campanhas das 4 lojas pessoais (ver LOJAS_AGENTE) com TACOS/lucro
-// já calculados — reaproveitada pela verificação automática e pelo chat.
-async function buscarCampanhasComTacos(): Promise<CampanhaComTacos[]> {
+// já calculados — reaproveitada pela verificação automática (janela de 7
+// dias e a diária de hoje) e pelo chat.
+async function buscarCampanhasComTacos(diasPeriodo: number): Promise<CampanhaComTacos[]> {
   const hoje = new Date();
-  const inicio = new Date(hoje.getTime() - (DIAS_JANELA - 1) * 24 * 60 * 60 * 1000);
+  const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
   const dataInicio = dataISO(inicio);
   const dataFim = dataISO(hoje);
 
@@ -277,10 +283,16 @@ async function buscarCampanhasComTacos(): Promise<CampanhaComTacos[]> {
   });
 }
 
-// Roda só pras 4 lojas pessoais (ver LOJAS_AGENTE) sobre os últimos 7 dias,
-// mesma janela que a tela de Ads usa por padrão.
-export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasSozinhas: number }> {
-  const campanhasComTacos = await buscarCampanhasComTacos();
+// Núcleo comum das duas verificações (7 dias e diária) — só muda a janela de
+// dados, o rótulo salvo em "janela" (mostrado no feed) e o sufixo de chave
+// (pra uma observação "hoje" não disputar o mesmo slot ON CONFLICT da
+// observação "7dias" da mesma campanha — ambas podem coexistir).
+async function executarVerificacao(
+  diasPeriodo: number,
+  janela: string,
+  chaveSufixo: string
+): Promise<{ novas: number; resolvidasSozinhas: number }> {
+  const campanhasComTacos = await buscarCampanhasComTacos(diasPeriodo);
 
   // Só a análise com IA de verdade — sem fallback de regras fixas. Se não
   // tiver ANTHROPIC_API_KEY configurada ou a chamada falhar por qualquer
@@ -288,14 +300,14 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
   // em vez de reportar algo que não veio da IA.
   let observacoesIA: ObservacaoIA[];
   try {
-    const resultado = await gerarObservacoesComIA(campanhasComTacos, DIAS_JANELA);
+    const resultado = await gerarObservacoesComIA(campanhasComTacos, diasPeriodo);
     if (resultado === null) {
-      console.error("Agente de Ads: ANTHROPIC_API_KEY não configurada — rodada pulada.");
+      console.error(`Agente de Ads (${janela}): ANTHROPIC_API_KEY não configurada — rodada pulada.`);
       return { novas: 0, resolvidasSozinhas: 0 };
     }
     observacoesIA = resultado;
   } catch (err) {
-    console.error("Agente de Ads: falha na análise com IA, rodada pulada:", err);
+    console.error(`Agente de Ads (${janela}): falha na análise com IA, rodada pulada:`, err);
     return { novas: 0, resolvidasSozinhas: 0 };
   }
 
@@ -308,17 +320,18 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
   const chavesDetectadasPorLoja = new Map<number, string[]>();
 
   for (const c of campanhasComTacos) {
-    const chave = `${c.lojaId}-${c.campanhaId}`;
-    const obs = obsPorChave.get(chave);
+    const chaveBase = `${c.lojaId}-${c.campanhaId}`;
+    const obs = obsPorChave.get(chaveBase);
     if (!obs) continue;
+    const chave = `${chaveBase}${chaveSufixo}`;
     if (!chavesDetectadasPorLoja.has(c.lojaId)) chavesDetectadasPorLoja.set(c.lojaId, []);
     chavesDetectadasPorLoja.get(c.lojaId)!.push(chave);
 
     const { rowCount } = await pool.query(
-      `INSERT INTO agente_ads_observacoes (loja_id, campanha_id, campanha_nome, chave, tipo, contexto, acao)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `INSERT INTO agente_ads_observacoes (loja_id, campanha_id, campanha_nome, chave, tipo, contexto, acao, janela)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (chave) WHERE status = 'pendente' DO NOTHING`,
-      [c.lojaId, String(c.campanhaId), c.nome, chave, obs.tipo, obs.contexto, obs.acao]
+      [c.lojaId, String(c.campanhaId), c.nome, chave, obs.tipo, obs.contexto, obs.acao, janela]
     );
     if (rowCount && rowCount > 0) novas++;
   }
@@ -328,26 +341,41 @@ export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasS
     const { rowCount } = await pool.query(
       `UPDATE agente_ads_observacoes
        SET status = 'resolvida', resolvido_por = 'sistema', resolvido_em = now()
-       WHERE loja_id = $1 AND status = 'pendente' AND chave != ALL($2::text[])`,
-      [lojaId, chaves]
+       WHERE loja_id = $1 AND status = 'pendente' AND janela = $2 AND chave != ALL($3::text[])`,
+      [lojaId, janela, chaves]
     );
     resolvidasSozinhas += rowCount ?? 0;
   }
   // Lojas sem nenhuma observação detectada nesta rodada não entram no mapa
   // acima — fecha as pendentes delas também (senão nunca seriam resolvidas).
+  // Restrito à mesma "janela" pra não fechar pendências da outra verificação.
   const lojaIdsComCampanha = new Set(campanhasComTacos.map((c) => c.lojaId));
   const lojaIdsSemDeteccao = [...lojaIdsComCampanha].filter((id) => !chavesDetectadasPorLoja.has(id));
   for (const lojaId of lojaIdsSemDeteccao) {
     const { rowCount } = await pool.query(
       `UPDATE agente_ads_observacoes
        SET status = 'resolvida', resolvido_por = 'sistema', resolvido_em = now()
-       WHERE loja_id = $1 AND status = 'pendente'`,
-      [lojaId]
+       WHERE loja_id = $1 AND status = 'pendente' AND janela = $2`,
+      [lojaId, janela]
     );
     resolvidasSozinhas += rowCount ?? 0;
   }
 
   return { novas, resolvidasSozinhas };
+}
+
+// Roda só pras 4 lojas pessoais (ver LOJAS_AGENTE) sobre os últimos 7 dias,
+// mesma janela que a tela de Ads usa por padrão.
+export async function verificarAgenteAds(): Promise<{ novas: number; resolvidasSozinhas: number }> {
+  return executarVerificacao(DIAS_JANELA, "7dias", "");
+}
+
+// Segunda checagem, só do dia de hoje — pega uma campanha que começou a
+// sangrar dinheiro hoje mesmo quando a média de 7 dias ainda parece
+// saudável. Mesma tabela/feed, só um "janela" e chave diferentes pra não
+// disputar slot com a observação de 7 dias da mesma campanha.
+export async function verificarAgenteAdsDiario(): Promise<{ novas: number; resolvidasSozinhas: number }> {
+  return executarVerificacao(1, "hoje", "-hoje");
 }
 
 export interface ObservacaoAds {
@@ -363,6 +391,7 @@ export interface ObservacaoAds {
   criadoEm: string;
   resolvidoEm: string | null;
   lojaNome: string;
+  janela: string;
 }
 
 export async function listarObservacoes(status?: "pendente" | "resolvida"): Promise<ObservacaoAds[]> {
@@ -379,9 +408,10 @@ export async function listarObservacoes(status?: "pendente" | "resolvida"): Prom
     criado_em: string;
     resolvido_em: string | null;
     loja_nome: string;
+    janela: string;
   }>(
     `SELECT o.id, o.loja_id, o.campanha_id, o.campanha_nome, o.tipo, o.contexto, o.acao, o.status,
-            o.resolvido_por, o.criado_em, o.resolvido_em, l.nome AS loja_nome
+            o.resolvido_por, o.criado_em, o.resolvido_em, l.nome AS loja_nome, o.janela
      FROM agente_ads_observacoes o
      JOIN lojas l ON l.id = o.loja_id
      WHERE o.loja_id = ANY($1::int[]) AND ($2::text IS NULL OR o.status = $2)
@@ -400,6 +430,7 @@ export async function listarObservacoes(status?: "pendente" | "resolvida"): Prom
     status: r.status,
     resolvidoPor: r.resolvido_por,
     criadoEm: r.criado_em,
+    janela: r.janela,
     resolvidoEm: r.resolvido_em,
     lojaNome: r.loja_nome,
   }));
@@ -444,7 +475,7 @@ export async function perguntarAgenteAds(pergunta: string, historico: MensagemCh
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
   }
 
-  const campanhasComTacos = await buscarCampanhasComTacos();
+  const campanhasComTacos = await buscarCampanhasComTacos(DIAS_JANELA);
   const linhas = construirLinhasCampanhas(campanhasComTacos);
 
   const resposta = await client.messages.create({
@@ -475,16 +506,40 @@ ${linhas || "Nenhuma campanha encontrada no período."}`,
 }
 
 const INTERVALO_MS = 4 * 60 * 60 * 1000; // 4h
+const HORARIOS_DIARIOS = [10, 16, 22]; // horário de Brasília
+const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
 
 export function iniciarVerificacaoAgenteAds(): void {
   async function verificar() {
     try {
       const resultado = await verificarAgenteAds();
-      console.log(`Agente de Ads: ${resultado.novas} nova(s), ${resultado.resolvidasSozinhas} resolvida(s) sozinha(s).`);
+      console.log(`Agente de Ads (7dias): ${resultado.novas} nova(s), ${resultado.resolvidasSozinhas} resolvida(s) sozinha(s).`);
     } catch (err) {
-      console.error("Erro na verificação do agente de Ads:", err);
+      console.error("Erro na verificação do agente de Ads (7dias):", err);
     }
   }
+
+  // Roda 3x por dia, em horários fixos de Brasília (ver HORARIOS_DIARIOS),
+  // reaproveitando a mesma técnica de "janela por horário-âncora" do
+  // prewarm de promoções (chaveJanelaDoDia, dateUtils.ts): a chave só muda
+  // quando o relógio cruza um dos horários, então checando a cada 5min a
+  // gente dispara exatamente uma vez por âncora — não uma vez por checagem.
+  // Começa já sincronizado com a janela atual (em vez de null) pra não
+  // disparar uma rodada extra toda vez que o servidor reinicia/faz deploy.
+  let ultimaJanelaDiaria = chaveJanelaDoDia(HORARIOS_DIARIOS);
+  async function verificarDiarioSeForHora() {
+    const janela = chaveJanelaDoDia(HORARIOS_DIARIOS);
+    if (janela === ultimaJanelaDiaria) return;
+    ultimaJanelaDiaria = janela;
+    try {
+      const resultado = await verificarAgenteAdsDiario();
+      console.log(`Agente de Ads (hoje, janela ${janela}): ${resultado.novas} nova(s), ${resultado.resolvidasSozinhas} resolvida(s) sozinha(s).`);
+    } catch (err) {
+      console.error(`Erro na verificação do agente de Ads (hoje, janela ${janela}):`, err);
+    }
+  }
+
   verificar();
   setInterval(verificar, INTERVALO_MS);
+  setInterval(verificarDiarioSeForHora, INTERVALO_CHECAGEM_HORARIO_MS);
 }

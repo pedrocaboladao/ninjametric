@@ -351,6 +351,10 @@ CREATE TABLE IF NOT EXISTS agente_ads_observacoes (
 );
 CREATE INDEX IF NOT EXISTS idx_agente_ads_obs_status ON agente_ads_observacoes (status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_agente_ads_obs_chave_pendente ON agente_ads_observacoes (chave) WHERE status = 'pendente';
+-- 'janela' distingue de qual verificação a observação veio ('7dias' ou
+-- 'hoje') — mesma tabela/feed, mas cada janela fecha só as próprias
+-- pendências (ver executarVerificacao em agenteAdsService.ts).
+ALTER TABLE agente_ads_observacoes ADD COLUMN IF NOT EXISTS janela TEXT NOT NULL DEFAULT '7dias';
 
 -- Raciocínio real da IA (Claude, "adaptive thinking") em cada verificação —
 -- separado das observações porque é um registro por RODADA (o "diário" do
