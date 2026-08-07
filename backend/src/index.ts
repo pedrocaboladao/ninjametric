@@ -26,6 +26,7 @@ import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
 import { iniciarSincronizacaoPromocoes } from "./services/promocoesService";
 import { iniciarVerificacaoAgenteAds } from "./services/agenteAdsService";
+import { iniciarSnapshotEstoque } from "./services/estoqueService";
 
 const app = express();
 
@@ -73,3 +74,4 @@ iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
 iniciarSincronizacaoPromocoes();
 iniciarVerificacaoAgenteAds();
+iniciarSnapshotEstoque();

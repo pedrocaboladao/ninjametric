@@ -79,6 +79,17 @@ export interface RankingPrecificacao {
   menorMargem: RankingMenorMargem[];
 }
 
+export interface ProdutoEstoqueBaixo {
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string;
+  estoque: number;
+  thumbnail: string | null;
+  permalink: string | null;
+  atualizadoEm: string;
+}
+
 export interface ComparacaoSkuLoja {
   lojaId: number;
   lojaNome: string;

@@ -397,3 +397,22 @@ CREATE TABLE IF NOT EXISTS agente_imagens_perfil_referencias (
   imagem_base64 TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Foto (snapshot) do estoque de todo anúncio ativo de cada loja, capturada
+-- periodicamente em segundo plano (ver iniciarSnapshotEstoque) — escanear
+-- ao vivo toda loja/todo item a cada carregamento do Dashboard seria lento
+-- demais (até 1000 itens por loja, em lotes de 20 chamadas à API do ML).
+-- Guarda o estoque de TODO item ativo (não só os com estoque baixo), pra
+-- poder mudar o limite de alerta depois sem precisar re-escanear.
+CREATE TABLE IF NOT EXISTS estoque_snapshot (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  item_id TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  estoque INTEGER NOT NULL,
+  thumbnail TEXT,
+  permalink TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (loja_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_estoque_snapshot_estoque ON estoque_snapshot (estoque);

@@ -1,4 +1,10 @@
-import type { DashboardData, TopVendidoPromocao, RankingPrecificacao, ComparacaoSkuLoja } from "../types/dashboard";
+import type {
+  DashboardData,
+  TopVendidoPromocao,
+  RankingPrecificacao,
+  ComparacaoSkuLoja,
+  ProdutoEstoqueBaixo,
+} from "../types/dashboard";
 import type { Loja } from "./lojas";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -17,6 +23,19 @@ export async function fetchTopVendidosPromocoes(lojaId?: number | "minhas"): Pro
   const res = await fetch(`${API_BASE}/api/dashboard/top-vendidos${query}`, { credentials: "include" });
   if (!res.ok) {
     throw new Error(`Falha ao buscar top vendidos: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.produtos;
+}
+
+export async function fetchEstoqueBaixo(lojaId?: number | "minhas", limite?: number): Promise<ProdutoEstoqueBaixo[]> {
+  const params = new URLSearchParams();
+  if (lojaId) params.set("lojaId", String(lojaId));
+  if (limite) params.set("limite", String(limite));
+  const query = params.toString() ? `?${params}` : "";
+  const res = await fetch(`${API_BASE}/api/dashboard/estoque-baixo${query}`, { credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar estoque baixo: ${res.status}`);
   }
   const data = await res.json();
   return data.produtos;

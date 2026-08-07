@@ -381,6 +381,9 @@ export interface MlItemBasicInfo {
   price: number;
   thumbnail: string;
   permalink: string;
+  // O ML devolve o objeto completo do item nessa rota mesmo sem pedir campo
+  // por campo — reaproveitado pro snapshot de estoque (ver estoqueService).
+  available_quantity?: number;
 }
 
 export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Promise<Map<string, MlItemBasicInfo>> {

@@ -3,8 +3,8 @@ import { useDashboardData } from "../hooks/useDashboardData";
 import { useTopVendidosPromocoes } from "../hooks/useTopVendidosPromocoes";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 import { fetchLojas, type Loja } from "../api/lojas";
-import { fetchRankingPrecificacao, fetchLojasVigilancia } from "../api/dashboard";
-import type { RankingPrecificacao as RankingPrecificacaoTipo } from "../types/dashboard";
+import { fetchRankingPrecificacao, fetchLojasVigilancia, fetchEstoqueBaixo } from "../api/dashboard";
+import type { RankingPrecificacao as RankingPrecificacaoTipo, ProdutoEstoqueBaixo } from "../types/dashboard";
 import { DashboardHeader } from "./DashboardHeader";
 import { HeroFaturamento } from "./HeroFaturamento";
 import { RankingLojas } from "./RankingLojas";
@@ -12,6 +12,7 @@ import { VendasChart } from "./VendasChart";
 import { ProdutosRanking } from "./ProdutosRanking";
 import { TopVendidosPromocoes } from "./TopVendidosPromocoes";
 import { RankingPrecificacao } from "./RankingPrecificacao";
+import { EstoqueBaixo } from "./EstoqueBaixo";
 import { PainelEstudo } from "./PainelEstudo";
 import type { Usuario } from "../types/usuarios";
 
@@ -35,6 +36,7 @@ export function Dashboard({ usuario }: Props) {
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPromocoes, setLojaFiltroPromocoes] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroPrecificacao, setLojaFiltroPrecificacao] = useState<number | "todas" | "minhas">("todas");
+  const [lojaFiltroEstoque, setLojaFiltroEstoque] = useState<number | "todas" | "minhas">("todas");
   const [modoDataPrecificacao, setModoDataPrecificacao] = useState<"hoje" | "7dias">("hoje");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +72,15 @@ export function Dashboard({ usuario }: Props) {
   );
   const { dados: rankingPrecificacao, erro: erroRankingPrecificacao } = useBuscaComCancelamento<RankingPrecificacaoTipo>(
     buscarRankingPrecificacao,
+    true
+  );
+
+  const buscarEstoqueBaixo = useCallback(
+    () => fetchEstoqueBaixo(lojaFiltroEstoque === "todas" ? undefined : lojaFiltroEstoque),
+    [lojaFiltroEstoque]
+  );
+  const { dados: estoqueBaixo, erro: erroEstoqueBaixo } = useBuscaComCancelamento<ProdutoEstoqueBaixo[]>(
+    buscarEstoqueBaixo,
     true
   );
 
@@ -169,6 +180,23 @@ export function Dashboard({ usuario }: Props) {
                   onChangeModoData={setModoDataPrecificacao}
                   dataInicio={dataInicioPrecificacao}
                   dataFim={dataFimPrecificacao}
+                />
+              )}
+
+              {erroEstoqueBaixo && (
+                <div className="state-message state-error painel painel-top-vendidos">
+                  Erro ao carregar estoque baixo: {erroEstoqueBaixo}
+                </div>
+              )}
+              {!erroEstoqueBaixo && !estoqueBaixo && (
+                <div className="state-message painel painel-top-vendidos">Carregando estoque baixo...</div>
+              )}
+              {estoqueBaixo && (
+                <EstoqueBaixo
+                  produtos={estoqueBaixo}
+                  lojas={lojas}
+                  lojaFiltro={lojaFiltroEstoque}
+                  onChangeLojaFiltro={setLojaFiltroEstoque}
                 />
               )}
             </div>

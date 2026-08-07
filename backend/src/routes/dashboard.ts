@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getDashboardData, getTopVendidosPromocoes } from "../services/dashboardService";
+import { listarEstoqueBaixo } from "../services/estoqueService";
 import { calcularRankingPrecificacao, buscarComparacaoPorSku } from "../services/precificacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
@@ -77,6 +78,24 @@ dashboardRouter.get("/top-vendidos", async (req, res) => {
   } catch (err) {
     console.error("Erro ao montar top vendidos:", err);
     res.status(500).json({ error: "Falha ao carregar top vendidos." });
+  }
+});
+
+const LIMITE_ESTOQUE_PADRAO = 50;
+
+dashboardRouter.get("/estoque-baixo", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  const limiteParam = Number(req.query.limite);
+  const limite = Number.isInteger(limiteParam) && limiteParam > 0 ? limiteParam : LIMITE_ESTOQUE_PADRAO;
+
+  try {
+    const produtos = await listarEstoqueBaixo(limite, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ produtos, limite });
+  } catch (err) {
+    console.error("Erro ao montar estoque baixo:", err);
+    res.status(500).json({ error: "Falha ao carregar estoque baixo." });
   }
 });
 
