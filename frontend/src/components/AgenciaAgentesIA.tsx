@@ -1121,7 +1121,11 @@ function KitFotos() {
     try {
       const dados = await buscarDadosAnuncio(urlAnuncio.trim());
       setNomeProduto(dados.titulo);
-      if (dados.atributos.length > 0) setSpecsSecundarias(dados.atributos.join("\n"));
+      if (dados.subtitulo) setSubtitulo(dados.subtitulo);
+      if (dados.beneficios.length > 0) setBeneficios(dados.beneficios.join("\n"));
+      if (dados.especificacaoPrincipal) setEspecificacaoPrincipal(dados.especificacaoPrincipal);
+      if (dados.specsSecundarias.length > 0) setSpecsSecundarias(dados.specsSecundarias.join("\n"));
+      if (dados.ondeAplicar.length > 0) setOndeAplicar(dados.ondeAplicar.join("\n"));
       if (dados.fotoBase64) {
         setBase64(dados.fotoBase64);
         setOriginal(`data:image/jpeg;base64,${dados.fotoBase64}`);
@@ -1199,7 +1203,8 @@ function KitFotos() {
       )}
 
       <label className="agente-imagens-campo">
-        Link de um anúncio seu no Mercado Livre (opcional) — puxa nome, foto e ficha técnica automaticamente
+        Link de um anúncio seu no Mercado Livre (opcional) — preenche nome, foto e todos os campos de texto abaixo
+        automaticamente com base no anúncio real (revise antes de gerar — é sugestão da IA)
         <div className="agente-imagens-acoes">
           <input
             type="text"

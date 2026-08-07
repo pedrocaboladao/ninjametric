@@ -68,9 +68,12 @@ export async function criarArtePromocional(descricao: string): Promise<string> {
 
 export interface DadosAnuncioParaKit {
   titulo: string;
-  descricao: string;
-  atributos: string[];
   fotoBase64: string | null;
+  subtitulo: string;
+  beneficios: string[];
+  especificacaoPrincipal: string;
+  specsSecundarias: string[];
+  ondeAplicar: string[];
 }
 
 export async function buscarDadosAnuncio(url: string): Promise<DadosAnuncioParaKit> {
