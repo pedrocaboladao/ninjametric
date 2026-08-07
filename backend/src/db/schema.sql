@@ -436,3 +436,8 @@ CREATE TABLE IF NOT EXISTS agente_oportunidades (
   contexto TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Chave pra diferenciar "oportunidade que já estava na lista" (upsert,
+-- mantém o criado_em original) de "oportunidade nova" (insert, criado_em
+-- novo) — sem isso toda rodada reescreveria a lista inteira com o mesmo
+-- horário, e o feed nunca pareceria dinâmico.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_agente_oportunidades_sku ON agente_oportunidades (sku);

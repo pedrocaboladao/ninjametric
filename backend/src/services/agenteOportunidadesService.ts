@@ -1,7 +1,7 @@
 import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
 import { searchOrders } from "./mercadoLivreApi";
-import { janelaUltimosDias } from "./dateUtils";
+import { janelaUltimosDias, chaveJanelaDoDia } from "./dateUtils";
 
 // Só as 4 contas PESSOAIS do usuário (mesmas do Analista de Ads/Agente de
 // Imagens) — IDs confirmados via GET /api/lojas/todas: Hangar=1, Catedral
@@ -63,8 +63,12 @@ function gerarContexto(v: VendaPorSku): string {
   )}% do total), parece ter espaço pra crescer nas suas lojas.`;
 }
 
-// Recalcula do zero e substitui a lista inteira — é sempre "a leitura de
-// hoje", não faz sentido acumular histórico de oportunidades passadas.
+// Compara com a lista anterior em vez de substituir tudo de uma vez: quem já
+// estava na lista mantém o criado_em original (upsert por sku), só quem é
+// genuinamente novo ganha timestamp novo, e quem não bate mais os critérios
+// sai. Isso faz o feed crescer aos poucos ao longo do dia (a cada rodada só
+// as novidades sobem), em vez de reescrever a lista inteira com o mesmo
+// horário toda vez.
 export async function verificarOportunidades(): Promise<void> {
   const vendas = await calcularVendasPorSku();
   const candidatos = vendas
@@ -72,29 +76,48 @@ export async function verificarOportunidades(): Promise<void> {
     .sort((a, b) => b.quantidadeGrupo - b.quantidadeMinhasLojas - (a.quantidadeGrupo - a.quantidadeMinhasLojas))
     .slice(0, LIMITE_OPORTUNIDADES);
 
-  await pool.query("DELETE FROM agente_oportunidades");
   for (const c of candidatos) {
     await pool.query(
       `INSERT INTO agente_oportunidades (sku, titulo, quantidade_grupo, quantidade_minhas_lojas, contexto)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (sku) DO UPDATE
+         SET titulo = EXCLUDED.titulo,
+             quantidade_grupo = EXCLUDED.quantidade_grupo,
+             quantidade_minhas_lojas = EXCLUDED.quantidade_minhas_lojas,
+             contexto = EXCLUDED.contexto`,
       [c.sku, c.titulo, c.quantidadeGrupo, c.quantidadeMinhasLojas, gerarContexto(c)]
     );
   }
+
+  const skusAtuais = candidatos.map((c) => c.sku);
+  if (skusAtuais.length > 0) {
+    await pool.query("DELETE FROM agente_oportunidades WHERE sku != ALL($1::text[])", [skusAtuais]);
+  } else {
+    await pool.query("DELETE FROM agente_oportunidades");
+  }
 }
 
-const INTERVALO_MS = 24 * 60 * 60 * 1000; // 1x por dia — dado de venda não muda tão rápido quanto Ads
+const HORARIOS_VERIFICACAO = [6, 11, 16, 21]; // horário de Brasília — 4x/dia
+const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
 
 export function iniciarVerificacaoOportunidades(): void {
-  async function verificar() {
+  // Mesma técnica de "janela por horário-âncora" do Agente de Ads
+  // (chaveJanelaDoDia, dateUtils.ts) — dispara uma vez por horário
+  // cruzado, não uma vez por checagem. Começa já sincronizado com a
+  // janela atual pra não rodar uma vez extra a cada reinício/deploy.
+  let ultimaJanela = chaveJanelaDoDia(HORARIOS_VERIFICACAO);
+  async function checar() {
+    const janela = chaveJanelaDoDia(HORARIOS_VERIFICACAO);
+    if (janela === ultimaJanela) return;
+    ultimaJanela = janela;
     try {
       await verificarOportunidades();
-      console.log("Agente de Oportunidades: lista atualizada.");
+      console.log(`Agente de Oportunidades: lista atualizada (janela ${janela}).`);
     } catch (err) {
       console.error("Erro na verificação do Agente de Oportunidades:", err);
     }
   }
-  verificar();
-  setInterval(verificar, INTERVALO_MS);
+  setInterval(checar, INTERVALO_CHECAGEM_HORARIO_MS);
 }
 
 export interface Oportunidade {
@@ -119,7 +142,7 @@ export async function listarOportunidades(): Promise<Oportunidade[]> {
   }>(
     `SELECT id, sku, titulo, quantidade_grupo, quantidade_minhas_lojas, contexto, criado_em
      FROM agente_oportunidades
-     ORDER BY (quantidade_grupo - quantidade_minhas_lojas) DESC`
+     ORDER BY criado_em DESC`
   );
   return rows.map((r) => ({
     id: r.id,
