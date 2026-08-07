@@ -1001,6 +1001,8 @@ const NOMES_SLIDES = ["Foto limpa (fundo branco)", "Capa", "Benefícios", "Espec
 function KitFotos() {
   const [original, setOriginal] = useState<string | null>(null);
   const [base64, setBase64] = useState<string | null>(null);
+  const [referenciaOriginal, setReferenciaOriginal] = useState<string | null>(null);
+  const [referenciaBase64, setReferenciaBase64] = useState<string | null>(null);
   const [nomeProduto, setNomeProduto] = useState("");
   const [subtitulo, setSubtitulo] = useState("");
   const [cores, setCores] = useState("");
@@ -1026,6 +1028,18 @@ function KitFotos() {
     leitor.readAsDataURL(arquivo);
   }
 
+  function onArquivoReferencia(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const dataUrl = leitor.result as string;
+      setReferenciaOriginal(dataUrl);
+      setReferenciaBase64(dataUrl.split(",")[1] ?? null);
+    };
+    leitor.readAsDataURL(arquivo);
+  }
+
   function paraLinhas(texto: string): string[] {
     return texto
       .split("\n")
@@ -1039,15 +1053,19 @@ function KitFotos() {
     setErroKit(null);
     setResultados(null);
     try {
-      const imagens = await gerarKitFotos(base64, {
-        nomeProduto: nomeProduto.trim(),
-        subtitulo: subtitulo.trim(),
-        cores: cores.trim(),
-        beneficios: paraLinhas(beneficios),
-        especificacaoPrincipal: especificacaoPrincipal.trim(),
-        specsSecundarias: paraLinhas(specsSecundarias),
-        ondeAplicar: paraLinhas(ondeAplicar),
-      });
+      const imagens = await gerarKitFotos(
+        base64,
+        {
+          nomeProduto: nomeProduto.trim(),
+          subtitulo: subtitulo.trim(),
+          cores: cores.trim(),
+          beneficios: paraLinhas(beneficios),
+          especificacaoPrincipal: especificacaoPrincipal.trim(),
+          specsSecundarias: paraLinhas(specsSecundarias),
+          ondeAplicar: paraLinhas(ondeAplicar),
+        },
+        referenciaBase64 ?? undefined
+      );
       setResultados(imagens);
     } catch (err) {
       setErroKit(err instanceof Error ? err.message : "Falha ao gerar o kit.");
@@ -1064,8 +1082,19 @@ function KitFotos() {
         ortografia.
       </p>
 
-      <input type="file" accept="image/*" onChange={onArquivo} />
+      <label className="agente-imagens-campo">
+        Foto do produto (obrigatória)
+        <input type="file" accept="image/*" onChange={onArquivo} />
+      </label>
       {original && <img src={original} alt="Foto original do produto" className="agente-imagens-preview" />}
+
+      <label className="agente-imagens-campo">
+        Foto de referência de estilo (opcional) — um slide que você já gosta, a IA copia o layout/cores dele
+        <input type="file" accept="image/*" onChange={onArquivoReferencia} />
+      </label>
+      {referenciaOriginal && (
+        <img src={referenciaOriginal} alt="Referência de estilo" className="agente-imagens-preview" />
+      )}
 
       <label className="agente-imagens-campo">
         Nome do produto

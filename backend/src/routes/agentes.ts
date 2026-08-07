@@ -95,8 +95,17 @@ function paraLista(valor: unknown): string[] {
 }
 
 agentesRouter.post("/imagens/kit", async (req, res) => {
-  const { imagemBase64, nomeProduto, subtitulo, cores, beneficios, especificacaoPrincipal, specsSecundarias, ondeAplicar } =
-    req.body ?? {};
+  const {
+    imagemBase64,
+    imagemReferenciaBase64,
+    nomeProduto,
+    subtitulo,
+    cores,
+    beneficios,
+    especificacaoPrincipal,
+    specsSecundarias,
+    ondeAplicar,
+  } = req.body ?? {};
   if (typeof imagemBase64 !== "string" || !imagemBase64) {
     res.status(400).json({ error: "Imagem inválida." });
     return;
@@ -114,8 +123,9 @@ agentesRouter.post("/imagens/kit", async (req, res) => {
     specsSecundarias: paraLista(specsSecundarias),
     ondeAplicar: paraLista(ondeAplicar),
   };
+  const referencia = typeof imagemReferenciaBase64 === "string" && imagemReferenciaBase64 ? imagemReferenciaBase64 : undefined;
   try {
-    const imagens = await gerarKitFotos(imagemBase64, dados);
+    const imagens = await gerarKitFotos(imagemBase64, dados, referencia);
     res.json({ imagens });
   } catch (err) {
     erro(res, err, "Falha ao gerar o kit de fotos.");

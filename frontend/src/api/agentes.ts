@@ -76,12 +76,16 @@ export interface DadosKitFotos {
   ondeAplicar: string[];
 }
 
-export async function gerarKitFotos(imagemBase64: string, dados: DadosKitFotos): Promise<string[]> {
+export async function gerarKitFotos(
+  imagemBase64: string,
+  dados: DadosKitFotos,
+  imagemReferenciaBase64?: string
+): Promise<string[]> {
   const res = await fetch(`${API_BASE}/api/agentes/imagens/kit`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imagemBase64, ...dados }),
+    body: JSON.stringify({ imagemBase64, imagemReferenciaBase64, ...dados }),
   });
   const data = await tratarResposta<{ imagens: string[] }>(res);
   return data.imagens;

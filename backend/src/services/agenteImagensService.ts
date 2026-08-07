@@ -8,6 +8,9 @@ import { env } from "../config/env";
 // satisfaz a regra) antes de mandar pra API.
 const TAMANHO = 1024;
 const MODELO_IMAGEM = "gpt-image-2";
+// "high" custa mais por imagem que o padrão, mas é bem mais fiel/nítido —
+// vale a pena pro caso de uso (fotos que vão pro anúncio de verdade).
+const QUALIDADE = "high";
 
 let clienteOpenAI: OpenAI | null | undefined;
 function obterClienteOpenAI(): OpenAI | null {
@@ -17,32 +20,41 @@ function obterClienteOpenAI(): OpenAI | null {
   return clienteOpenAI;
 }
 
+async function normalizar(imagemBase64: string) {
+  const buffer = Buffer.from(imagemBase64, "base64");
+  const normalizado = await sharp(buffer)
+    .resize(TAMANHO, TAMANHO, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
+    .png()
+    .toBuffer();
+  return normalizado;
+}
+
 const PROMPT_TRATAMENTO =
   "Esta é uma foto real de um produto de loja de tinta e material de construção. Troque o fundo por um fundo " +
   "branco/neutro limpo, com iluminação uniforme e sombra suave, no estilo de uma foto profissional de e-commerce. " +
   "Não altere o produto em si: mantenha exatamente a mesma embalagem, rótulo, texto, cores e proporções do produto " +
   "original — mexa só no ambiente ao redor.";
 
-// Normaliza a foto original (qualquer formato/tamanho) pro quadrado exigido
-// pela API e manda editar com o prompt dado — usado tanto pra limpar fundo
-// quanto pra montar cada slide do kit de fotos.
-async function editarFoto(imagemBase64: string, prompt: string): Promise<string> {
+// Normaliza cada imagem de entrada (qualquer formato/tamanho) e manda editar
+// com o prompt dado — aceita mais de uma imagem porque a API usa isso pra
+// "referência de estilo": a primeira é sempre o produto real, uma segunda
+// opcional é um exemplo de layout/cor que a IA deve seguir.
+async function editarFoto(imagensBase64: string[], prompt: string): Promise<string> {
   const client = obterClienteOpenAI();
   if (!client) {
     throw new Error("IA de imagens não configurada neste ambiente (falta OPENAI_API_KEY).");
   }
 
-  const bufferOriginal = Buffer.from(imagemBase64, "base64");
-  const bufferNormalizado = await sharp(bufferOriginal)
-    .resize(TAMANHO, TAMANHO, { fit: "contain", background: { r: 255, g: 255, b: 255, alpha: 1 } })
-    .png()
-    .toBuffer();
+  const arquivos = await Promise.all(
+    imagensBase64.map(async (b64, i) => toFile(await normalizar(b64), `imagem-${i}.png`, { type: "image/png" }))
+  );
 
   const resposta = await client.images.edit({
     model: MODELO_IMAGEM,
-    image: await toFile(bufferNormalizado, "foto.png", { type: "image/png" }),
+    image: arquivos,
     prompt,
     size: "1024x1024",
+    quality: QUALIDADE,
   });
 
   const resultado = resposta.data?.[0]?.b64_json;
@@ -55,7 +67,7 @@ async function editarFoto(imagemBase64: string, prompt: string): Promise<string>
 // Recebe a foto original em base64 (qualquer formato comum) e pede pra IA
 // limpar só o fundo, mantendo o produto idêntico.
 export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
-  return editarFoto(imagemBase64, PROMPT_TRATAMENTO);
+  return editarFoto([imagemBase64], PROMPT_TRATAMENTO);
 }
 
 const PROMPT_ARTE_BASE =
@@ -74,6 +86,7 @@ export async function criarArtePromocional(descricao: string): Promise<string> {
     model: MODELO_IMAGEM,
     prompt: `${PROMPT_ARTE_BASE}${descricao}`,
     size: "1024x1024",
+    quality: QUALIDADE,
   });
 
   const resultado = resposta.data?.[0]?.b64_json;
@@ -99,6 +112,13 @@ export interface DadosKitFotos {
 const AVISO_TEXTO =
   "Revise a ortografia com atenção — todo o texto da imagem deve estar em português correto, sem erros de digitação.";
 
+// Quando o dono manda um slide-exemplo, cada prompt pede pra seguir esse
+// padrão visual em vez de só a descrição em texto de "cores da marca" —
+// referência de imagem é bem mais precisa que descrição.
+const AVISO_REFERENCIA =
+  " A segunda imagem fornecida é uma referência de estilo (não é o produto) — siga o layout, as cores, a tipografia " +
+  "e a composição dela o mais fielmente possível, adaptando pro produto e texto pedidos aqui.";
+
 function listaTexto(itens: string[]): string {
   return itens.filter((i) => i.trim().length > 0).join(", ");
 }
@@ -108,16 +128,23 @@ function listaTexto(itens: string[]): string {
 // (fundo limpo). Cada slide é uma edição separada da mesma foto original —
 // não inclui "antes/depois" de propósito, porque isso implicaria fabricar
 // uma prova de resultado que não existe de verdade.
-export async function gerarKitFotos(imagemBase64: string, dados: DadosKitFotos): Promise<string[]> {
+export async function gerarKitFotos(
+  imagemBase64: string,
+  dados: DadosKitFotos,
+  imagemReferenciaBase64?: string
+): Promise<string[]> {
+  const imagens = imagemReferenciaBase64 ? [imagemBase64, imagemReferenciaBase64] : [imagemBase64];
+  const sufixo = imagemReferenciaBase64 ? AVISO_REFERENCIA : "";
+
   const prompts = [
-    `Crie uma arte de capa de anúncio de e-commerce brasileiro usando o produto da foto fornecida. Título grande e chamativo: "${dados.nomeProduto}". Subtítulo: "${dados.subtitulo}". ${dados.cores}. Produto centralizado e em destaque. ${AVISO_TEXTO}`,
-    `Crie uma arte de e-commerce em lista mostrando os benefícios do produto da foto fornecida, com um ícone simples ao lado de cada item: ${listaTexto(dados.beneficios)}. ${dados.cores}. Produto em destaque ao lado da lista. ${AVISO_TEXTO}`,
-    `Crie uma arte de e-commerce destacando em fonte bem grande a especificação principal "${dados.especificacaoPrincipal}", com especificações menores abaixo: ${listaTexto(dados.specsSecundarias)}. ${dados.cores}. Produto da foto fornecida em destaque. ${AVISO_TEXTO}`,
-    `Crie uma arte de e-commerce em grade/colagem mostrando onde o produto da foto fornecida pode ser usado, com um ícone e legenda curta por item: ${listaTexto(dados.ondeAplicar)}. ${dados.cores}. Produto em destaque num canto. ${AVISO_TEXTO}`,
+    `Crie uma arte de capa de anúncio de e-commerce brasileiro usando o produto da foto fornecida. Título grande e chamativo: "${dados.nomeProduto}". Subtítulo: "${dados.subtitulo}". ${dados.cores}. Produto centralizado e em destaque. ${AVISO_TEXTO}${sufixo}`,
+    `Crie uma arte de e-commerce em lista mostrando os benefícios do produto da foto fornecida, com um ícone simples ao lado de cada item: ${listaTexto(dados.beneficios)}. ${dados.cores}. Produto em destaque ao lado da lista. ${AVISO_TEXTO}${sufixo}`,
+    `Crie uma arte de e-commerce destacando em fonte bem grande a especificação principal "${dados.especificacaoPrincipal}", com especificações menores abaixo: ${listaTexto(dados.specsSecundarias)}. ${dados.cores}. Produto da foto fornecida em destaque. ${AVISO_TEXTO}${sufixo}`,
+    `Crie uma arte de e-commerce em grade/colagem mostrando onde o produto da foto fornecida pode ser usado, com um ícone e legenda curta por item: ${listaTexto(dados.ondeAplicar)}. ${dados.cores}. Produto em destaque num canto. ${AVISO_TEXTO}${sufixo}`,
   ];
 
   const [slides, fotoLimpa] = await Promise.all([
-    Promise.all(prompts.map((prompt) => editarFoto(imagemBase64, prompt))),
+    Promise.all(prompts.map((prompt) => editarFoto(imagens, prompt))),
     tratarFotoProduto(imagemBase64),
   ]);
 
