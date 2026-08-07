@@ -163,7 +163,7 @@ function MesaComMonitor({ alerta }: { alerta: boolean }) {
   const monitor = caixaIso(2.9, 0.42, 3.7, 0.6, 18, 24, "#14161d");
   const { A, B, C, D } = monitor.faceEsquerda;
   const valores = [0.15, 0.38, 0.3, 0.58, 0.48, 0.72, 0.9];
-  const pontosGrafico = valores.map((v, i) => dentroDaFace(A, B, C, D, 0.12 + (i / (valores.length - 1)) * 0.76, 0.82 - v * 0.62));
+  const pontosGrafico = valores.map((v, i) => dentroDaFace(A, B, C, D, 0.12 + (i / (valores.length - 1)) * 0.76, 0.18 + v * 0.62));
   const linha = pontosGrafico.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
   const ponta = pontosGrafico[pontosGrafico.length - 1];
   const corLinha = alerta ? "var(--critical-text)" : "var(--good-text)";
@@ -473,7 +473,7 @@ function MesaGrande({
     const { A, B, C, D } = monitor.faceEsquerda;
     if (tipo === "ads") {
       const valores = [0.15, 0.38, 0.3, 0.58, 0.48, 0.72, 0.9];
-      const pontos = valores.map((v, i) => dentroDaFace(A, B, C, D, 0.12 + (i / (valores.length - 1)) * 0.76, 0.82 - v * 0.62));
+      const pontos = valores.map((v, i) => dentroDaFace(A, B, C, D, 0.12 + (i / (valores.length - 1)) * 0.76, 0.18 + v * 0.62));
       const linha = pontos.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
       const ponta = pontos[pontos.length - 1];
       const corLinha = alerta ? "var(--critical-text)" : "var(--good-text)";
@@ -498,10 +498,10 @@ function MesaGrande({
       // "em alta" no grupo, então a tela mostra uma linha crescente em vez
       // do gráfico de ACOS (Ads) ou do ícone de foto (Imagens).
       const pontos = [
-        dentroDaFace(A, B, C, D, 0.14, 0.8),
-        dentroDaFace(A, B, C, D, 0.42, 0.6),
-        dentroDaFace(A, B, C, D, 0.66, 0.68),
-        dentroDaFace(A, B, C, D, 0.9, 0.28),
+        dentroDaFace(A, B, C, D, 0.14, 0.2),
+        dentroDaFace(A, B, C, D, 0.42, 0.4),
+        dentroDaFace(A, B, C, D, 0.66, 0.32),
+        dentroDaFace(A, B, C, D, 0.9, 0.78),
       ];
       const linha = pontos.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
       const ponta = pontos[pontos.length - 1];
