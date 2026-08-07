@@ -306,20 +306,28 @@ function PersonagemHumano({
 // da posição), pra não repetir o gotcha de atributo x animação brigando.
 function PersonagemAndante({
   id,
+  nome,
   deskPe,
   comumPe,
   cor,
   corStatus,
   escala = 1,
+  atrasoS = 0,
 }: {
   id: string;
+  nome: string;
   deskPe: Ponto;
   comumPe: Ponto;
   cor: string;
   corStatus?: string;
   escala?: number;
+  atrasoS?: number;
 }) {
   const anim = `agente-andar-${id}`;
+  // Nome fica fora do <g scale(escala)> do corpo, senão a fonte encolheria
+  // junto (personagens pequenos ficariam com texto ilegível) — só a altura
+  // (topo da cabeça é y=-71 no corpo sem escala) acompanha a escala do corpo.
+  const alturaNome = -71 * escala - 6;
   return (
     <>
       <style>{`
@@ -329,13 +337,42 @@ function PersonagemAndante({
           86%, 100% { transform: translate(${deskPe.x}px, ${deskPe.y}px); }
         }
       `}</style>
-      <g style={{ animation: `${anim} 18s ease-in-out infinite` }}>
+      {/* atraso negativo defasa os 3 personagens entre si — sem isso os 3
+          chegam na área comum ao mesmo tempo e as etiquetas de nome se
+          amontoam; com fases diferentes, o encontro vira exceção rápida
+          em vez de regra constante. */}
+      <g style={{ animation: `${anim} 18s ease-in-out infinite`, animationDelay: `${atrasoS}s` }}>
         <g transform={`scale(${escala})`}>
           <ellipse cx={0} cy={2} rx={17} ry={5} fill="rgba(0,0,0,0.3)" />
           <CorpoHumano cor={cor} corStatus={corStatus} />
         </g>
+        <NomePersonagem nome={nome} y={alturaNome} />
       </g>
     </>
+  );
+}
+
+// Etiqueta com o nome do agente + bolinha verde de "online", flutuando acima
+// da cabeça. Contorno escuro no texto (em vez de uma placa de fundo) pra
+// continuar legível em qualquer parte do piso/parede, sem virar um bloco
+// sólido grande demais pra essas mesas próximas umas das outras.
+function NomePersonagem({ nome, y }: { nome: string; y: number }) {
+  const larguraAprox = nome.length * 1.9;
+  return (
+    <g transform={`translate(0, ${y})`}>
+      <text
+        textAnchor="middle"
+        fontSize="6.5"
+        fontWeight={700}
+        fill="#fff"
+        stroke="rgba(10,12,18,0.75)"
+        strokeWidth={2.2}
+        paintOrder="stroke"
+      >
+        {nome}
+      </text>
+      <circle cx={larguraAprox + 5} cy={-2} r={2} fill="#3fbf6f" stroke="#0e2e1c" strokeWidth={0.6} />
+    </g>
   );
 }
 
@@ -588,9 +625,9 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
   const deskAds = isoPointG(1.6, 3.0);
   const deskImagens = isoPointG(4.6, 3.0);
   const deskOportunidades = isoPointG(6.6, 3.0);
-  const comumAds = isoPointG(2.8, 5.8);
+  const comumAds = isoPointG(2.2, 5.8);
   const comumImagens = isoPointG(4.4, 5.8);
-  const comumOportunidades = isoPointG(6.0, 5.8);
+  const comumOportunidades = isoPointG(6.6, 5.8);
 
   return (
     <svg viewBox="0 0 420 260" className="agente-svg agente-svg-grande" role="img" aria-label="Escritório compartilhado dos agentes">
@@ -628,19 +665,31 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
 
       <PersonagemAndante
         id="ads"
+        nome="Analista de Ads"
         deskPe={deskAds}
         comumPe={comumAds}
         cor={COR_ADS}
         corStatus={alertaAds ? "var(--critical-text)" : "var(--good-text)"}
         escala={0.6}
+        atrasoS={0}
       />
-      <PersonagemAndante id="imagens" deskPe={deskImagens} comumPe={comumImagens} cor={COR_IMAGENS} escala={0.6} />
+      <PersonagemAndante
+        id="imagens"
+        nome="Designer"
+        deskPe={deskImagens}
+        comumPe={comumImagens}
+        cor={COR_IMAGENS}
+        escala={0.6}
+        atrasoS={-6}
+      />
       <PersonagemAndante
         id="oportunidades"
+        nome="Visionário"
         deskPe={deskOportunidades}
         comumPe={comumOportunidades}
         cor={COR_OPORTUNIDADES}
         escala={0.6}
+        atrasoS={-12}
       />
     </svg>
   );
