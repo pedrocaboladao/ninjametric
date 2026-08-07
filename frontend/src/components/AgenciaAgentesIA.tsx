@@ -12,6 +12,9 @@ import {
   criarPerfilImagens,
   excluirPerfilImagens,
   buscarDadosAnuncio,
+  fetchReferenciasPerfil,
+  favoritarReferenciaPerfil,
+  type SugestaoOriginalKit,
 } from "../api/agentes";
 import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
@@ -949,6 +952,29 @@ function CriarArte() {
   const [resultado, setResultado] = useState<string | null>(null);
   const [gerando, setGerando] = useState(false);
   const [erroArte, setErroArte] = useState<string | null>(null);
+  const [perfis, setPerfis] = useState<PerfilImagens[]>([]);
+  const [perfilSelecionado, setPerfilSelecionado] = useState<number | "">("");
+  const [referenciasGaleria, setReferenciasGaleria] = useState<string[]>([]);
+  const [favoritando, setFavoritando] = useState(false);
+
+  useEffect(() => {
+    fetchPerfisImagens()
+      .then(setPerfis)
+      .catch(() => {
+        // Silencioso — perfis são só uma conveniência.
+      });
+  }, []);
+
+  async function selecionarPerfil(id: number | "") {
+    setPerfilSelecionado(id);
+    setReferenciasGaleria([]);
+    if (id === "") return;
+    try {
+      setReferenciasGaleria(await fetchReferenciasPerfil(id));
+    } catch {
+      // Silencioso.
+    }
+  }
 
   async function gerar() {
     const texto = descricao.trim();
@@ -956,7 +982,7 @@ function CriarArte() {
     setGerando(true);
     setErroArte(null);
     try {
-      setResultado(await criarArtePromocional(texto));
+      setResultado(await criarArtePromocional(texto, referenciasGaleria.length > 0 ? referenciasGaleria : undefined));
     } catch (err) {
       setErroArte(err instanceof Error ? err.message : "Falha ao gerar a arte.");
     } finally {
@@ -964,9 +990,44 @@ function CriarArte() {
     }
   }
 
+  async function favoritar() {
+    if (perfilSelecionado === "" || !resultado) return;
+    setFavoritando(true);
+    try {
+      await favoritarReferenciaPerfil(perfilSelecionado, resultado);
+      setReferenciasGaleria(await fetchReferenciasPerfil(perfilSelecionado));
+    } catch (err) {
+      setErroArte(err instanceof Error ? err.message : "Falha ao favoritar.");
+    } finally {
+      setFavoritando(false);
+    }
+  }
+
   return (
     <div className="agente-imagens-painel">
-      <p className="painel-sub">Descreva a arte que você quer — a IA gera uma imagem nova do zero.</p>
+      <p className="painel-sub">
+        Descreva a arte que você quer — a IA gera uma imagem nova do zero. Escolhendo um perfil de marca com
+        referências favoritadas, ela usa artes anteriores como exemplo de estilo em vez de só a descrição em texto.
+      </p>
+
+      {perfis.length > 0 && (
+        <label className="agente-imagens-campo">
+          Perfil de marca (opcional) — usa a galeria de referências favoritadas dele
+          <select
+            className="pergunta-textarea"
+            value={perfilSelecionado}
+            onChange={(e) => selecionarPerfil(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">Nenhum</option>
+            {perfis.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+
       <textarea
         className="pergunta-textarea"
         rows={3}
@@ -986,6 +1047,11 @@ function CriarArte() {
           <a className="btn-secundario" href={`data:image/png;base64,${resultado}`} download="arte-promocional.png">
             Baixar
           </a>
+        )}
+        {resultado && perfilSelecionado !== "" && (
+          <button type="button" className="btn-secundario" onClick={favoritar} disabled={favoritando}>
+            {favoritando ? "Favoritando..." : "☆ Favoritar como referência"}
+          </button>
         )}
       </div>
 
@@ -1020,10 +1086,13 @@ function KitFotos() {
   const [urlAnuncio, setUrlAnuncio] = useState("");
   const [buscandoAnuncio, setBuscandoAnuncio] = useState(false);
   const [erroAnuncio, setErroAnuncio] = useState<string | null>(null);
+  const [sugestaoOriginal, setSugestaoOriginal] = useState<SugestaoOriginalKit | null>(null);
   const [perfis, setPerfis] = useState<PerfilImagens[]>([]);
   const [perfilSelecionado, setPerfilSelecionado] = useState<number | "">("");
   const [nomeNovoPerfil, setNomeNovoPerfil] = useState("");
   const [salvandoPerfil, setSalvandoPerfil] = useState(false);
+  const [referenciasGaleria, setReferenciasGaleria] = useState<string[]>([]);
+  const [favoritando, setFavoritando] = useState<number | null>(null);
 
   const carregarPerfis = useCallback(async () => {
     try {
@@ -1037,8 +1106,9 @@ function KitFotos() {
     carregarPerfis();
   }, [carregarPerfis]);
 
-  function aplicarPerfil(id: number | "") {
+  async function aplicarPerfil(id: number | "") {
     setPerfilSelecionado(id);
+    setReferenciasGaleria([]);
     if (id === "") return;
     const perfil = perfis.find((p) => p.id === id);
     if (!perfil) return;
@@ -1048,6 +1118,24 @@ function KitFotos() {
     if (perfil.imagemReferenciaBase64) {
       setReferenciaBase64(perfil.imagemReferenciaBase64);
       setReferenciaOriginal(`data:image/png;base64,${perfil.imagemReferenciaBase64}`);
+    }
+    try {
+      setReferenciasGaleria(await fetchReferenciasPerfil(id));
+    } catch {
+      // Silencioso — galeria é só um bônus, não impede gerar com o resto do perfil.
+    }
+  }
+
+  async function favoritar(index: number) {
+    if (perfilSelecionado === "" || !resultados) return;
+    setFavoritando(index);
+    try {
+      await favoritarReferenciaPerfil(perfilSelecionado, resultados[index]);
+      setReferenciasGaleria(await fetchReferenciasPerfil(perfilSelecionado));
+    } catch (err) {
+      setErroKit(err instanceof Error ? err.message : "Falha ao favoritar.");
+    } finally {
+      setFavoritando(null);
     }
   }
 
@@ -1130,6 +1218,15 @@ function KitFotos() {
         setBase64(dados.fotoBase64);
         setOriginal(`data:image/jpeg;base64,${dados.fotoBase64}`);
       }
+      // Guarda o que a IA sugeriu de início — se você editar antes de gerar,
+      // essa diferença vira "memória" pra próxima sugestão ficar mais precisa.
+      setSugestaoOriginal({
+        subtitulo: dados.subtitulo,
+        beneficios: dados.beneficios,
+        especificacaoPrincipal: dados.especificacaoPrincipal,
+        specsSecundarias: dados.specsSecundarias,
+        ondeAplicar: dados.ondeAplicar,
+      });
     } catch (err) {
       setErroAnuncio(err instanceof Error ? err.message : "Falha ao buscar o anúncio.");
     } finally {
@@ -1143,6 +1240,7 @@ function KitFotos() {
     setErroKit(null);
     setResultados(null);
     try {
+      const todasReferencias = [referenciaBase64, ...referenciasGaleria].filter((v): v is string => !!v);
       const imagens = await gerarKitFotos(
         base64,
         {
@@ -1154,7 +1252,8 @@ function KitFotos() {
           specsSecundarias: paraLinhas(specsSecundarias),
           ondeAplicar: paraLinhas(ondeAplicar),
         },
-        referenciaBase64 ?? undefined
+        todasReferencias.length > 0 ? todasReferencias : undefined,
+        sugestaoOriginal ?? undefined
       );
       setResultados(imagens);
     } catch (err) {
@@ -1352,13 +1451,20 @@ function KitFotos() {
             <div key={i} className="agente-imagens-coluna">
               <span className="financeiro-td-mudo">{NOMES_SLIDES[i] ?? `Slide ${i + 1}`}</span>
               <img src={`data:image/png;base64,${img}`} alt={NOMES_SLIDES[i] ?? `Slide ${i + 1}`} className="agente-imagens-preview" />
-              <a
-                className="btn-secundario"
-                href={`data:image/png;base64,${img}`}
-                download={`kit-${i + 1}-${(NOMES_SLIDES[i] ?? "slide").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`}
-              >
-                Baixar
-              </a>
+              <div className="agente-imagens-acoes">
+                <a
+                  className="btn-secundario"
+                  href={`data:image/png;base64,${img}`}
+                  download={`kit-${i + 1}-${(NOMES_SLIDES[i] ?? "slide").toLowerCase().replace(/[^a-z0-9]+/g, "-")}.png`}
+                >
+                  Baixar
+                </a>
+                {perfilSelecionado !== "" && (
+                  <button type="button" className="btn-secundario" onClick={() => favoritar(i)} disabled={favoritando === i}>
+                    {favoritando === i ? "Favoritando..." : "☆ Favoritar como referência"}
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

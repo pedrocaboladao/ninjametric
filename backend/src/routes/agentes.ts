@@ -8,8 +8,14 @@ import {
   type MensagemChat,
 } from "../services/agenteAdsService";
 import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
-import { listarPerfis, criarPerfil, excluirPerfil } from "../services/agenteImagensPerfilService";
-import { buscarDadosAnuncio } from "../services/agenteImagensAnuncioService";
+import {
+  listarPerfis,
+  criarPerfil,
+  excluirPerfil,
+  adicionarReferencia,
+  listarReferencias,
+} from "../services/agenteImagensPerfilService";
+import { buscarDadosAnuncio, registrarCorrecoes, type CamposSugeridosKit } from "../services/agenteImagensAnuncioService";
 
 export const agentesRouter = Router();
 
@@ -78,28 +84,28 @@ agentesRouter.post("/imagens/tratar-foto", async (req, res) => {
   }
 });
 
+function paraLista(valor: unknown): string[] {
+  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === "string") : [];
+}
+
 agentesRouter.post("/imagens/criar-arte", async (req, res) => {
-  const { descricao } = req.body ?? {};
+  const { descricao, imagensReferenciaBase64 } = req.body ?? {};
   if (typeof descricao !== "string" || !descricao.trim()) {
     res.status(400).json({ error: "Descrição inválida." });
     return;
   }
   try {
-    const resultado = await criarArtePromocional(descricao.trim());
+    const resultado = await criarArtePromocional(descricao.trim(), paraLista(imagensReferenciaBase64));
     res.json({ imagemBase64: resultado });
   } catch (err) {
     erro(res, err, "Falha ao gerar a arte.");
   }
 });
 
-function paraLista(valor: unknown): string[] {
-  return Array.isArray(valor) ? valor.filter((v): v is string => typeof v === "string") : [];
-}
-
 agentesRouter.post("/imagens/kit", async (req, res) => {
   const {
     imagemBase64,
-    imagemReferenciaBase64,
+    imagensReferenciaBase64,
     nomeProduto,
     subtitulo,
     cores,
@@ -107,6 +113,7 @@ agentesRouter.post("/imagens/kit", async (req, res) => {
     especificacaoPrincipal,
     specsSecundarias,
     ondeAplicar,
+    sugestaoOriginal,
   } = req.body ?? {};
   if (typeof imagemBase64 !== "string" || !imagemBase64) {
     res.status(400).json({ error: "Imagem inválida." });
@@ -125,9 +132,28 @@ agentesRouter.post("/imagens/kit", async (req, res) => {
     specsSecundarias: paraLista(specsSecundarias),
     ondeAplicar: paraLista(ondeAplicar),
   };
-  const referencia = typeof imagemReferenciaBase64 === "string" && imagemReferenciaBase64 ? imagemReferenciaBase64 : undefined;
+  const referencias = paraLista(imagensReferenciaBase64);
+
+  if (sugestaoOriginal && typeof sugestaoOriginal === "object") {
+    const s = sugestaoOriginal as Partial<CamposSugeridosKit>;
+    const sugestao: CamposSugeridosKit = {
+      subtitulo: typeof s.subtitulo === "string" ? s.subtitulo : "",
+      beneficios: paraLista(s.beneficios),
+      especificacaoPrincipal: typeof s.especificacaoPrincipal === "string" ? s.especificacaoPrincipal : "",
+      specsSecundarias: paraLista(s.specsSecundarias),
+      ondeAplicar: paraLista(s.ondeAplicar),
+    };
+    registrarCorrecoes(sugestao, {
+      subtitulo: dados.subtitulo,
+      beneficios: dados.beneficios,
+      especificacaoPrincipal: dados.especificacaoPrincipal,
+      specsSecundarias: dados.specsSecundarias,
+      ondeAplicar: dados.ondeAplicar,
+    }).catch((err) => console.error("Falha ao registrar correções do kit (não bloqueia a geração):", err));
+  }
+
   try {
-    const imagens = await gerarKitFotos(imagemBase64, dados, referencia);
+    const imagens = await gerarKitFotos(imagemBase64, dados, referencias);
     res.json({ imagens });
   } catch (err) {
     erro(res, err, "Falha ao gerar o kit de fotos.");
@@ -187,6 +213,38 @@ agentesRouter.delete("/imagens/perfis/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao excluir perfil.");
+  }
+});
+
+agentesRouter.get("/imagens/perfis/:id/referencias", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    res.json({ referencias: await listarReferencias(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar referências do perfil.");
+  }
+});
+
+agentesRouter.post("/imagens/perfis/:id/referencias", async (req, res) => {
+  const id = Number(req.params.id);
+  const { imagemBase64 } = req.body ?? {};
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  if (typeof imagemBase64 !== "string" || !imagemBase64) {
+    res.status(400).json({ error: "Imagem inválida." });
+    return;
+  }
+  try {
+    await adicionarReferencia(id, imagemBase64);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao favoritar imagem como referência.");
   }
 });
 

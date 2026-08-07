@@ -374,3 +374,26 @@ CREATE TABLE IF NOT EXISTS agente_imagens_perfis (
   onde_aplicar_padrao TEXT NOT NULL DEFAULT '',
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Registro de toda vez que o dono edita um campo que a IA sugeriu (a partir
+-- de "buscar anúncio") antes de gerar o kit — mesma ideia de "memória" do
+-- Analista de Ads: não é a IA aprendendo de verdade, é o sistema guardando
+-- o padrão de correção e devolvendo como contexto extra na próxima sugestão.
+CREATE TABLE IF NOT EXISTS agente_imagens_correcoes (
+  id SERIAL PRIMARY KEY,
+  campo TEXT NOT NULL,
+  valor_sugerido TEXT NOT NULL,
+  valor_final TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Galeria de referências visuais por perfil de marca — memória de estilo de
+-- verdade: em vez de só UMA foto de referência fixa, o dono "favorita"
+-- resultados que gostou e a IA passa a usar até 3 delas como exemplo real
+-- de cor/composição/tipografia nas próximas gerações do mesmo perfil.
+CREATE TABLE IF NOT EXISTS agente_imagens_perfil_referencias (
+  id SERIAL PRIMARY KEY,
+  perfil_id INTEGER NOT NULL REFERENCES agente_imagens_perfis(id) ON DELETE CASCADE,
+  imagem_base64 TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);

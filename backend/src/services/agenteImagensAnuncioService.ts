@@ -9,6 +9,7 @@ import {
 } from "./mercadoLivreItems";
 import { listLojas } from "./tokenStore";
 import { env } from "../config/env";
+import { pool } from "../db/pool";
 
 // Igual ao "encontrarLojaDonaEItem" de clonarAnuncioService.ts (não
 // exportado de lá, então reimplementado aqui do zero pra não arriscar
@@ -97,6 +98,51 @@ export interface CamposSugeridosKit {
   ondeAplicar: string[];
 }
 
+// "Memória" prática do Agente de Imagens — não é a IA aprendendo de
+// verdade, é o sistema guardando os campos que o dono editou depois da
+// sugestão automática e devolvendo isso como referência de estilo na
+// próxima sugestão. Chamado pela rota do kit sempre que uma sugestão de
+// "buscar anúncio" foi usada e o dono mudou algum campo antes de gerar.
+export async function registrarCorrecoes(sugestao: CamposSugeridosKit, final: CamposSugeridosKit): Promise<void> {
+  const juntar = (arr: string[]) => arr.join(" | ");
+  const campos: Array<[string, string, string]> = [];
+  if (sugestao.subtitulo !== final.subtitulo) campos.push(["subtitulo", sugestao.subtitulo, final.subtitulo]);
+  if (juntar(sugestao.beneficios) !== juntar(final.beneficios)) {
+    campos.push(["beneficios", juntar(sugestao.beneficios), juntar(final.beneficios)]);
+  }
+  if (sugestao.especificacaoPrincipal !== final.especificacaoPrincipal) {
+    campos.push(["especificacao_principal", sugestao.especificacaoPrincipal, final.especificacaoPrincipal]);
+  }
+  if (juntar(sugestao.specsSecundarias) !== juntar(final.specsSecundarias)) {
+    campos.push(["specs_secundarias", juntar(sugestao.specsSecundarias), juntar(final.specsSecundarias)]);
+  }
+  if (juntar(sugestao.ondeAplicar) !== juntar(final.ondeAplicar)) {
+    campos.push(["onde_aplicar", juntar(sugestao.ondeAplicar), juntar(final.ondeAplicar)]);
+  }
+  if (campos.length === 0) return;
+
+  await Promise.all(
+    campos.map(([campo, valorSugerido, valorFinal]) =>
+      pool.query("INSERT INTO agente_imagens_correcoes (campo, valor_sugerido, valor_final) VALUES ($1, $2, $3)", [
+        campo,
+        valorSugerido.slice(0, 500),
+        valorFinal.slice(0, 500),
+      ])
+    )
+  );
+}
+
+async function buscarResumoCorrecoes(): Promise<string> {
+  const { rows } = await pool.query<{ campo: string; valor_sugerido: string; valor_final: string }>(
+    "SELECT campo, valor_sugerido, valor_final FROM agente_imagens_correcoes ORDER BY criado_em DESC LIMIT 12"
+  );
+  if (rows.length === 0) return "";
+  const linhas = rows.map((r) => `- campo "${r.campo}": a IA sugeriu "${r.valor_sugerido}", o dono trocou por "${r.valor_final}"`);
+  return `\n\nExemplos recentes de como o dono costuma ajustar as sugestões (use como referência de estilo/preferência dele, mas SEMPRE baseado no texto real do produto atual — nunca copie um valor de outro produto):\n${linhas.join(
+    "\n"
+  )}`;
+}
+
 // Preenche os campos "de texto" do kit (subtítulo, benefícios, specs, onde
 // aplicar) a partir do título/descrição/ficha técnica reais do anúncio —
 // nunca inventa número ou benefício que não esteja no texto original.
@@ -106,13 +152,15 @@ export async function sugerirCamposKit(titulo: string, descricao: string, atribu
   const client = obterClienteAnthropic();
   if (!client) return null;
 
+  const resumoCorrecoes = await buscarResumoCorrecoes();
+
   const resposta = await client.messages.create({
     model: MODELO_IA,
     max_tokens: 1500,
     system:
       "Você ajuda a preencher um kit de fotos de anúncio de e-commerce (Mercado Livre) a partir dos dados reais de " +
       "um produto já anunciado. Use só informação que realmente aparece no título, descrição ou ficha técnica — " +
-      "nunca invente número, especificação ou benefício que não esteja no texto. Responda em português.",
+      `nunca invente número, especificação ou benefício que não esteja no texto. Responda em português.${resumoCorrecoes}`,
     messages: [
       {
         role: "user",

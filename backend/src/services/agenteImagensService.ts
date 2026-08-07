@@ -74,9 +74,20 @@ const PROMPT_ARTE_BASE =
   "Crie uma arte promocional profissional para uma loja de tinta e material de construção que vende no Mercado " +
   "Livre, estilo e-commerce brasileiro, cores vivas e texto legível. Pedido do dono da loja: ";
 
-// Gera uma imagem do zero a partir de uma descrição livre — não usa/edita
-// nenhuma foto real, então não tem o risco de "deturpar" um produto real.
-export async function criarArtePromocional(descricao: string): Promise<string> {
+const AVISO_REFERENCIA_ARTE =
+  " As imagens fornecidas junto são referências de estilo (artes que o dono já gostou antes) — siga o layout, as " +
+  "cores, a tipografia e a composição delas o mais fielmente possível, adaptando pro pedido de hoje.";
+
+// Gera uma arte promocional — do zero (texto puro) se não tiver referência
+// salva, ou usando até 3 artes anteriores que o dono favoritou como exemplo
+// real de estilo (mais preciso que só descrever "cores da marca" em texto).
+export async function criarArtePromocional(descricao: string, imagensReferenciaBase64?: string[]): Promise<string> {
+  const referencias = imagensReferenciaBase64?.filter(Boolean) ?? [];
+
+  if (referencias.length > 0) {
+    return editarFoto(referencias, `${PROMPT_ARTE_BASE}${descricao}${AVISO_REFERENCIA_ARTE} ${AVISO_TEXTO}`);
+  }
+
   const client = obterClienteOpenAI();
   if (!client) {
     throw new Error("IA de imagens não configurada neste ambiente (falta OPENAI_API_KEY).");
@@ -112,16 +123,22 @@ export interface DadosKitFotos {
 const AVISO_TEXTO =
   "Revise a ortografia com atenção — todo o texto da imagem deve estar em português correto, sem erros de digitação.";
 
-// Quando o dono manda um slide-exemplo, cada prompt pede pra seguir esse
-// padrão visual em vez de só a descrição em texto de "cores da marca" —
-// referência de imagem é bem mais precisa que descrição.
+// Quando o dono manda referência(s) de estilo (upload manual e/ou a galeria
+// favoritada do perfil), cada prompt pede pra seguir esse padrão visual em
+// vez de só a descrição em texto de "cores da marca" — referência de
+// imagem é bem mais precisa que descrição.
 const AVISO_REFERENCIA =
-  " A segunda imagem fornecida é uma referência de estilo (não é o produto) — siga o layout, as cores, a tipografia " +
-  "e a composição dela o mais fielmente possível, adaptando pro produto e texto pedidos aqui.";
+  " As demais imagens fornecidas (além da primeira, que é o produto real) são referências de estilo — siga o " +
+  "layout, as cores, a tipografia e a composição delas o mais fielmente possível, adaptando pro produto e texto " +
+  "pedidos aqui.";
 
 function listaTexto(itens: string[]): string {
   return itens.filter((i) => i.trim().length > 0).join(", ");
 }
+
+// Máximo de imagens de referência de estilo por chamada — mais que isso
+// não ajuda muito e só encarece/deixa a chamada mais lenta.
+const MAX_REFERENCIAS = 3;
 
 // Kit de 5 fotos pra anúncio do Mercado Livre a partir de 1 foto real do
 // produto: capa, benefícios, especificações, onde aplicar e a foto tratada
@@ -131,10 +148,11 @@ function listaTexto(itens: string[]): string {
 export async function gerarKitFotos(
   imagemBase64: string,
   dados: DadosKitFotos,
-  imagemReferenciaBase64?: string
+  imagensReferenciaBase64?: string[]
 ): Promise<string[]> {
-  const imagens = imagemReferenciaBase64 ? [imagemBase64, imagemReferenciaBase64] : [imagemBase64];
-  const sufixo = imagemReferenciaBase64 ? AVISO_REFERENCIA : "";
+  const referencias = (imagensReferenciaBase64?.filter(Boolean) ?? []).slice(0, MAX_REFERENCIAS);
+  const imagens = [imagemBase64, ...referencias];
+  const sufixo = referencias.length > 0 ? AVISO_REFERENCIA : "";
 
   const prompts = [
     `Crie uma arte de capa de anúncio de e-commerce brasileiro usando o produto da foto fornecida. Título grande e chamativo: "${dados.nomeProduto}". Subtítulo: "${dados.subtitulo}". ${dados.cores}. Produto centralizado e em destaque. ${AVISO_TEXTO}${sufixo}`,

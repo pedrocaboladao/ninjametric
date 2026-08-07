@@ -165,6 +165,63 @@ function construirLinhasCampanhas(campanhas: CampanhaComTacos[]): string {
     .join("\n");
 }
 
+interface HistoricoReacaoTipo {
+  tipo: string;
+  total: number;
+  confirmadas: number;
+  resolvidasSozinhas: number;
+  horasMediasParaConfirmar: number | null;
+}
+
+// "Memória" prática do agente — não é a IA aprendendo de verdade (nenhum
+// modelo é retreinado), é o sistema guardando como o dono historicamente
+// reage a cada tipo de observação (confirma rápido? costuma ignorar e a
+// situação se resolve sozinha?) e devolvendo isso como contexto extra pra
+// próxima análise. Usado SÓ pra ajudar a priorizar e escrever uma ação mais
+// realista — a regra de nunca esconder nada do dono é aplicada no prompt.
+async function buscarHistoricoReacao(): Promise<HistoricoReacaoTipo[]> {
+  const { rows } = await pool.query<{
+    tipo: string;
+    total: string;
+    confirmadas: string;
+    resolvidas_sozinhas: string;
+    horas_medias: string | null;
+  }>(
+    `SELECT
+       tipo,
+       count(*)::text AS total,
+       count(*) FILTER (WHERE status = 'resolvida' AND resolvido_por = 'usuario')::text AS confirmadas,
+       count(*) FILTER (WHERE status = 'resolvida' AND resolvido_por = 'sistema')::text AS resolvidas_sozinhas,
+       avg(EXTRACT(EPOCH FROM (resolvido_em - criado_em)) / 3600) FILTER (WHERE resolvido_por = 'usuario')::text AS horas_medias
+     FROM agente_ads_observacoes
+     GROUP BY tipo`
+  );
+  return rows.map((r) => ({
+    tipo: r.tipo,
+    total: Number(r.total),
+    confirmadas: Number(r.confirmadas),
+    resolvidasSozinhas: Number(r.resolvidas_sozinhas),
+    horasMediasParaConfirmar: r.horas_medias ? Number(r.horas_medias) : null,
+  }));
+}
+
+function formatarHistoricoReacao(historico: HistoricoReacaoTipo[]): string {
+  if (historico.length === 0) return "Ainda sem histórico suficiente — é a primeira vez ou poucas observações até agora.";
+  return historico
+    .map((h) => {
+      const partes = [`"${h.tipo}": ${h.total} observações registradas até hoje`];
+      if (h.confirmadas > 0) {
+        partes.push(
+          `${h.confirmadas} confirmadas pelo dono` +
+            (h.horasMediasParaConfirmar !== null ? ` (em média ${h.horasMediasParaConfirmar.toFixed(1)}h depois de aparecer)` : "")
+        );
+      }
+      if (h.resolvidasSozinhas > 0) partes.push(`${h.resolvidasSozinhas} se resolveram sozinhas antes do dono agir`);
+      return partes.join(", ");
+    })
+    .join("\n");
+}
+
 async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo: number): Promise<ObservacaoIA[] | null> {
   const client = obterClienteAnthropic();
   if (!client) return null;
@@ -173,6 +230,7 @@ async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo:
   if (ativas.length === 0) return [];
 
   const linhas = construirLinhasCampanhas(ativas);
+  const historico = formatarHistoricoReacao(await buscarHistoricoReacao());
 
   const resposta = await client.messages.create({
     model: MODELO_IA,
@@ -194,7 +252,10 @@ Regras:
 - Seja específico: cite os números reais na explicação, não generalize.
 - "contexto": 1-2 frases diretas. "acao": sugestão concreta e curta.
 - Antes de usar a ferramenta, escreva um parágrafo curto em texto normal comparando as campanhas em voz alta e explicando por que cada uma entra ou não no relatório final — esse texto é mostrado pro dono do negócio depois, então pode ser natural e direto, como se estivesse explicando pra ele.
-- Depois desse texto, sempre chame a ferramenta "reportar_observacoes" pra reportar formalmente — chame mesmo se a lista vier vazia (nenhuma campanha precisando de atenção agora).`,
+- Depois desse texto, sempre chame a ferramenta "reportar_observacoes" pra reportar formalmente — chame mesmo se a lista vier vazia (nenhuma campanha precisando de atenção agora).
+
+Histórico de como o dono costuma reagir a cada tipo de observação (só pra te ajudar a escrever uma ação mais realista e decidir a ORDEM de prioridade — REGRA ABSOLUTA: isso NUNCA decide se uma campanha entra ou não no relatório. Mesmo que o histórico mostre que o dono quase nunca confirma um tipo, ou que ele geralmente não consegue agir, você reporta do mesmo jeito TODA campanha que realmente atende aos critérios objetivos acima. A informação tem que estar sempre visível pra ele, nunca escondida por causa de um padrão passado — ele pode não conseguir agir toda vez, mas precisa sempre saber):
+${historico}`,
     messages: [
       {
         role: "user",

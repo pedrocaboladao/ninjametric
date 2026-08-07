@@ -82,3 +82,32 @@ export async function excluirPerfil(id: number): Promise<void> {
     throw new Error("Perfil não encontrado.");
   }
 }
+
+// Galeria de referências visuais do perfil — cresce conforme o dono
+// "favorita" resultados que gostou. Guarda só as mais recentes (as antigas
+// somem sozinhas) pra não crescer sem limite; quem gera o kit usa até 3
+// dessas como exemplo real de estilo.
+const MAX_REFERENCIAS_POR_PERFIL = 6;
+
+export async function adicionarReferencia(perfilId: number, imagemBase64: string): Promise<void> {
+  await pool.query("INSERT INTO agente_imagens_perfil_referencias (perfil_id, imagem_base64) VALUES ($1, $2)", [
+    perfilId,
+    imagemBase64,
+  ]);
+  await pool.query(
+    `DELETE FROM agente_imagens_perfil_referencias
+     WHERE perfil_id = $1
+       AND id NOT IN (
+         SELECT id FROM agente_imagens_perfil_referencias WHERE perfil_id = $1 ORDER BY criado_em DESC LIMIT $2
+       )`,
+    [perfilId, MAX_REFERENCIAS_POR_PERFIL]
+  );
+}
+
+export async function listarReferencias(perfilId: number, limite = 3): Promise<string[]> {
+  const { rows } = await pool.query<{ imagem_base64: string }>(
+    "SELECT imagem_base64 FROM agente_imagens_perfil_referencias WHERE perfil_id = $1 ORDER BY criado_em DESC LIMIT $2",
+    [perfilId, limite]
+  );
+  return rows.map((r) => r.imagem_base64);
+}

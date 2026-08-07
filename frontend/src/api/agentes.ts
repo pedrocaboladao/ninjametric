@@ -55,12 +55,12 @@ export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
   return data.imagemBase64;
 }
 
-export async function criarArtePromocional(descricao: string): Promise<string> {
+export async function criarArtePromocional(descricao: string, imagensReferenciaBase64?: string[]): Promise<string> {
   const res = await fetch(`${API_BASE}/api/agentes/imagens/criar-arte`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ descricao }),
+    body: JSON.stringify({ descricao, imagensReferenciaBase64 }),
   });
   const data = await tratarResposta<{ imagemBase64: string }>(res);
   return data.imagemBase64;
@@ -96,19 +96,44 @@ export interface DadosKitFotos {
   ondeAplicar: string[];
 }
 
+export interface SugestaoOriginalKit {
+  subtitulo: string;
+  beneficios: string[];
+  especificacaoPrincipal: string;
+  specsSecundarias: string[];
+  ondeAplicar: string[];
+}
+
 export async function gerarKitFotos(
   imagemBase64: string,
   dados: DadosKitFotos,
-  imagemReferenciaBase64?: string
+  imagensReferenciaBase64?: string[],
+  sugestaoOriginal?: SugestaoOriginalKit
 ): Promise<string[]> {
   const res = await fetch(`${API_BASE}/api/agentes/imagens/kit`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imagemBase64, imagemReferenciaBase64, ...dados }),
+    body: JSON.stringify({ imagemBase64, imagensReferenciaBase64, sugestaoOriginal, ...dados }),
   });
   const data = await tratarResposta<{ imagens: string[] }>(res);
   return data.imagens;
+}
+
+export async function fetchReferenciasPerfil(perfilId: number): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/perfis/${perfilId}/referencias`, { credentials: "include" });
+  const data = await tratarResposta<{ referencias: string[] }>(res);
+  return data.referencias;
+}
+
+export async function favoritarReferenciaPerfil(perfilId: number, imagemBase64: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/perfis/${perfilId}/referencias`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imagemBase64 }),
+  });
+  await tratarResposta(res);
 }
 
 export async function fetchPerfisImagens(): Promise<PerfilImagens[]> {
