@@ -8,8 +8,11 @@ import {
   tratarFotoProduto,
   criarArtePromocional,
   gerarKitFotos,
+  fetchPerfisImagens,
+  criarPerfilImagens,
+  excluirPerfilImagens,
 } from "../api/agentes";
-import type { ObservacaoAds, PensamentoAds, MensagemChat } from "../types/agentes";
+import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
 
 const TAG_POR_TIPO: Record<string, { tag: string; cor: string }> = {
@@ -1013,6 +1016,66 @@ function KitFotos() {
   const [resultados, setResultados] = useState<string[] | null>(null);
   const [gerando, setGerando] = useState(false);
   const [erroKit, setErroKit] = useState<string | null>(null);
+  const [perfis, setPerfis] = useState<PerfilImagens[]>([]);
+  const [perfilSelecionado, setPerfilSelecionado] = useState<number | "">("");
+  const [nomeNovoPerfil, setNomeNovoPerfil] = useState("");
+  const [salvandoPerfil, setSalvandoPerfil] = useState(false);
+
+  const carregarPerfis = useCallback(async () => {
+    try {
+      setPerfis(await fetchPerfisImagens());
+    } catch {
+      // Silencioso — perfis são só uma conveniência, não impede o resto de funcionar.
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarPerfis();
+  }, [carregarPerfis]);
+
+  function aplicarPerfil(id: number | "") {
+    setPerfilSelecionado(id);
+    if (id === "") return;
+    const perfil = perfis.find((p) => p.id === id);
+    if (!perfil) return;
+    setCores(perfil.cores);
+    setBeneficios(perfil.beneficiosPadrao);
+    setOndeAplicar(perfil.ondeAplicarPadrao);
+    if (perfil.imagemReferenciaBase64) {
+      setReferenciaBase64(perfil.imagemReferenciaBase64);
+      setReferenciaOriginal(`data:image/png;base64,${perfil.imagemReferenciaBase64}`);
+    }
+  }
+
+  async function salvarPerfilAtual() {
+    if (!nomeNovoPerfil.trim() || salvandoPerfil) return;
+    setSalvandoPerfil(true);
+    try {
+      await criarPerfilImagens({
+        nome: nomeNovoPerfil.trim(),
+        cores,
+        imagemReferenciaBase64: referenciaBase64,
+        beneficiosPadrao: beneficios,
+        ondeAplicarPadrao: ondeAplicar,
+      });
+      setNomeNovoPerfil("");
+      await carregarPerfis();
+    } catch (err) {
+      setErroKit(err instanceof Error ? err.message : "Falha ao salvar perfil.");
+    } finally {
+      setSalvandoPerfil(false);
+    }
+  }
+
+  async function removerPerfil(id: number) {
+    try {
+      await excluirPerfilImagens(id);
+      if (perfilSelecionado === id) setPerfilSelecionado("");
+      await carregarPerfis();
+    } catch (err) {
+      setErroKit(err instanceof Error ? err.message : "Falha ao excluir perfil.");
+    }
+  }
 
   function onArquivo(e: ChangeEvent<HTMLInputElement>) {
     const arquivo = e.target.files?.[0];
@@ -1081,6 +1144,36 @@ function KitFotos() {
         capa, benefícios, especificações e onde aplicar. Confira o texto de cada uma antes de usar — a IA pode errar
         ortografia.
       </p>
+
+      {perfis.length > 0 && (
+        <label className="agente-imagens-campo">
+          Perfil de marca salvo (opcional) — preenche cores, referência e padrões de uma vez
+          <select
+            className="pergunta-textarea"
+            value={perfilSelecionado}
+            onChange={(e) => aplicarPerfil(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">Nenhum</option>
+            {perfis.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {perfis.length > 0 && (
+        <div className="agente-perfis-lista">
+          {perfis.map((p) => (
+            <span key={p.id} className="agente-perfil-chip">
+              {p.nome}
+              <button type="button" onClick={() => removerPerfil(p.id)} aria-label={`Excluir perfil ${p.nome}`}>
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <label className="agente-imagens-campo">
         Foto do produto (obrigatória)
@@ -1171,6 +1264,27 @@ function KitFotos() {
           onChange={(e) => setOndeAplicar(e.target.value)}
           placeholder={"Telhados\nParedes\nLajes\nConcreto"}
         />
+      </label>
+
+      <label className="agente-imagens-campo">
+        Salvar cores + referência + benefícios + onde aplicar como um perfil de marca reutilizável
+        <div className="agente-imagens-acoes">
+          <input
+            type="text"
+            className="pergunta-textarea"
+            value={nomeNovoPerfil}
+            onChange={(e) => setNomeNovoPerfil(e.target.value)}
+            placeholder="Nome do perfil, ex: Resiflex"
+          />
+          <button
+            type="button"
+            className="btn-secundario"
+            onClick={salvarPerfilAtual}
+            disabled={!nomeNovoPerfil.trim() || salvandoPerfil}
+          >
+            {salvandoPerfil ? "Salvando..." : "Salvar perfil"}
+          </button>
+        </div>
       </label>
 
       {erroKit && <div className="state-message state-error">{erroKit}</div>}

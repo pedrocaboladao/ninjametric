@@ -1,4 +1,4 @@
-import type { ObservacaoAds, PensamentoAds, MensagemChat } from "../types/agentes";
+import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -89,4 +89,32 @@ export async function gerarKitFotos(
   });
   const data = await tratarResposta<{ imagens: string[] }>(res);
   return data.imagens;
+}
+
+export async function fetchPerfisImagens(): Promise<PerfilImagens[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/perfis`, { credentials: "include" });
+  const data = await tratarResposta<{ perfis: PerfilImagens[] }>(res);
+  return data.perfis;
+}
+
+export async function criarPerfilImagens(dados: {
+  nome: string;
+  cores: string;
+  imagemReferenciaBase64: string | null;
+  beneficiosPadrao: string;
+  ondeAplicarPadrao: string;
+}): Promise<PerfilImagens> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/perfis`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(dados),
+  });
+  const data = await tratarResposta<{ perfil: PerfilImagens }>(res);
+  return data.perfil;
+}
+
+export async function excluirPerfilImagens(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/imagens/perfis/${id}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta(res);
 }

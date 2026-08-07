@@ -8,6 +8,7 @@ import {
   type MensagemChat,
 } from "../services/agenteAdsService";
 import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
+import { listarPerfis, criarPerfil, excluirPerfil } from "../services/agenteImagensPerfilService";
 
 export const agentesRouter = Router();
 
@@ -129,6 +130,48 @@ agentesRouter.post("/imagens/kit", async (req, res) => {
     res.json({ imagens });
   } catch (err) {
     erro(res, err, "Falha ao gerar o kit de fotos.");
+  }
+});
+
+agentesRouter.get("/imagens/perfis", async (_req, res) => {
+  try {
+    res.json({ perfis: await listarPerfis() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar perfis.");
+  }
+});
+
+agentesRouter.post("/imagens/perfis", async (req, res) => {
+  const { nome, cores, imagemReferenciaBase64, beneficiosPadrao, ondeAplicarPadrao } = req.body ?? {};
+  if (typeof nome !== "string" || !nome.trim()) {
+    res.status(400).json({ error: "Nome do perfil é obrigatório." });
+    return;
+  }
+  try {
+    const perfil = await criarPerfil({
+      nome: nome.trim(),
+      cores: typeof cores === "string" ? cores : "",
+      imagemReferenciaBase64: typeof imagemReferenciaBase64 === "string" && imagemReferenciaBase64 ? imagemReferenciaBase64 : null,
+      beneficiosPadrao: typeof beneficiosPadrao === "string" ? beneficiosPadrao : "",
+      ondeAplicarPadrao: typeof ondeAplicarPadrao === "string" ? ondeAplicarPadrao : "",
+    });
+    res.json({ perfil });
+  } catch (err) {
+    erro(res, err, "Falha ao salvar perfil.");
+  }
+});
+
+agentesRouter.delete("/imagens/perfis/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirPerfil(id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir perfil.");
   }
 });
 

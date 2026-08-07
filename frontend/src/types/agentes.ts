@@ -23,3 +23,13 @@ export interface MensagemChat {
   papel: "usuario" | "agente";
   texto: string;
 }
+
+export interface PerfilImagens {
+  id: number;
+  nome: string;
+  cores: string;
+  imagemReferenciaBase64: string | null;
+  beneficiosPadrao: string;
+  ondeAplicarPadrao: string;
+  criadoEm: string;
+}

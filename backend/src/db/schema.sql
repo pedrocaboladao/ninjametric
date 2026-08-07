@@ -360,3 +360,17 @@ CREATE TABLE IF NOT EXISTS agente_ads_pensamentos (
   pensamento TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Perfis de marca salvos pro Agente de Imagens (Kit de fotos) — não é
+-- aprendizado de IA, é só lembrar configurações que se repetem entre
+-- produtos da mesma marca (cores, foto de referência de estilo, benefícios
+-- e locais de aplicação comuns), pra não digitar tudo de novo a cada anúncio.
+CREATE TABLE IF NOT EXISTS agente_imagens_perfis (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  cores TEXT NOT NULL DEFAULT '',
+  imagem_referencia_base64 TEXT,
+  beneficios_padrao TEXT NOT NULL DEFAULT '',
+  onde_aplicar_padrao TEXT NOT NULL DEFAULT '',
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
