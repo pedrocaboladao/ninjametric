@@ -399,9 +399,9 @@ function IlustracaoAgente({ alerta }: { alerta: boolean }) {
 
 // Escritório grande e compartilhado (Modo TV) — mesma técnica isométrica da
 // sala pequena, mas com sua própria projeção (grid maior, origem própria)
-// pra caber 3 mesas: Analista de Ads, Agente de Imagens e uma vaga pra um
-// futuro agente. Os dois personagens reais andam da mesa deles até uma área
-// comum no meio da sala e voltam, num loop.
+// pra caber as 3 mesas: Analista de Ads, Agente de Imagens e Agente de
+// Oportunidades. Os personagens andam da mesa deles até uma área comum no
+// meio da sala e voltam, num loop.
 const GRID_G = 8;
 const TILE_W_G = 26;
 const TILE_H_G = 13;
@@ -414,6 +414,7 @@ function isoPointG(x: number, y: number): Ponto {
 }
 
 const COR_IMAGENS = "#a855c9";
+const COR_OPORTUNIDADES = "#d9a33e";
 
 // Mesa com monitor mostrando um gráfico (Ads) ou um ícone de foto (Imagens)
 // — mesma estrutura da MesaComMonitor da sala pequena, só que deslocável no
@@ -424,7 +425,7 @@ function MesaGrande({
   alerta,
 }: {
   x0: number;
-  tipo: "ads" | "imagens" | "vaga";
+  tipo: "ads" | "imagens" | "oportunidades" | "vaga";
   alerta?: boolean;
 }) {
   const mesa = caixaIso(x0, 0.3, x0 + 1.6, 1.0, 22, 0, "#2b2f3a", isoPointG);
@@ -452,6 +453,34 @@ function MesaGrande({
             className="agente-grafico-linha"
           />
           <circle cx={ponta.x} cy={ponta.y} r={1.9} fill={corLinha} className="agente-grafico-ponto" />
+        </>
+      );
+    }
+    if (tipo === "oportunidades") {
+      // Ícone de tendência subindo — o trabalho desse agente é apontar SKU
+      // "em alta" no grupo, então a tela mostra uma linha crescente em vez
+      // do gráfico de ACOS (Ads) ou do ícone de foto (Imagens).
+      const pontos = [
+        dentroDaFace(A, B, C, D, 0.14, 0.8),
+        dentroDaFace(A, B, C, D, 0.42, 0.6),
+        dentroDaFace(A, B, C, D, 0.66, 0.68),
+        dentroDaFace(A, B, C, D, 0.9, 0.28),
+      ];
+      const linha = pontos.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const ponta = pontos[pontos.length - 1];
+      return (
+        <>
+          <polygon points={pontosStr([A, B, C, D])} fill="#2a2410" />
+          <polyline
+            points={linha}
+            fill="none"
+            stroke={COR_OPORTUNIDADES}
+            strokeWidth="1.4"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="agente-grafico-linha"
+          />
+          <circle cx={ponta.x} cy={ponta.y} r={1.9} fill={COR_OPORTUNIDADES} className="agente-grafico-ponto" />
         </>
       );
     }
@@ -558,8 +587,10 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
 
   const deskAds = isoPointG(1.6, 3.0);
   const deskImagens = isoPointG(4.6, 3.0);
+  const deskOportunidades = isoPointG(6.6, 3.0);
   const comumAds = isoPointG(2.8, 5.8);
   const comumImagens = isoPointG(4.4, 5.8);
+  const comumOportunidades = isoPointG(6.0, 5.8);
 
   return (
     <svg viewBox="0 0 420 260" className="agente-svg agente-svg-grande" role="img" aria-label="Escritório compartilhado dos agentes">
@@ -578,7 +609,7 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
 
       <MesaGrande x0={1.0} tipo="ads" alerta={alertaAds} />
       <MesaGrande x0={3.4} tipo="imagens" />
-      <MesaGrande x0={5.8} tipo="vaga" />
+      <MesaGrande x0={5.8} tipo="oportunidades" />
 
       <g>
         <ellipse cx={lampadaBase.x} cy={lampadaBase.y} rx={5} ry={2.4} fill={sombrear("#5b4a35", 0.6)} />
@@ -604,6 +635,13 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
         escala={0.6}
       />
       <PersonagemAndante id="imagens" deskPe={deskImagens} comumPe={comumImagens} cor={COR_IMAGENS} escala={0.6} />
+      <PersonagemAndante
+        id="oportunidades"
+        deskPe={deskOportunidades}
+        comumPe={comumOportunidades}
+        cor={COR_OPORTUNIDADES}
+        escala={0.6}
+      />
     </svg>
   );
 }
@@ -1525,19 +1563,69 @@ function AgenteImagens() {
   );
 }
 
-// Modo TV do escritório compartilhado — busca o feed do Analista de Ads por
-// conta própria (não depende de qual aba está ativa), atualiza sozinho a
-// cada 1 min e sai com Esc. O Agente de Imagens não tem "pendência" pra
-// carregar, então só o Ads alimenta o crachá de status do personagem dele.
+// Um item do feed unificado do Modo TV — mistura os "pensamentos" (raciocínio
+// em texto corrido) e as observações pendentes do Analista de Ads com os
+// achados do Agente de Oportunidades, tudo numa linha do tempo só. O Agente
+// de Imagens não entra aqui: não tem um fluxo de "achados" próprio, é uma
+// ferramenta sob demanda (gerar kit/arte), não um agente que observa sozinho.
+type ItemFeedTV =
+  | { chave: string; tipo: "pensamento"; criadoEm: string; texto: string }
+  | {
+      chave: string;
+      tipo: "observacao";
+      criadoEm: string;
+      campanhaNome: string;
+      contexto: string;
+      acao: string;
+      janela: string;
+    }
+  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string };
+
+// Modo TV do escritório compartilhado — busca o feed dos agentes por conta
+// própria (não depende de qual aba está ativa), atualiza sozinho a cada 1
+// min e sai com Esc. O Agente de Imagens não tem "pendência" pra carregar,
+// então só o Ads alimenta o crachá de status do personagem dele.
 function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
   const [pendentes, setPendentes] = useState(0);
-  const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
+  const [feed, setFeed] = useState<ItemFeedTV[] | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [feedNovo, pensamentosNovos] = await Promise.all([fetchFeedAds("pendente"), fetchPensamentosAds()]);
-      setPendentes(feedNovo.length);
-      setPensamentos(pensamentosNovos);
+      const [observacoes, pensamentos, oportunidades] = await Promise.all([
+        fetchFeedAds("pendente"),
+        fetchPensamentosAds(),
+        fetchOportunidades(),
+      ]);
+      setPendentes(observacoes.length);
+
+      const itens: ItemFeedTV[] = [
+        ...pensamentos.map(
+          (p): ItemFeedTV => ({ chave: `pensamento-${p.id}`, tipo: "pensamento", criadoEm: p.criadoEm, texto: p.pensamento }),
+        ),
+        ...observacoes.map(
+          (o): ItemFeedTV => ({
+            chave: `observacao-${o.id}`,
+            tipo: "observacao",
+            criadoEm: o.criadoEm,
+            campanhaNome: o.campanhaNome,
+            contexto: o.contexto,
+            acao: o.acao,
+            janela: o.janela,
+          }),
+        ),
+        ...oportunidades.map(
+          (op): ItemFeedTV => ({
+            chave: `oportunidade-${op.id}`,
+            tipo: "oportunidade",
+            criadoEm: op.criadoEm,
+            sku: op.sku,
+            titulo: op.titulo,
+            contexto: op.contexto,
+          }),
+        ),
+      ].sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
+
+      setFeed(itens.slice(0, 30));
     } catch {
       // Modo TV não mostra erro — só mantém o último estado conhecido na tela.
     }
@@ -1561,21 +1649,63 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
       <button type="button" className="agente-tv-sair" onClick={onSair}>
         Sair (Esc)
       </button>
-      <EscritorioCompartilhado alertaAds={pendentes > 0} />
-      <div className="agente-tv-status">
-        {pensamentos && pensamentos.length > 0 ? (
-          <p className="agente-tv-pensamento">{pensamentos[0].pensamento}</p>
-        ) : (
-          <span className="financeiro-td-mudo">Analista de Ads ainda sem nenhuma verificação registrada.</span>
+
+      <div className="agente-tv-feed-painel">
+        <span className="painel-eyebrow">Feed dos agentes</span>
+        {(!feed || feed.length === 0) && (
+          <span className="financeiro-td-mudo">Ainda sem nenhuma atividade registrada.</span>
         )}
-        {pendentes === 0 ? (
-          <span className="financeiro-margem-positiva">Ads: tudo certo — nenhuma pendência.</span>
-        ) : (
-          <span className="financeiro-margem-negativa">
-            Ads: {pendentes} observaç{pendentes !== 1 ? "ões" : "ão"} pendente{pendentes !== 1 ? "s" : ""}.
-          </span>
-        )}
+        {feed?.map((item) => (
+          <ItemFeedTVCard key={item.chave} item={item} />
+        ))}
       </div>
+
+      <div className="agente-tv-sala">
+        <EscritorioCompartilhado alertaAds={pendentes > 0} />
+      </div>
+    </div>
+  );
+}
+
+function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
+  if (item.tipo === "pensamento") {
+    return (
+      <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_ADS }}>
+        <div className="agente-card-topo">
+          <span className="ads-insight-tag" style={{ color: COR_ADS }}>
+            Ads · raciocínio
+          </span>
+          <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
+        </div>
+        <p className="agente-tv-pensamento">{item.texto}</p>
+      </div>
+    );
+  }
+  if (item.tipo === "observacao") {
+    return (
+      <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_ADS }}>
+        <div className="agente-card-topo">
+          <span className="ads-insight-tag" style={{ color: COR_ADS }}>
+            Ads · {item.janela === "hoje" ? "hoje" : "7 dias"}
+          </span>
+          <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
+        </div>
+        <div className="financeiro-td-titulo">{item.campanhaNome}</div>
+        <p className="ads-insight-contexto">{item.contexto}</p>
+        <div className="ads-insight-acao">→ {item.acao}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_OPORTUNIDADES }}>
+      <div className="agente-card-topo">
+        <span className="ads-insight-tag" style={{ color: COR_OPORTUNIDADES }}>
+          Oportunidades · {item.sku}
+        </span>
+        <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
+      </div>
+      <div className="financeiro-td-titulo">{item.titulo}</div>
+      <p className="ads-insight-contexto">{item.contexto}</p>
     </div>
   );
 }
