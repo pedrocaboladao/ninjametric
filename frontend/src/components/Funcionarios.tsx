@@ -74,6 +74,7 @@ export function Funcionarios() {
 
   const [dataLancamento, setDataLancamento] = useState(hojeISO());
   const [valoresForm, setValoresForm] = useState<Record<number, string>>({});
+  const [camposEditados, setCamposEditados] = useState<Set<number>>(new Set());
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
 
@@ -138,6 +139,7 @@ export function Funcionarios() {
         valores[l.empacotadorId] = String(l.pacotes);
       });
       setValoresForm(valores);
+      setCamposEditados(new Set());
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao carregar lançamentos.");
     }
@@ -158,15 +160,24 @@ export function Funcionarios() {
 
   async function handleSalvarLancamentos(e: React.FormEvent) {
     e.preventDefault();
-    setSalvando(true);
-    setSalvo(false);
-    try {
-      const itens = Object.entries(valoresForm).map(([empacotadorId, pacotes]) => ({
+    // Manda só os campos que essa pessoa realmente editou nesta tela, não o
+    // formulário inteiro — evita que um salvamento sobrescreva com valores
+    // desatualizados os números que outra pessoa já salvou nesse meio tempo
+    // (ex.: dois empacotadores lançando pacotes ao mesmo tempo em aparelhos
+    // diferentes).
+    const itens = Object.entries(valoresForm)
+      .filter(([empacotadorId]) => camposEditados.has(Number(empacotadorId)))
+      .map(([empacotadorId, pacotes]) => ({
         empacotadorId: Number(empacotadorId),
         pacotes: Number(pacotes) || 0,
       }));
+    if (itens.length === 0) return;
+    setSalvando(true);
+    setSalvo(false);
+    try {
       await salvarLancamentos(dataLancamento, itens);
       setSalvo(true);
+      setCamposEditados(new Set());
       carregarRanking();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao salvar lançamentos.");
@@ -474,7 +485,11 @@ export function Funcionarios() {
                       min={0}
                       className="clonar-input func-lancar-input"
                       value={valoresForm[emp.id] ?? ""}
-                      onChange={(e) => setValoresForm((v) => ({ ...v, [emp.id]: e.target.value }))}
+                      onChange={(e) => {
+                        const valor = e.target.value;
+                        setValoresForm((v) => ({ ...v, [emp.id]: valor }));
+                        setCamposEditados((s) => new Set(s).add(emp.id));
+                      }}
                     />
                   </div>
                 ))}
