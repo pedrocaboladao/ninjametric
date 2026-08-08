@@ -74,7 +74,18 @@ async function gerarAnaliseIA(campanhas: CampanhaComTacos[], diasPeriodo: number
   if (!client) return;
 
   const ativas = campanhas.filter((c) => c.status === "active" && c.custo > 0);
-  if (ativas.length === 0) return;
+  if (ativas.length === 0) {
+    // Grava mesmo sem nada a analisar — sem isso, uma loja sem campanha
+    // ativa com gasto simplesmente não aparece na rodada, e não dá pra
+    // distinguir "não tinha nada a dizer" de "a checagem falhou" só olhando
+    // o feed.
+    await pool.query("INSERT INTO agente_ads_pensamentos (pensamento, loja_id, janela) VALUES ($1, $2, $3)", [
+      `Nenhuma campanha ativa com gasto no período ${descricaoJanela(diasPeriodo)} — nada a analisar por aqui agora.`,
+      lojaId,
+      janela,
+    ]);
+    return;
+  }
 
   const linhas = construirLinhasCampanhas(ativas);
 
@@ -161,22 +172,34 @@ async function executarVerificacao(diasPeriodo: number, janela: string): Promise
     return { lojas: 0, falhas: 0 };
   }
 
-  // Uma chamada de IA POR LOJA, em vez de uma chamada só com as campanhas
-  // das 4 juntas — com tudo misturado no mesmo prompt a atenção da IA se
-  // dilui entre as contas; separada por loja, cada uma recebe uma análise
-  // dedicada, sem competir por espaço com as campanhas das outras 3. Se uma
-  // loja falhar (API fora do ar, erro pontual), só ela é pulada nessa
-  // rodada — as outras 3 seguem normalmente.
+  // Busca + análise POR LOJA, em vez de uma chamada só com as campanhas das
+  // 4 juntas — com tudo misturado no mesmo prompt a atenção da IA se dilui
+  // entre as contas; separada por loja, cada uma recebe uma análise
+  // dedicada, sem competir por espaço com as campanhas das outras 3. Busca
+  // e análise ficam dentro do MESMO try — se uma loja falhar (token
+  // vencido, API fora do ar, erro pontual), só ela é pulada nessa rodada,
+  // as outras 3 seguem normalmente (antes só a chamada de IA tinha esse
+  // isolamento; a busca dos dados podia derrubar a rodada inteira).
   let lojasAnalisadas = 0;
   let falhas = 0;
   for (const lojaId of LOJAS_AGENTE) {
-    const campanhasDaLoja = await buscarCampanhasComTacos(diasPeriodo, lojaId);
     try {
+      const campanhasDaLoja = await buscarCampanhasComTacos(diasPeriodo, lojaId);
       await gerarAnaliseIA(campanhasDaLoja, diasPeriodo, lojaId, janela);
       lojasAnalisadas++;
     } catch (err) {
-      console.error(`Agente de Ads (${janela}, loja ${lojaId}): falha na análise com IA, loja pulada nessa rodada:`, err);
+      console.error(`Agente de Ads (${janela}, loja ${lojaId}): falha na checagem, loja pulada nessa rodada:`, err);
       falhas++;
+      // Também registra no feed, não só no console do servidor — senão a
+      // única forma de notar uma falha é reparar que uma loja "sumiu" do
+      // feed sem nenhuma explicação visível.
+      await pool
+        .query("INSERT INTO agente_ads_pensamentos (pensamento, loja_id, janela) VALUES ($1, $2, $3)", [
+          "Não consegui checar essa loja nessa rodada (falha ao buscar os dados ou ao analisar) — tento de novo na próxima checagem.",
+          lojaId,
+          janela,
+        ])
+        .catch((erroInsert) => console.error(`Agente de Ads (${janela}, loja ${lojaId}): falha ao registrar o aviso de erro:`, erroInsert));
     }
   }
 
