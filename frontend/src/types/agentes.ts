@@ -22,6 +22,31 @@ export interface Oportunidade {
   criadoEm: string;
 }
 
+export interface PensamentoConversao {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+  lojaId: number | null;
+  lojaNome: string | null;
+}
+
+export interface ItemCatalogo {
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string;
+  thumbnail: string | null;
+  permalink: string | null;
+  status: string;
+  precoAtual: number;
+  priceToWin: number | null;
+  sku: string | null;
+  custoUnitario: number | null;
+  margemAtual: number | null;
+  margemNoPriceToWin: number | null;
+  atualizadoEm: string;
+}
+
 export interface PerfilImagens {
   id: number;
   nome: string;

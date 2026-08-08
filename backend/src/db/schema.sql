@@ -477,3 +477,41 @@ CREATE TABLE IF NOT EXISTS agente_oportunidades (
 -- novo) — sem isso toda rodada reescreveria a lista inteira com o mesmo
 -- horário, e o feed nunca pareceria dinâmico.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_agente_oportunidades_sku ON agente_oportunidades (sku);
+
+-- Agente de Catálogo: anúncios de catálogo (concorrência "Comprar") das 4
+-- lojas pessoais que NÃO estão ganhando agora — guarda só os que valem
+-- atenção (status != 'winning'), com o preço pra ganhar (price_to_win, API
+-- do ML) e a margem real (custo cadastrado + taxa ML real pro preço
+-- hipotético + imposto da loja) no preço atual vs no price_to_win. Sem IA:
+-- é comparação matemática direta, não tem julgamento a fazer.
+CREATE TABLE IF NOT EXISTS agente_catalogo_snapshot (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  item_id TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  thumbnail TEXT,
+  permalink TEXT,
+  status TEXT NOT NULL,
+  preco_atual NUMERIC(12, 2) NOT NULL,
+  price_to_win NUMERIC(12, 2),
+  sku TEXT,
+  custo_unitario NUMERIC(12, 2),
+  margem_atual NUMERIC(12, 2),
+  margem_no_price_to_win NUMERIC(12, 2),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (loja_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_agente_catalogo_loja ON agente_catalogo_snapshot (loja_id);
+
+-- Agente de Conversão: análise em texto corrido (mesmo padrão do Analista
+-- de Ads) comparando taxa de conversão (visitas x vendas) de cada anúncio
+-- com a média da própria loja — separa quem tem muita visita e converte mal
+-- (photo/preço/copy) de quem converte bem mas tem pouca visita (vale
+-- empurrar tráfego). 1 registro por rodada por loja, não por anúncio.
+CREATE TABLE IF NOT EXISTS agente_conversao_pensamentos (
+  id SERIAL PRIMARY KEY,
+  pensamento TEXT NOT NULL,
+  loja_id INTEGER REFERENCES lojas(id),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agente_conversao_pensamentos_loja ON agente_conversao_pensamentos (loja_id);

@@ -10,6 +10,8 @@ import {
 } from "../services/agenteImagensPerfilService";
 import { buscarDadosAnuncio, registrarCorrecoes, type CamposSugeridosKit } from "../services/agenteImagensAnuncioService";
 import { verificarOportunidades, listarOportunidades } from "../services/agenteOportunidadesService";
+import { listarCatalogo } from "../services/agenteCatalogoService";
+import { listarPensamentosConversao } from "../services/agenteConversaoService";
 
 export const agentesRouter = Router();
 
@@ -60,6 +62,24 @@ agentesRouter.post("/oportunidades/verificar", async (_req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao verificar oportunidades.");
+  }
+});
+
+agentesRouter.get("/conversao/pensamentos", async (_req, res) => {
+  try {
+    res.json({ pensamentos: await listarPensamentosConversao() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar pensamentos de conversão.");
+  }
+});
+
+agentesRouter.get("/catalogo", async (req, res) => {
+  const lojaIdParam = req.query.lojaId;
+  const lojaId = typeof lojaIdParam === "string" && Number.isInteger(Number(lojaIdParam)) ? Number(lojaIdParam) : undefined;
+  try {
+    res.json({ itens: await listarCatalogo(lojaId) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar catálogo.");
   }
 });
 

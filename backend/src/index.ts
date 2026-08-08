@@ -29,6 +29,8 @@ import { iniciarVerificacaoAgenteAds } from "./services/agenteAdsService";
 import { iniciarSnapshotEstoque } from "./services/estoqueService";
 import { iniciarSnapshotVendasNegativas } from "./services/vendasNegativasService";
 import { iniciarVerificacaoOportunidades } from "./services/agenteOportunidadesService";
+import { iniciarSnapshotCatalogo } from "./services/agenteCatalogoService";
+import { iniciarVerificacaoAgenteConversao } from "./services/agenteConversaoService";
 
 const app = express();
 
@@ -79,3 +81,5 @@ iniciarVerificacaoAgenteAds();
 iniciarSnapshotEstoque();
 iniciarSnapshotVendasNegativas();
 iniciarVerificacaoOportunidades();
+iniciarSnapshotCatalogo();
+iniciarVerificacaoAgenteConversao();

@@ -13,10 +13,19 @@ import {
   favoritarReferenciaPerfil,
   fetchOportunidades,
   verificarOportunidadesAgora,
+  fetchCatalogo,
+  fetchPensamentosConversao,
   type SugestaoOriginalKit,
 } from "../api/agentes";
-import type { PensamentoAds, MensagemChat, PerfilImagens, Oportunidade } from "../types/agentes";
-import { formatDataHora } from "../utils/format";
+import type {
+  PensamentoAds,
+  MensagemChat,
+  PerfilImagens,
+  Oportunidade,
+  ItemCatalogo,
+  PensamentoConversao,
+} from "../types/agentes";
+import { formatDataHora, formatCurrency } from "../utils/format";
 
 // Robô parado num ambiente (só chão + paredes, sem móveis) com um balão de
 // fala animado (efeito "digitando...") ao lado. Desenhado à mão em SVG, no
@@ -688,12 +697,18 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
 // que a própria Claude escreve, ver backend/src/services/agenteAdsService.ts).
 // Um card por rodada de verificação, texto corrido preservando as quebras de
 // linha originais — formato único do feed (sem cards por campanha).
-function PensamentoCard({ pensamento }: { pensamento: PensamentoAds }) {
+function PensamentoCard({
+  pensamento,
+}: {
+  pensamento: { pensamento: string; criadoEm: string; janela?: string };
+}) {
   const [expandido, setExpandido] = useState(false);
   return (
     <div className="agente-pensamento-card">
       <div className="agente-card-topo">
-        <span className="agente-card-janela">{pensamento.janela === "hoje" ? "Hoje" : "7 dias"}</span>
+        {pensamento.janela !== undefined && (
+          <span className="agente-card-janela">{pensamento.janela === "hoje" ? "Hoje" : "7 dias"}</span>
+        )}
         <span className="financeiro-td-mudo">{formatDataHora(pensamento.criadoEm)}</span>
       </div>
       <p className={`agente-pensamento-texto ${expandido ? "agente-pensamento-expandido" : ""}`}>
@@ -1706,8 +1721,182 @@ function AgenteOportunidades() {
   );
 }
 
+// Análise em texto corrido, 1x/dia por loja — mesmo formato do Analista de
+// Ads (sem cards por anúncio), comparando a conversão (visitas x vendas) de
+// cada anúncio com a média da própria loja.
+function AgenteConversao() {
+  const [pensamentos, setPensamentos] = useState<PensamentoConversao[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+
+  const carregar = useCallback(async () => {
+    try {
+      setPensamentos(await fetchPensamentosConversao());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o feed.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const lojasDisponiveis = new Map<number, string>();
+  for (const p of pensamentos ?? []) if (p.lojaId !== null && p.lojaNome !== null) lojasDisponiveis.set(p.lojaId, p.lojaNome);
+
+  const pensamentosDaLoja =
+    lojaFiltro === "todas" ? pensamentos : (pensamentos?.filter((p) => p.lojaId === lojaFiltro) ?? null);
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Agente de Conversão</h1>
+          <p className="painel-sub">
+            Compara visitas e vendas dos últimos 30 dias de cada anúncio com a média da própria loja — aponta quem
+            tem muita visita e converte mal (photo/preço/copy) e quem converte bem mas recebe pouco tráfego.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+          >
+            <option value="todas">Todas as lojas</option>
+            {[...lojasDisponiveis.entries()].map(([id, nome]) => (
+              <option key={id} value={id}>
+                {nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="agente-feed">
+        <div className="agente-feed-topo">
+          <span className="painel-eyebrow">O que ele está pensando</span>
+        </div>
+
+        {pensamentosDaLoja !== null && pensamentosDaLoja.length === 0 && (
+          <div className="state-message">Nenhuma verificação registrada ainda.</div>
+        )}
+
+        {pensamentosDaLoja?.map((p) => <PensamentoCard key={p.id} pensamento={p} />)}
+      </div>
+    </>
+  );
+}
+
+const STATUS_CATALOGO: Record<string, { tag: string; cor: string }> = {
+  competing: { tag: "Perdendo", cor: "var(--critical-text)" },
+  sharing_first_place: { tag: "Empatado em 1º", cor: "#fbbf24" },
+  listed: { tag: "Fora da disputa", cor: "var(--text-muted)" },
+};
+
+// Sem IA de propósito — é comparação matemática direta (preço pra ganhar x
+// margem que sobra), o número já diz se vale a briga ou não.
+function AgenteCatalogo() {
+  const [itens, setItens] = useState<ItemCatalogo[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+
+  const carregar = useCallback(async () => {
+    try {
+      setItens(await fetchCatalogo());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o catálogo.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const lojasDisponiveis = new Map<number, string>();
+  for (const i of itens ?? []) lojasDisponiveis.set(i.lojaId, i.lojaNome);
+
+  const itensDaLoja = lojaFiltro === "todas" ? itens : (itens?.filter((i) => i.lojaId === lojaFiltro) ?? null);
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Agente de Catálogo</h1>
+          <p className="painel-sub">
+            Anúncios de catálogo (concorrência pelo "Comprar") que você não está ganhando agora — mostra o preço pra
+            ganhar (price_to_win, direto da API do ML) e se ainda sobra margem real nesse preço.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+          >
+            <option value="todas">Todas as lojas</option>
+            {[...lojasDisponiveis.entries()].map(([id, nome]) => (
+              <option key={id} value={id}>
+                {nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="agente-feed">
+        {itensDaLoja !== null && itensDaLoja.length === 0 && (
+          <div className="state-message">Nenhum anúncio perdendo a disputa de catálogo agora.</div>
+        )}
+        {itensDaLoja?.map((i) => {
+          const info = STATUS_CATALOGO[i.status] ?? { tag: i.status, cor: "var(--text-muted)" };
+          const semCusto = i.custoUnitario === null;
+          const valeABriga = i.margemNoPriceToWin !== null && i.margemNoPriceToWin > 0;
+          return (
+            <a
+              key={`${i.lojaId}-${i.itemId}`}
+              className="agente-card"
+              style={{ borderLeftColor: info.cor }}
+              href={i.permalink ?? undefined}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <div className="agente-card-topo">
+                <div className="agente-card-tags">
+                  <span className="ads-insight-tag" style={{ color: info.cor }}>
+                    {info.tag}
+                  </span>
+                </div>
+                <span className="financeiro-td-mudo">{i.lojaNome}</span>
+              </div>
+              <div className="financeiro-td-titulo">{i.titulo}</div>
+              <p className="ads-insight-contexto">
+                Preço atual {formatCurrency(i.precoAtual)}
+                {i.priceToWin !== null && <> → preço pra ganhar {formatCurrency(i.priceToWin)}</>}
+              </p>
+              {semCusto ? (
+                <div className="ads-insight-acao">Sem custo cadastrado pra esse SKU — não dá pra saber se vale a pena.</div>
+              ) : (
+                <div className="ads-insight-acao" style={{ color: valeABriga ? "var(--good-text)" : "var(--critical-text)" }}>
+                  {valeABriga
+                    ? `Vale baixar — ainda sobra ${formatCurrency(i.margemNoPriceToWin as number)} de margem.`
+                    : `Não vale a briga — margem no price_to_win ficaria ${formatCurrency(i.margemNoPriceToWin ?? 0)}.`}
+                </div>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
 export function AgenciaAgentesIA() {
-  const [agente, setAgente] = useState<"ads" | "imagens" | "oportunidades">("ads");
+  const [agente, setAgente] = useState<"ads" | "imagens" | "oportunidades" | "catalogo" | "conversao">("ads");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
   // vez que este componente re-renderiza (ex.: algo mudando mais acima na
@@ -1748,11 +1937,27 @@ export function AgenciaAgentesIA() {
         >
           Agente de Oportunidades
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "catalogo" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("catalogo")}
+        >
+          Agente de Catálogo
+        </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "conversao" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("conversao")}
+        >
+          Agente de Conversão
+        </button>
       </div>
 
       {agente === "ads" && <AnalistaAds />}
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}
+      {agente === "catalogo" && <AgenteCatalogo />}
+      {agente === "conversao" && <AgenteConversao />}
 
       {modoTV && <ModoTVEscritorio onSair={sairDoModoTV} />}
     </div>

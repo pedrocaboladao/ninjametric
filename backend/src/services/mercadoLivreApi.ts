@@ -382,8 +382,14 @@ export interface MlItemBasicInfo {
   thumbnail: string;
   permalink: string;
   // O ML devolve o objeto completo do item nessa rota mesmo sem pedir campo
-  // por campo — reaproveitado pro snapshot de estoque (ver estoqueService).
+  // por campo — reaproveitado pro snapshot de estoque (ver estoqueService) e
+  // pro agente de catálogo (catalog_listing/category_id/listing_type_id/
+  // seller_custom_field, ver agenteCatalogoService).
   available_quantity?: number;
+  catalog_listing?: boolean;
+  category_id?: string;
+  listing_type_id?: string;
+  seller_custom_field?: string | null;
 }
 
 export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Promise<Map<string, MlItemBasicInfo>> {
@@ -407,6 +413,79 @@ export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Prom
   }
 
   return result;
+}
+
+export interface MlPriceToWin {
+  itemId: string;
+  currentPrice: number;
+  priceToWin: number | null;
+  status: string; // "winning" | "competing" | "sharing_first_place" | "listed"
+}
+
+// Detalhe da concorrência de catálogo (ver
+// developers.mercadolivre.com.br/pt_br/concorrencia-em-catalogo). Item que
+// não compete em catálogo (não fez opt-in) dá 404 — trata como "sem dado"
+// em vez de derrubar o loop de itens da loja inteira.
+export async function getPriceToWin(lojaId: number, itemId: string): Promise<MlPriceToWin | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{
+      item_id: string;
+      current_price: number;
+      price_to_win: number | null;
+      status: string;
+    }>(`${ML_API_BASE}/items/${itemId}/price_to_win`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { version: "v2" },
+    });
+    return { itemId: data.item_id, currentPrice: data.current_price, priceToWin: data.price_to_win, status: data.status };
+  } catch {
+    return null;
+  }
+}
+
+// Custo real de vender pelo ML num preço hipotético (taxa da categoria +
+// tipo de anúncio) — usado pra saber se baixar até o price_to_win ainda
+// deixa margem. Passando category_id + listing_type_id juntos o ML devolve
+// um objeto único (confirmado na doc oficial "Custos por vender"); aceita
+// os dois formatos por segurança, já que outras chamadas dessa API já
+// vieram em formato inesperado antes (ver comentário em getAnunciosAds).
+export async function getTaxaMlParaPreco(
+  lojaId: number,
+  categoryId: string,
+  listingTypeId: string,
+  price: number
+): Promise<number | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<
+      { sale_fee_amount: number } | Array<{ sale_fee_amount: number; listing_type_id: string }>
+    >(`${ML_API_BASE}/sites/MLB/listing_prices`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { price, category_id: categoryId, listing_type_id: listingTypeId },
+    });
+    const entrada = Array.isArray(data) ? (data.find((d) => d.listing_type_id === listingTypeId) ?? data[0]) : data;
+    return entrada?.sale_fee_amount ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// Visitas de um único anúncio numa janela de datas (máx. 150 dias) — a API
+// do ML só aceita 1 item por chamada nessa rota com data (diferente da rota
+// sem data, que aceita vários ids de uma vez), por isso é chamada em loop
+// com concorrência limitada pelo agente de conversão.
+export async function getVisitasItem(lojaId: number, itemId: string, dataInicio: string, dataFim: string): Promise<number | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{ total_visits: number }>(`${ML_API_BASE}/items/visits`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { ids: itemId, date_from: dataInicio, date_to: dataFim },
+    });
+    return data.total_visits;
+  } catch {
+    return null;
+  }
 }
 
 export interface MlCampanhaAds {
