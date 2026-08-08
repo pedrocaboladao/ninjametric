@@ -1725,7 +1725,7 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 // pixel a pixel). Pedir pro dono corrigir com "move [nome] mais pra
 // [direção]" depois de ver em produção.
 const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
-  { nome: "Analista de Ads", left: "29%", top: "27%" },
+  { nome: "Analista de Ads", left: "29%", top: "30%" },
   { nome: "Designer", left: "23%", top: "51%" },
   { nome: "Visionário", left: "48%", top: "55%" },
   { nome: "Negociador", left: "66%", top: "35%" },
