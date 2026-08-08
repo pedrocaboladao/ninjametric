@@ -4386,6 +4386,12 @@
   gap: 12px;
 }
 
+.agente-card-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .agente-card-janela {
   font-size: 11px;
   font-weight: 600;

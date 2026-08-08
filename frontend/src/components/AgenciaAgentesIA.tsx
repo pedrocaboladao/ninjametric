@@ -766,15 +766,18 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
 function PensamentoCard({
   pensamento,
 }: {
-  pensamento: { pensamento: string; criadoEm: string; janela?: string };
+  pensamento: { pensamento: string; criadoEm: string; janela?: string; lojaNome?: string | null };
 }) {
   const [expandido, setExpandido] = useState(false);
   return (
     <div className="agente-pensamento-card">
       <div className="agente-card-topo">
-        {pensamento.janela !== undefined && (
-          <span className="agente-card-janela">{pensamento.janela === "hoje" ? "Hoje" : "7 dias"}</span>
-        )}
+        <div className="agente-card-tags">
+          {pensamento.lojaNome && <span className="agente-card-janela">{pensamento.lojaNome}</span>}
+          {pensamento.janela !== undefined && (
+            <span className="agente-card-janela">{pensamento.janela === "hoje" ? "Hoje" : "7 dias"}</span>
+          )}
+        </div>
         <span className="financeiro-td-mudo">{formatDataHora(pensamento.criadoEm)}</span>
       </div>
       <p className={`agente-pensamento-texto ${expandido ? "agente-pensamento-expandido" : ""}`}>
