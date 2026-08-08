@@ -1725,11 +1725,11 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 // pixel a pixel). Pedir pro dono corrigir com "move [nome] mais pra
 // [direção]" depois de ver em produção.
 const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
-  { nome: "Analista de Ads", left: "40%", top: "40%" },
-  { nome: "Designer", left: "37%", top: "58%" },
-  { nome: "Visionário", left: "55%", top: "62%" },
-  { nome: "Negociador", left: "66%", top: "42%" },
-  { nome: "Analista de Funil", left: "80%", top: "58%" },
+  { nome: "Analista de Ads", left: "40%", top: "33%" },
+  { nome: "Designer", left: "37%", top: "51%" },
+  { nome: "Visionário", left: "55%", top: "55%" },
+  { nome: "Negociador", left: "66%", top: "35%" },
+  { nome: "Analista de Funil", left: "80%", top: "51%" },
 ];
 
 // Fundo em vídeo (loop) do escritório compartilhado — pedido do dono pra
