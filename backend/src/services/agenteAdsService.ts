@@ -228,7 +228,12 @@ export interface PensamentoAds {
   janela: string;
 }
 
-export async function listarPensamentos(limite = 20): Promise<PensamentoAds[]> {
+// "limitePorLoja" (não total) — com 4 lojas gerando pensamento a cada
+// rodada (mesmo sem achado, ver executarVerificacao), um limite só no total
+// deixava a loja que roda primeiro no loop (Hangar, LOJAS_AGENTE[0]) cair
+// fora da janela visível conforme as outras 3 acumulavam registros mais
+// recentes no mesmo dia — mesmo com dado gravado certinho no banco.
+export async function listarPensamentos(limitePorLoja = 10): Promise<PensamentoAds[]> {
   const { rows } = await pool.query<{
     id: number;
     pensamento: string;
@@ -237,12 +242,16 @@ export async function listarPensamentos(limite = 20): Promise<PensamentoAds[]> {
     loja_nome: string | null;
     janela: string;
   }>(
-    `SELECT p.id, p.pensamento, p.criado_em, p.loja_id, l.nome AS loja_nome, p.janela
-     FROM agente_ads_pensamentos p
-     LEFT JOIN lojas l ON l.id = p.loja_id
-     ORDER BY p.criado_em DESC
-     LIMIT $1`,
-    [limite]
+    `SELECT id, pensamento, criado_em, loja_id, loja_nome, janela
+     FROM (
+       SELECT p.id, p.pensamento, p.criado_em, p.loja_id, l.nome AS loja_nome, p.janela,
+              ROW_NUMBER() OVER (PARTITION BY p.loja_id ORDER BY p.criado_em DESC) AS posicao
+       FROM agente_ads_pensamentos p
+       LEFT JOIN lojas l ON l.id = p.loja_id
+     ) recentes_por_loja
+     WHERE posicao <= $1
+     ORDER BY criado_em DESC`,
+    [limitePorLoja]
   );
   return rows.map((r) => ({
     id: r.id,

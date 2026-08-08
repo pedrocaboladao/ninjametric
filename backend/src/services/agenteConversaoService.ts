@@ -168,7 +168,10 @@ export interface PensamentoConversao {
   lojaNome: string | null;
 }
 
-export async function listarPensamentosConversao(limite = 20): Promise<PensamentoConversao[]> {
+// "limitePorLoja" (não total) — mesmo cuidado do agenteAdsService.ts:
+// limite só no total deixaria a loja que roda primeiro no dia cair fora da
+// janela visível conforme as outras acumulam registros mais recentes.
+export async function listarPensamentosConversao(limitePorLoja = 10): Promise<PensamentoConversao[]> {
   const { rows } = await pool.query<{
     id: number;
     pensamento: string;
@@ -176,12 +179,16 @@ export async function listarPensamentosConversao(limite = 20): Promise<Pensament
     loja_id: number | null;
     loja_nome: string | null;
   }>(
-    `SELECT p.id, p.pensamento, p.criado_em, p.loja_id, l.nome AS loja_nome
-     FROM agente_conversao_pensamentos p
-     LEFT JOIN lojas l ON l.id = p.loja_id
-     ORDER BY p.criado_em DESC
-     LIMIT $1`,
-    [limite]
+    `SELECT id, pensamento, criado_em, loja_id, loja_nome
+     FROM (
+       SELECT p.id, p.pensamento, p.criado_em, p.loja_id, l.nome AS loja_nome,
+              ROW_NUMBER() OVER (PARTITION BY p.loja_id ORDER BY p.criado_em DESC) AS posicao
+       FROM agente_conversao_pensamentos p
+       LEFT JOIN lojas l ON l.id = p.loja_id
+     ) recentes_por_loja
+     WHERE posicao <= $1
+     ORDER BY criado_em DESC`,
+    [limitePorLoja]
   );
   return rows.map((r) => ({ id: r.id, pensamento: r.pensamento, criadoEm: r.criado_em, lojaId: r.loja_id, lojaNome: r.loja_nome }));
 }
