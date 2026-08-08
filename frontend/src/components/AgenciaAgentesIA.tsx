@@ -434,14 +434,18 @@ function IlustracaoAgente({ alerta }: { alerta: boolean }) {
 
 // Escritório grande e compartilhado (Modo TV) — mesma técnica isométrica da
 // sala pequena, mas com sua própria projeção (grid maior, origem própria)
-// pra caber as 3 mesas: Analista de Ads, Agente de Imagens e Agente de
-// Oportunidades. Os personagens andam da mesa deles até uma área comum no
-// meio da sala e voltam, num loop.
-const GRID_G = 8;
+// pra caber as 5 mesas: Analista de Ads, Agente de Imagens, Agente de
+// Oportunidades, Agente de Catálogo e Agente de Conversão. Os personagens
+// andam da mesa deles até uma área comum no meio da sala e voltam, num
+// loop. Largura (X) maior que profundidade (Y) de propósito — a fileira de
+// mesas cresce pro lado conforme entram agentes novos, sem precisar deixar
+// a sala mais funda (que ficaria vazia demais no fundo).
+const GRID_X_G = 13;
+const GRID_Y_G = 8;
 const TILE_W_G = 26;
 const TILE_H_G = 13;
 const WALL_H_G = 85;
-const ORIGEM_X_G = 210;
+const ORIGEM_X_G = 208;
 const ORIGEM_Y_G = 90;
 
 function isoPointG(x: number, y: number): Ponto {
@@ -450,6 +454,8 @@ function isoPointG(x: number, y: number): Ponto {
 
 const COR_IMAGENS = "#a855c9";
 const COR_OPORTUNIDADES = "#d9a33e";
+const COR_CATALOGO = "#2dd4bf";
+const COR_CONVERSAO = "#f97316";
 
 // Mesa com monitor mostrando um gráfico (Ads) ou um ícone de foto (Imagens)
 // — mesma estrutura da MesaComMonitor da sala pequena, só que deslocável no
@@ -460,7 +466,7 @@ function MesaGrande({
   alerta,
 }: {
   x0: number;
-  tipo: "ads" | "imagens" | "oportunidades" | "vaga";
+  tipo: "ads" | "imagens" | "oportunidades" | "catalogo" | "conversao" | "vaga";
   alerta?: boolean;
 }) {
   const mesa = caixaIso(x0, 0.3, x0 + 1.6, 1.0, 22, 0, "#2b2f3a", isoPointG);
@@ -519,6 +525,44 @@ function MesaGrande({
         </>
       );
     }
+    if (tipo === "catalogo") {
+      // Ícone de etiqueta de preço (pentágono + furo) — o trabalho desse
+      // agente é sobre preço/margem de catálogo, não uma métrica ao longo
+      // do tempo, então não faz sentido um gráfico de linha aqui.
+      const etiqueta = pontosStr([
+        dentroDaFace(A, B, C, D, 0.2, 0.28),
+        dentroDaFace(A, B, C, D, 0.62, 0.28),
+        dentroDaFace(A, B, C, D, 0.86, 0.5),
+        dentroDaFace(A, B, C, D, 0.62, 0.72),
+        dentroDaFace(A, B, C, D, 0.2, 0.72),
+      ]);
+      const furo = dentroDaFace(A, B, C, D, 0.34, 0.5);
+      return (
+        <>
+          <polygon points={pontosStr([A, B, C, D])} fill="#0f2e2a" />
+          <polygon points={etiqueta} fill={COR_CATALOGO} opacity={0.85} />
+          <circle cx={furo.x} cy={furo.y} r={1.6} fill="#0f2e2a" />
+        </>
+      );
+    }
+    if (tipo === "conversao") {
+      // Ícone de funil (largo em cima, estreito embaixo) — visitas entrando
+      // largo, vendas saindo estreito, a metáfora visual da conversão.
+      const funil = pontosStr([
+        dentroDaFace(A, B, C, D, 0.16, 0.22),
+        dentroDaFace(A, B, C, D, 0.84, 0.22),
+        dentroDaFace(A, B, C, D, 0.6, 0.58),
+        dentroDaFace(A, B, C, D, 0.6, 0.78),
+        dentroDaFace(A, B, C, D, 0.4, 0.78),
+        dentroDaFace(A, B, C, D, 0.4, 0.58),
+      ]);
+      return (
+        <>
+          <polygon points={pontosStr([A, B, C, D])} fill="#3a1f08" />
+          <polygon points={funil} fill={COR_CONVERSAO} opacity={0.85} />
+        </>
+      );
+    }
     // Agente de Imagens: um "ícone de foto" simples (retângulo + montanha +
     // sol) em vez de gráfico, já que o trabalho dele não é métrica.
     const centro = dentroDaFace(A, B, C, D, 0.5, 0.5);
@@ -563,8 +607,8 @@ function MesaGrande({
 
 function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
   const costas = isoPointG(0, 0);
-  const cantoDireito = isoPointG(GRID_G, 0);
-  const cantoEsquerdo = isoPointG(0, GRID_G);
+  const cantoDireito = isoPointG(GRID_X_G, 0);
+  const cantoEsquerdo = isoPointG(0, GRID_Y_G);
   const paredeEsquerda = pontosStr([
     cantoEsquerdo,
     costas,
@@ -579,8 +623,8 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
   ]);
 
   const tiles = [];
-  for (let gx = 0; gx < GRID_G; gx++) {
-    for (let gy = 0; gy < GRID_G; gy++) {
+  for (let gx = 0; gx < GRID_X_G; gx++) {
+    for (let gy = 0; gy < GRID_Y_G; gy++) {
       const p0 = isoPointG(gx, gy);
       const p1 = isoPointG(gx + 1, gy);
       const p2 = isoPointG(gx + 1, gy + 1);
@@ -617,18 +661,26 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
   });
   const topoEstante = dentroDaFace(bookshelfFace.A, bookshelfFace.B, bookshelfFace.C, bookshelfFace.D, 0.5, 0);
 
-  const lampadaBase = isoPointG(7.2, 3.8);
-  const lampadaTopo = { x: lampadaBase.x, y: lampadaBase.y - 60 };
+  // Duas luminárias em vez de uma só — a sala ficou larga demais (5 mesas)
+  // pra uma lâmpada central iluminar de ponta a ponta sem parecer esquisito.
+  const luminarias = [isoPointG(3.6, 6.4), isoPointG(9.6, 6.4)].map((base) => ({
+    base,
+    topo: { x: base.x, y: base.y - 60 },
+  }));
 
   const deskAds = isoPointG(1.6, 3.0);
   const deskImagens = isoPointG(4.6, 3.0);
   const deskOportunidades = isoPointG(6.6, 3.0);
+  const deskCatalogo = isoPointG(8.8, 3.0);
+  const deskConversao = isoPointG(11.2, 3.0);
   const comumAds = isoPointG(2.2, 5.8);
   const comumImagens = isoPointG(4.4, 5.8);
   const comumOportunidades = isoPointG(6.6, 5.8);
+  const comumCatalogo = isoPointG(8.8, 5.6);
+  const comumConversao = isoPointG(11.0, 5.9);
 
   return (
-    <svg viewBox="0 0 420 260" className="agente-svg agente-svg-grande" role="img" aria-label="Escritório compartilhado dos agentes">
+    <svg viewBox="0 0 500 260" className="agente-svg agente-svg-grande" role="img" aria-label="Escritório compartilhado dos agentes">
       <polygon points={paredeEsquerda} fill={sombrear(COR_PAREDE, 0.65)} stroke={sombrear(COR_PAREDE, 0.4)} strokeWidth="1" />
       <polygon points={paredeDireita} fill={sombrear(COR_PAREDE, 0.9)} stroke={sombrear(COR_PAREDE, 0.4)} strokeWidth="1" />
       {tiles}
@@ -645,21 +697,17 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
       <MesaGrande x0={1.0} tipo="ads" alerta={alertaAds} />
       <MesaGrande x0={3.4} tipo="imagens" />
       <MesaGrande x0={5.8} tipo="oportunidades" />
+      <MesaGrande x0={8.2} tipo="catalogo" />
+      <MesaGrande x0={10.6} tipo="conversao" />
 
-      <g>
-        <ellipse cx={lampadaBase.x} cy={lampadaBase.y} rx={5} ry={2.4} fill={sombrear("#5b4a35", 0.6)} />
-        <line x1={lampadaBase.x} y1={lampadaBase.y} x2={lampadaTopo.x} y2={lampadaTopo.y} stroke="#5b4a35" strokeWidth="2" />
-        <ellipse
-          cx={lampadaTopo.x}
-          cy={lampadaTopo.y - 6}
-          rx={9}
-          ry={5}
-          fill="#f2e2b8"
-          stroke={sombrear("#f2e2b8", 0.7)}
-          strokeWidth="1"
-        />
-        <ellipse cx={lampadaTopo.x} cy={lampadaTopo.y - 3} rx={12} ry={9} fill="#fff4d6" opacity={0.3} className="agente-luz-brilho" />
-      </g>
+      {luminarias.map((l, i) => (
+        <g key={i}>
+          <ellipse cx={l.base.x} cy={l.base.y} rx={5} ry={2.4} fill={sombrear("#5b4a35", 0.6)} />
+          <line x1={l.base.x} y1={l.base.y} x2={l.topo.x} y2={l.topo.y} stroke="#5b4a35" strokeWidth="2" />
+          <ellipse cx={l.topo.x} cy={l.topo.y - 6} rx={9} ry={5} fill="#f2e2b8" stroke={sombrear("#f2e2b8", 0.7)} strokeWidth="1" />
+          <ellipse cx={l.topo.x} cy={l.topo.y - 3} rx={12} ry={9} fill="#fff4d6" opacity={0.3} className="agente-luz-brilho" />
+        </g>
+      ))}
 
       <PersonagemAndante
         id="ads"
@@ -678,7 +726,7 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
         comumPe={comumImagens}
         cor={COR_IMAGENS}
         escala={0.6}
-        atrasoS={-6}
+        atrasoS={-3.6}
       />
       <PersonagemAndante
         id="oportunidades"
@@ -687,7 +735,25 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
         comumPe={comumOportunidades}
         cor={COR_OPORTUNIDADES}
         escala={0.6}
-        atrasoS={-12}
+        atrasoS={-7.2}
+      />
+      <PersonagemAndante
+        id="catalogo"
+        nome="Negociador"
+        deskPe={deskCatalogo}
+        comumPe={comumCatalogo}
+        cor={COR_CATALOGO}
+        escala={0.6}
+        atrasoS={-10.8}
+      />
+      <PersonagemAndante
+        id="conversao"
+        nome="Analista de Funil"
+        deskPe={deskConversao}
+        comumPe={comumConversao}
+        cor={COR_CONVERSAO}
+        escala={0.6}
+        atrasoS={-14.4}
       />
     </svg>
   );
@@ -1529,13 +1595,15 @@ function AgenteImagens() {
 }
 
 // Um item do feed unificado do Modo TV — mistura os "pensamentos"
-// (raciocínio em texto corrido) do Analista de Ads com os achados do Agente
-// de Oportunidades, tudo numa linha do tempo só. O Agente de Imagens não
-// entra aqui: não tem um fluxo de "achados" próprio, é uma ferramenta sob
+// (raciocínio em texto corrido) do Analista de Ads e do Agente de
+// Conversão com os achados do Agente de Oportunidades e do Agente de
+// Catálogo, tudo numa linha do tempo só. O Agente de Imagens não entra
+// aqui: não tem um fluxo de "achados" próprio, é uma ferramenta sob
 // demanda (gerar kit/arte), não um agente que observa sozinho.
 type ItemFeedTV =
-  | { chave: string; tipo: "pensamento"; criadoEm: string; texto: string; janela: string }
-  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string };
+  | { chave: string; tipo: "pensamento"; origem: "ads" | "conversao"; criadoEm: string; texto: string; janela: string | null }
+  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string }
+  | { chave: string; tipo: "catalogo"; criadoEm: string; titulo: string; texto: string; corPositiva: boolean };
 
 // Modo TV do escritório compartilhado — busca o feed dos agentes por conta
 // própria (não depende de qual aba está ativa), atualiza sozinho a cada 1
@@ -1545,16 +1613,32 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
   const carregar = useCallback(async () => {
     try {
-      const [pensamentos, oportunidades] = await Promise.all([fetchPensamentosAds(), fetchOportunidades()]);
+      const [pensamentosAds, pensamentosConversao, oportunidades, catalogo] = await Promise.all([
+        fetchPensamentosAds(),
+        fetchPensamentosConversao(),
+        fetchOportunidades(),
+        fetchCatalogo(),
+      ]);
 
       const itens: ItemFeedTV[] = [
-        ...pensamentos.map(
+        ...pensamentosAds.map(
           (p): ItemFeedTV => ({
-            chave: `pensamento-${p.id}`,
+            chave: `pensamento-ads-${p.id}`,
             tipo: "pensamento",
+            origem: "ads",
             criadoEm: p.criadoEm,
             texto: p.pensamento,
             janela: p.janela,
+          }),
+        ),
+        ...pensamentosConversao.map(
+          (p): ItemFeedTV => ({
+            chave: `pensamento-conversao-${p.id}`,
+            tipo: "pensamento",
+            origem: "conversao",
+            criadoEm: p.criadoEm,
+            texto: p.pensamento,
+            janela: null,
           }),
         ),
         ...oportunidades.map(
@@ -1565,6 +1649,21 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             sku: op.sku,
             titulo: op.titulo,
             contexto: op.contexto,
+          }),
+        ),
+        ...catalogo.map(
+          (c): ItemFeedTV => ({
+            chave: `catalogo-${c.lojaId}-${c.itemId}`,
+            tipo: "catalogo",
+            criadoEm: c.atualizadoEm,
+            titulo: c.titulo,
+            texto:
+              c.margemNoPriceToWin === null
+                ? `${c.lojaNome} · sem custo cadastrado pra saber se vale baixar até ${formatCurrency(c.priceToWin ?? c.precoAtual)}.`
+                : c.margemNoPriceToWin > 0
+                  ? `${c.lojaNome} · vale baixar pra ${formatCurrency(c.priceToWin ?? c.precoAtual)} — ainda sobra ${formatCurrency(c.margemNoPriceToWin)} de margem.`
+                  : `${c.lojaNome} · não vale a briga por esse — margem ficaria ${formatCurrency(c.margemNoPriceToWin)}.`,
+            corPositiva: c.margemNoPriceToWin !== null && c.margemNoPriceToWin > 0,
           }),
         ),
       ].sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
@@ -1617,15 +1716,33 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
 function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
   if (item.tipo === "pensamento") {
+    const cor = item.origem === "ads" ? COR_ADS : COR_CONVERSAO;
+    const rotulo =
+      item.origem === "ads" ? `Ads · ${item.janela === "hoje" ? "hoje" : "7 dias"}` : "Conversão";
     return (
-      <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_ADS }}>
+      <div className="agente-card agente-tv-card" style={{ borderLeftColor: cor }}>
         <div className="agente-card-topo">
-          <span className="ads-insight-tag" style={{ color: COR_ADS }}>
-            Ads · {item.janela === "hoje" ? "hoje" : "7 dias"}
+          <span className="ads-insight-tag" style={{ color: cor }}>
+            {rotulo}
           </span>
           <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
         </div>
         <p className="agente-tv-pensamento">{item.texto}</p>
+      </div>
+    );
+  }
+  if (item.tipo === "catalogo") {
+    const cor = item.corPositiva ? "var(--good-text)" : COR_CATALOGO;
+    return (
+      <div className="agente-card agente-tv-card" style={{ borderLeftColor: cor }}>
+        <div className="agente-card-topo">
+          <span className="ads-insight-tag" style={{ color: cor }}>
+            Catálogo
+          </span>
+          <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
+        </div>
+        <div className="financeiro-td-titulo">{item.titulo}</div>
+        <p className="ads-insight-contexto">{item.texto}</p>
       </div>
     );
   }

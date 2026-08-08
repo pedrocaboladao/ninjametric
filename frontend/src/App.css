@@ -4154,7 +4154,7 @@
 }
 
 .agente-tv-feed-painel {
-  width: 360px;
+  width: 320px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -4179,8 +4179,8 @@
 .agente-tv-overlay .agente-svg-grande {
   width: 100%;
   height: auto;
-  max-width: 1400px;
-  aspect-ratio: 420 / 260;
+  max-width: 1800px;
+  aspect-ratio: 500 / 260;
 }
 
 .agente-topo-hub {
