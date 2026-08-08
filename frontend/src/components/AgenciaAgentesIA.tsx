@@ -13,7 +13,7 @@ import {
   favoritarReferenciaPerfil,
   fetchOportunidades,
   verificarOportunidadesAgora,
-  fetchCatalogo,
+  fetchPensamentosCatalogo,
   fetchPensamentosConversao,
   type SugestaoOriginalKit,
 } from "../api/agentes";
@@ -22,10 +22,10 @@ import type {
   MensagemChat,
   PerfilImagens,
   Oportunidade,
-  ItemCatalogo,
+  PensamentoCatalogo,
   PensamentoConversao,
 } from "../types/agentes";
-import { formatDataHora, formatCurrency } from "../utils/format";
+import { formatDataHora } from "../utils/format";
 
 // Robô parado num ambiente (só chão + paredes, sem móveis) com um balão de
 // fala animado (efeito "digitando...") ao lado. Desenhado à mão em SVG, no
@@ -1595,15 +1595,22 @@ function AgenteImagens() {
 }
 
 // Um item do feed unificado do Modo TV — mistura os "pensamentos"
-// (raciocínio em texto corrido) do Analista de Ads e do Agente de
-// Conversão com os achados do Agente de Oportunidades e do Agente de
-// Catálogo, tudo numa linha do tempo só. O Agente de Imagens não entra
-// aqui: não tem um fluxo de "achados" próprio, é uma ferramenta sob
-// demanda (gerar kit/arte), não um agente que observa sozinho.
+// (raciocínio em texto corrido) do Analista de Ads, do Agente de Conversão
+// e do Agente de Catálogo com os achados do Agente de Oportunidades, tudo
+// numa linha do tempo só. Todos em texto corrido, sem card colorido por
+// item. O Agente de Imagens não entra aqui: não tem um fluxo de "achados"
+// próprio, é uma ferramenta sob demanda (gerar kit/arte), não um agente que
+// observa sozinho.
 type ItemFeedTV =
-  | { chave: string; tipo: "pensamento"; origem: "ads" | "conversao"; criadoEm: string; texto: string; janela: string | null }
-  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string }
-  | { chave: string; tipo: "catalogo"; criadoEm: string; titulo: string; texto: string; corPositiva: boolean };
+  | {
+      chave: string;
+      tipo: "pensamento";
+      origem: "ads" | "conversao" | "catalogo";
+      criadoEm: string;
+      texto: string;
+      janela: string | null;
+    }
+  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string };
 
 // Modo TV do escritório compartilhado — busca o feed dos agentes por conta
 // própria (não depende de qual aba está ativa), atualiza sozinho a cada 1
@@ -1613,11 +1620,11 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
   const carregar = useCallback(async () => {
     try {
-      const [pensamentosAds, pensamentosConversao, oportunidades, catalogo] = await Promise.all([
+      const [pensamentosAds, pensamentosConversao, pensamentosCatalogo, oportunidades] = await Promise.all([
         fetchPensamentosAds(),
         fetchPensamentosConversao(),
+        fetchPensamentosCatalogo(),
         fetchOportunidades(),
-        fetchCatalogo(),
       ]);
 
       const itens: ItemFeedTV[] = [
@@ -1641,6 +1648,16 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             janela: null,
           }),
         ),
+        ...pensamentosCatalogo.map(
+          (p): ItemFeedTV => ({
+            chave: `pensamento-catalogo-${p.id}`,
+            tipo: "pensamento",
+            origem: "catalogo",
+            criadoEm: p.criadoEm,
+            texto: p.pensamento,
+            janela: null,
+          }),
+        ),
         ...oportunidades.map(
           (op): ItemFeedTV => ({
             chave: `oportunidade-${op.id}`,
@@ -1649,21 +1666,6 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             sku: op.sku,
             titulo: op.titulo,
             contexto: op.contexto,
-          }),
-        ),
-        ...catalogo.map(
-          (c): ItemFeedTV => ({
-            chave: `catalogo-${c.lojaId}-${c.itemId}`,
-            tipo: "catalogo",
-            criadoEm: c.atualizadoEm,
-            titulo: c.titulo,
-            texto:
-              c.margemNoPriceToWin === null
-                ? `${c.lojaNome} · sem custo cadastrado pra saber se vale baixar até ${formatCurrency(c.priceToWin ?? c.precoAtual)}.`
-                : c.margemNoPriceToWin > 0
-                  ? `${c.lojaNome} · vale baixar pra ${formatCurrency(c.priceToWin ?? c.precoAtual)} — ainda sobra ${formatCurrency(c.margemNoPriceToWin)} de margem.`
-                  : `${c.lojaNome} · não vale a briga por esse — margem ficaria ${formatCurrency(c.margemNoPriceToWin)}.`,
-            corPositiva: c.margemNoPriceToWin !== null && c.margemNoPriceToWin > 0,
           }),
         ),
       ].sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
@@ -1714,11 +1716,22 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
   );
 }
 
+const COR_POR_ORIGEM: Record<"ads" | "conversao" | "catalogo", string> = {
+  ads: COR_ADS,
+  conversao: COR_CONVERSAO,
+  catalogo: COR_CATALOGO,
+};
+const ROTULO_POR_ORIGEM: Record<"ads" | "conversao" | "catalogo", string> = {
+  ads: "Ads",
+  conversao: "Conversão",
+  catalogo: "Catálogo",
+};
+
 function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
   if (item.tipo === "pensamento") {
-    const cor = item.origem === "ads" ? COR_ADS : COR_CONVERSAO;
+    const cor = COR_POR_ORIGEM[item.origem];
     const rotulo =
-      item.origem === "ads" ? `Ads · ${item.janela === "hoje" ? "hoje" : "7 dias"}` : "Conversão";
+      item.origem === "ads" ? `Ads · ${item.janela === "hoje" ? "hoje" : "7 dias"}` : ROTULO_POR_ORIGEM[item.origem];
     return (
       <div className="agente-card agente-tv-card" style={{ borderLeftColor: cor }}>
         <div className="agente-card-topo">
@@ -1728,21 +1741,6 @@ function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
           <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
         </div>
         <p className="agente-tv-pensamento">{item.texto}</p>
-      </div>
-    );
-  }
-  if (item.tipo === "catalogo") {
-    const cor = item.corPositiva ? "var(--good-text)" : COR_CATALOGO;
-    return (
-      <div className="agente-card agente-tv-card" style={{ borderLeftColor: cor }}>
-        <div className="agente-card-topo">
-          <span className="ads-insight-tag" style={{ color: cor }}>
-            Catálogo
-          </span>
-          <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
-        </div>
-        <div className="financeiro-td-titulo">{item.titulo}</div>
-        <p className="ads-insight-contexto">{item.texto}</p>
       </div>
     );
   }
@@ -1907,24 +1905,19 @@ function AgenteConversao() {
   );
 }
 
-const STATUS_CATALOGO: Record<string, { tag: string; cor: string }> = {
-  competing: { tag: "Perdendo", cor: "var(--critical-text)" },
-  sharing_first_place: { tag: "Empatado em 1º", cor: "#fbbf24" },
-  listed: { tag: "Fora da disputa", cor: "var(--text-muted)" },
-};
-
-// Sem IA de propósito — é comparação matemática direta (preço pra ganhar x
-// margem que sobra), o número já diz se vale a briga ou não.
+// Texto corrido, mesmo formato do Analista de Ads e do Agente de Conversão
+// — a IA lê o snapshot de catálogo (price_to_win, margem) e escreve o
+// resumo por loja, sem card colorido por anúncio.
 function AgenteCatalogo() {
-  const [itens, setItens] = useState<ItemCatalogo[] | null>(null);
+  const [pensamentos, setPensamentos] = useState<PensamentoCatalogo[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
 
   const carregar = useCallback(async () => {
     try {
-      setItens(await fetchCatalogo());
+      setPensamentos(await fetchPensamentosCatalogo());
     } catch (err) {
-      setErro(err instanceof Error ? err.message : "Erro ao carregar o catálogo.");
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o feed.");
     }
   }, []);
 
@@ -1933,9 +1926,10 @@ function AgenteCatalogo() {
   }, [carregar]);
 
   const lojasDisponiveis = new Map<number, string>();
-  for (const i of itens ?? []) lojasDisponiveis.set(i.lojaId, i.lojaNome);
+  for (const p of pensamentos ?? []) if (p.lojaId !== null && p.lojaNome !== null) lojasDisponiveis.set(p.lojaId, p.lojaNome);
 
-  const itensDaLoja = lojaFiltro === "todas" ? itens : (itens?.filter((i) => i.lojaId === lojaFiltro) ?? null);
+  const pensamentosDaLoja =
+    lojaFiltro === "todas" ? pensamentos : (pensamentos?.filter((p) => p.lojaId === lojaFiltro) ?? null);
 
   return (
     <>
@@ -1943,8 +1937,8 @@ function AgenteCatalogo() {
         <div>
           <h1>Agente de Catálogo</h1>
           <p className="painel-sub">
-            Anúncios de catálogo (concorrência pelo "Comprar") que você não está ganhando agora — mostra o preço pra
-            ganhar (price_to_win, direto da API do ML) e se ainda sobra margem real nesse preço.
+            Anúncios de catálogo (concorrência pelo "Comprar") que você não está ganhando agora — resume quais vale a
+            pena baixar o preço pra ganhar (ainda sobra margem real) e quais não vale a briga.
           </p>
         </div>
         <div className="financeiro-filtros">
@@ -1966,47 +1960,15 @@ function AgenteCatalogo() {
       {erro && <div className="state-message state-error">{erro}</div>}
 
       <div className="agente-feed">
-        {itensDaLoja !== null && itensDaLoja.length === 0 && (
-          <div className="state-message">Nenhum anúncio perdendo a disputa de catálogo agora.</div>
+        <div className="agente-feed-topo">
+          <span className="painel-eyebrow">O que ele está pensando</span>
+        </div>
+
+        {pensamentosDaLoja !== null && pensamentosDaLoja.length === 0 && (
+          <div className="state-message">Nenhuma verificação registrada ainda.</div>
         )}
-        {itensDaLoja?.map((i) => {
-          const info = STATUS_CATALOGO[i.status] ?? { tag: i.status, cor: "var(--text-muted)" };
-          const semCusto = i.custoUnitario === null;
-          const valeABriga = i.margemNoPriceToWin !== null && i.margemNoPriceToWin > 0;
-          return (
-            <a
-              key={`${i.lojaId}-${i.itemId}`}
-              className="agente-card"
-              style={{ borderLeftColor: info.cor }}
-              href={i.permalink ?? undefined}
-              target="_blank"
-              rel="noreferrer"
-            >
-              <div className="agente-card-topo">
-                <div className="agente-card-tags">
-                  <span className="ads-insight-tag" style={{ color: info.cor }}>
-                    {info.tag}
-                  </span>
-                </div>
-                <span className="financeiro-td-mudo">{i.lojaNome}</span>
-              </div>
-              <div className="financeiro-td-titulo">{i.titulo}</div>
-              <p className="ads-insight-contexto">
-                Preço atual {formatCurrency(i.precoAtual)}
-                {i.priceToWin !== null && <> → preço pra ganhar {formatCurrency(i.priceToWin)}</>}
-              </p>
-              {semCusto ? (
-                <div className="ads-insight-acao">Sem custo cadastrado pra esse SKU — não dá pra saber se vale a pena.</div>
-              ) : (
-                <div className="ads-insight-acao" style={{ color: valeABriga ? "var(--good-text)" : "var(--critical-text)" }}>
-                  {valeABriga
-                    ? `Vale baixar — ainda sobra ${formatCurrency(i.margemNoPriceToWin as number)} de margem.`
-                    : `Não vale a briga — margem no price_to_win ficaria ${formatCurrency(i.margemNoPriceToWin ?? 0)}.`}
-                </div>
-              )}
-            </a>
-          );
-        })}
+
+        {pensamentosDaLoja?.map((p) => <PensamentoCard key={p.id} pensamento={p} />)}
       </div>
     </>
   );

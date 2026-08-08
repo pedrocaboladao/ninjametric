@@ -8,6 +8,8 @@ import { normalizarSku } from "./financeiroService";
 // Agente de Oportunidades (ver LOJAS_AGENTE em agenteAdsService.ts).
 const LOJAS_AGENTE = [1, 2, 3, 4];
 
+const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
+
 async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const resultados: R[] = new Array(itens.length);
   let indice = 0;
@@ -35,7 +37,21 @@ function calcularMargem(
   return preco - custoUnitario - taxaMl - imposto;
 }
 
-async function capturarCatalogoDaLoja(loja: Loja, custoPorSku: Map<string, number>): Promise<void> {
+interface ItemCatalogoInterno {
+  itemId: string;
+  titulo: string;
+  thumbnail: string | null;
+  permalink: string | null;
+  status: string;
+  precoAtual: number;
+  priceToWin: number | null;
+  sku: string | null;
+  custoUnitario: number | null;
+  margemAtual: number | null;
+  margemNoPriceToWin: number | null;
+}
+
+async function coletarCatalogoDaLoja(loja: Loja, custoPorSku: Map<string, number>): Promise<ItemCatalogoInterno[]> {
   const itemIds = await listarItensAtivos(loja.id, loja.ml_user_id as number);
   const itens = await getItemsBasicInfo(loja.id, itemIds);
   const itensCatalogo = Array.from(itens.values()).filter((i) => i.catalog_listing === true);
@@ -71,9 +87,11 @@ async function capturarCatalogoDaLoja(loja: Loja, custoPorSku: Map<string, numbe
     };
   });
 
-  const validas = linhas.filter((l): l is NonNullable<typeof l> => l !== null);
+  return linhas.filter((l): l is NonNullable<typeof l> => l !== null);
+}
 
-  for (const l of validas) {
+async function gravarSnapshot(lojaId: number, itens: ItemCatalogoInterno[]): Promise<void> {
+  for (const l of itens) {
     await pool.query(
       `INSERT INTO agente_catalogo_snapshot
          (loja_id, item_id, titulo, thumbnail, permalink, status, preco_atual, price_to_win, sku,
@@ -85,7 +103,7 @@ async function capturarCatalogoDaLoja(loja: Loja, custoPorSku: Map<string, numbe
          sku = EXCLUDED.sku, custo_unitario = EXCLUDED.custo_unitario, margem_atual = EXCLUDED.margem_atual,
          margem_no_price_to_win = EXCLUDED.margem_no_price_to_win, atualizado_em = now()`,
       [
-        loja.id,
+        lojaId,
         l.itemId,
         l.titulo,
         l.thumbnail,
@@ -102,9 +120,54 @@ async function capturarCatalogoDaLoja(loja: Loja, custoPorSku: Map<string, numbe
   }
 
   await pool.query("DELETE FROM agente_catalogo_snapshot WHERE loja_id = $1 AND item_id != ALL($2::text[])", [
-    loja.id,
-    validas.map((l) => l.itemId),
+    lojaId,
+    itens.map((l) => l.itemId),
   ]);
+}
+
+// Monta o resumo em texto corrido por código puro (sem IA) — os números já
+// dizem tudo (vale baixar ou não), não tem julgamento nenhum a fazer, só
+// formatar frase. Mesmo formato visual dos outros agentes (texto corrido,
+// sem card colorido por item), sem gastar chamada de IA pra isso.
+function montarTextoCatalogo(loja: Loja, itens: ItemCatalogoInterno[]): string {
+  if (itens.length === 0) {
+    return `Nenhum anúncio de catálogo perdendo a disputa do "Comprar" agora em ${loja.nome}.`;
+  }
+
+  const valeBaixar = itens
+    .filter((l) => l.margemNoPriceToWin !== null && l.margemNoPriceToWin > 0)
+    .sort((a, b) => (b.margemNoPriceToWin as number) - (a.margemNoPriceToWin as number));
+  const naoVale = itens
+    .filter((l) => l.margemNoPriceToWin !== null && l.margemNoPriceToWin <= 0)
+    .sort((a, b) => (a.margemNoPriceToWin as number) - (b.margemNoPriceToWin as number));
+  const semCusto = itens.filter((l) => l.margemNoPriceToWin === null);
+
+  const partes: string[] = [];
+  partes.push(
+    `${loja.nome} tem ${itens.length} anúncio${itens.length !== 1 ? "s" : ""} de catálogo perdendo a disputa do "Comprar" agora.`
+  );
+
+  if (valeBaixar.length > 0) {
+    const frases = valeBaixar.map(
+      (l) =>
+        `"${l.titulo}" de ${formatCurrency(l.precoAtual)} para ${formatCurrency(l.priceToWin as number)} (sobra ${formatCurrency(l.margemNoPriceToWin as number)} de margem)`
+    );
+    partes.push(`Vale baixar o preço em: ${frases.join("; ")}.`);
+  }
+
+  if (naoVale.length > 0) {
+    const frases = naoVale.map(
+      (l) => `"${l.titulo}" (margem no price_to_win ficaria ${formatCurrency(l.margemNoPriceToWin as number)})`
+    );
+    partes.push(`Não vale a briga em: ${frases.join("; ")}.`);
+  }
+
+  if (semCusto.length > 0) {
+    const titulos = semCusto.map((l) => `"${l.titulo}"`).join(", ");
+    partes.push(`Sem custo cadastrado pra saber se compensa: ${titulos}.`);
+  }
+
+  return partes.join(" ");
 }
 
 export async function capturarCatalogoDeTodasLojas(): Promise<void> {
@@ -114,9 +177,20 @@ export async function capturarCatalogoDeTodasLojas(): Promise<void> {
 
   for (const loja of lojas) {
     try {
-      await capturarCatalogoDaLoja(loja, custoPorSku);
+      const itens = await coletarCatalogoDaLoja(loja, custoPorSku);
+      await gravarSnapshot(loja.id, itens);
+      await pool.query("INSERT INTO agente_catalogo_pensamentos (pensamento, loja_id) VALUES ($1, $2)", [
+        montarTextoCatalogo(loja, itens),
+        loja.id,
+      ]);
     } catch (err) {
       console.error(`Agente de Catálogo: falha ao capturar a loja ${loja.id}:`, err);
+      await pool
+        .query("INSERT INTO agente_catalogo_pensamentos (pensamento, loja_id) VALUES ($1, $2)", [
+          "Não consegui checar essa loja nessa rodada (falha ao buscar os dados ou ao analisar) — tento de novo na próxima checagem.",
+          loja.id,
+        ])
+        .catch((erroInsert) => console.error(`Agente de Catálogo (loja ${loja.id}): falha ao registrar o aviso de erro:`, erroInsert));
     }
   }
 }
@@ -134,76 +208,35 @@ export function iniciarSnapshotCatalogo(): void {
   }, INTERVALO_MS);
 }
 
-export interface ItemCatalogo {
-  lojaId: number;
-  lojaNome: string;
-  itemId: string;
-  titulo: string;
-  thumbnail: string | null;
-  permalink: string | null;
-  status: string;
-  precoAtual: number;
-  priceToWin: number | null;
-  sku: string | null;
-  custoUnitario: number | null;
-  margemAtual: number | null;
-  margemNoPriceToWin: number | null;
-  atualizadoEm: string;
+export interface PensamentoCatalogo {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+  lojaId: number | null;
+  lojaNome: string | null;
 }
 
-export async function listarCatalogo(lojaId?: number, lojasPermitidas?: number[]): Promise<ItemCatalogo[]> {
-  const condicoes: string[] = [];
-  const params: (number | number[])[] = [];
-
-  if (lojaId !== undefined) {
-    params.push(lojaId);
-    condicoes.push(`c.loja_id = $${params.length}`);
-  } else if (lojasPermitidas !== undefined) {
-    params.push(lojasPermitidas);
-    condicoes.push(`c.loja_id = ANY($${params.length}::int[])`);
-  }
-
+// "limitePorLoja" (não total) — mesmo cuidado do agenteAdsService.ts: limite
+// só no total deixaria a loja que roda primeiro no dia cair fora da janela
+// visível conforme as outras acumulam registros mais recentes.
+export async function listarPensamentosCatalogo(limitePorLoja = 10): Promise<PensamentoCatalogo[]> {
   const { rows } = await pool.query<{
-    loja_id: number;
-    loja_nome: string;
-    item_id: string;
-    titulo: string;
-    thumbnail: string | null;
-    permalink: string | null;
-    status: string;
-    preco_atual: string;
-    price_to_win: string | null;
-    sku: string | null;
-    custo_unitario: string | null;
-    margem_atual: string | null;
-    margem_no_price_to_win: string | null;
-    atualizado_em: string;
+    id: number;
+    pensamento: string;
+    criado_em: string;
+    loja_id: number | null;
+    loja_nome: string | null;
   }>(
-    `SELECT c.loja_id, l.nome AS loja_nome, c.item_id, c.titulo, c.thumbnail, c.permalink, c.status,
-            c.preco_atual, c.price_to_win, c.sku, c.custo_unitario, c.margem_atual, c.margem_no_price_to_win,
-            c.atualizado_em
-     FROM agente_catalogo_snapshot c
-     JOIN lojas l ON l.id = c.loja_id
-     ${condicoes.length > 0 ? `WHERE ${condicoes.join(" AND ")}` : ""}
-     ORDER BY c.margem_no_price_to_win DESC NULLS LAST
-     LIMIT 300`,
-    params
+    `SELECT id, pensamento, criado_em, loja_id, loja_nome
+     FROM (
+       SELECT p.id, p.pensamento, p.criado_em, p.loja_id, l.nome AS loja_nome,
+              ROW_NUMBER() OVER (PARTITION BY p.loja_id ORDER BY p.criado_em DESC) AS posicao
+       FROM agente_catalogo_pensamentos p
+       LEFT JOIN lojas l ON l.id = p.loja_id
+     ) recentes_por_loja
+     WHERE posicao <= $1
+     ORDER BY criado_em DESC`,
+    [limitePorLoja]
   );
-
-  return rows.map((r) => ({
-    lojaId: r.loja_id,
-    lojaNome: r.loja_nome,
-    itemId: r.item_id,
-    titulo: r.titulo,
-    thumbnail: r.thumbnail,
-    permalink: r.permalink,
-    status: r.status,
-    precoAtual: Number(r.preco_atual),
-    priceToWin: r.price_to_win !== null ? Number(r.price_to_win) : null,
-    sku: r.sku,
-    custoUnitario: r.custo_unitario !== null ? Number(r.custo_unitario) : null,
-    margemAtual: r.margem_atual !== null ? Number(r.margem_atual) : null,
-    margemNoPriceToWin: r.margem_no_price_to_win !== null ? Number(r.margem_no_price_to_win) : null,
-    atualizadoEm: r.atualizado_em,
-  }));
+  return rows.map((r) => ({ id: r.id, pensamento: r.pensamento, criadoEm: r.criado_em, lojaId: r.loja_id, lojaNome: r.loja_nome }));
 }

@@ -482,8 +482,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_agente_oportunidades_sku ON agente_oportun
 -- lojas pessoais que NÃO estão ganhando agora — guarda só os que valem
 -- atenção (status != 'winning'), com o preço pra ganhar (price_to_win, API
 -- do ML) e a margem real (custo cadastrado + taxa ML real pro preço
--- hipotético + imposto da loja) no preço atual vs no price_to_win. Sem IA:
--- é comparação matemática direta, não tem julgamento a fazer.
+-- hipotético + imposto da loja) no preço atual vs no price_to_win. Fonte de
+-- dados pro resumo em texto corrido montado por código (sem IA, ver
+-- agente_catalogo_pensamentos) — não é mostrado direto pro usuário.
 CREATE TABLE IF NOT EXISTS agente_catalogo_snapshot (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id),
@@ -515,3 +516,16 @@ CREATE TABLE IF NOT EXISTS agente_conversao_pensamentos (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agente_conversao_pensamentos_loja ON agente_conversao_pensamentos (loja_id);
+
+-- Resumo em texto corrido do Agente de Catálogo (mesmo padrão visual dos
+-- outros agentes) — montado por código puro a partir do snapshot
+-- (agente_catalogo_snapshot), sem IA (número já diz se vale baixar ou não,
+-- não tem julgamento a fazer). O dono pediu formato único em texto corrido
+-- pra todos os agentes, sem card colorido por item.
+CREATE TABLE IF NOT EXISTS agente_catalogo_pensamentos (
+  id SERIAL PRIMARY KEY,
+  pensamento TEXT NOT NULL,
+  loja_id INTEGER REFERENCES lojas(id),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agente_catalogo_pensamentos_loja ON agente_catalogo_pensamentos (loja_id);

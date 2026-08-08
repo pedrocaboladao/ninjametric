@@ -1,4 +1,4 @@
-import type { PensamentoAds, MensagemChat, PerfilImagens, Oportunidade, ItemCatalogo, PensamentoConversao } from "../types/agentes";
+import type { PensamentoAds, MensagemChat, PerfilImagens, Oportunidade, PensamentoCatalogo, PensamentoConversao } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -27,11 +27,10 @@ export async function fetchPensamentosConversao(): Promise<PensamentoConversao[]
   return data.pensamentos;
 }
 
-export async function fetchCatalogo(lojaId?: number): Promise<ItemCatalogo[]> {
-  const params = lojaId !== undefined ? `?lojaId=${lojaId}` : "";
-  const res = await fetch(`${API_BASE}/api/agentes/catalogo${params}`, { credentials: "include" });
-  const data = await tratarResposta<{ itens: ItemCatalogo[] }>(res);
-  return data.itens;
+export async function fetchPensamentosCatalogo(): Promise<PensamentoCatalogo[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/catalogo/pensamentos`, { credentials: "include" });
+  const data = await tratarResposta<{ pensamentos: PensamentoCatalogo[] }>(res);
+  return data.pensamentos;
 }
 
 export async function fetchPensamentosAds(): Promise<PensamentoAds[]> {
