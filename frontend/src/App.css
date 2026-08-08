@@ -4230,21 +4230,32 @@
   flex-shrink: 0;
 }
 
-.agente-tv-parede-tela {
+.agente-tv-parede-pilha {
   position: absolute;
-  transform: translate(-50%, -50%);
+  top: 0;
+  right: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  min-width: 74px;
-  padding: 6px 10px;
-  background: rgba(6, 8, 14, 0.6);
-  border-radius: 6px;
+}
+
+.agente-tv-parede-tela {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 128px;
+  padding: 10px 16px;
+  background: rgba(6, 8, 14, 0.68);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.agente-tv-parede-pilha .agente-tv-parede-tela:last-child {
+  border-bottom-left-radius: 8px;
+  border-bottom: none;
 }
 
 .agente-tv-parede-rotulo {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -4253,7 +4264,7 @@
 }
 
 .agente-tv-parede-valor {
-  font-size: 15px;
+  font-size: 23px;
   font-weight: 800;
   color: #fff;
   white-space: nowrap;
