@@ -24,6 +24,11 @@ export async function fetchPlanoDiario(): Promise<PlanoDiario[]> {
   return data.pensamentos;
 }
 
+export async function verificarPlanoDiarioAgora(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/plano-diario/verificar`, { method: "POST", credentials: "include" });
+  await tratarResposta(res);
+}
+
 export async function marcarItemPlano(id: number, concluido: boolean): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agentes/plano-diario/itens/${id}`, {
     method: "POST",

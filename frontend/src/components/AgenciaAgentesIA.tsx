@@ -16,6 +16,7 @@ import {
   fetchPensamentosCatalogo,
   fetchPensamentosConversao,
   fetchPlanoDiario,
+  verificarPlanoDiarioAgora,
   marcarItemPlano,
   type SugestaoOriginalKit,
 } from "../api/agentes";
@@ -2035,6 +2036,7 @@ function AgenteCatalogo() {
 function PlanoDoDia() {
   const [planos, setPlanos] = useState<PlanoDiario[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [verificando, setVerificando] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -2047,6 +2049,19 @@ function PlanoDoDia() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  async function verificarAgora() {
+    setVerificando(true);
+    setErro(null);
+    try {
+      await verificarPlanoDiarioAgora();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao verificar.");
+    } finally {
+      setVerificando(false);
+    }
+  }
 
   // Atualização otimista — marca na hora, sem esperar o servidor confirmar
   // (senão o clique parece travado). Se der erro, recarrega pra corrigir.
@@ -2077,10 +2092,15 @@ function PlanoDoDia() {
         <div>
           <h1>Plano do Dia</h1>
           <p className="painel-sub">
-            Às 10h, cruza tudo que os outros agentes (Ads, Conversão, Catálogo, Oportunidades) registraram nas
+            Às 8h, cruza tudo que os outros agentes (Ads, Conversão, Catálogo, Oportunidades) registraram nas
             últimas 24h nas suas 4 lojas e monta um plano único, priorizado entre elas. Às 18h, cobra o que ainda
             ficou pendente.
           </p>
+        </div>
+        <div className="financeiro-filtros">
+          <button type="button" className="btn-responder financeiro-btn-hoje" onClick={verificarAgora} disabled={verificando}>
+            {verificando ? "Verificando..." : "Verificar agora"}
+          </button>
         </div>
       </div>
 

@@ -278,7 +278,7 @@ export async function marcarItemPlano(id: number, concluido: boolean): Promise<v
   }
 }
 
-const HORARIO_PLANO = [10]; // horário de Brasília — gera o plano do dia
+const HORARIO_PLANO = [8]; // horário de Brasília — gera o plano do dia
 const HORARIO_COBRANCA = [18]; // horário de Brasília — cobra pendências do dia
 const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
 
@@ -295,4 +295,11 @@ function agendarPorHorario(horarios: number[], acao: () => Promise<void>): void 
 export function iniciarVerificacaoPlanoDiario(): void {
   agendarPorHorario(HORARIO_PLANO, () => rodar("plano do dia", gerarPlanoDiarioIA));
   agendarPorHorario(HORARIO_COBRANCA, () => rodar("cobrança 18h", gerarCobrancaIA));
+}
+
+// Botão "Verificar agora" — dispara o plano do dia na hora, fora do horário
+// fixo (útil pra testar sem esperar as 8h, ou pra atualizar o plano depois
+// de uma mudança grande no meio do dia).
+export async function verificarPlanoDiarioAgora(): Promise<void> {
+  await rodar("plano do dia (manual)", gerarPlanoDiarioIA);
 }

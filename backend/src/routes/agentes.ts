@@ -12,7 +12,7 @@ import { buscarDadosAnuncio, registrarCorrecoes, type CamposSugeridosKit } from 
 import { verificarOportunidades, listarOportunidades } from "../services/agenteOportunidadesService";
 import { listarPensamentosCatalogo } from "../services/agenteCatalogoService";
 import { listarPensamentosConversao } from "../services/agenteConversaoService";
-import { listarPlanoDiario, marcarItemPlano } from "../services/agentePlanoDiarioService";
+import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from "../services/agentePlanoDiarioService";
 
 export const agentesRouter = Router();
 
@@ -27,6 +27,15 @@ agentesRouter.get("/plano-diario", async (_req, res) => {
     res.json({ pensamentos: await listarPlanoDiario() });
   } catch (err) {
     erro(res, err, "Falha ao carregar o plano do dia.");
+  }
+});
+
+agentesRouter.post("/plano-diario/verificar", async (_req, res) => {
+  try {
+    await verificarPlanoDiarioAgora();
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao verificar o plano do dia.");
   }
 });
 
