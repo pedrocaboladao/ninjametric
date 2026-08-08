@@ -163,7 +163,11 @@ function formatarHistoricoReacao(historico: HistoricoReacaoTipo[]): string {
     .join("\n");
 }
 
-async function gerarObservacoesComIA(campanhas: CampanhaComTacos[], diasPeriodo: number): Promise<ObservacaoIA[] | null> {
+async function gerarObservacoesComIA(
+  campanhas: CampanhaComTacos[],
+  diasPeriodo: number,
+  lojaId: number
+): Promise<ObservacaoIA[] | null> {
   const client = obterClienteAnthropic();
   if (!client) return null;
 
@@ -215,7 +219,7 @@ ${historico}`,
     .filter((t) => t.trim().length > 0)
     .join("\n\n");
   if (pensamento) {
-    await pool.query("INSERT INTO agente_ads_pensamentos (pensamento) VALUES ($1)", [pensamento]);
+    await pool.query("INSERT INTO agente_ads_pensamentos (pensamento, loja_id) VALUES ($1, $2)", [pensamento, lojaId]);
   }
 
   const blocoFerramenta = resposta.content.find((b): b is Anthropic.ToolUseBlock => b.type === "tool_use");
@@ -317,7 +321,7 @@ async function executarVerificacao(
     const campanhasDaLoja = await buscarCampanhasComTacos(diasPeriodo, lojaId);
     campanhasComTacos.push(...campanhasDaLoja);
     try {
-      const observacoesIA = await gerarObservacoesComIA(campanhasDaLoja, diasPeriodo);
+      const observacoesIA = await gerarObservacoesComIA(campanhasDaLoja, diasPeriodo, lojaId);
       for (const o of observacoesIA ?? []) {
         obsPorChave.set(`${o.lojaId}-${o.campanhaId}`, { tipo: o.tipo, contexto: o.contexto, acao: o.acao });
       }
@@ -465,14 +469,26 @@ export interface PensamentoAds {
   id: number;
   pensamento: string;
   criadoEm: string;
+  lojaId: number | null;
+  lojaNome: string | null;
 }
 
 export async function listarPensamentos(limite = 20): Promise<PensamentoAds[]> {
-  const { rows } = await pool.query<{ id: number; pensamento: string; criado_em: string }>(
-    "SELECT id, pensamento, criado_em FROM agente_ads_pensamentos ORDER BY criado_em DESC LIMIT $1",
+  const { rows } = await pool.query<{
+    id: number;
+    pensamento: string;
+    criado_em: string;
+    loja_id: number | null;
+    loja_nome: string | null;
+  }>(
+    `SELECT p.id, p.pensamento, p.criado_em, p.loja_id, l.nome AS loja_nome
+     FROM agente_ads_pensamentos p
+     LEFT JOIN lojas l ON l.id = p.loja_id
+     ORDER BY p.criado_em DESC
+     LIMIT $1`,
     [limite]
   );
-  return rows.map((r) => ({ id: r.id, pensamento: r.pensamento, criadoEm: r.criado_em }));
+  return rows.map((r) => ({ id: r.id, pensamento: r.pensamento, criadoEm: r.criado_em, lojaId: r.loja_id, lojaNome: r.loja_nome }));
 }
 
 export interface MensagemChat {

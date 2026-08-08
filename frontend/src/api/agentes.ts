@@ -28,11 +28,6 @@ export async function verificarOportunidadesAgora(): Promise<void> {
   await tratarResposta(res);
 }
 
-export async function verificarAgenteAdsAgora(): Promise<{ novas: number; resolvidasSozinhas: number }> {
-  const res = await fetch(`${API_BASE}/api/agentes/ads/verificar`, { method: "POST", credentials: "include" });
-  return tratarResposta(res);
-}
-
 export async function confirmarObservacaoAds(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/${id}/confirmar`, { method: "POST", credentials: "include" });
   await tratarResposta(res);

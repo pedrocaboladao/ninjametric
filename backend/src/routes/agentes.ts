@@ -1,6 +1,5 @@
 import { Router, Response } from "express";
 import {
-  verificarAgenteAds,
   listarObservacoes,
   confirmarObservacao,
   listarPensamentos,
@@ -41,14 +40,6 @@ agentesRouter.get("/ads/pensamentos", async (_req, res) => {
     res.json({ pensamentos: await listarPensamentos() });
   } catch (err) {
     erro(res, err, "Falha ao carregar pensamentos.");
-  }
-});
-
-agentesRouter.post("/ads/verificar", async (_req, res) => {
-  try {
-    res.json(await verificarAgenteAds());
-  } catch (err) {
-    erro(res, err, "Falha ao verificar.");
   }
 });
 

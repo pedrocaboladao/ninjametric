@@ -364,6 +364,10 @@ CREATE TABLE IF NOT EXISTS agente_ads_pensamentos (
   pensamento TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- loja_id fica NULL nos registros antigos (de antes dessa coluna existir) —
+-- eles só não aparecem quando o filtro por loja está ativo, continuam
+-- normais em "todas as lojas".
+ALTER TABLE agente_ads_pensamentos ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id);
 
 -- Perfis de marca salvos pro Agente de Imagens (Kit de fotos) — não é
 -- aprendizado de IA, é só lembrar configurações que se repetem entre

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   fetchFeedAds,
-  verificarAgenteAdsAgora,
   confirmarObservacaoAds,
   fetchPensamentosAds,
   perguntarAgenteAds,
@@ -832,8 +831,8 @@ function AnalistaAds() {
   const [feed, setFeed] = useState<ObservacaoAds[] | null>(null);
   const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [verificando, setVerificando] = useState(false);
   const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
 
   const carregar = useCallback(async () => {
     try {
@@ -849,19 +848,6 @@ function AnalistaAds() {
     carregar();
   }, [carregar]);
 
-  async function verificarAgora() {
-    setVerificando(true);
-    setErro(null);
-    try {
-      await verificarAgenteAdsAgora();
-      await carregar();
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Falha ao verificar.");
-    } finally {
-      setVerificando(false);
-    }
-  }
-
   async function confirmar(id: number) {
     try {
       await confirmarObservacaoAds(id);
@@ -871,8 +857,18 @@ function AnalistaAds() {
     }
   }
 
-  const pendentes = feed?.filter((o) => o.status === "pendente") ?? [];
-  const resolvidas = feed?.filter((o) => o.status === "resolvida") ?? [];
+  // Lojas do próprio feed/pensamentos já carregados — sem precisar de outra
+  // chamada só pra popular o filtro (o agente só cobre as 4 lojas pessoais).
+  const lojasDisponiveis = new Map<number, string>();
+  for (const o of feed ?? []) lojasDisponiveis.set(o.lojaId, o.lojaNome);
+  for (const p of pensamentos ?? []) if (p.lojaId !== null && p.lojaNome !== null) lojasDisponiveis.set(p.lojaId, p.lojaNome);
+
+  const feedDaLoja = lojaFiltro === "todas" ? feed : feed?.filter((o) => o.lojaId === lojaFiltro) ?? null;
+  const pensamentosDaLoja =
+    lojaFiltro === "todas" ? pensamentos : pensamentos?.filter((p) => p.lojaId === lojaFiltro) ?? null;
+
+  const pendentes = feedDaLoja?.filter((o) => o.status === "pendente") ?? [];
+  const resolvidas = feedDaLoja?.filter((o) => o.status === "resolvida") ?? [];
   const visiveis = mostrarResolvidas ? [...pendentes, ...resolvidas] : pendentes;
 
   return (
@@ -887,14 +883,18 @@ function AnalistaAds() {
           </p>
         </div>
         <div className="financeiro-filtros">
-          <button
-            type="button"
-            className="btn-responder financeiro-btn-hoje"
-            onClick={verificarAgora}
-            disabled={verificando}
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
           >
-            {verificando ? "Verificando..." : "Verificar agora"}
-          </button>
+            <option value="todas">Todas as lojas</option>
+            {[...lojasDisponiveis.entries()].map(([id, nome]) => (
+              <option key={id} value={id}>
+                {nome}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -907,8 +907,8 @@ function AnalistaAds() {
             <span className="financeiro-td-mudo">Carregando...</span>
           ) : (
             <>
-              {pensamentos && pensamentos.length > 0 ? (
-                <p className="agente-status-pensamento">{pensamentos[0].pensamento}</p>
+              {pensamentosDaLoja && pensamentosDaLoja.length > 0 ? (
+                <p className="agente-status-pensamento">{pensamentosDaLoja[0].pensamento}</p>
               ) : (
                 <span className="financeiro-td-mudo">Ainda sem nenhuma verificação registrada.</span>
               )}
@@ -949,12 +949,12 @@ function AnalistaAds() {
         ))}
       </div>
 
-      {pensamentos !== null && pensamentos.length > 0 && (
+      {pensamentosDaLoja !== null && pensamentosDaLoja.length > 0 && (
         <div className="agente-feed agente-pensamentos-secao">
           <div className="agente-feed-topo">
             <span className="painel-eyebrow">O que ele está pensando</span>
           </div>
-          {pensamentos.map((p) => (
+          {pensamentosDaLoja.map((p) => (
             <PensamentoCard key={p.id} pensamento={p} />
           ))}
         </div>

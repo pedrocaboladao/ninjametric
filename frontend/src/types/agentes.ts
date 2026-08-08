@@ -18,6 +18,8 @@ export interface PensamentoAds {
   id: number;
   pensamento: string;
   criadoEm: string;
+  lojaId: number | null;
+  lojaNome: string | null;
 }
 
 export interface MensagemChat {
