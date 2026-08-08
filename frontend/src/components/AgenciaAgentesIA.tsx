@@ -1741,9 +1741,9 @@ const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
 // Posição de cada "tela de parede" sobre o vídeo — mesma lógica dos
 // crachás: estimativa inicial, ajustada ao vivo com print.
 const POSICAO_TELA_PAREDE: { chave: keyof ResumoEscritorio; rotulo: string; left: string; top: string; formatar: (v: number) => string }[] = [
-  { chave: "vendasHoje", rotulo: "Vendas do dia", left: "34%", top: "13%", formatar: (v) => formatCurrency(v) },
-  { chave: "conversaoMediaHoje", rotulo: "Conversão média", left: "51%", top: "13%", formatar: (v) => `${v.toFixed(1)}%` },
-  { chave: "lucroAdsHoje", rotulo: "Lucro do Ads", left: "68%", top: "13%", formatar: (v) => formatCurrency(v) },
+  { chave: "vendasHoje", rotulo: "Vendas do dia", left: "89%", top: "9%", formatar: (v) => formatCurrency(v) },
+  { chave: "conversaoMediaHoje", rotulo: "Conversão média", left: "89%", top: "21%", formatar: (v) => `${v.toFixed(1)}%` },
+  { chave: "lucroAdsHoje", rotulo: "Lucro do Ads", left: "89%", top: "33%", formatar: (v) => formatCurrency(v) },
 ];
 
 // Fundo em vídeo (loop) do escritório compartilhado — pedido do dono pra
