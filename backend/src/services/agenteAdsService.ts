@@ -7,7 +7,7 @@ import { chaveJanelaDoDia } from "./dateUtils";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
-interface CampanhaComTacos extends CampanhaAds {
+export interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
   acosIdeal: number | null;
   lucroReais: number | null;
@@ -137,9 +137,11 @@ const LOJAS_AGENTE = [1, 2, 3, 4];
 
 // Busca as campanhas das 4 lojas pessoais (ver LOJAS_AGENTE) com TACOS/lucro
 // já calculados — reaproveitada pela verificação automática (janela de 7
-// dias e a diária de hoje) e pelo chat. "lojaId" opcional restringe a busca
-// a uma única loja (usado pela verificação, que analisa loja por loja).
-async function buscarCampanhasComTacos(diasPeriodo: number, lojaId?: number): Promise<CampanhaComTacos[]> {
+// dias e a diária de hoje), pelo chat, e pelo resumo do escritório do Modo
+// TV (ver resumoEscritorioService.ts, "lucro do Ads hoje"). "lojaId"
+// opcional restringe a busca a uma única loja (usado pela verificação, que
+// analisa loja por loja).
+export async function buscarCampanhasComTacos(diasPeriodo: number, lojaId?: number): Promise<CampanhaComTacos[]> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
   const dataInicio = dataISO(inicio);

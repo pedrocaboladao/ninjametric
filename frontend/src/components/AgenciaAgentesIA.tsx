@@ -18,6 +18,7 @@ import {
   fetchPlanoDiario,
   verificarPlanoDiarioAgora,
   marcarItemPlano,
+  fetchResumoEscritorio,
   type SugestaoOriginalKit,
 } from "../api/agentes";
 import type {
@@ -28,8 +29,9 @@ import type {
   PensamentoCatalogo,
   PensamentoConversao,
   PlanoDiario,
+  ResumoEscritorio,
 } from "../types/agentes";
-import { formatDataHora } from "../utils/format";
+import { formatDataHora, formatCurrency } from "../utils/format";
 
 // Robô parado num ambiente (só chão + paredes, sem móveis) com um balão de
 // fala animado (efeito "digitando...") ao lado. Desenhado à mão em SVG, no
@@ -1736,6 +1738,14 @@ const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
   { nome: "Analista de Funil", left: "80%", top: "51%" },
 ];
 
+// Posição de cada "tela de parede" sobre o vídeo — mesma lógica dos
+// crachás: estimativa inicial, ajustada ao vivo com print.
+const POSICAO_TELA_PAREDE: { chave: keyof ResumoEscritorio; rotulo: string; left: string; top: string; formatar: (v: number) => string }[] = [
+  { chave: "vendasHoje", rotulo: "Vendas do dia", left: "34%", top: "13%", formatar: (v) => formatCurrency(v) },
+  { chave: "conversaoMediaHoje", rotulo: "Conversão média", left: "51%", top: "13%", formatar: (v) => `${v.toFixed(1)}%` },
+  { chave: "lucroAdsHoje", rotulo: "Lucro do Ads", left: "68%", top: "13%", formatar: (v) => formatCurrency(v) },
+];
+
 // Fundo em vídeo (loop) do escritório compartilhado — pedido do dono pra
 // ficar mais próximo de uma referência gerada por IA, com movimento de
 // verdade (o SVG desenhado por código não fica parado, mas não tem a
@@ -1743,6 +1753,27 @@ const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
 // automaticamente se o vídeo não carregar (reserva, ver EscritorioCompartilhado).
 function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
   const [erroVideo, setErroVideo] = useState(false);
+  const [resumo, setResumo] = useState<ResumoEscritorio | null>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    fetchResumoEscritorio()
+      .then((r) => {
+        if (ativo) setResumo(r);
+      })
+      .catch((err) => console.error("Modo TV: falha ao buscar resumo do escritório", err));
+    const intervalo = setInterval(() => {
+      fetchResumoEscritorio()
+        .then((r) => {
+          if (ativo) setResumo(r);
+        })
+        .catch((err) => console.error("Modo TV: falha ao buscar resumo do escritório", err));
+    }, 60000);
+    return () => {
+      ativo = false;
+      clearInterval(intervalo);
+    };
+  }, []);
 
   if (erroVideo) {
     return <EscritorioCompartilhado alertaAds={alertaAds} />;
@@ -1766,6 +1797,16 @@ function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
             <span className="agente-tv-nome-cracha-dot" />
           </div>
         ))}
+        {resumo &&
+          POSICAO_TELA_PAREDE.map((t) => {
+            const valor = resumo[t.chave];
+            return (
+              <div key={t.chave} className="agente-tv-parede-tela" style={{ left: t.left, top: t.top }}>
+                <span className="agente-tv-parede-rotulo">{t.rotulo}</span>
+                <span className="agente-tv-parede-valor">{valor !== null ? t.formatar(valor) : "—"}</span>
+              </div>
+            );
+          })}
       </div>
     </div>
   );

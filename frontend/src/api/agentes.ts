@@ -6,6 +6,7 @@ import type {
   PensamentoCatalogo,
   PensamentoConversao,
   PlanoDiario,
+  ResumoEscritorio,
 } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -16,6 +17,11 @@ async function tratarResposta<T>(res: Response): Promise<T> {
     throw new Error(data?.error ?? `Erro ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchResumoEscritorio(): Promise<ResumoEscritorio> {
+  const res = await fetch(`${API_BASE}/api/agentes/resumo-escritorio`, { credentials: "include" });
+  return tratarResposta<ResumoEscritorio>(res);
 }
 
 export async function fetchPlanoDiario(): Promise<PlanoDiario[]> {

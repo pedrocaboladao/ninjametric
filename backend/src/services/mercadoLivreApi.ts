@@ -488,6 +488,28 @@ export async function getVisitasItem(lojaId: number, itemId: string, dataInicio:
   }
 }
 
+// Total de visitas da CONTA inteira (todos os anúncios juntos) numa janela
+// de datas — 1 chamada por loja, bem mais barato que somar visita por item
+// (usado pro resumo do escritório, que só precisa do número agregado, não
+// item por item).
+export async function getVisitasContaHoje(
+  lojaId: number,
+  mlUserId: number,
+  dataInicio: string,
+  dataFim: string
+): Promise<number | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{ total_visits: number }>(`${ML_API_BASE}/users/${mlUserId}/items_visits`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { date_from: dataInicio, date_to: dataFim },
+    });
+    return data.total_visits;
+  } catch {
+    return null;
+  }
+}
+
 export interface MlCampanhaAds {
   id: number;
   name: string;

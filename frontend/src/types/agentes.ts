@@ -52,6 +52,12 @@ export interface PlanoDiario {
   itens: ItemPlanoDiario[];
 }
 
+export interface ResumoEscritorio {
+  vendasHoje: number;
+  conversaoMediaHoje: number | null;
+  lucroAdsHoje: number | null;
+}
+
 export interface PerfilImagens {
   id: number;
   nome: string;

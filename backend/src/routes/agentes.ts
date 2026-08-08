@@ -13,6 +13,7 @@ import { verificarOportunidades, listarOportunidades } from "../services/agenteO
 import { listarPensamentosCatalogo } from "../services/agenteCatalogoService";
 import { listarPensamentosConversao } from "../services/agenteConversaoService";
 import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from "../services/agentePlanoDiarioService";
+import { buscarResumoEscritorio } from "../services/resumoEscritorioService";
 
 export const agentesRouter = Router();
 
@@ -21,6 +22,14 @@ function erro(res: Response, err: unknown, fallback: string) {
   const mensagem = err instanceof Error ? err.message : fallback;
   res.status(400).json({ error: mensagem });
 }
+
+agentesRouter.get("/resumo-escritorio", async (_req, res) => {
+  try {
+    res.json(await buscarResumoEscritorio());
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o resumo do escritório.");
+  }
+});
 
 agentesRouter.get("/plano-diario", async (_req, res) => {
   try {
