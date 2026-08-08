@@ -335,6 +335,9 @@ CREATE INDEX IF NOT EXISTS idx_promocoes_itens_campanha ON promocoes_itens (camp
 -- parecer observação contínua (não recalculada do zero a cada carregamento
 -- de tela) e pra dar pra marcar "resolvido". Chave (loja+campanha) garante
 -- no máximo 1 observação PENDENTE por campanha por vez.
+-- NÃO recebe mais registros novos — o Analista de Ads passou a reportar só
+-- em texto corrido (ver agente_ads_pensamentos). Tabela mantida só pelo
+-- histórico já gravado (idempotente, não custa nada deixar).
 CREATE TABLE IF NOT EXISTS agente_ads_observacoes (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id),
@@ -368,6 +371,9 @@ CREATE TABLE IF NOT EXISTS agente_ads_pensamentos (
 -- eles só não aparecem quando o filtro por loja está ativo, continuam
 -- normais em "todas as lojas".
 ALTER TABLE agente_ads_pensamentos ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id);
+-- Mesma distinção 'janela' que existia nas observações ('7dias' ou 'hoje') —
+-- registros antigos (de antes dessa coluna) caem no default '7dias'.
+ALTER TABLE agente_ads_pensamentos ADD COLUMN IF NOT EXISTS janela TEXT NOT NULL DEFAULT '7dias';
 
 -- Perfis de marca salvos pro Agente de Imagens (Kit de fotos) — não é
 -- aprendizado de IA, é só lembrar configurações que se repetem entre

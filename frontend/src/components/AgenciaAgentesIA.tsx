@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
-  fetchFeedAds,
-  confirmarObservacaoAds,
   fetchPensamentosAds,
   perguntarAgenteAds,
   tratarFotoProduto,
@@ -17,16 +15,8 @@ import {
   verificarOportunidadesAgora,
   type SugestaoOriginalKit,
 } from "../api/agentes";
-import type { ObservacaoAds, PensamentoAds, MensagemChat, PerfilImagens, Oportunidade } from "../types/agentes";
+import type { PensamentoAds, MensagemChat, PerfilImagens, Oportunidade } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
-
-const TAG_POR_TIPO: Record<string, { tag: string; cor: string }> = {
-  prejuizo: { tag: "Prejuízo líquido", cor: "var(--critical-text)" },
-  semVenda: { tag: "Sem venda, gastando", cor: "#fbbf24" },
-  margemSobra: { tag: "Margem sobrando", cor: "#38bdf8" },
-  orcamentoParado: { tag: "Orçamento parado", cor: "var(--good-text)" },
-  organico: { tag: "Pode ser orgânico", cor: "#fbbf24" },
-};
 
 // Robô parado num ambiente (só chão + paredes, sem móveis) com um balão de
 // fala animado (efeito "digitando...") ao lado. Desenhado à mão em SVG, no
@@ -694,54 +684,18 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
   );
 }
 
-function ObservacaoCard({
-  observacao: o,
-  onConfirmar,
-}: {
-  observacao: ObservacaoAds;
-  onConfirmar: (id: number) => void;
-}) {
-  const info = TAG_POR_TIPO[o.tipo] ?? { tag: o.tipo, cor: "var(--text-muted)" };
-  const resolvida = o.status === "resolvida";
-  return (
-    <div className={`agente-card ${resolvida ? "agente-card-resolvida" : ""}`} style={{ borderLeftColor: info.cor }}>
-      <div className="agente-card-topo">
-        <div className="agente-card-tags">
-          <span className="ads-insight-tag" style={{ color: info.cor }}>
-            {info.tag}
-          </span>
-          <span className="agente-card-janela">{o.janela === "hoje" ? "Hoje" : "7 dias"}</span>
-        </div>
-        <span className="financeiro-td-mudo">{formatDataHora(o.criadoEm)}</span>
-      </div>
-      <div className="financeiro-td-titulo">{o.campanhaNome}</div>
-      <div className="financeiro-td-mudo">{o.lojaNome}</div>
-      <p className="ads-insight-contexto">{o.contexto}</p>
-      <div className="ads-insight-acao">→ {o.acao}</div>
-      {!resolvida && (
-        <button type="button" className="btn-responder agente-card-confirmar" onClick={() => onConfirmar(o.id)}>
-          Confirmar
-        </button>
-      )}
-      {resolvida && (
-        <span className="financeiro-td-mudo">
-          {o.resolvidoPor === "usuario" ? "Confirmada por você" : "Resolvida sozinha"}
-          {o.resolvidoEm && ` em ${formatDataHora(o.resolvidoEm)}`}
-        </span>
-      )}
-    </div>
-  );
-}
-
-// Raciocínio real da IA (não é texto inventado pra decoração — é o
-// conteúdo dos blocos "thinking" que a própria Claude devolve, ver
-// backend/src/services/agenteAdsService.ts). Um card por rodada de
-// verificação, texto corrido preservando as quebras de linha originais.
+// Raciocínio real da IA (não é texto inventado pra decoração — é a análise
+// que a própria Claude escreve, ver backend/src/services/agenteAdsService.ts).
+// Um card por rodada de verificação, texto corrido preservando as quebras de
+// linha originais — formato único do feed (sem cards por campanha).
 function PensamentoCard({ pensamento }: { pensamento: PensamentoAds }) {
   const [expandido, setExpandido] = useState(false);
   return (
     <div className="agente-pensamento-card">
-      <span className="financeiro-td-mudo">{formatDataHora(pensamento.criadoEm)}</span>
+      <div className="agente-card-topo">
+        <span className="agente-card-janela">{pensamento.janela === "hoje" ? "Hoje" : "7 dias"}</span>
+        <span className="financeiro-td-mudo">{formatDataHora(pensamento.criadoEm)}</span>
+      </div>
       <p className={`agente-pensamento-texto ${expandido ? "agente-pensamento-expandido" : ""}`}>
         {pensamento.pensamento}
       </p>
@@ -828,17 +782,13 @@ function ChatAgente() {
 }
 
 function AnalistaAds() {
-  const [feed, setFeed] = useState<ObservacaoAds[] | null>(null);
   const [pensamentos, setPensamentos] = useState<PensamentoAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
-  const [mostrarResolvidas, setMostrarResolvidas] = useState(false);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
 
   const carregar = useCallback(async () => {
     try {
-      const [feedNovo, pensamentosNovos] = await Promise.all([fetchFeedAds(), fetchPensamentosAds()]);
-      setFeed(feedNovo);
-      setPensamentos(pensamentosNovos);
+      setPensamentos(await fetchPensamentosAds());
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao carregar o feed.");
     }
@@ -848,28 +798,13 @@ function AnalistaAds() {
     carregar();
   }, [carregar]);
 
-  async function confirmar(id: number) {
-    try {
-      await confirmarObservacaoAds(id);
-      await carregar();
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Falha ao confirmar.");
-    }
-  }
-
-  // Lojas do próprio feed/pensamentos já carregados — sem precisar de outra
+  // Lojas dos próprios pensamentos já carregados — sem precisar de outra
   // chamada só pra popular o filtro (o agente só cobre as 4 lojas pessoais).
   const lojasDisponiveis = new Map<number, string>();
-  for (const o of feed ?? []) lojasDisponiveis.set(o.lojaId, o.lojaNome);
   for (const p of pensamentos ?? []) if (p.lojaId !== null && p.lojaNome !== null) lojasDisponiveis.set(p.lojaId, p.lojaNome);
 
-  const feedDaLoja = lojaFiltro === "todas" ? feed : feed?.filter((o) => o.lojaId === lojaFiltro) ?? null;
   const pensamentosDaLoja =
     lojaFiltro === "todas" ? pensamentos : pensamentos?.filter((p) => p.lojaId === lojaFiltro) ?? null;
-
-  const pendentes = feedDaLoja?.filter((o) => o.status === "pendente") ?? [];
-  const resolvidas = feedDaLoja?.filter((o) => o.status === "resolvida") ?? [];
-  const visiveis = mostrarResolvidas ? [...pendentes, ...resolvidas] : pendentes;
 
   return (
     <>
@@ -878,8 +813,7 @@ function AnalistaAds() {
           <h1>Analista de Ads</h1>
           <p className="painel-sub">
             Observa suas campanhas de Ads sozinho e comenta aqui o que encontra — ACOS fora da meta, campanha no
-            prejuízo, orçamento parado. Só comenta e sugere; nenhuma ação real acontece no Mercado Livre sem você
-            confirmar.
+            prejuízo, orçamento parado. Escreve a análise em texto corrido, comparando as campanhas de uma vez.
           </p>
         </div>
         <div className="financeiro-filtros">
@@ -901,26 +835,14 @@ function AnalistaAds() {
       {erro && <div className="state-message state-error">{erro}</div>}
 
       <div className="agente-mesa">
-        <IlustracaoAgente alerta={pendentes.length > 0} />
+        <IlustracaoAgente alerta={false} />
         <div className="agente-status">
-          {feed === null ? (
+          {pensamentos === null ? (
             <span className="financeiro-td-mudo">Carregando...</span>
+          ) : pensamentosDaLoja && pensamentosDaLoja.length > 0 ? (
+            <p className="agente-status-pensamento">{pensamentosDaLoja[0].pensamento}</p>
           ) : (
-            <>
-              {pensamentosDaLoja && pensamentosDaLoja.length > 0 ? (
-                <p className="agente-status-pensamento">{pensamentosDaLoja[0].pensamento}</p>
-              ) : (
-                <span className="financeiro-td-mudo">Ainda sem nenhuma verificação registrada.</span>
-              )}
-              {pendentes.length === 0 ? (
-                <span className="financeiro-margem-positiva">Tudo certo por aqui — nenhuma pendência.</span>
-              ) : (
-                <span className="financeiro-margem-negativa">
-                  {pendentes.length} observaç{pendentes.length !== 1 ? "ões" : "ão"} pendente
-                  {pendentes.length !== 1 ? "s" : ""}.
-                </span>
-              )}
-            </>
+            <span className="financeiro-td-mudo">Ainda sem nenhuma verificação registrada.</span>
           )}
         </div>
       </div>
@@ -929,36 +851,15 @@ function AnalistaAds() {
 
       <div className="agente-feed">
         <div className="agente-feed-topo">
-          <span className="painel-eyebrow">Feed</span>
-          <label className="usuarios-permissao-item">
-            <input
-              type="checkbox"
-              checked={mostrarResolvidas}
-              onChange={(e) => setMostrarResolvidas(e.target.checked)}
-            />
-            Mostrar resolvidas ({resolvidas.length})
-          </label>
+          <span className="painel-eyebrow">O que ele está pensando</span>
         </div>
 
-        {feed !== null && visiveis.length === 0 && (
-          <div className="state-message">Nenhuma observação{mostrarResolvidas ? "" : " pendente"} ainda.</div>
+        {pensamentosDaLoja !== null && pensamentosDaLoja.length === 0 && (
+          <div className="state-message">Nenhuma verificação registrada ainda.</div>
         )}
 
-        {visiveis.map((o) => (
-          <ObservacaoCard key={o.id} observacao={o} onConfirmar={confirmar} />
-        ))}
+        {pensamentosDaLoja?.map((p) => <PensamentoCard key={p.id} pensamento={p} />)}
       </div>
-
-      {pensamentosDaLoja !== null && pensamentosDaLoja.length > 0 && (
-        <div className="agente-feed agente-pensamentos-secao">
-          <div className="agente-feed-topo">
-            <span className="painel-eyebrow">O que ele está pensando</span>
-          </div>
-          {pensamentosDaLoja.map((p) => (
-            <PensamentoCard key={p.id} pensamento={p} />
-          ))}
-        </div>
-      )}
     </>
   );
 }
@@ -1612,54 +1513,33 @@ function AgenteImagens() {
   );
 }
 
-// Um item do feed unificado do Modo TV — mistura os "pensamentos" (raciocínio
-// em texto corrido) e as observações pendentes do Analista de Ads com os
-// achados do Agente de Oportunidades, tudo numa linha do tempo só. O Agente
-// de Imagens não entra aqui: não tem um fluxo de "achados" próprio, é uma
-// ferramenta sob demanda (gerar kit/arte), não um agente que observa sozinho.
+// Um item do feed unificado do Modo TV — mistura os "pensamentos"
+// (raciocínio em texto corrido) do Analista de Ads com os achados do Agente
+// de Oportunidades, tudo numa linha do tempo só. O Agente de Imagens não
+// entra aqui: não tem um fluxo de "achados" próprio, é uma ferramenta sob
+// demanda (gerar kit/arte), não um agente que observa sozinho.
 type ItemFeedTV =
-  | { chave: string; tipo: "pensamento"; criadoEm: string; texto: string }
-  | {
-      chave: string;
-      tipo: "observacao";
-      criadoEm: string;
-      campanhaNome: string;
-      contexto: string;
-      acao: string;
-      janela: string;
-    }
+  | { chave: string; tipo: "pensamento"; criadoEm: string; texto: string; janela: string }
   | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string };
 
 // Modo TV do escritório compartilhado — busca o feed dos agentes por conta
 // própria (não depende de qual aba está ativa), atualiza sozinho a cada 1
-// min e sai com Esc. O Agente de Imagens não tem "pendência" pra carregar,
-// então só o Ads alimenta o crachá de status do personagem dele.
+// min e sai com Esc.
 function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
-  const [pendentes, setPendentes] = useState(0);
   const [feed, setFeed] = useState<ItemFeedTV[] | null>(null);
 
   const carregar = useCallback(async () => {
     try {
-      const [observacoes, pensamentos, oportunidades] = await Promise.all([
-        fetchFeedAds("pendente"),
-        fetchPensamentosAds(),
-        fetchOportunidades(),
-      ]);
-      setPendentes(observacoes.length);
+      const [pensamentos, oportunidades] = await Promise.all([fetchPensamentosAds(), fetchOportunidades()]);
 
       const itens: ItemFeedTV[] = [
         ...pensamentos.map(
-          (p): ItemFeedTV => ({ chave: `pensamento-${p.id}`, tipo: "pensamento", criadoEm: p.criadoEm, texto: p.pensamento }),
-        ),
-        ...observacoes.map(
-          (o): ItemFeedTV => ({
-            chave: `observacao-${o.id}`,
-            tipo: "observacao",
-            criadoEm: o.criadoEm,
-            campanhaNome: o.campanhaNome,
-            contexto: o.contexto,
-            acao: o.acao,
-            janela: o.janela,
+          (p): ItemFeedTV => ({
+            chave: `pensamento-${p.id}`,
+            tipo: "pensamento",
+            criadoEm: p.criadoEm,
+            texto: p.pensamento,
+            janela: p.janela,
           }),
         ),
         ...oportunidades.map(
@@ -1714,7 +1594,7 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
       </div>
 
       <div className="agente-tv-sala">
-        <EscritorioCompartilhado alertaAds={pendentes > 0} />
+        <EscritorioCompartilhado alertaAds={false} />
       </div>
     </div>
   );
@@ -1726,26 +1606,11 @@ function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
       <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_ADS }}>
         <div className="agente-card-topo">
           <span className="ads-insight-tag" style={{ color: COR_ADS }}>
-            Ads · raciocínio
-          </span>
-          <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
-        </div>
-        <p className="agente-tv-pensamento">{item.texto}</p>
-      </div>
-    );
-  }
-  if (item.tipo === "observacao") {
-    return (
-      <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_ADS }}>
-        <div className="agente-card-topo">
-          <span className="ads-insight-tag" style={{ color: COR_ADS }}>
             Ads · {item.janela === "hoje" ? "hoje" : "7 dias"}
           </span>
           <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
         </div>
-        <div className="financeiro-td-titulo">{item.campanhaNome}</div>
-        <p className="ads-insight-contexto">{item.contexto}</p>
-        <div className="ads-insight-acao">→ {item.acao}</div>
+        <p className="agente-tv-pensamento">{item.texto}</p>
       </div>
     );
   }
