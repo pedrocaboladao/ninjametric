@@ -15,6 +15,8 @@ import {
   verificarOportunidadesAgora,
   fetchPensamentosCatalogo,
   fetchPensamentosConversao,
+  fetchPlanoDiario,
+  marcarItemPlano,
   type SugestaoOriginalKit,
 } from "../api/agentes";
 import type {
@@ -24,6 +26,7 @@ import type {
   Oportunidade,
   PensamentoCatalogo,
   PensamentoConversao,
+  PlanoDiario,
 } from "../types/agentes";
 import { formatDataHora } from "../utils/format";
 
@@ -2025,8 +2028,99 @@ function AgenteCatalogo() {
   );
 }
 
+// Cruza as 4 lojas de propósito (ao contrário dos outros agentes, que são
+// por loja) — lê o que Ads, Conversão e Catálogo escreveram nas últimas 24h
+// mais as Oportunidades em aberto, e prioriza tudo junto num plano do dia
+// só. 1x/dia, às 10h (depois que os agentes da manhã já rodaram).
+function PlanoDoDia() {
+  const [planos, setPlanos] = useState<PlanoDiario[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      setPlanos(await fetchPlanoDiario());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o plano do dia.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  // Atualização otimista — marca na hora, sem esperar o servidor confirmar
+  // (senão o clique parece travado). Se der erro, recarrega pra corrigir.
+  async function alternarItem(id: number, concluidoAtual: boolean) {
+    setPlanos(
+      (atual) =>
+        atual?.map((p) => ({
+          ...p,
+          itens: p.itens.map((i) => (i.id === id ? { ...i, concluido: !concluidoAtual } : i)),
+        })) ?? atual
+    );
+    try {
+      await marcarItemPlano(id, !concluidoAtual);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao marcar item.");
+      await carregar();
+    }
+  }
+
+  // O plano de verdade (gerado às 10h) tem itens marcáveis; a cobrança das
+  // 18h é só texto, sem itens próprios — pega o mais recente COM itens pra
+  // mostrar como checklist, os outros aparecem só no histórico abaixo.
+  const planoComItens = planos?.find((p) => p.itens.length > 0) ?? null;
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Plano do Dia</h1>
+          <p className="painel-sub">
+            Às 10h, cruza tudo que os outros agentes (Ads, Conversão, Catálogo, Oportunidades) registraram nas
+            últimas 24h nas suas 4 lojas e monta um plano único, priorizado entre elas. Às 18h, cobra o que ainda
+            ficou pendente.
+          </p>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      {planoComItens && (
+        <div className="agente-feed">
+          <div className="agente-feed-topo">
+            <span className="painel-eyebrow">Checklist de hoje</span>
+          </div>
+          <div className="agente-checklist">
+            {planoComItens.itens.map((item) => (
+              <label key={item.id} className="agente-checklist-item">
+                <input type="checkbox" checked={item.concluido} onChange={() => alternarItem(item.id, item.concluido)} />
+                <span className={item.concluido ? "agente-checklist-feito" : ""}>{item.descricao}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="agente-feed">
+        <div className="agente-feed-topo">
+          <span className="painel-eyebrow">Plano de hoje</span>
+        </div>
+
+        {planos !== null && planos.length === 0 && (
+          <div className="state-message">Nenhum plano registrado ainda.</div>
+        )}
+
+        {planos?.map((p) => <PensamentoCard key={p.id} pensamento={p} />)}
+      </div>
+    </>
+  );
+}
+
 export function AgenciaAgentesIA() {
-  const [agente, setAgente] = useState<"ads" | "imagens" | "oportunidades" | "catalogo" | "conversao">("ads");
+  const [agente, setAgente] = useState<"plano" | "ads" | "imagens" | "oportunidades" | "catalogo" | "conversao">(
+    "plano"
+  );
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
   // vez que este componente re-renderiza (ex.: algo mudando mais acima na
@@ -2046,6 +2140,13 @@ export function AgenciaAgentesIA() {
       </div>
 
       <div className="agente-tabs">
+        <button
+          type="button"
+          className={`agente-tab ${agente === "plano" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("plano")}
+        >
+          Plano do Dia
+        </button>
         <button
           type="button"
           className={`agente-tab ${agente === "ads" ? "agente-tab-ativa" : ""}`}
@@ -2083,6 +2184,7 @@ export function AgenciaAgentesIA() {
         </button>
       </div>
 
+      {agente === "plano" && <PlanoDoDia />}
       {agente === "ads" && <AnalistaAds />}
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}

@@ -12,6 +12,7 @@ import { buscarDadosAnuncio, registrarCorrecoes, type CamposSugeridosKit } from 
 import { verificarOportunidades, listarOportunidades } from "../services/agenteOportunidadesService";
 import { listarPensamentosCatalogo } from "../services/agenteCatalogoService";
 import { listarPensamentosConversao } from "../services/agenteConversaoService";
+import { listarPlanoDiario, marcarItemPlano } from "../services/agentePlanoDiarioService";
 
 export const agentesRouter = Router();
 
@@ -20,6 +21,29 @@ function erro(res: Response, err: unknown, fallback: string) {
   const mensagem = err instanceof Error ? err.message : fallback;
   res.status(400).json({ error: mensagem });
 }
+
+agentesRouter.get("/plano-diario", async (_req, res) => {
+  try {
+    res.json({ pensamentos: await listarPlanoDiario() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o plano do dia.");
+  }
+});
+
+agentesRouter.post("/plano-diario/itens/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { concluido } = req.body ?? {};
+  if (!Number.isInteger(id) || typeof concluido !== "boolean") {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await marcarItemPlano(id, concluido);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao marcar item do plano.");
+  }
+});
 
 agentesRouter.get("/ads/pensamentos", async (_req, res) => {
   try {

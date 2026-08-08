@@ -529,3 +529,31 @@ CREATE TABLE IF NOT EXISTS agente_catalogo_pensamentos (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agente_catalogo_pensamentos_loja ON agente_catalogo_pensamentos (loja_id);
+
+-- Agente de Plano do Dia: 1x/dia, lê o que os outros 4 agentes (Ads,
+-- Conversão, Catálogo, Oportunidades) escreveram/encontraram nas últimas 24h
+-- — já são resumos por loja, não dado bruto — e cruza tudo num plano do dia
+-- só, priorizado entre as 4 lojas juntas. Não tem loja_id de propósito: ao
+-- contrário dos outros agentes, esse é deliberadamente cross-loja (o dono
+-- vê as 4 lojas juntas, não uma por vez) — é o único jeito de comparar
+-- "vale mais resolver isso na loja X ou aquilo na loja Y hoje".
+CREATE TABLE IF NOT EXISTS agente_plano_diario (
+  id SERIAL PRIMARY KEY,
+  pensamento TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Itens marcáveis do plano do dia (checklist) — só o plano gerado às 10h
+-- (o "de verdade") tem itens; a cobrança das 18h é só texto, reaproveita os
+-- mesmos itens em aberto em vez de duplicar. Marcar como concluído é ação
+-- do próprio dono (não tem "resolvido pelo sistema" aqui, diferente dos
+-- outros agentes — ninguém além do dono sabe se ele realmente fez ou não).
+CREATE TABLE IF NOT EXISTS agente_plano_diario_itens (
+  id SERIAL PRIMARY KEY,
+  plano_id INTEGER NOT NULL REFERENCES agente_plano_diario(id) ON DELETE CASCADE,
+  descricao TEXT NOT NULL,
+  concluido BOOLEAN NOT NULL DEFAULT false,
+  concluido_em TIMESTAMPTZ,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agente_plano_diario_itens_plano ON agente_plano_diario_itens (plano_id);

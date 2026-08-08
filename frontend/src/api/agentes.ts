@@ -1,4 +1,12 @@
-import type { PensamentoAds, MensagemChat, PerfilImagens, Oportunidade, PensamentoCatalogo, PensamentoConversao } from "../types/agentes";
+import type {
+  PensamentoAds,
+  MensagemChat,
+  PerfilImagens,
+  Oportunidade,
+  PensamentoCatalogo,
+  PensamentoConversao,
+  PlanoDiario,
+} from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -8,6 +16,22 @@ async function tratarResposta<T>(res: Response): Promise<T> {
     throw new Error(data?.error ?? `Erro ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchPlanoDiario(): Promise<PlanoDiario[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/plano-diario`, { credentials: "include" });
+  const data = await tratarResposta<{ pensamentos: PlanoDiario[] }>(res);
+  return data.pensamentos;
+}
+
+export async function marcarItemPlano(id: number, concluido: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/plano-diario/itens/${id}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ concluido }),
+  });
+  await tratarResposta(res);
 }
 
 export async function fetchOportunidades(): Promise<Oportunidade[]> {

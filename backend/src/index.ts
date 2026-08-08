@@ -31,6 +31,7 @@ import { iniciarSnapshotVendasNegativas } from "./services/vendasNegativasServic
 import { iniciarVerificacaoOportunidades } from "./services/agenteOportunidadesService";
 import { iniciarSnapshotCatalogo } from "./services/agenteCatalogoService";
 import { iniciarVerificacaoAgenteConversao } from "./services/agenteConversaoService";
+import { iniciarVerificacaoPlanoDiario } from "./services/agentePlanoDiarioService";
 
 const app = express();
 
@@ -83,3 +84,4 @@ iniciarSnapshotVendasNegativas();
 iniciarVerificacaoOportunidades();
 iniciarSnapshotCatalogo();
 iniciarVerificacaoAgenteConversao();
+iniciarVerificacaoPlanoDiario();

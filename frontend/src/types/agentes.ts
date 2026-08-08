@@ -38,6 +38,20 @@ export interface PensamentoCatalogo {
   lojaNome: string | null;
 }
 
+export interface ItemPlanoDiario {
+  id: number;
+  descricao: string;
+  concluido: boolean;
+  concluidoEm: string | null;
+}
+
+export interface PlanoDiario {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+  itens: ItemPlanoDiario[];
+}
+
 export interface PerfilImagens {
   id: number;
   nome: string;

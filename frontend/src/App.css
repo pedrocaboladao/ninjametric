@@ -4490,6 +4490,37 @@
   cursor: pointer;
 }
 
+.agente-checklist {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agente-checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.agente-checklist-item input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.agente-checklist-feito {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
 .agente-chat {
   background: var(--bg-panel);
   border: 1px solid var(--border);
