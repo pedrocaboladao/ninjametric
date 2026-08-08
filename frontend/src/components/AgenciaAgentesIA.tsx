@@ -1713,7 +1713,55 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
       </div>
 
       <div className="agente-tv-sala">
-        <EscritorioCompartilhado alertaAds={false} />
+        <SalaModoTV alertaAds={false} />
+      </div>
+    </div>
+  );
+}
+
+// Posição (em % da largura/altura do vídeo) de cada crachá de nome sobre o
+// vídeo do escritório — estimativa inicial de olho na referência, ainda
+// precisa de ajuste fino ao vivo (não deu pra tirar print pra calibrar
+// pixel a pixel). Pedir pro dono corrigir com "move [nome] mais pra
+// [direção]" depois de ver em produção.
+const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
+  { nome: "Analista de Ads", left: "40%", top: "40%" },
+  { nome: "Designer", left: "37%", top: "58%" },
+  { nome: "Visionário", left: "55%", top: "62%" },
+  { nome: "Negociador", left: "66%", top: "42%" },
+  { nome: "Analista de Funil", left: "80%", top: "58%" },
+];
+
+// Fundo em vídeo (loop) do escritório compartilhado — pedido do dono pra
+// ficar mais próximo de uma referência gerada por IA, com movimento de
+// verdade (o SVG desenhado por código não fica parado, mas não tem a
+// riqueza visual de vídeo gerado). Cai pra sala desenhada por código
+// automaticamente se o vídeo não carregar (reserva, ver EscritorioCompartilhado).
+function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
+  const [erroVideo, setErroVideo] = useState(false);
+
+  if (erroVideo) {
+    return <EscritorioCompartilhado alertaAds={alertaAds} />;
+  }
+
+  return (
+    <div className="agente-tv-video-wrap">
+      <video
+        className="agente-tv-video"
+        src="/modo-tv-escritorio.mp4"
+        autoPlay
+        loop
+        muted
+        playsInline
+        onError={() => setErroVideo(true)}
+      />
+      <div className="agente-tv-video-overlay">
+        {POSICAO_CRACHA_VIDEO.map((c) => (
+          <div key={c.nome} className="agente-tv-nome-cracha" style={{ left: c.left, top: c.top }}>
+            <span>{c.nome}</span>
+            <span className="agente-tv-nome-cracha-dot" />
+          </div>
+        ))}
       </div>
     </div>
   );
