@@ -6,11 +6,16 @@ export interface ReceitaRealCampanha {
   lojaId: number;
   campanhaId: number;
   receitaTotalReal: number;
-  // Margem de contribuição real do(s) produto(s) da campanha, em % da
-  // receita — teto aproximado de ACOS sustentável: se o ACOS passar disso,
-  // o gasto de Ads sozinho já consome toda a margem do produto (antes
-  // mesmo de olhar o custo fixo). Vem do mesmo cálculo do Financeiro, não
-  // é um número novo — só está aplicado numa visão diferente aqui.
+  // Margem de contribuição real (em R$) do(s) produto(s) da campanha, no
+  // período — soma direto do mesmo cálculo que o Financeiro usa por venda.
+  // É o número certo pra chegar em lucro real (margemReal - gasto de Ads);
+  // acosIdeal (abaixo) é essa mesma margem só que expressa em % da
+  // receita, não serve pra subtrair gasto em cima de outra base de receita
+  // sem introduzir erro de arredondamento/base.
+  margemReal: number;
+  // Margem de contribuição real em % da receita — teto aproximado de ACOS
+  // sustentável: se o ACOS passar disso, o gasto de Ads sozinho já consome
+  // toda a margem do produto (antes mesmo de olhar o custo fixo).
   acosIdeal: number | null;
 }
 
@@ -82,6 +87,7 @@ export async function listarReceitaRealPorCampanha(
         lojaId: loja.id,
         campanhaId,
         receitaTotalReal: v.receita,
+        margemReal: v.margem,
         acosIdeal: v.receita > 0 ? (v.margem / v.receita) * 100 : null,
       }));
     })

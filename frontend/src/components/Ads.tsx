@@ -38,17 +38,15 @@ interface CampanhaComTacos extends CampanhaAds {
   lucroReais: number | null;
 }
 
-// Lucro em R$: receita total do produto (receitaBase, a mesma usada no
-// TACOS) vezes o ACOS Ideal (margem de contribuição real, em %) dá o
-// "orçamento de Ads" que a margem aguenta sem virar prejuízo — subtraindo
-// o gasto real, sobra o lucro (ou prejuízo, se negativo) já considerando
-// todos os custos reais embutidos na margem. Sem acosIdeal (produto sem
-// custo cadastrado) não dá pra julgar. Campanha sem gasto e sem receita
-// nenhuma (nada aconteceu) também fica sem valor, em vez de mostrar R$ 0.
-function calcularLucroReais(c: { custo: number; receitaBase: number; acosIdeal: number | null }): number | null {
-  if (c.acosIdeal === null) return null;
-  if (c.custo === 0 && c.receitaBase === 0) return null;
-  return c.receitaBase * (c.acosIdeal / 100) - c.custo;
+// Lucro real = margem de contribuição real (R$, mesmo cálculo do
+// Financeiro) menos o gasto de Ads — direto, sem reaplicar a margem em %
+// sobre receitaBase (que pode divergir um pouco da base usada pra calcular
+// a margem, já que vendasTotais do Ads e a receita cruzada com o
+// Financeiro nem sempre batem exatamente). Sem margemReal (produto sem
+// custo cadastrado, ou campanha sem venda cruzada) não dá pra julgar.
+function calcularLucroReais(c: { custo: number; margemReal: number | null }): number | null {
+  if (c.margemReal === null) return null;
+  return c.margemReal - c.custo;
 }
 
 type ChaveOrdenacao =
@@ -150,6 +148,7 @@ function somarGrupo(campanhas: CampanhaAds[]) {
 
 interface DadosReceitaCampanha {
   receitaTotalReal: number;
+  margemReal: number;
   acosIdeal: number | null;
 }
 
@@ -301,7 +300,11 @@ export function Ads() {
   const receitaRealPorCampanha = useMemo(() => {
     const mapa = new Map<string, DadosReceitaCampanha>();
     for (const r of receitasReais ?? []) {
-      mapa.set(`${r.lojaId}-${r.campanhaId}`, { receitaTotalReal: r.receitaTotalReal, acosIdeal: r.acosIdeal });
+      mapa.set(`${r.lojaId}-${r.campanhaId}`, {
+        receitaTotalReal: r.receitaTotalReal,
+        margemReal: r.margemReal,
+        acosIdeal: r.acosIdeal,
+      });
     }
     return mapa;
   }, [receitasReais]);
@@ -325,11 +328,12 @@ export function Ads() {
       const receitaBase = Math.max(receitaReal, c.vendasTotais);
       const tacosReal = receitaBase > 0 ? (c.custo / receitaBase) * 100 : null;
       const acosIdeal = dados?.acosIdeal ?? null;
+      const margemReal = dados?.margemReal ?? null;
       return {
         ...c,
         tacosReal,
         acosIdeal,
-        lucroReais: calcularLucroReais({ custo: c.custo, receitaBase, acosIdeal }),
+        lucroReais: calcularLucroReais({ custo: c.custo, margemReal }),
       };
     });
   }, [campanhas, receitaRealPorCampanha]);

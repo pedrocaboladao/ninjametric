@@ -13,10 +13,15 @@ export interface CampanhaComTacos extends CampanhaAds {
   lucroReais: number | null;
 }
 
-function calcularLucroReais(c: { custo: number; receitaBase: number; acosIdeal: number | null }): number | null {
-  if (c.acosIdeal === null) return null;
-  if (c.custo === 0 && c.receitaBase === 0) return null;
-  return c.receitaBase * (c.acosIdeal / 100) - c.custo;
+// Lucro real = margem de contribuição real (R$, mesmo cálculo do
+// Financeiro) menos o gasto de Ads — direto, sem reaplicar a margem em %
+// sobre outra base de receita (isso introduzia um pequeno erro sempre que
+// vendasTotais do Ads divergia da receita real cruzada com o Financeiro).
+// Sem margemReal (produto sem custo cadastrado, ou campanha sem venda
+// cruzada) não dá pra julgar.
+function calcularLucroReal(c: { custo: number; margemReal: number | null }): number | null {
+  if (c.margemReal === null) return null;
+  return c.margemReal - c.custo;
 }
 
 function descricaoJanela(diasPeriodo: number): string {
@@ -156,7 +161,8 @@ export async function buscarCampanhasComTacos(diasPeriodo: number, lojaId?: numb
     const receitaBase = Math.max(receitaReal, c.vendasTotais);
     const tacosReal = receitaBase > 0 ? (c.custo / receitaBase) * 100 : null;
     const acosIdeal = dados?.acosIdeal ?? null;
-    return { ...c, tacosReal, acosIdeal, lucroReais: calcularLucroReais({ custo: c.custo, receitaBase, acosIdeal }) };
+    const margemReal = dados?.margemReal ?? null;
+    return { ...c, tacosReal, acosIdeal, lucroReais: calcularLucroReal({ custo: c.custo, margemReal }) };
   });
 }
 

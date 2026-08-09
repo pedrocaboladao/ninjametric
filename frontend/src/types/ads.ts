@@ -21,5 +21,6 @@ export interface ReceitaRealCampanha {
   lojaId: number;
   campanhaId: number;
   receitaTotalReal: number;
+  margemReal: number;
   acosIdeal: number | null;
 }
