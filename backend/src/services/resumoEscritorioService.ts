@@ -1,7 +1,7 @@
 import { listLojas } from "./tokenStore";
 import { getVisitasContaHoje } from "./mercadoLivreApi";
-import { buscarCampanhasComTacos } from "./agenteAdsService";
 import { getDashboardData } from "./dashboardService";
+import { listarVendasFinanceiras } from "./financeiroService";
 import { dataISOBR } from "./dateUtils";
 
 // Mesmo escopo das 4 lojas pessoais que os agentes usam (ver LOJAS_AGENTE em
@@ -21,9 +21,9 @@ export async function buscarResumoEscritorio(): Promise<ResumoEscritorio> {
   const hoje = dataISOBR(new Date());
   const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null && LOJAS_AGENTE.includes(l.id));
 
-  const [dashboard, campanhasHoje, visitasPorLoja] = await Promise.all([
+  const [dashboard, financeiroHoje, visitasPorLoja] = await Promise.all([
     getDashboardData(undefined, LOJAS_AGENTE),
-    buscarCampanhasComTacos(1),
+    listarVendasFinanceiras(undefined, LOJAS_AGENTE, hoje, hoje),
     Promise.all(lojas.map((l) => getVisitasContaHoje(l.id, l.ml_user_id as number, hoje, hoje))),
   ]);
 
@@ -36,12 +36,15 @@ export async function buscarResumoEscritorio(): Promise<ResumoEscritorio> {
   const totalVisitas = visitasPorLoja.reduce((soma: number, v) => soma + (v ?? 0), 0);
   const conversaoMediaHoje = totalVisitas > 0 ? (totalVendas / totalVisitas) * 100 : null;
 
-  // Lucro do Ads hoje = soma do lucro real (receita real x teto de margem -
-  // custo) das campanhas ativas com gasto hoje — mesmo cálculo que o
-  // Analista de Ads já usa (buscarCampanhasComTacos), só somado em vez de
-  // por campanha.
-  const ativasHoje = campanhasHoje.filter((c) => c.status === "active" && c.custo > 0 && c.lucroReais !== null);
-  const lucroAdsHoje = ativasHoje.length > 0 ? ativasHoje.reduce((soma, c) => soma + (c.lucroReais as number), 0) : null;
+  // Lucro do Ads hoje = lucro real do dia depois do Ads, mesma conta que o
+  // Financeiro usa em "Margem após Ads" (margem de contribuição do dia menos
+  // o gasto total de Ads do dia) — não é o lucro-por-campanha do Analista de
+  // Ads (esse usa o teto de ACOS de cada anúncio, é outra pergunta).
+  // Reaproveita listarVendasFinanceiras direto, só fixando nas 4 lojas e no
+  // dia de hoje, pra bater exatamente com o que o Financeiro mostraria com
+  // esse mesmo filtro.
+  const margemContribuicaoHoje = financeiroHoje.vendas.reduce((soma, v) => soma + (v.margemContribuicao ?? 0), 0);
+  const lucroAdsHoje = margemContribuicaoHoje - financeiroHoje.gastoAdsTotal;
 
   return {
     vendasHoje: dashboard.faturamentoHoje,

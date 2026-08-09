@@ -1744,7 +1744,7 @@ const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
 const POSICAO_TELA_PAREDE: { chave: keyof ResumoEscritorio; rotulo: string; formatar: (v: number) => string }[] = [
   { chave: "vendasHoje", rotulo: "Vendas do dia", formatar: (v) => formatCurrency(v) },
   { chave: "conversaoMediaHoje", rotulo: "Conversão média", formatar: (v) => `${v.toFixed(1)}%` },
-  { chave: "lucroAdsHoje", rotulo: "Lucro do Ads", formatar: (v) => formatCurrency(v) },
+  { chave: "lucroAdsHoje", rotulo: "Lucro após Ads", formatar: (v) => formatCurrency(v) },
 ];
 
 // Fundo em vídeo (loop) do escritório compartilhado — pedido do dono pra
