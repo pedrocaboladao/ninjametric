@@ -23,9 +23,9 @@ function erro(res: Response, err: unknown, fallback: string) {
   res.status(400).json({ error: mensagem });
 }
 
-agentesRouter.get("/resumo-escritorio", async (_req, res) => {
+agentesRouter.get("/resumo-escritorio", async (req, res) => {
   try {
-    res.json(await buscarResumoEscritorio());
+    res.json(await buscarResumoEscritorio(req.query.forcar === "1"));
   } catch (err) {
     erro(res, err, "Falha ao carregar o resumo do escritório.");
   }

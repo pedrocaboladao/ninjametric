@@ -1755,26 +1755,23 @@ const POSICAO_TELA_PAREDE: { chave: keyof ResumoEscritorio; rotulo: string; form
 function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
   const [erroVideo, setErroVideo] = useState(false);
   const [resumo, setResumo] = useState<ResumoEscritorio | null>(null);
+  const [atualizando, setAtualizando] = useState(false);
+
+  const carregar = useCallback((forcar: boolean) => {
+    if (forcar) setAtualizando(true);
+    fetchResumoEscritorio(forcar)
+      .then((r) => setResumo(r))
+      .catch((err) => console.error("Modo TV: falha ao buscar resumo do escritório", err))
+      .finally(() => {
+        if (forcar) setAtualizando(false);
+      });
+  }, []);
 
   useEffect(() => {
-    let ativo = true;
-    fetchResumoEscritorio()
-      .then((r) => {
-        if (ativo) setResumo(r);
-      })
-      .catch((err) => console.error("Modo TV: falha ao buscar resumo do escritório", err));
-    const intervalo = setInterval(() => {
-      fetchResumoEscritorio()
-        .then((r) => {
-          if (ativo) setResumo(r);
-        })
-        .catch((err) => console.error("Modo TV: falha ao buscar resumo do escritório", err));
-    }, 60000);
-    return () => {
-      ativo = false;
-      clearInterval(intervalo);
-    };
-  }, []);
+    carregar(false);
+    const intervalo = setInterval(() => carregar(false), 60000);
+    return () => clearInterval(intervalo);
+  }, [carregar]);
 
   if (erroVideo) {
     return <EscritorioCompartilhado alertaAds={alertaAds} />;
@@ -1809,6 +1806,15 @@ function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
                 </div>
               );
             })}
+            <button
+              type="button"
+              className="agente-tv-parede-atualizar"
+              onClick={() => carregar(true)}
+              disabled={atualizando}
+              style={{ pointerEvents: "auto" }}
+            >
+              {atualizando ? "Atualizando..." : "Atualizar valores"}
+            </button>
           </div>
         )}
       </div>

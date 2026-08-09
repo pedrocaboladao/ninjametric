@@ -19,8 +19,10 @@ async function tratarResposta<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-export async function fetchResumoEscritorio(): Promise<ResumoEscritorio> {
-  const res = await fetch(`${API_BASE}/api/agentes/resumo-escritorio`, { credentials: "include" });
+export async function fetchResumoEscritorio(forcar = false): Promise<ResumoEscritorio> {
+  const res = await fetch(`${API_BASE}/api/agentes/resumo-escritorio${forcar ? "?forcar=1" : ""}`, {
+    credentials: "include",
+  });
   return tratarResposta<ResumoEscritorio>(res);
 }
 

@@ -16,14 +16,18 @@ export interface ResumoEscritorio {
 }
 
 // Números reais que alimentam as "telas de parede" sobrepostas no vídeo do
-// Modo TV — tudo referente ao dia vigente (hoje).
-export async function buscarResumoEscritorio(): Promise<ResumoEscritorio> {
+// Modo TV — tudo referente ao dia vigente (hoje). "forcar" pula o cache de
+// 15min do Financeiro (mesmo botão "Atualizar" que a tela de Financeiro já
+// tem) — sem isso o Modo TV sempre serve o cache, já que atualiza sozinho a
+// cada 60s e forçar uma busca ao vivo nesse ritmo o dia inteiro pesaria
+// demais na API do Mercado Livre.
+export async function buscarResumoEscritorio(forcar = false): Promise<ResumoEscritorio> {
   const hoje = dataISOBR(new Date());
   const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null && LOJAS_AGENTE.includes(l.id));
 
   const [dashboard, financeiroHoje, visitasPorLoja] = await Promise.all([
     getDashboardData(undefined, LOJAS_AGENTE),
-    listarVendasFinanceiras(undefined, LOJAS_AGENTE, hoje, hoje),
+    listarVendasFinanceiras(undefined, LOJAS_AGENTE, hoje, hoje, forcar),
     Promise.all(lojas.map((l) => getVisitasContaHoje(l.id, l.ml_user_id as number, hoje, hoje))),
   ]);
 
