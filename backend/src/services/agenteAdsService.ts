@@ -311,8 +311,12 @@ ${linhas || "Nenhuma campanha encontrada no período."}`,
   return texto || "Não consegui gerar uma resposta.";
 }
 
-const HORARIOS_7DIAS = [7, 13, 19]; // horário de Brasília — 3x/dia
-const HORARIOS_DIARIOS = [9, 14, 21]; // horário de Brasília — 3x/dia
+// Janela de 7 dias muda pouco de uma checagem pra outra no mesmo dia (só
+// ~6h de dado novo dentro de 168h de janela) — 1x/dia já captura a
+// tendência sem repetir análise quase igual 3x. Roda antes do Plano do Dia
+// (8h) de propósito, pra ele já ter esse contexto semanal fresco.
+const HORARIOS_7DIAS = [7]; // horário de Brasília — 1x/dia
+const HORARIOS_DIARIOS = [9, 14, 21]; // horário de Brasília — 3x/dia (aqui sim o dia muda de verdade a cada checagem)
 const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
 
 // Dispara "acao" uma única vez por horário-âncora cruzado (ver
