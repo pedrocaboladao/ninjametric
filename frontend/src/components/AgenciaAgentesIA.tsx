@@ -1790,7 +1790,31 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
       <div className="agente-tv-sala">
         <SalaModoTV alertaAds={false} />
+        <ChatModoTV />
       </div>
+    </div>
+  );
+}
+
+// Chat do Growth Hacker sobreposto ao vídeo do escritório, canto inferior
+// esquerdo — estilo caixa de chat de jogo (recolhível, pra não tampar a
+// cena quando não estiver em uso). Reaproveita o mesmo <ChatAgente /> da
+// aba "Growth Hacker" (mesmo backend, mesmo histórico de conversa não
+// persistido) — só muda a casca visual ao redor.
+function ChatModoTV() {
+  const [aberto, setAberto] = useState(true);
+
+  return (
+    <div className="agente-tv-chat">
+      <button type="button" className="agente-tv-chat-cabecalho" onClick={() => setAberto((v) => !v)}>
+        <span>💬 Growth Hacker</span>
+        <span className="agente-tv-chat-toggle">{aberto ? "▾ minimizar" : "▴ abrir"}</span>
+      </button>
+      {aberto && (
+        <div className="agente-tv-chat-corpo">
+          <ChatAgente />
+        </div>
+      )}
     </div>
   );
 }
