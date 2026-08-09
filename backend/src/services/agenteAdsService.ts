@@ -3,7 +3,7 @@ import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { listarCampanhasAds, type CampanhaAds } from "./adsService";
 import { listarReceitaRealPorCampanha } from "./tacosService";
-import { chaveJanelaDoDia } from "./dateUtils";
+import { chaveJanelaDoDia, dataISOBR } from "./dateUtils";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
@@ -21,10 +21,6 @@ function calcularLucroReais(c: { custo: number; receitaBase: number; acosIdeal: 
 
 function descricaoJanela(diasPeriodo: number): string {
   return diasPeriodo === 1 ? "de hoje" : `dos últimos ${diasPeriodo} dias`;
-}
-
-function dataISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Análise real com IA (Claude) — só reporta em texto corrido (sem cards por
@@ -144,8 +140,8 @@ const LOJAS_AGENTE = [1, 2, 3, 4];
 export async function buscarCampanhasComTacos(diasPeriodo: number, lojaId?: number): Promise<CampanhaComTacos[]> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
-  const dataInicio = dataISO(inicio);
-  const dataFim = dataISO(hoje);
+  const dataInicio = dataISOBR(inicio);
+  const dataFim = dataISOBR(hoje);
 
   const [campanhas, receitas] = await Promise.all([
     listarCampanhasAds(lojaId, LOJAS_AGENTE, dataInicio, dataFim),

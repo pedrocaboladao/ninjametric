@@ -1731,12 +1731,12 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 // pixel a pixel). Pedir pro dono corrigir com "move [nome] mais pra
 // [direção]" depois de ver em produção.
 const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
-  { nome: "Planejador", left: "73.6%", top: "27.2%" },
-  { nome: "Designer", left: "13.4%", top: "53.3%" },
-  { nome: "Analista de Ads", left: "79.2%", top: "63.6%" },
+  { nome: "Planejador", left: "73.6%", top: "28.4%" },
+  { nome: "Designer", left: "13.4%", top: "56.8%" },
+  { nome: "Analista de Ads", left: "79.2%", top: "64.8%" },
   { nome: "Visionário", left: "44.6%", top: "62.1%" },
-  { nome: "Negociador", left: "21.4%", top: "42.9%" },
-  { nome: "Analista de Funil", left: "59.7%", top: "50.1%" },
+  { nome: "Negociador", left: "21.4%", top: "41.1%" },
+  { nome: "Analista de Funil", left: "59.7%", top: "48.3%" },
 ];
 
 // Posição de cada "tela de parede" sobre o vídeo — mesma lógica dos

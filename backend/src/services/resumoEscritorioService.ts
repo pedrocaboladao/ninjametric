@@ -2,15 +2,12 @@ import { listLojas } from "./tokenStore";
 import { getVisitasContaHoje } from "./mercadoLivreApi";
 import { buscarCampanhasComTacos } from "./agenteAdsService";
 import { getDashboardData } from "./dashboardService";
+import { dataISOBR } from "./dateUtils";
 
 // Mesmo escopo das 4 lojas pessoais que os agentes usam (ver LOJAS_AGENTE em
 // agenteAdsService.ts) — os números das telas de parede do Modo TV são
 // sobre as 4 lojas do dono, não o grupo inteiro.
 const LOJAS_AGENTE = [1, 2, 3, 4];
-
-function dataISO(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
 
 export interface ResumoEscritorio {
   vendasHoje: number;
@@ -21,7 +18,7 @@ export interface ResumoEscritorio {
 // Números reais que alimentam as "telas de parede" sobrepostas no vídeo do
 // Modo TV — tudo referente ao dia vigente (hoje).
 export async function buscarResumoEscritorio(): Promise<ResumoEscritorio> {
-  const hoje = dataISO(new Date());
+  const hoje = dataISOBR(new Date());
   const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null && LOJAS_AGENTE.includes(l.id));
 
   const [dashboard, campanhasHoje, visitasPorLoja] = await Promise.all([

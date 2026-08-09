@@ -115,6 +115,22 @@ export function chaveJanelaDoDia(horariosAncora: number[]): string {
   return `${data.getUTCFullYear()}-${pad(data.getUTCMonth() + 1)}-${pad(data.getUTCDate())}T${pad(escolhida)}`;
 }
 
+// "YYYY-MM-DD" do dia em horário de Brasília — para endpoints que esperam
+// uma data simples (ex.: date_from/date_to da API do Mercado Livre). Ao
+// contrário de `new Date().toISOString().slice(0,10)` ou
+// `getFullYear/getMonth/getDate` (ambos presos ao fuso do processo, UTC em
+// produção), isso garante que "hoje" bate com o calendário de São Paulo o
+// dia inteiro, inclusive nas ~3h de virada de dia em que UTC já mudou de
+// dia mas ainda é "hoje" no Brasil.
+export function dataISOBR(d: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
 export function horaLocal(dateIso: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",
