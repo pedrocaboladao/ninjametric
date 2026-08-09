@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
 import {
   fetchPensamentosAds,
-  perguntarAgenteAds,
+  perguntarGrowthHacker,
+  fetchBriefingsGrowthHacker,
   tratarFotoProduto,
   criarArtePromocional,
   gerarKitFotos,
@@ -30,6 +31,7 @@ import type {
   PensamentoConversao,
   PlanoDiario,
   ResumoEscritorio,
+  BriefingGrowthHacker,
 } from "../types/agentes";
 import { formatDataHora, formatCurrency } from "../utils/format";
 
@@ -827,7 +829,7 @@ function ChatAgente() {
     setErroChat(null);
     setEnviando(true);
     try {
-      const { resposta, pensamento } = await perguntarAgenteAds(pergunta, historico);
+      const { resposta, pensamento } = await perguntarGrowthHacker(pergunta, historico);
       setMensagens((m) => [...m, { papel: "agente", texto: resposta, pensamento }]);
     } catch (err) {
       setErroChat(err instanceof Error ? err.message : "Falha ao perguntar pro agente.");
@@ -888,22 +890,52 @@ function ChatAgente() {
   );
 }
 
-// Agente novo e separado do Analista de Ads: não observa nem registra feed
-// sozinho, é 100% conversa sob demanda — o consultor mais forte (Opus +
-// raciocínio visível), pra quando o dono quer discutir/decidir, não só ler
-// um resumo automático.
+// Agente novo e separado do Analista de Ads: dois modos.
+// (1) Briefing automático 1x/dia — olha as 4 lojas como UM negócio só e
+// escreve dicas fortes de lucro sem precisar perguntar nada.
+// (2) Chat sob demanda — pra discutir/decidir ativamente quando quiser.
+// Mesmo motor (Opus + raciocínio visível xhigh) nos dois.
 function GrowthHacker() {
+  const [briefings, setBriefings] = useState<BriefingGrowthHacker[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      setBriefings(await fetchBriefingsGrowthHacker());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o briefing.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
   return (
     <>
       <div className="financeiro-topo">
         <div>
           <h1>Growth Hacker</h1>
           <p className="painel-sub">
-            Seu consultor de Ads mais forte — conversa em tempo real sobre as campanhas das suas 4 lojas, pensa antes
-            de responder, e entrega decisão de verdade (pausar campanha, subir orçamento, mudar meta de ACOS), não só
-            descreve os números.
+            Um empresário poderoso do ramo de Mercado Livre olhando pro seu negócio: 1x por dia ele revisa as 4
+            lojas sozinho e te dá dicas fortes de como ganhar mais dinheiro. Quer discutir ou decidir algo agora?
+            Conversa com ele direto ali embaixo.
           </p>
         </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="agente-feed">
+        <div className="agente-feed-topo">
+          <span className="painel-eyebrow">Briefing de hoje</span>
+        </div>
+
+        {briefings !== null && briefings.length === 0 && (
+          <div className="state-message">Ainda sem nenhum briefing registrado — o primeiro sai às 8h.</div>
+        )}
+
+        {briefings?.map((b) => <PensamentoCard key={b.id} pensamento={b} />)}
       </div>
 
       <ChatAgente />

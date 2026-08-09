@@ -375,6 +375,15 @@ ALTER TABLE agente_ads_pensamentos ADD COLUMN IF NOT EXISTS loja_id INTEGER REFE
 -- registros antigos (de antes dessa coluna) caem no default '7dias'.
 ALTER TABLE agente_ads_pensamentos ADD COLUMN IF NOT EXISTS janela TEXT NOT NULL DEFAULT '7dias';
 
+-- Growth Hacker: agente separado do Analista de Ads acima — 1x/dia, olha as
+-- 4 lojas pessoais como um negócio só (não por loja) e escreve um briefing
+-- de negócio (não um registro por campanha). Sem loja_id/janela de propósito.
+CREATE TABLE IF NOT EXISTS agente_growth_hacker_pensamentos (
+  id SERIAL PRIMARY KEY,
+  pensamento TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Perfis de marca salvos pro Agente de Imagens (Kit de fotos) — não é
 -- aprendizado de IA, é só lembrar configurações que se repetem entre
 -- produtos da mesma marca (cores, foto de referência de estilo, benefícios

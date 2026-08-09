@@ -131,6 +131,22 @@ export function dataISOBR(d: Date): string {
   }).format(d);
 }
 
+// Dispara "acao" uma única vez por horário-âncora cruzado (ver
+// chaveJanelaDoDia acima) — checar a cada `intervaloMs` só executa quando o
+// relógio cruza um dos horários informados, não uma vez por checagem.
+// Começa já sincronizado com a janela atual (em vez de null) pra não
+// disparar uma rodada extra a cada reinício/deploy.
+export function agendarPorHorario(horarios: number[], acao: () => Promise<void>, intervaloMs = 5 * 60 * 1000): void {
+  let ultimaJanela = chaveJanelaDoDia(horarios);
+  async function checar() {
+    const janela = chaveJanelaDoDia(horarios);
+    if (janela === ultimaJanela) return;
+    ultimaJanela = janela;
+    await acao();
+  }
+  setInterval(checar, intervaloMs);
+}
+
 export function horaLocal(dateIso: string): number {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/Sao_Paulo",

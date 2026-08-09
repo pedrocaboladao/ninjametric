@@ -1,5 +1,6 @@
 import { Router, Response } from "express";
-import { listarPensamentos, perguntarAgenteAds, type MensagemChat } from "../services/agenteAdsService";
+import { listarPensamentos } from "../services/agenteAdsService";
+import { perguntarGrowthHacker, listarBriefings, type MensagemChat } from "../services/growthHackerService";
 import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
 import {
   listarPerfis,
@@ -83,10 +84,18 @@ agentesRouter.post("/ads/perguntar", async (req, res) => {
       )
     : [];
   try {
-    const { resposta, pensamento } = await perguntarAgenteAds(pergunta.trim(), historicoValido);
+    const { resposta, pensamento } = await perguntarGrowthHacker(pergunta.trim(), historicoValido);
     res.json({ resposta, pensamento });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
+  }
+});
+
+agentesRouter.get("/growth-hacker/feed", async (_req, res) => {
+  try {
+    res.json({ pensamentos: await listarBriefings() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o briefing do Growth Hacker.");
   }
 });
 

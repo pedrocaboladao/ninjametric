@@ -3,7 +3,7 @@ import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { listarCampanhasAds, type CampanhaAds } from "./adsService";
 import { listarReceitaRealPorCampanha } from "./tacosService";
-import { chaveJanelaDoDia, dataISOBR } from "./dateUtils";
+import { agendarPorHorario, dataISOBR } from "./dateUtils";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
@@ -45,7 +45,7 @@ function obterClienteAnthropic(): Anthropic | null {
 // Reaproveitado tanto na verificação automática (só campanhas ativas com
 // gasto) quanto no chat do agente (todas, pra dar pro dono perguntar sobre
 // qualquer campanha, inclusive pausada).
-function construirLinhasCampanhas(campanhas: CampanhaComTacos[]): string {
+export function construirLinhasCampanhas(campanhas: CampanhaComTacos[]): string {
   return campanhas
     .map((c) =>
       [
@@ -129,7 +129,7 @@ Regras:
   }
 }
 
-const DIAS_JANELA = 7;
+export const DIAS_JANELA = 7;
 
 // Só as 4 contas PESSOAIS do usuário — não o grupo inteiro (16 lojas). IDs
 // confirmados via GET /api/lojas/todas: Hangar=1, Catedral
@@ -267,101 +267,12 @@ export async function listarPensamentos(limitePorLoja = 10): Promise<PensamentoA
   }));
 }
 
-export interface MensagemChat {
-  papel: "usuario" | "agente";
-  texto: string;
-}
-
-export interface RespostaChatAgente {
-  pensamento: string | null;
-  resposta: string;
-}
-
-// Chat direto com o agente — pergunta livre do dono, respondida com os
-// dados reais e atuais das campanhas das 4 lojas pessoais como contexto
-// (buscados na hora, não reaproveita cache do feed automático).
-//
-// Modelo mais potente (Opus) + thinking adaptativo só aqui, não nas rodadas
-// automáticas (essas continuam em MODELO_IA/Sonnet, 16x/dia — usar Opus lá
-// multiplicaria custo sem necessidade). O pedido era um chat de AÇÃO, não só
-// descrição: raciocínio real e visível (thinking), e autorização explícita
-// pra recomendar ação concreta (pausar campanha X, subir orçamento de Y),
-// não só relatar os números.
-const MODELO_CHAT_ACAO = "claude-opus-5";
-
-export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
-  const client = obterClienteAnthropic();
-  if (!client) {
-    throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
-  }
-
-  const campanhasComTacos = await buscarCampanhasComTacos(DIAS_JANELA);
-  const linhas = construirLinhasCampanhas(campanhasComTacos);
-
-  const resposta = await client.messages.create({
-    model: MODELO_CHAT_ACAO,
-    max_tokens: 8000,
-    thinking: { type: "adaptive", display: "summarized" },
-    output_config: { effort: "xhigh" },
-    system: `Seu nome é Growth Hacker. Você é um analista de tráfego pago (Mercado Ads) sênior — e um consultor de AÇÃO, não só de análise. Especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre. Está conversando direto com o dono do negócio sobre as campanhas de Ads das 4 lojas pessoais dele.
-
-Responda com base nos dados reais abaixo, citando números quando fizer sentido. Seja direto e responda sempre em português.
-
-Quando o dono pedir um plano de ação, uma recomendação, ou "o que eu faço agora" — SEMPRE entregue uma decisão concreta e acionável, não uma descrição neutra dos dados: diga exatamente qual campanha pausar, em qual subir orçamento, em qual baixar o ACOS meta — e cite o número que justifica cada recomendação. Você tem liberdade pra discordar de uma configuração atual (orçamento, meta de ACOS) e dizer isso claramente. Não devolva a pergunta pro dono decidir o que só você tem os dados pra decidir.`,
-    messages: [
-      ...historico.map((m) => ({
-        role: (m.papel === "usuario" ? "user" : "assistant") as "user" | "assistant",
-        content: m.texto,
-      })),
-      {
-        role: "user" as const,
-        content: `Dados atuais das campanhas (últimos ${DIAS_JANELA} dias):\n\n${linhas || "Nenhuma campanha encontrada no período."}\n\n${pergunta}`,
-      },
-    ],
-  });
-
-  const pensamento = resposta.content
-    .filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking")
-    .map((b) => b.thinking)
-    .filter((t) => t.trim().length > 0)
-    .join("\n\n");
-
-  const texto = resposta.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
-    .join("\n\n");
-
-  return {
-    pensamento: pensamento || null,
-    resposta: texto || "Não consegui gerar uma resposta.",
-  };
-}
-
 // Janela de 7 dias muda pouco de uma checagem pra outra no mesmo dia (só
 // ~6h de dado novo dentro de 168h de janela) — 1x/dia já captura a
 // tendência sem repetir análise quase igual 3x. Roda antes do Plano do Dia
 // (8h) de propósito, pra ele já ter esse contexto semanal fresco.
 const HORARIOS_7DIAS = [7]; // horário de Brasília — 1x/dia
 const HORARIOS_DIARIOS = [9, 14, 21]; // horário de Brasília — 3x/dia (aqui sim o dia muda de verdade a cada checagem)
-const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
-
-// Dispara "acao" uma única vez por horário-âncora cruzado (ver
-// HORARIOS_7DIAS/HORARIOS_DIARIOS), reaproveitando a mesma técnica de
-// "janela por horário-âncora" do prewarm de promoções (chaveJanelaDoDia,
-// dateUtils.ts) — a chave só muda quando o relógio cruza uma das horas,
-// então checar a cada 5min dispara exatamente uma vez por âncora, não uma
-// vez por checagem. Começa já sincronizado com a janela atual (em vez de
-// null) pra não disparar uma rodada extra a cada reinício/deploy.
-function agendarPorHorario(horarios: number[], acao: () => Promise<void>): void {
-  let ultimaJanela = chaveJanelaDoDia(horarios);
-  async function checar() {
-    const janela = chaveJanelaDoDia(horarios);
-    if (janela === ultimaJanela) return;
-    ultimaJanela = janela;
-    await acao();
-  }
-  setInterval(checar, INTERVALO_CHECAGEM_HORARIO_MS);
-}
 
 export function iniciarVerificacaoAgenteAds(): void {
   agendarPorHorario(HORARIOS_7DIAS, async () => {

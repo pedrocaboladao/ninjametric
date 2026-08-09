@@ -12,6 +12,12 @@ export interface MensagemChat {
   texto: string;
 }
 
+export interface BriefingGrowthHacker {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+}
+
 export interface Oportunidade {
   id: number;
   sku: string;

@@ -7,6 +7,7 @@ import type {
   PensamentoConversao,
   PlanoDiario,
   ResumoEscritorio,
+  BriefingGrowthHacker,
 } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -81,7 +82,7 @@ export interface RespostaChatAgente {
   pensamento: string | null;
 }
 
-export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
+export async function perguntarGrowthHacker(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/perguntar`, {
     method: "POST",
     credentials: "include",
@@ -89,6 +90,12 @@ export async function perguntarAgenteAds(pergunta: string, historico: MensagemCh
     body: JSON.stringify({ pergunta, historico }),
   });
   return tratarResposta<RespostaChatAgente>(res);
+}
+
+export async function fetchBriefingsGrowthHacker(): Promise<BriefingGrowthHacker[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/growth-hacker/feed`, { credentials: "include" });
+  const data = await tratarResposta<{ pensamentos: BriefingGrowthHacker[] }>(res);
+  return data.pensamentos;
 }
 
 export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
