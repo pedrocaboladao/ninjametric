@@ -2126,10 +2126,11 @@ function PlanoDoDia() {
     }
   }
 
-  // O plano de verdade (gerado às 10h) tem itens marcáveis; a cobrança das
-  // 18h é só texto, sem itens próprios — pega o mais recente COM itens pra
-  // mostrar como checklist, os outros aparecem só no histórico abaixo.
-  const planoComItens = planos?.find((p) => p.itens.length > 0) ?? null;
+  // Os planos de verdade (gerados às 8h e às 10h15, um por par de lojas) têm
+  // itens marcáveis; a cobrança das 18h é só texto, sem itens próprios —
+  // pega os 2 mais recentes COM itens (um de cada grupo) pra montar a
+  // checklist, os outros aparecem só no histórico abaixo.
+  const itensChecklist = (planos ?? []).filter((p) => p.itens.length > 0).slice(0, 2).flatMap((p) => p.itens);
 
   return (
     <>
@@ -2137,9 +2138,9 @@ function PlanoDoDia() {
         <div>
           <h1>Plano do Dia</h1>
           <p className="painel-sub">
-            Às 8h, cruza tudo que os outros agentes (Ads, Conversão, Catálogo, Oportunidades) registraram nas
-            últimas 24h nas suas 4 lojas e monta um plano único, priorizado entre elas. Às 18h, cobra o que ainda
-            ficou pendente.
+            Às 8h (Inga Collors e Perpétua) e às 10h15 (Hangar e Catedral Impermeabilizantes), cruza tudo que os
+            outros agentes registraram nas últimas 24h de cada par de lojas e monta um plano priorizado entre elas.
+            Às 18h, cobra o que ainda ficou pendente.
           </p>
         </div>
         <div className="financeiro-filtros">
@@ -2151,13 +2152,13 @@ function PlanoDoDia() {
 
       {erro && <div className="state-message state-error">{erro}</div>}
 
-      {planoComItens && (
+      {itensChecklist.length > 0 && (
         <div className="agente-feed">
           <div className="agente-feed-topo">
             <span className="painel-eyebrow">Checklist de hoje</span>
           </div>
           <div className="agente-checklist">
-            {planoComItens.itens.map((item) => (
+            {itensChecklist.map((item) => (
               <label key={item.id} className="agente-checklist-item">
                 <input type="checkbox" checked={item.concluido} onChange={() => alternarItem(item.id, item.concluido)} />
                 <span className={item.concluido ? "agente-checklist-feito" : ""}>{item.descricao}</span>

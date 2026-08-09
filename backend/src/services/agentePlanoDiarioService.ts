@@ -20,17 +20,32 @@ interface EntradaAgente {
   texto: string;
 }
 
-// Últimas 24h de cada tabela de pensamento — já são resumos por loja feitos
-// pelos outros agentes, não dado bruto, então não precisa filtrar por
-// LOJAS_AGENTE de novo (essas tabelas só recebem registro das 4 lojas
-// pessoais mesmo).
-async function buscarPensamentosDasUltimas24h(tabela: string, agente: string): Promise<EntradaAgente[]> {
+// Grupos de lojas do plano do dia — dividido em 2 chamadas de 2 lojas cada
+// em vez de 1 chamada com as 4 juntas: com as 4 misturadas, a IA prioriza
+// entre um volume maior de conteúdo e acaba deixando lojas de fora do texto
+// final mesmo tendo dado pra analisar (mesma lição de diluição do Analista
+// de Ads, mas em par em vez de 1 a 1, já que aqui faz sentido comparar
+// prioridade entre duas lojas ao mesmo tempo). IDs confirmados em
+// agenteOportunidadesService.ts: Hangar=1, Catedral Impermeabilizantes=2,
+// Inga Collors=3, Perpétua=4.
+const GRUPO_08H = { lojaIds: [3, 4], nomes: "Inga Collors e Perpétua" };
+const GRUPO_1015H = { lojaIds: [1, 2], nomes: "Hangar e Catedral Impermeabilizantes" };
+
+// Últimas 24h de cada tabela de pensamento, filtrado pro par de lojas do
+// grupo — já são resumos por loja feitos pelos outros agentes, não dado
+// bruto.
+async function buscarPensamentosDasUltimas24h(
+  tabela: string,
+  agente: string,
+  lojaIds: number[]
+): Promise<EntradaAgente[]> {
   const { rows } = await pool.query<{ pensamento: string; loja_nome: string | null }>(
     `SELECT p.pensamento, l.nome AS loja_nome
      FROM ${tabela} p
      LEFT JOIN lojas l ON l.id = p.loja_id
-     WHERE p.criado_em > now() - interval '24 hours'
-     ORDER BY p.criado_em ASC`
+     WHERE p.criado_em > now() - interval '24 hours' AND p.loja_id = ANY($1::int[])
+     ORDER BY p.criado_em ASC`,
+    [lojaIds]
   );
   return rows.map((r) => ({ agente, lojaNome: r.loja_nome, texto: r.pensamento }));
 }
@@ -69,26 +84,27 @@ async function inserirPensamentoComItens(pensamento: string, itens: string[]): P
   }
 }
 
-// Gerado 1x/dia (10h) — cruza os últimos 24h dos outros 4 agentes numa
-// chamada só (ver conversa sobre diluição: a entrada já vem resumida por
-// loja pelos outros agentes, não é dado bruto, então uma chamada só não
-// dilui a atenção como diluiria analisando número cru de 4 lojas juntas).
-async function gerarPlanoDiarioIA(): Promise<void> {
+// Gerado 2x/dia, uma chamada por par de lojas (8h: Inga Collors e
+// Perpétua; 10h15: Hangar e Catedral Impermeabilizantes) — cruza os
+// últimos 24h dos outros agentes DAQUELE PAR (ver comentário em
+// GRUPO_08H/GRUPO_1015H: com as 4 lojas numa chamada só, a IA às vezes
+// deixava lojas de fora do texto final mesmo tendo dado pra analisar).
+async function gerarPlanoDiarioIA(grupo: { lojaIds: number[]; nomes: string }, incluirOportunidades: boolean): Promise<void> {
   const client = obterClienteAnthropic();
   if (!client) return;
 
   const [ads, conversao, catalogo, oportunidades] = await Promise.all([
-    buscarPensamentosDasUltimas24h("agente_ads_pensamentos", "Ads"),
-    buscarPensamentosDasUltimas24h("agente_conversao_pensamentos", "Conversão"),
-    buscarPensamentosDasUltimas24h("agente_catalogo_pensamentos", "Catálogo"),
-    listarOportunidades(),
+    buscarPensamentosDasUltimas24h("agente_ads_pensamentos", "Ads", grupo.lojaIds),
+    buscarPensamentosDasUltimas24h("agente_conversao_pensamentos", "Conversão", grupo.lojaIds),
+    buscarPensamentosDasUltimas24h("agente_catalogo_pensamentos", "Catálogo", grupo.lojaIds),
+    incluirOportunidades ? listarOportunidades() : Promise.resolve([]),
   ]);
 
   const entradas = [...ads, ...conversao, ...catalogo];
 
   if (entradas.length === 0 && oportunidades.length === 0) {
     await inserirPensamentoComItens(
-      "Nenhum agente registrou nada nas últimas 24h — sem material suficiente pra montar um plano do dia agora.",
+      `Nenhum agente registrou nada sobre ${grupo.nomes} nas últimas 24h — sem material suficiente pra montar o plano dessas lojas agora.`,
       []
     );
     return;
@@ -103,9 +119,9 @@ async function gerarPlanoDiarioIA(): Promise<void> {
   const resposta = await client.messages.create({
     model: MODELO_IA,
     max_tokens: 2000,
-    system: `Você é um consultor de operações experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre. O dono acompanha 4 lojas pessoais (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua).
+    system: `Você é um consultor de operações experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre. Nesta chamada você foca só em 2 das 4 lojas pessoais do dono: ${grupo.nomes}.
 
-Você recebe tudo que os agentes especializados (Analista de Ads, Agente de Conversão, Agente de Catálogo, Agente de Oportunidades) registraram nas últimas 24h, já analisado e resumido por loja, e monta o PLANO DO DIA do dono — cruzando as 4 lojas, não uma por vez.
+Você recebe tudo que os agentes especializados (Analista de Ads, Agente de Conversão, Agente de Catálogo${incluirOportunidades ? ", Agente de Oportunidades" : ""}) registraram nas últimas 24h sobre ${grupo.nomes}, já analisado e resumido por loja, e monta o PLANO DO DIA dessas 2 lojas — cruzando as duas, não uma por vez.
 
 Regras:
 - Priorize entre TUDO que recebeu, comparando urgência e tamanho real do impacto — não é só listar tudo em ordem, é decidir o que realmente vale a atenção do dono hoje primeiro.
@@ -117,14 +133,14 @@ Regras:
     messages: [
       {
         role: "user",
-        content: `Registros dos agentes nas últimas 24h:\n\n${textoAgentes}\n\nOportunidades em aberto agora:\n\n${textoOportunidades}\n\nMonte o plano do dia.`,
+        content: `Registros dos agentes nas últimas 24h sobre ${grupo.nomes}:\n\n${textoAgentes}\n\nOportunidades em aberto agora:\n\n${textoOportunidades}\n\nMonte o plano do dia dessas lojas.`,
       },
     ],
     tools: [FERRAMENTA_ITENS],
     tool_choice: { type: "auto" },
   });
 
-  console.log(`Agente de Plano do Dia (IA): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída.`);
+  console.log(`Agente de Plano do Dia (IA, ${grupo.nomes}): ${resposta.usage.input_tokens} tokens de entrada, ${resposta.usage.output_tokens} de saída.`);
 
   const pensamento = resposta.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
@@ -278,7 +294,6 @@ export async function marcarItemPlano(id: number, concluido: boolean): Promise<v
   }
 }
 
-const HORARIO_PLANO = [8]; // horário de Brasília — gera o plano do dia
 const HORARIO_COBRANCA = [18]; // horário de Brasília — cobra pendências do dia
 const INTERVALO_CHECAGEM_HORARIO_MS = 5 * 60 * 1000; // 5min
 
@@ -292,14 +307,36 @@ function agendarPorHorario(horarios: number[], acao: () => Promise<void>): void 
   }, INTERVALO_CHECAGEM_HORARIO_MS);
 }
 
+// Igual a agendarPorHorario, mas com precisão de minuto (chaveJanelaDoDia só
+// trabalha em hora cheia) — dispara 1x por dia assim que o horário de
+// Brasília cruza hora:minuto, usando o dia (YYYY-MM-DD) já disparado hoje
+// pra não repetir.
+function agendarPorHorarioExato(hora: number, minuto: number, acao: () => Promise<void>): void {
+  const alvo = `${String(hora).padStart(2, "0")}:${String(minuto).padStart(2, "0")}`;
+  let ultimoDiaDisparado = "";
+  setInterval(async () => {
+    const agora = janelaHoje();
+    const dia = agora.inicioDia.slice(0, 10);
+    const horaMinutoAgora = agora.agora.slice(11, 16);
+    if (dia === ultimoDiaDisparado) return; // já disparou hoje
+    if (horaMinutoAgora < alvo) return; // ainda não chegou a hora hoje
+    ultimoDiaDisparado = dia;
+    await acao();
+  }, INTERVALO_CHECAGEM_HORARIO_MS);
+}
+
 export function iniciarVerificacaoPlanoDiario(): void {
-  agendarPorHorario(HORARIO_PLANO, () => rodar("plano do dia", gerarPlanoDiarioIA));
+  agendarPorHorario([8], () => rodar(`plano do dia (${GRUPO_08H.nomes})`, () => gerarPlanoDiarioIA(GRUPO_08H, true)));
+  agendarPorHorarioExato(10, 15, () =>
+    rodar(`plano do dia (${GRUPO_1015H.nomes})`, () => gerarPlanoDiarioIA(GRUPO_1015H, false))
+  );
   agendarPorHorario(HORARIO_COBRANCA, () => rodar("cobrança 18h", gerarCobrancaIA));
 }
 
-// Botão "Verificar agora" — dispara o plano do dia na hora, fora do horário
-// fixo (útil pra testar sem esperar as 8h, ou pra atualizar o plano depois
-// de uma mudança grande no meio do dia).
+// Botão "Verificar agora" — dispara o plano do dia dos 2 grupos na hora,
+// fora do horário fixo (útil pra testar sem esperar 8h/10h15, ou pra
+// atualizar o plano depois de uma mudança grande no meio do dia).
 export async function verificarPlanoDiarioAgora(): Promise<void> {
-  await rodar("plano do dia (manual)", gerarPlanoDiarioIA);
+  await rodar(`plano do dia manual (${GRUPO_08H.nomes})`, () => gerarPlanoDiarioIA(GRUPO_08H, true));
+  await rodar(`plano do dia manual (${GRUPO_1015H.nomes})`, () => gerarPlanoDiarioIA(GRUPO_1015H, false));
 }
