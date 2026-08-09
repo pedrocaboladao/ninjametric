@@ -76,15 +76,19 @@ export async function fetchPensamentosAds(): Promise<PensamentoAds[]> {
   return data.pensamentos;
 }
 
-export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<string> {
+export interface RespostaChatAgente {
+  resposta: string;
+  pensamento: string | null;
+}
+
+export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/perguntar`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pergunta, historico }),
   });
-  const data = await tratarResposta<{ resposta: string }>(res);
-  return data.resposta;
+  return tratarResposta<RespostaChatAgente>(res);
 }
 
 export async function tratarFotoProduto(imagemBase64: string): Promise<string> {

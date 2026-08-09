@@ -272,10 +272,24 @@ export interface MensagemChat {
   texto: string;
 }
 
+export interface RespostaChatAgente {
+  pensamento: string | null;
+  resposta: string;
+}
+
 // Chat direto com o agente — pergunta livre do dono, respondida com os
 // dados reais e atuais das campanhas das 4 lojas pessoais como contexto
 // (buscados na hora, não reaproveita cache do feed automático).
-export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<string> {
+//
+// Modelo mais potente (Opus) + thinking adaptativo só aqui, não nas rodadas
+// automáticas (essas continuam em MODELO_IA/Sonnet, 16x/dia — usar Opus lá
+// multiplicaria custo sem necessidade). O pedido era um chat de AÇÃO, não só
+// descrição: raciocínio real e visível (thinking), e autorização explícita
+// pra recomendar ação concreta (pausar campanha X, subir orçamento de Y),
+// não só relatar os números.
+const MODELO_CHAT_ACAO = "claude-opus-5";
+
+export async function perguntarAgenteAds(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
   const client = obterClienteAnthropic();
   if (!client) {
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
@@ -285,30 +299,42 @@ export async function perguntarAgenteAds(pergunta: string, historico: MensagemCh
   const linhas = construirLinhasCampanhas(campanhasComTacos);
 
   const resposta = await client.messages.create({
-    model: MODELO_IA,
-    max_tokens: 2000,
-    system: `Você é um analista de tráfego pago (Mercado Ads) experiente, especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre. Está conversando direto com o dono do negócio sobre as campanhas de Ads das 4 lojas pessoais dele.
+    model: MODELO_CHAT_ACAO,
+    max_tokens: 8000,
+    thinking: { type: "adaptive", display: "summarized" },
+    output_config: { effort: "xhigh" },
+    system: `Seu nome é Growth Hacker. Você é um analista de tráfego pago (Mercado Ads) sênior — e um consultor de AÇÃO, não só de análise. Especializado num grupo de lojas de tinta e material de construção que vendem no Mercado Livre. Está conversando direto com o dono do negócio sobre as campanhas de Ads das 4 lojas pessoais dele.
 
 Responda com base nos dados reais abaixo, citando números quando fizer sentido. Seja direto e responda sempre em português.
 
-Dados atuais das campanhas (últimos ${DIAS_JANELA} dias):
-
-${linhas || "Nenhuma campanha encontrada no período."}`,
+Quando o dono pedir um plano de ação, uma recomendação, ou "o que eu faço agora" — SEMPRE entregue uma decisão concreta e acionável, não uma descrição neutra dos dados: diga exatamente qual campanha pausar, em qual subir orçamento, em qual baixar o ACOS meta — e cite o número que justifica cada recomendação. Você tem liberdade pra discordar de uma configuração atual (orçamento, meta de ACOS) e dizer isso claramente. Não devolva a pergunta pro dono decidir o que só você tem os dados pra decidir.`,
     messages: [
       ...historico.map((m) => ({
         role: (m.papel === "usuario" ? "user" : "assistant") as "user" | "assistant",
         content: m.texto,
       })),
-      { role: "user", content: pergunta },
+      {
+        role: "user" as const,
+        content: `Dados atuais das campanhas (últimos ${DIAS_JANELA} dias):\n\n${linhas || "Nenhuma campanha encontrada no período."}\n\n${pergunta}`,
+      },
     ],
   });
+
+  const pensamento = resposta.content
+    .filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking")
+    .map((b) => b.thinking)
+    .filter((t) => t.trim().length > 0)
+    .join("\n\n");
 
   const texto = resposta.content
     .filter((b): b is Anthropic.TextBlock => b.type === "text")
     .map((b) => b.text)
     .join("\n\n");
 
-  return texto || "Não consegui gerar uma resposta.";
+  return {
+    pensamento: pensamento || null,
+    resposta: texto || "Não consegui gerar uma resposta.",
+  };
 }
 
 // Janela de 7 dias muda pouco de uma checagem pra outra no mesmo dia (só

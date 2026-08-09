@@ -796,12 +796,20 @@ function PensamentoCard({
   );
 }
 
+// Igual a MensagemChat, mas com o raciocínio (thinking) da IA guardado à
+// parte — só pra exibição local, não é reenviado como histórico (o backend
+// só precisa de papel+texto pra reconstruir a conversa).
+interface MensagemExibida extends MensagemChat {
+  pensamento?: string | null;
+}
+
 // Pergunta livre pro agente — mantém o histórico só na memória da página
 // (não persiste como o feed/pensamentos), a cada pergunta ele busca os
 // dados atuais das campanhas de novo no backend, então a resposta nunca
-// fica desatualizada.
+// fica desatualizada. Modelo mais forte (Opus) + raciocínio real exibido —
+// pedido explícito do dono: "eu pensando e falando, ele pensando e falando".
 function ChatAgente() {
-  const [mensagens, setMensagens] = useState<MensagemChat[]>([]);
+  const [mensagens, setMensagens] = useState<MensagemExibida[]>([]);
   const [input, setInput] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroChat, setErroChat] = useState<string | null>(null);
@@ -811,14 +819,16 @@ function ChatAgente() {
     const pergunta = input.trim();
     if (!pergunta || enviando) return;
 
-    const historico = mensagens;
+    // Historico enviado ao backend não carrega o campo "pensamento" — a API
+    // só espera papel/texto pra reconstruir a conversa.
+    const historico: MensagemChat[] = mensagens.map(({ papel, texto }) => ({ papel, texto }));
     setMensagens((m) => [...m, { papel: "usuario", texto: pergunta }]);
     setInput("");
     setErroChat(null);
     setEnviando(true);
     try {
-      const resposta = await perguntarAgenteAds(pergunta, historico);
-      setMensagens((m) => [...m, { papel: "agente", texto: resposta }]);
+      const { resposta, pensamento } = await perguntarAgenteAds(pergunta, historico);
+      setMensagens((m) => [...m, { papel: "agente", texto: resposta, pensamento }]);
     } catch (err) {
       setErroChat(err instanceof Error ? err.message : "Falha ao perguntar pro agente.");
     } finally {
@@ -834,7 +844,8 @@ function ChatAgente() {
 
       {mensagens.length === 0 && (
         <div className="state-message">
-          Pergunte algo sobre suas campanhas de Ads — ele responde com os dados atuais das suas 4 lojas.
+          Pergunte algo sobre suas campanhas de Ads, ou peça um plano de ação — ele decide e recomenda com os dados
+          atuais das suas 4 lojas, mostrando o raciocínio antes da resposta.
         </div>
       )}
 
@@ -842,6 +853,12 @@ function ChatAgente() {
         <div className="agente-chat-mensagens">
           {mensagens.map((m, i) => (
             <div key={i} className={`agente-chat-msg agente-chat-msg-${m.papel}`}>
+              {m.pensamento && (
+                <details className="agente-chat-pensamento">
+                  <summary>🧠 Pensando…</summary>
+                  <p>{m.pensamento}</p>
+                </details>
+              )}
               <p>{m.texto}</p>
             </div>
           ))}
@@ -868,6 +885,29 @@ function ChatAgente() {
         </button>
       </form>
     </div>
+  );
+}
+
+// Agente novo e separado do Analista de Ads: não observa nem registra feed
+// sozinho, é 100% conversa sob demanda — o consultor mais forte (Opus +
+// raciocínio visível), pra quando o dono quer discutir/decidir, não só ler
+// um resumo automático.
+function GrowthHacker() {
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Growth Hacker</h1>
+          <p className="painel-sub">
+            Seu consultor de Ads mais forte — conversa em tempo real sobre as campanhas das suas 4 lojas, pensa antes
+            de responder, e entrega decisão de verdade (pausar campanha, subir orçamento, mudar meta de ACOS), não só
+            descreve os números.
+          </p>
+        </div>
+      </div>
+
+      <ChatAgente />
+    </>
   );
 }
 
@@ -936,8 +976,6 @@ function AnalistaAds() {
           )}
         </div>
       </div>
-
-      <ChatAgente />
 
       <div className="agente-feed">
         <div className="agente-feed-topo">
@@ -2190,9 +2228,9 @@ function PlanoDoDia() {
 }
 
 export function AgenciaAgentesIA() {
-  const [agente, setAgente] = useState<"plano" | "ads" | "imagens" | "oportunidades" | "catalogo" | "conversao">(
-    "plano"
-  );
+  const [agente, setAgente] = useState<
+    "plano" | "ads" | "growth" | "imagens" | "oportunidades" | "catalogo" | "conversao"
+  >("plano");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
   // vez que este componente re-renderiza (ex.: algo mudando mais acima na
@@ -2228,6 +2266,13 @@ export function AgenciaAgentesIA() {
         </button>
         <button
           type="button"
+          className={`agente-tab ${agente === "growth" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("growth")}
+        >
+          Growth Hacker
+        </button>
+        <button
+          type="button"
           className={`agente-tab ${agente === "imagens" ? "agente-tab-ativa" : ""}`}
           onClick={() => setAgente("imagens")}
         >
@@ -2258,6 +2303,7 @@ export function AgenciaAgentesIA() {
 
       {agente === "plano" && <PlanoDoDia />}
       {agente === "ads" && <AnalistaAds />}
+      {agente === "growth" && <GrowthHacker />}
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}
       {agente === "catalogo" && <AgenteCatalogo />}

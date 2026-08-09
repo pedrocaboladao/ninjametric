@@ -83,8 +83,8 @@ agentesRouter.post("/ads/perguntar", async (req, res) => {
       )
     : [];
   try {
-    const resposta = await perguntarAgenteAds(pergunta.trim(), historicoValido);
-    res.json({ resposta });
+    const { resposta, pensamento } = await perguntarAgenteAds(pergunta.trim(), historicoValido);
+    res.json({ resposta, pensamento });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
   }
