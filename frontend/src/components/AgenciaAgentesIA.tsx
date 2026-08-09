@@ -736,7 +736,7 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
       />
       <PersonagemAndante
         id="oportunidades"
-        nome="Visionário"
+        nome="Gestão de Oportunidades"
         deskPe={deskOportunidades}
         comumPe={comumOportunidades}
         cor={COR_OPORTUNIDADES}
@@ -745,7 +745,7 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
       />
       <PersonagemAndante
         id="catalogo"
-        nome="Negociador"
+        nome="Analista de Catálogo"
         deskPe={deskCatalogo}
         comumPe={comumCatalogo}
         cor={COR_CATALOGO}
@@ -1734,8 +1734,8 @@ const POSICAO_CRACHA_VIDEO: { nome: string; left: string; top: string }[] = [
   { nome: "Planejador", left: "73.6%", top: "28.4%" },
   { nome: "Designer", left: "13.4%", top: "56.8%" },
   { nome: "Analista de Ads", left: "79.2%", top: "64.8%" },
-  { nome: "Visionário", left: "44.6%", top: "62.1%" },
-  { nome: "Negociador", left: "21.4%", top: "41.1%" },
+  { nome: "Gestão de Oportunidades", left: "44.6%", top: "62.1%" },
+  { nome: "Analista de Catálogo", left: "21.4%", top: "41.1%" },
   { nome: "Analista de Funil", left: "59.7%", top: "48.3%" },
 ];
 
