@@ -846,8 +846,8 @@ function ChatAgente() {
 
       {mensagens.length === 0 && (
         <div className="state-message">
-          Pergunte algo sobre suas campanhas de Ads, ou peça um plano de ação — ele decide e recomenda com os dados
-          atuais das suas 4 lojas, mostrando o raciocínio antes da resposta.
+          Pergunte algo sobre o financeiro ou as campanhas de Ads das suas 4 lojas, ou peça um plano de ação — ele
+          decide e recomenda com os dados reais e atuais, mostrando o raciocínio antes da resposta.
         </div>
       )}
 

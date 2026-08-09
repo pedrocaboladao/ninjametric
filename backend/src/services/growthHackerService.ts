@@ -1,8 +1,55 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env";
 import { pool } from "../db/pool";
-import { buscarCampanhasComTacos, construirLinhasCampanhas, DIAS_JANELA } from "./agenteAdsService";
-import { agendarPorHorario } from "./dateUtils";
+import { buscarCampanhasComTacos, construirLinhasCampanhas, DIAS_JANELA, LOJAS_AGENTE } from "./agenteAdsService";
+import { agendarPorHorario, dataISOBR } from "./dateUtils";
+import { listarVendasFinanceiras } from "./financeiroService";
+import { listLojas } from "./tokenStore";
+
+const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
+
+// Números financeiros reais (receita, margem, pedidos) por loja — dá pro
+// Growth Hacker falar de lucro geral do negócio, não só do que passa pelo
+// Ads. Uma chamada por loja (só 4) pra reaproveitar o mesmo cache de 15min
+// de listarVendasFinanceiras (mesma janela usada pela tela de Financeiro).
+async function construirLinhasFinanceiro(diasPeriodo: number): Promise<string> {
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
+  const dataInicio = dataISOBR(inicio);
+  const dataFim = dataISOBR(hoje);
+
+  const [lojas, resultadosPorLoja] = await Promise.all([
+    listLojas(),
+    Promise.all(LOJAS_AGENTE.map((lojaId) => listarVendasFinanceiras(lojaId, LOJAS_AGENTE, dataInicio, dataFim))),
+  ]);
+  const nomePorLoja = new Map(lojas.map((l) => [l.id, l.nome]));
+
+  return LOJAS_AGENTE.map((lojaId, i) => {
+    const resultado = resultadosPorLoja[i];
+    let receitaTotal = 0;
+    let margemTotal = 0;
+    let itensSemCusto = 0;
+    for (const v of resultado.vendas) {
+      receitaTotal += v.receitaTotal;
+      if (v.margemContribuicao !== null) margemTotal += v.margemContribuicao;
+      else itensSemCusto++;
+    }
+    const margemPercentual = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
+
+    return [
+      `loja="${nomePorLoja.get(lojaId) ?? `Loja ${lojaId}`}"`,
+      `receita=${formatCurrency(receitaTotal)}`,
+      `margem_contribuicao=${formatCurrency(margemTotal)}`,
+      `margem_percentual=${margemPercentual !== null ? margemPercentual.toFixed(1) + "%" : "sem dado"}`,
+      `pedidos_aprovados=${resultado.resumoPedidos.pedidosAprovados}`,
+      `pedidos_cancelados=${resultado.resumoPedidos.pedidosCancelados} (${formatCurrency(resultado.resumoPedidos.valorCancelado)} perdido)`,
+      `gasto_ads=${formatCurrency(resultado.gastoAdsTotal)}`,
+      itensSemCusto > 0 ? `itens_sem_custo_cadastrado=${itensSemCusto}` : null,
+    ]
+      .filter((v): v is string => v !== null)
+      .join(", ");
+  }).join("\n");
+}
 
 let clienteAnthropic: Anthropic | null | undefined;
 function obterClienteAnthropic(): Anthropic | null {
@@ -28,7 +75,7 @@ const PERSONA_GROWTH_HACKER = `Seu nome é Growth Hacker. Você é um empresári
 
 Fale com autoridade e confiança — você é o especialista aqui, não um assistente neutro. Seja direto, sem rodeios, sempre em português. Cite os números reais que fundamentam cada ponto.
 
-Você tem dados de campanhas de Ads das 4 lojas pessoais dele, mas seu raciocínio não fica preso só a "ACOS" — pense em termos de lucro real e alocação de capital de marketing: onde vale mais a pena colocar dinheiro agora, o que está desperdiçando verba, o que está sendo sub-investido. Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer (pausar campanha X, subir orçamento de Y, mudar meta de ACOS de Z), não devolva a decisão pro dono.`;
+Você tem os números financeiros reais (receita, margem de contribuição, pedidos) E os dados de campanhas de Ads das 4 lojas pessoais dele — cruze os dois. Pense em termos de lucro real do negócio, não só ACOS: onde vale mais a pena colocar dinheiro agora, o que está desperdiçando verba, o que está sub-investido, qual loja está performando mal mesmo fora do Ads. Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer, não devolva a decisão pro dono.`;
 
 function extrairRespostaEPensamento(resposta: Anthropic.Message): { pensamento: string | null; texto: string } {
   const pensamento = resposta.content
@@ -76,10 +123,18 @@ export async function perguntarGrowthHacker(pergunta: string, historico: Mensage
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
   }
 
-  const campanhasComTacos = await buscarCampanhasComTacos(DIAS_JANELA);
-  const linhas = construirLinhasCampanhas(campanhasComTacos);
+  const [campanhasComTacos, linhasFinanceiro] = await Promise.all([
+    buscarCampanhasComTacos(DIAS_JANELA),
+    construirLinhasFinanceiro(DIAS_JANELA),
+  ]);
+  const linhasCampanhas = construirLinhasCampanhas(campanhasComTacos);
 
-  const resposta = await client.messages.create({
+  // .create() tem um teto de ~10min pra respostas não-streaming — com Opus +
+  // thinking em esforço "xhigh" e teto de 24000 tokens, o SDK recusa de cara
+  // ("Streaming is required for operations that may take longer than 10
+  // minutes"). .stream() + finalMessage() evita esse teto e devolve o mesmo
+  // objeto Message no final, sem precisar tratar os eventos um a um aqui.
+  const resposta = await client.messages.stream({
     model: MODELO_GROWTH_HACKER,
     max_tokens: MAX_TOKENS_GROWTH_HACKER,
     thinking: { type: "adaptive", display: "summarized" },
@@ -94,10 +149,10 @@ Quando o dono pedir um plano de ação, uma recomendação, ou "o que eu faço a
       })),
       {
         role: "user" as const,
-        content: `Dados atuais das campanhas (últimos ${DIAS_JANELA} dias):\n\n${linhas || "Nenhuma campanha encontrada no período."}\n\n${pergunta}`,
+        content: `Dados financeiros reais por loja (últimos ${DIAS_JANELA} dias):\n\n${linhasFinanceiro}\n\nDados atuais das campanhas de Ads (últimos ${DIAS_JANELA} dias):\n\n${linhasCampanhas || "Nenhuma campanha encontrada no período."}\n\n${pergunta}`,
       },
     ],
-  });
+  }).finalMessage();
 
   console.log(
     `Growth Hacker (chat): stop_reason=${resposta.stop_reason}, ${resposta.usage.output_tokens} tokens de saída.`
@@ -125,28 +180,36 @@ export async function gerarBriefingDiario(): Promise<void> {
   }
 
   try {
-    const campanhas = await buscarCampanhasComTacos(DIAS_JANELA);
+    const [campanhas, linhasFinanceiro] = await Promise.all([
+      buscarCampanhasComTacos(DIAS_JANELA),
+      construirLinhasFinanceiro(DIAS_JANELA),
+    ]);
     const ativas = campanhas.filter((c) => c.status === "active" && c.custo > 0);
-    const linhas = construirLinhasCampanhas(ativas);
+    const linhasCampanhas = construirLinhasCampanhas(ativas);
 
-    const resposta = await client.messages.create({
-      model: MODELO_GROWTH_HACKER,
-      max_tokens: MAX_TOKENS_GROWTH_HACKER,
-      thinking: { type: "adaptive", display: "summarized" },
-      output_config: { effort: "xhigh" },
-      system: `${PERSONA_GROWTH_HACKER}
+    // .stream() + finalMessage() — ver comentário em perguntarGrowthHacker
+    // sobre o teto de 10min do .create() não-streaming.
+    const resposta = await client.messages
+      .stream({
+        model: MODELO_GROWTH_HACKER,
+        max_tokens: MAX_TOKENS_GROWTH_HACKER,
+        thinking: { type: "adaptive", display: "summarized" },
+        output_config: { effort: "xhigh" },
+        system: `${PERSONA_GROWTH_HACKER}
 
-Uma vez por dia você olha os dados abaixo e escreve um briefing curto e forte pro dono, sem ele precisar perguntar nada — como se você tivesse acabado de revisar o negócio dele de manhã e fosse falar com ele antes do café. Não é um relatório formal: é você dizendo, sem enrolação, onde tá o dinheiro sendo desperdiçado, onde vale apostar mais forte, e a MAIOR alavanca de lucro que você enxerga hoje. Termine com uma recomendação clara do que fazer primeiro. Texto direto, sem introdução nem despedida — só o briefing.`,
-      messages: [
-        {
-          role: "user",
-          content:
-            ativas.length > 0
-              ? `Campanhas ativas com gasto no período (últimos ${DIAS_JANELA} dias):\n\n${linhas}\n\nMe dá o briefing de hoje.`
-              : `Nenhuma campanha ativa com gasto no período (últimos ${DIAS_JANELA} dias). Comente essa ausência de investimento em Ads e o que isso pode significar pro negócio.`,
-        },
-      ],
-    });
+Uma vez por dia você olha os dados abaixo e escreve um briefing curto e forte pro dono, sem ele precisar perguntar nada — como se você tivesse acabado de revisar o negócio dele de manhã e fosse falar com ele antes do café. Não é um relatório formal: é você dizendo, sem enrolação, onde tá o dinheiro sendo desperdiçado, onde vale apostar mais forte, e a MAIOR alavanca de lucro que você enxerga hoje — pode ser dentro ou fora do Ads. Termine com uma recomendação clara do que fazer primeiro. Texto direto, sem introdução nem despedida — só o briefing.`,
+        messages: [
+          {
+            role: "user",
+            content: `Dados financeiros reais por loja (últimos ${DIAS_JANELA} dias):\n\n${linhasFinanceiro}\n\n${
+              ativas.length > 0
+                ? `Campanhas de Ads ativas com gasto no período:\n\n${linhasCampanhas}`
+                : "Nenhuma campanha de Ads ativa com gasto no período."
+            }\n\nMe dá o briefing de hoje.`,
+          },
+        ],
+      })
+      .finalMessage();
 
     console.log(
       `Growth Hacker (briefing): stop_reason=${resposta.stop_reason}, ${resposta.usage.output_tokens} tokens de saída.`

@@ -134,7 +134,7 @@ export const DIAS_JANELA = 7;
 // Só as 4 contas PESSOAIS do usuário — não o grupo inteiro (16 lojas). IDs
 // confirmados via GET /api/lojas/todas: Hangar=1, Catedral
 // Impermeabilizantes=2, Inga Collors=3, Perpétua=4.
-const LOJAS_AGENTE = [1, 2, 3, 4];
+export const LOJAS_AGENTE = [1, 2, 3, 4];
 
 // Busca as campanhas das 4 lojas pessoais (ver LOJAS_AGENTE) com TACOS/lucro
 // já calculados — reaproveitada pela verificação automática (janela de 7
