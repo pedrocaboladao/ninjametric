@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useCallback, useEffect, useState, type ChangeEvent, type ComponentProps, type FormEvent } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   fetchPensamentosAds,
   perguntarGrowthHacker,
@@ -767,6 +769,19 @@ function EscritorioCompartilhado({ alertaAds }: { alertaAds: boolean }) {
   );
 }
 
+// Vários agentes (Analista de Ads, Growth Hacker, Conversão, Catálogo)
+// escrevem em Markdown de verdade (tabelas, negrito, títulos — parte do
+// próprio system prompt de cada um). Tabela tem componente próprio só pra
+// poder rolar na horizontal dentro de um card/bolha estreito, sem quebrar
+// o layout.
+const MARKDOWN_COMPONENTES = {
+  table: (props: ComponentProps<"table">) => (
+    <div className="markdown-tabela-wrap">
+      <table {...props} />
+    </div>
+  ),
+};
+
 // Raciocínio real da IA (não é texto inventado pra decoração — é a análise
 // que a própria Claude escreve, ver backend/src/services/agenteAdsService.ts).
 // Um card por rodada de verificação, texto corrido preservando as quebras de
@@ -788,9 +803,11 @@ function PensamentoCard({
         </div>
         <span className="financeiro-td-mudo">{formatDataHora(pensamento.criadoEm)}</span>
       </div>
-      <p className={`agente-pensamento-texto ${expandido ? "agente-pensamento-expandido" : ""}`}>
-        {pensamento.pensamento}
-      </p>
+      <div className={`agente-pensamento-texto markdown-conteudo ${expandido ? "agente-pensamento-expandido" : ""}`}>
+        <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTES}>
+          {pensamento.pensamento}
+        </Markdown>
+      </div>
       <button type="button" className="agente-pensamento-toggle" onClick={() => setExpandido((v) => !v)}>
         {expandido ? "Mostrar menos" : "Ler tudo"}
       </button>
@@ -804,6 +821,7 @@ function PensamentoCard({
 interface MensagemExibida extends MensagemChat {
   pensamento?: string | null;
 }
+
 
 // Pergunta livre pro agente — mantém o histórico só na memória da página
 // (não persiste como o feed/pensamentos), a cada pergunta ele busca os
@@ -861,7 +879,15 @@ function ChatAgente() {
                   <p>{m.pensamento}</p>
                 </details>
               )}
-              <p>{m.texto}</p>
+              {m.papel === "agente" ? (
+                <div className="markdown-conteudo">
+                  <Markdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTES}>
+                    {m.texto}
+                  </Markdown>
+                </div>
+              ) : (
+                <p>{m.texto}</p>
+              )}
             </div>
           ))}
           {enviando && (
@@ -1810,11 +1836,11 @@ function ChatModoTV() {
         <span>💬 Growth Hacker</span>
         <span className="agente-tv-chat-toggle">{aberto ? "▾ minimizar" : "▴ abrir"}</span>
       </button>
-      {aberto && (
-        <div className="agente-tv-chat-corpo">
-          <ChatAgente />
-        </div>
-      )}
+      {/* display:none em vez de desmontar — minimizar não pode apagar o
+          histórico da conversa (o componente teria que remontar do zero). */}
+      <div className="agente-tv-chat-corpo" style={{ display: aberto ? undefined : "none" }}>
+        <ChatAgente />
+      </div>
     </div>
   );
 }

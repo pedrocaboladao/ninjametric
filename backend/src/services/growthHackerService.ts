@@ -2,17 +2,29 @@ import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env";
 import { pool } from "../db/pool";
 import { buscarCampanhasComTacos, construirLinhasCampanhas, DIAS_JANELA, LOJAS_AGENTE } from "./agenteAdsService";
+import { listarCampanhasAds } from "./adsService";
 import { agendarPorHorario, dataISOBR } from "./dateUtils";
 import { listarVendasFinanceiras } from "./financeiroService";
 import { listLojas } from "./tokenStore";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
+// IDs das outras lojas do grupo (fora as 4 pessoais) — só as com integração
+// ML ativa, mesmo filtro que todo o resto do sistema usa. Não é hardcoded
+// como LOJAS_AGENTE porque o grupo cresce (já foi de 4 pra 16+) e essa
+// lista não pode ficar desatualizada.
+async function idsOutrasLojas(): Promise<number[]> {
+  const lojas = await listLojas();
+  return lojas.filter((l) => l.ml_user_id !== null && !LOJAS_AGENTE.includes(l.id)).map((l) => l.id);
+}
+
 // Números financeiros reais (receita, margem, pedidos) por loja — dá pro
 // Growth Hacker falar de lucro geral do negócio, não só do que passa pelo
-// Ads. Uma chamada por loja (só 4) pra reaproveitar o mesmo cache de 15min
-// de listarVendasFinanceiras (mesma janela usada pela tela de Financeiro).
-async function construirLinhasFinanceiro(diasPeriodo: number): Promise<string> {
+// Ads. Uma chamada por loja pra reaproveitar o mesmo cache de 15min de
+// listarVendasFinanceiras (mesma janela usada pela tela de Financeiro).
+async function construirLinhasFinanceiroPorLojas(diasPeriodo: number, lojaIds: number[]): Promise<string> {
+  if (lojaIds.length === 0) return "Nenhuma loja nesse grupo.";
+
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
   const dataInicio = dataISOBR(inicio);
@@ -20,35 +32,107 @@ async function construirLinhasFinanceiro(diasPeriodo: number): Promise<string> {
 
   const [lojas, resultadosPorLoja] = await Promise.all([
     listLojas(),
-    Promise.all(LOJAS_AGENTE.map((lojaId) => listarVendasFinanceiras(lojaId, LOJAS_AGENTE, dataInicio, dataFim))),
+    Promise.all(lojaIds.map((lojaId) => listarVendasFinanceiras(lojaId, lojaIds, dataInicio, dataFim))),
   ]);
   const nomePorLoja = new Map(lojas.map((l) => [l.id, l.nome]));
 
-  return LOJAS_AGENTE.map((lojaId, i) => {
-    const resultado = resultadosPorLoja[i];
-    let receitaTotal = 0;
-    let margemTotal = 0;
-    let itensSemCusto = 0;
-    for (const v of resultado.vendas) {
-      receitaTotal += v.receitaTotal;
-      if (v.margemContribuicao !== null) margemTotal += v.margemContribuicao;
-      else itensSemCusto++;
-    }
-    const margemPercentual = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
+  return lojaIds
+    .map((lojaId, i) => {
+      const resultado = resultadosPorLoja[i];
+      let receitaTotal = 0;
+      let margemTotal = 0;
+      let itensSemCusto = 0;
+      for (const v of resultado.vendas) {
+        receitaTotal += v.receitaTotal;
+        if (v.margemContribuicao !== null) margemTotal += v.margemContribuicao;
+        else itensSemCusto++;
+      }
+      const margemPercentual = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
 
-    return [
-      `loja="${nomePorLoja.get(lojaId) ?? `Loja ${lojaId}`}"`,
-      `receita=${formatCurrency(receitaTotal)}`,
-      `margem_contribuicao=${formatCurrency(margemTotal)}`,
-      `margem_percentual=${margemPercentual !== null ? margemPercentual.toFixed(1) + "%" : "sem dado"}`,
-      `pedidos_aprovados=${resultado.resumoPedidos.pedidosAprovados}`,
-      `pedidos_cancelados=${resultado.resumoPedidos.pedidosCancelados} (${formatCurrency(resultado.resumoPedidos.valorCancelado)} perdido)`,
-      `gasto_ads=${formatCurrency(resultado.gastoAdsTotal)}`,
-      itensSemCusto > 0 ? `itens_sem_custo_cadastrado=${itensSemCusto}` : null,
-    ]
-      .filter((v): v is string => v !== null)
-      .join(", ");
-  }).join("\n");
+      return [
+        `loja="${nomePorLoja.get(lojaId) ?? `Loja ${lojaId}`}"`,
+        `receita=${formatCurrency(receitaTotal)}`,
+        `margem_contribuicao=${formatCurrency(margemTotal)}`,
+        `margem_percentual=${margemPercentual !== null ? margemPercentual.toFixed(1) + "%" : "sem dado"}`,
+        `pedidos_aprovados=${resultado.resumoPedidos.pedidosAprovados}`,
+        `pedidos_cancelados=${resultado.resumoPedidos.pedidosCancelados} (${formatCurrency(resultado.resumoPedidos.valorCancelado)} perdido)`,
+        `gasto_ads=${formatCurrency(resultado.gastoAdsTotal)}`,
+        itensSemCusto > 0 ? `itens_sem_custo_cadastrado=${itensSemCusto}` : null,
+      ]
+        .filter((v): v is string => v !== null)
+        .join(", ");
+    })
+    .join("\n");
+}
+
+// Campanhas ativas das outras lojas do grupo — versão enxuta (sem
+// margemReal/lucroReais, que exigem cruzar com o SKU vendido e só fazem
+// sentido calcular pras 4 lojas que o Growth Hacker de fato assessora).
+// Serve só de contexto competitivo (ex.: "achei esse mesmo produto sendo
+// disputado por outra loja do grupo") — filtra gasto mínimo pra não afogar
+// o contexto com campanha de centavos.
+const GASTO_MINIMO_CONTEXTO = 10;
+
+async function construirLinhasAdsOutrasLojas(diasPeriodo: number, outras: number[]): Promise<string> {
+  if (outras.length === 0) return "Nenhuma outra loja no grupo com integração ativa.";
+
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
+  const dataInicio = dataISOBR(inicio);
+  const dataFim = dataISOBR(hoje);
+
+  const campanhas = await listarCampanhasAds(undefined, outras, dataInicio, dataFim);
+  const ativas = campanhas.filter((c) => c.status === "active" && c.custo >= GASTO_MINIMO_CONTEXTO);
+  if (ativas.length === 0) return "Nenhuma campanha ativa com gasto relevante no período.";
+
+  return ativas
+    .map((c) =>
+      [
+        `loja="${c.lojaNome}"`,
+        `campanha="${c.nome}"`,
+        `acos=${c.acos.toFixed(1)}%`,
+        `acos_meta=${c.acosMeta.toFixed(1)}%`,
+        `gasto=${formatCurrency(c.custo)}`,
+        `orcamento_diario=${formatCurrency(c.orcamento)}`,
+        `vendas=${c.vendasTotais}`,
+      ].join(", ")
+    )
+    .join("\n");
+}
+
+// Monta o contexto de dados completo passado pro modelo — financeiro e Ads
+// das 4 lojas pessoais, MAIS financeiro e Ads das outras lojas do grupo
+// (contexto competitivo/de mercado, ver PERSONA_GROWTH_HACKER pra regra de
+// que ação só vale pras 4). Usado tanto no chat quanto no briefing diário.
+// "apenasAtivasComGasto" filtra as campanhas das 4 lojas mostradas — o chat
+// mostra tudo (o dono pode perguntar sobre uma pausada), o briefing só
+// ativas com gasto (é o que importa pra ação do dia).
+async function montarContextoNegocio(diasPeriodo: number, apenasAtivasComGasto: boolean): Promise<string> {
+  const outras = await idsOutrasLojas();
+
+  const [campanhasComTacos, financeiroSuas, financeiroOutras, adsOutras] = await Promise.all([
+    buscarCampanhasComTacos(diasPeriodo),
+    construirLinhasFinanceiroPorLojas(diasPeriodo, LOJAS_AGENTE),
+    construirLinhasFinanceiroPorLojas(diasPeriodo, outras),
+    construirLinhasAdsOutrasLojas(diasPeriodo, outras),
+  ]);
+
+  const campanhasFiltradas = apenasAtivasComGasto
+    ? campanhasComTacos.filter((c) => c.status === "active" && c.custo > 0)
+    : campanhasComTacos;
+  const linhasCampanhasSuas = construirLinhasCampanhas(campanhasFiltradas);
+
+  return `=== FINANCEIRO — suas 4 lojas pessoais (últimos ${diasPeriodo} dias) ===
+${financeiroSuas}
+
+=== FINANCEIRO — outras lojas do grupo, SÓ CONTEXTO, não são suas (últimos ${diasPeriodo} dias) ===
+${financeiroOutras}
+
+=== ADS — suas 4 lojas pessoais, campanhas${apenasAtivasComGasto ? " ativas com gasto" : ""} (últimos ${diasPeriodo} dias) ===
+${linhasCampanhasSuas || "Nenhuma campanha encontrada no período."}
+
+=== ADS — outras lojas do grupo, SÓ CONTEXTO, não são suas (últimos ${diasPeriodo} dias) ===
+${adsOutras}`;
 }
 
 let clienteAnthropic: Anthropic | null | undefined;
@@ -75,7 +159,11 @@ const PERSONA_GROWTH_HACKER = `Seu nome é Growth Hacker. Você é um empresári
 
 Fale com autoridade e confiança — você é o especialista aqui, não um assistente neutro. Seja direto, sem rodeios, sempre em português. Cite os números reais que fundamentam cada ponto.
 
-Você tem os números financeiros reais (receita, margem de contribuição, pedidos) E os dados de campanhas de Ads das 4 lojas pessoais dele — cruze os dois. Pense em termos de lucro real do negócio, não só ACOS: onde vale mais a pena colocar dinheiro agora, o que está desperdiçando verba, o que está sub-investido, qual loja está performando mal mesmo fora do Ads. Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer, não devolva a decisão pro dono.`;
+Você tem os números financeiros reais (receita, margem de contribuição, pedidos) E os dados de campanhas de Ads das 4 lojas pessoais dele — cruze os dois. Pense em termos de lucro real do negócio, não só ACOS: onde vale mais a pena colocar dinheiro agora, o que está desperdiçando verba, o que está sub-investido, qual loja está performando mal mesmo fora do Ads.
+
+Além disso, você ENXERGA os números (financeiro e Ads) das outras lojas do grupo maior (16+ lojas ao todo) — não só as 4 pessoais do dono. Use isso como CONTEXTO DE MERCADO: identifique quando outra loja do grupo está anunciando o mesmo produto (mesmo nome de campanha/produto em lojas diferentes) e encarecendo o leilão pra todo mundo, compare a performance das 4 lojas dele com a média do grupo, avalie se o grupo inteiro está saudável ou não. MAS — regra inegociável — toda recomendação de AÇÃO (pausar, subir orçamento, mudar meta) é EXCLUSIVA pras 4 lojas pessoais dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua). Nunca sugira mudança de configuração nas outras lojas do grupo — elas não são dele, são só contexto pra você entender a dinâmica de mercado.
+
+Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer, não devolva a decisão pro dono.`;
 
 function extrairRespostaEPensamento(resposta: Anthropic.Message): { pensamento: string | null; texto: string } {
   const pensamento = resposta.content
@@ -114,20 +202,17 @@ export interface RespostaChatAgente {
   resposta: string;
 }
 
-// Chat direto com o agente — pergunta livre do dono, respondida com os
-// dados reais e atuais das campanhas das 4 lojas pessoais como contexto
-// (buscados na hora, não reaproveita cache do briefing automático abaixo).
+// Chat direto com o agente — pergunta livre do dono, respondida com o
+// contexto de negócio completo (suas 4 lojas + resto do grupo, ver
+// montarContextoNegocio), buscado na hora, não reaproveita cache do
+// briefing automático abaixo.
 export async function perguntarGrowthHacker(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
   const client = obterClienteAnthropic();
   if (!client) {
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
   }
 
-  const [campanhasComTacos, linhasFinanceiro] = await Promise.all([
-    buscarCampanhasComTacos(DIAS_JANELA),
-    construirLinhasFinanceiro(DIAS_JANELA),
-  ]);
-  const linhasCampanhas = construirLinhasCampanhas(campanhasComTacos);
+  const contexto = await montarContextoNegocio(DIAS_JANELA, false);
 
   // .create() tem um teto de ~10min pra respostas não-streaming — com Opus +
   // thinking em esforço "xhigh" e teto de 24000 tokens, o SDK recusa de cara
@@ -149,7 +234,7 @@ Quando o dono pedir um plano de ação, uma recomendação, ou "o que eu faço a
       })),
       {
         role: "user" as const,
-        content: `Dados financeiros reais por loja (últimos ${DIAS_JANELA} dias):\n\n${linhasFinanceiro}\n\nDados atuais das campanhas de Ads (últimos ${DIAS_JANELA} dias):\n\n${linhasCampanhas || "Nenhuma campanha encontrada no período."}\n\n${pergunta}`,
+        content: `${contexto}\n\n${pergunta}`,
       },
     ],
   }).finalMessage();
@@ -180,12 +265,7 @@ export async function gerarBriefingDiario(): Promise<void> {
   }
 
   try {
-    const [campanhas, linhasFinanceiro] = await Promise.all([
-      buscarCampanhasComTacos(DIAS_JANELA),
-      construirLinhasFinanceiro(DIAS_JANELA),
-    ]);
-    const ativas = campanhas.filter((c) => c.status === "active" && c.custo > 0);
-    const linhasCampanhas = construirLinhasCampanhas(ativas);
+    const contexto = await montarContextoNegocio(DIAS_JANELA, true);
 
     // .stream() + finalMessage() — ver comentário em perguntarGrowthHacker
     // sobre o teto de 10min do .create() não-streaming.
@@ -201,11 +281,7 @@ Uma vez por dia você olha os dados abaixo e escreve um briefing curto e forte p
         messages: [
           {
             role: "user",
-            content: `Dados financeiros reais por loja (últimos ${DIAS_JANELA} dias):\n\n${linhasFinanceiro}\n\n${
-              ativas.length > 0
-                ? `Campanhas de Ads ativas com gasto no período:\n\n${linhasCampanhas}`
-                : "Nenhuma campanha de Ads ativa com gasto no período."
-            }\n\nMe dá o briefing de hoje.`,
+            content: `${contexto}\n\nMe dá o briefing de hoje.`,
           },
         ],
       })
