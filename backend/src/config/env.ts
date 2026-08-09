@@ -10,9 +10,28 @@ function required(name: string): string {
   return value;
 }
 
+// Origens liberadas a fazer requisição com cookie (CORS). Produção fixa +
+// dev local — evita "origin: true" (reflete qualquer origem, na prática
+// desliga a proteção de CORS pra requisições com credentials). Inclui as
+// variações razoáveis do domínio (com/sem "www", http/https — o certbot já
+// força redirect http->https, mas não custa cobrir) pra ninguém ficar
+// travado por causa de como digitou o link. Dá pra somar mais origens via
+// CORS_ORIGIN (separadas por vírgula) sem mudar código.
+const CORS_ORIGINS_PADRAO = [
+  "https://ninjametrics.cloud",
+  "https://www.ninjametrics.cloud",
+  "http://ninjametrics.cloud",
+  "http://www.ninjametrics.cloud",
+  "http://localhost:5173",
+  "http://localhost:4000",
+];
+
 export const env = {
   port: Number(process.env.PORT ?? 4000),
   databaseUrl: required("DATABASE_URL"),
+  corsOrigins: process.env.CORS_ORIGIN
+    ? [...CORS_ORIGINS_PADRAO, ...process.env.CORS_ORIGIN.split(",").map((o) => o.trim())]
+    : CORS_ORIGINS_PADRAO,
   mlClientId: process.env.ML_CLIENT_ID ?? "",
   mlClientSecret: process.env.ML_CLIENT_SECRET ?? "",
   mlRedirectUri: process.env.ML_REDIRECT_URI ?? "",

@@ -35,7 +35,7 @@ import { iniciarVerificacaoPlanoDiario } from "./services/agentePlanoDiarioServi
 
 const app = express();
 
-app.use(cors({ origin: true, credentials: true }));
+app.use(cors({ origin: env.corsOrigins, credentials: true }));
 // Limite maior que o padrão (100kb) pra caber foto de produto em base64
 // (Agente de Imagens) no corpo da requisição.
 app.use(express.json({ limit: "25mb" }));

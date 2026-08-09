@@ -1,7 +1,25 @@
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { COOKIE_NAME, verificarLogin, gerarToken, obterUsuarioAutenticado } from "../services/authService";
 
 export const sessionRouter = Router();
+
+// Trava força bruta de senha — por USUÁRIO tentado, não por IP. O painel
+// fica atrás do Nginx do host sem X-Forwarded-For configurado (ver
+// DEPLOY.md), então req.ip sempre seria o IP do proxy pra toda requisição;
+// por usuário evita esse problema E evita que várias pessoas atrás do mesmo
+// IP (ex: mesma loja) travem umas às outras.
+const limitadorLogin = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const username = typeof req.body?.username === "string" ? req.body.username.trim().toLowerCase() : "";
+    return username || "sem-usuario";
+  },
+  message: { error: "Muitas tentativas de login. Aguarde alguns minutos e tente de novo." },
+});
 
 const COOKIE_OPCOES = {
   httpOnly: true,
@@ -10,7 +28,7 @@ const COOKIE_OPCOES = {
   maxAge: 30 * 24 * 60 * 60 * 1000,
 };
 
-sessionRouter.post("/login", async (req, res) => {
+sessionRouter.post("/login", limitadorLogin, async (req, res) => {
   const { username, password } = req.body;
   if (typeof username !== "string" || typeof password !== "string") {
     res.status(400).json({ error: "Informe usuário e senha." });
