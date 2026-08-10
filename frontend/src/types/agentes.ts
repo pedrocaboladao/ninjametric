@@ -18,6 +18,16 @@ export interface BriefingGrowthHacker {
   criadoEm: string;
 }
 
+export interface VendaRecente {
+  chave: string;
+  lojaId: number;
+  lojaNome: string;
+  titulo: string;
+  quantidade: number;
+  valor: number;
+  dataCriacao: string;
+}
+
 export interface Oportunidade {
   id: number;
   sku: string;

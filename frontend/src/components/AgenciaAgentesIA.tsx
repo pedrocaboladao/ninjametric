@@ -1,4 +1,13 @@
-import { useCallback, useEffect, useState, type ChangeEvent, type ComponentProps, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type ChangeEvent,
+  type ComponentProps,
+  type CSSProperties,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -22,6 +31,7 @@ import {
   verificarPlanoDiarioAgora,
   marcarItemPlano,
   fetchResumoEscritorio,
+  fetchVendasRecentes,
   type SugestaoOriginalKit,
 } from "../api/agentes";
 import type {
@@ -466,6 +476,8 @@ const COR_IMAGENS = "#a855c9";
 const COR_OPORTUNIDADES = "#d9a33e";
 const COR_CATALOGO = "#2dd4bf";
 const COR_CONVERSAO = "#f97316";
+const COR_GROWTH = "#e11d48";
+const COR_VENDA = "#22c55e";
 
 // Mesa com monitor mostrando um gráfico (Ads) ou um ícone de foto (Imagens)
 // — mesma estrutura da MesaComMonitor da sala pequena, só que deslocável no
@@ -1700,22 +1712,31 @@ function AgenteImagens() {
 }
 
 // Um item do feed unificado do Modo TV — mistura os "pensamentos"
-// (raciocínio em texto corrido) do Analista de Ads, do Agente de Conversão
-// e do Agente de Catálogo com os achados do Agente de Oportunidades, tudo
-// numa linha do tempo só. Todos em texto corrido, sem card colorido por
-// item. O Agente de Imagens não entra aqui: não tem um fluxo de "achados"
-// próprio, é uma ferramenta sob demanda (gerar kit/arte), não um agente que
-// observa sozinho.
+// (raciocínio em texto corrido) do Analista de Ads, do Growth Hacker, do
+// Agente de Conversão e do Agente de Catálogo com os achados do Agente de
+// Oportunidades E as vendas do dia, tudo numa linha do tempo só, formato
+// chat (cada origem com sua cor/bolha). O Agente de Imagens não entra
+// aqui: não tem um fluxo de "achados" próprio, é uma ferramenta sob
+// demanda (gerar kit/arte), não um agente que observa sozinho.
 type ItemFeedTV =
   | {
       chave: string;
       tipo: "pensamento";
-      origem: "ads" | "conversao" | "catalogo";
+      origem: "ads" | "growth" | "conversao" | "catalogo";
       criadoEm: string;
       texto: string;
       janela: string | null;
     }
-  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string };
+  | { chave: string; tipo: "oportunidade"; criadoEm: string; sku: string; titulo: string; contexto: string }
+  | {
+      chave: string;
+      tipo: "venda";
+      criadoEm: string;
+      lojaNome: string;
+      titulo: string;
+      quantidade: number;
+      valor: number;
+    };
 
 // Modo TV do escritório compartilhado — busca o feed dos agentes por conta
 // própria (não depende de qual aba está ativa), atualiza sozinho a cada 1
@@ -1725,12 +1746,15 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
   const carregar = useCallback(async () => {
     try {
-      const [pensamentosAds, pensamentosConversao, pensamentosCatalogo, oportunidades] = await Promise.all([
-        fetchPensamentosAds(),
-        fetchPensamentosConversao(),
-        fetchPensamentosCatalogo(),
-        fetchOportunidades(),
-      ]);
+      const [pensamentosAds, briefingsGrowth, pensamentosConversao, pensamentosCatalogo, oportunidades, vendas] =
+        await Promise.all([
+          fetchPensamentosAds(),
+          fetchBriefingsGrowthHacker(),
+          fetchPensamentosConversao(),
+          fetchPensamentosCatalogo(),
+          fetchOportunidades(),
+          fetchVendasRecentes(),
+        ]);
 
       const itens: ItemFeedTV[] = [
         ...pensamentosAds.map(
@@ -1741,6 +1765,16 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             criadoEm: p.criadoEm,
             texto: p.pensamento,
             janela: p.janela,
+          }),
+        ),
+        ...briefingsGrowth.map(
+          (b): ItemFeedTV => ({
+            chave: `briefing-growth-${b.id}`,
+            tipo: "pensamento",
+            origem: "growth",
+            criadoEm: b.criadoEm,
+            texto: b.pensamento,
+            janela: null,
           }),
         ),
         ...pensamentosConversao.map(
@@ -1771,6 +1805,17 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             sku: op.sku,
             titulo: op.titulo,
             contexto: op.contexto,
+          }),
+        ),
+        ...vendas.map(
+          (v): ItemFeedTV => ({
+            chave: `venda-${v.chave}`,
+            tipo: "venda",
+            criadoEm: v.dataCriacao,
+            lojaNome: v.lojaNome,
+            titulo: v.titulo,
+            quantidade: v.quantidade,
+            valor: v.valor,
           }),
         ),
       ].sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
@@ -1942,45 +1987,116 @@ function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
   );
 }
 
-const COR_POR_ORIGEM: Record<"ads" | "conversao" | "catalogo", string> = {
+const COR_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo", string> = {
   ads: COR_ADS,
+  growth: COR_GROWTH,
   conversao: COR_CONVERSAO,
   catalogo: COR_CATALOGO,
 };
-const ROTULO_POR_ORIGEM: Record<"ads" | "conversao" | "catalogo", string> = {
-  ads: "Ads",
+const ROTULO_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo", string> = {
+  ads: "Analista de Ads",
+  growth: "Growth Hacker",
   conversao: "Conversão",
   catalogo: "Catálogo",
 };
+const ICONE_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo", string> = {
+  ads: "📣",
+  growth: "🧠",
+  conversao: "🔁",
+  catalogo: "🏷️",
+};
+
+// Texto comprido vira "bolha de chat" recolhida (3 linhas + reticências,
+// via -webkit-line-clamp) com um botão pra expandir — pedido explícito do
+// dono: o feed não pode virar uma mensagem só ocupando a tela inteira.
+const TAMANHO_MINIMO_PARA_TRUNCAR = 140;
+const JANELA_ITEM_NOVO_MS = 5 * 60 * 1000;
+
+// Pulso de destaque só na primeira vez que o item aparece na tela (menos
+// de 5min de idade) — dá vida ao feed sem precisar de WebSocket/real-time
+// de verdade, só olhando o próprio timestamp do item.
+function itemEhRecente(criadoEm: string): boolean {
+  return Date.now() - new Date(criadoEm).getTime() < JANELA_ITEM_NOVO_MS;
+}
+
+function BolhaFeedTV({
+  cor,
+  icone,
+  remetente,
+  criadoEm,
+  children,
+  texto,
+}: {
+  cor: string;
+  icone: string;
+  remetente: string;
+  criadoEm: string;
+  children: ReactNode;
+  texto: string;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  return (
+    <div
+      className={`agente-tv-bolha ${itemEhRecente(criadoEm) ? "agente-tv-bolha-novo" : ""}`}
+      style={{ "--cor-origem": cor } as CSSProperties}
+    >
+      <div className="agente-tv-bolha-topo">
+        <span className="agente-tv-bolha-remetente">
+          {icone} {remetente}
+        </span>
+        <span className="agente-tv-bolha-hora">{formatDataHora(criadoEm)}</span>
+      </div>
+      <div className={`agente-tv-bolha-texto ${expandido ? "agente-tv-bolha-expandida" : ""}`}>{children}</div>
+      {texto.length > TAMANHO_MINIMO_PARA_TRUNCAR && (
+        <button type="button" className="agente-tv-bolha-toggle" onClick={() => setExpandido((v) => !v)}>
+          {expandido ? "mostrar menos" : "ler mais..."}
+        </button>
+      )}
+    </div>
+  );
+}
 
 function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
-  if (item.tipo === "pensamento") {
-    const cor = COR_POR_ORIGEM[item.origem];
-    const rotulo =
-      item.origem === "ads" ? `Ads · ${item.janela === "hoje" ? "hoje" : "7 dias"}` : ROTULO_POR_ORIGEM[item.origem];
+  if (item.tipo === "venda") {
     return (
-      <div className="agente-card agente-tv-card" style={{ borderLeftColor: cor }}>
-        <div className="agente-card-topo">
-          <span className="ads-insight-tag" style={{ color: cor }}>
-            {rotulo}
-          </span>
-          <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
+      <div
+        className={`agente-tv-bolha agente-tv-bolha-venda ${itemEhRecente(item.criadoEm) ? "agente-tv-bolha-novo" : ""}`}
+        style={{ "--cor-origem": COR_VENDA } as CSSProperties}
+      >
+        <div className="agente-tv-bolha-topo">
+          <span className="agente-tv-bolha-remetente">💰 Venda · {item.lojaNome}</span>
+          <span className="agente-tv-bolha-hora">{formatDataHora(item.criadoEm)}</span>
         </div>
-        <p className="agente-tv-pensamento">{item.texto}</p>
+        <div className="agente-tv-bolha-texto">
+          Vendeu <b>{item.quantidade}x</b> {item.titulo} — <b>{formatCurrency(item.valor)}</b>
+        </div>
       </div>
     );
   }
+
+  if (item.tipo === "pensamento") {
+    const cor = COR_POR_ORIGEM[item.origem];
+    const rotulo =
+      item.origem === "ads"
+        ? `${ROTULO_POR_ORIGEM.ads} · ${item.janela === "hoje" ? "hoje" : "7 dias"}`
+        : ROTULO_POR_ORIGEM[item.origem];
+    return (
+      <BolhaFeedTV cor={cor} icone={ICONE_POR_ORIGEM[item.origem]} remetente={rotulo} criadoEm={item.criadoEm} texto={item.texto}>
+        {item.texto}
+      </BolhaFeedTV>
+    );
+  }
+
   return (
-    <div className="agente-card agente-tv-card" style={{ borderLeftColor: COR_OPORTUNIDADES }}>
-      <div className="agente-card-topo">
-        <span className="ads-insight-tag" style={{ color: COR_OPORTUNIDADES }}>
-          Oportunidades · {item.sku}
-        </span>
-        <span className="financeiro-td-mudo">{formatDataHora(item.criadoEm)}</span>
-      </div>
-      <div className="financeiro-td-titulo">{item.titulo}</div>
-      <p className="ads-insight-contexto">{item.contexto}</p>
-    </div>
+    <BolhaFeedTV
+      cor={COR_OPORTUNIDADES}
+      icone="🎯"
+      remetente={`Oportunidades · ${item.sku}`}
+      criadoEm={item.criadoEm}
+      texto={item.contexto}
+    >
+      <span className="financeiro-td-titulo">{item.titulo}</span> — {item.contexto}
+    </BolhaFeedTV>
   );
 }
 

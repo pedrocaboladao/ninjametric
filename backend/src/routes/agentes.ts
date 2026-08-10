@@ -1,12 +1,7 @@
 import { Router, Response } from "express";
-import { listarPensamentos } from "../services/agenteAdsService";
-import {
-  perguntarGrowthHacker,
-  listarBriefings,
-  montarContextoNegocio,
-  type MensagemChat,
-} from "../services/growthHackerService";
-import { DIAS_JANELA } from "../services/agenteAdsService";
+import { listarPensamentos, LOJAS_AGENTE } from "../services/agenteAdsService";
+import { perguntarGrowthHacker, listarBriefings, type MensagemChat } from "../services/growthHackerService";
+import { listarVendasRecentes } from "../services/dashboardService";
 import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
 import {
   listarPerfis,
@@ -30,28 +25,13 @@ function erro(res: Response, err: unknown, fallback: string) {
   res.status(400).json({ error: mensagem });
 }
 
-// Diagnóstico temporário — só pra achar em quantos segundos alguma camada
-// de proxy corta a conexão do Growth Hacker (502/504 mesmo depois de
-// ajustar Nginx e Node). Espera "ms" milissegundos sem fazer nada e
-// responde — sem custo de IA, testa só a infraestrutura. Remover depois de
-// resolvido.
-agentesRouter.get("/debug/lento", async (req, res) => {
-  const ms = Number(req.query.ms) || 30000;
-  await new Promise((resolve) => setTimeout(resolve, ms));
-  res.json({ ok: true, esperouMs: ms });
-});
-
-// Diagnóstico temporário — testa só a busca de dados (financeiro + Ads das
-// 16 lojas) que o Growth Hacker faz ANTES de chamar a IA, sem custo de IA
-// nenhum. Se travar/falhar aqui, o problema é na busca, não na chamada pro
-// Claude nem em timeout de infraestrutura. Remover depois de resolvido.
-agentesRouter.get("/debug/contexto", async (_req, res) => {
-  const inicio = Date.now();
+// Feed "ao vivo" de vendas do dia (só as 4 lojas pessoais) pro Modo TV —
+// ver listarVendasRecentes em dashboardService.ts.
+agentesRouter.get("/vendas-recentes", async (_req, res) => {
   try {
-    const contexto = await montarContextoNegocio(DIAS_JANELA, false);
-    res.json({ ok: true, tamanhoCaracteres: contexto.length, decorridoMs: Date.now() - inicio });
+    res.json({ vendas: await listarVendasRecentes(LOJAS_AGENTE) });
   } catch (err) {
-    erro(res, err, `Falha ao montar contexto (${Date.now() - inicio}ms).`);
+    erro(res, err, "Falha ao carregar vendas recentes.");
   }
 });
 

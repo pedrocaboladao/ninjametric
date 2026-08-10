@@ -225,6 +225,57 @@ export async function getDashboardData(lojaIdFiltro?: number, lojasPermitidas?: 
   return resultado;
 }
 
+export interface VendaRecente {
+  chave: string;
+  lojaId: number;
+  lojaNome: string;
+  titulo: string;
+  quantidade: number;
+  valor: number;
+  dataCriacao: string;
+}
+
+// Feed "ao vivo" de vendas pro Modo TV — bem mais leve que
+// listarVendasFinanceiras (financeiroService.ts): sem custo/frete/imposto,
+// só o pedido bruto do dia já buscado por buscarOrdersDeTodasLojas, quebrado
+// por item de venda. Não serve pra número financeiro (não é lucro real),
+// só pra "você vendeu tal produto agora".
+const TTL_VENDAS_RECENTES_MS = 60 * 1000;
+const cacheVendasRecentes = new Map<string, { data: VendaRecente[]; expiraEm: number }>();
+
+export async function listarVendasRecentes(lojaIds: number[]): Promise<VendaRecente[]> {
+  const chaveCache = [...lojaIds].sort((a, b) => a - b).join(",");
+  const emCache = cacheVendasRecentes.get(chaveCache);
+  if (emCache && emCache.expiraEm > Date.now()) {
+    return emCache.data;
+  }
+
+  const porLoja = await buscarOrdersDeTodasLojas(undefined, lojaIds);
+
+  const vendas: VendaRecente[] = [];
+  for (const loja of porLoja) {
+    for (const order of loja.hoje) {
+      if (!STATUS_VALIDOS.has(order.status)) continue;
+      for (const item of order.order_items) {
+        vendas.push({
+          chave: `${order.id}-${item.item.id}`,
+          lojaId: loja.lojaId,
+          lojaNome: loja.lojaNome,
+          titulo: item.item.title,
+          quantidade: item.quantity,
+          valor: item.unit_price * item.quantity,
+          dataCriacao: order.date_created,
+        });
+      }
+    }
+  }
+  vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
+
+  const top = vendas.slice(0, 30);
+  cacheVendasRecentes.set(chaveCache, { data: top, expiraEm: Date.now() + TTL_VENDAS_RECENTES_MS });
+  return top;
+}
+
 export interface TopVendidoPromocao {
   mlItemId: string;
   titulo: string;

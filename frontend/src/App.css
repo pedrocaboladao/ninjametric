@@ -4163,8 +4163,97 @@
   padding-right: 4px;
 }
 
-.agente-tv-card {
+@keyframes agente-tv-bolha-entrada {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes agente-tv-bolha-pulso {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--cor-origem) 55%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--cor-origem) 0%, transparent);
+  }
+}
+
+/* Cada origem (Ads, Growth Hacker, Conversão, Catálogo, Oportunidades,
+   Venda) define --cor-origem inline — a bolha reage a essa variável em vez
+   de precisar de uma classe por cor. Formato "chat": bolha colorida,
+   remetente + hora no topo, texto recolhido em 3 linhas com botão pra
+   expandir (nunca ocupa a tela toda). */
+.agente-tv-bolha {
+  --cor-origem: var(--accent);
   flex-shrink: 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--cor-origem) 35%, var(--border));
+  background: color-mix(in srgb, var(--cor-origem) 12%, var(--bg-panel));
+  animation: agente-tv-bolha-entrada 0.35s ease-out;
+}
+
+.agente-tv-bolha-novo {
+  animation:
+    agente-tv-bolha-entrada 0.35s ease-out,
+    agente-tv-bolha-pulso 1.8s ease-out 1;
+}
+
+.agente-tv-bolha-topo {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.agente-tv-bolha-remetente {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cor-origem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.agente-tv-bolha-hora {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.agente-tv-bolha-texto {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.agente-tv-bolha-texto:not(.agente-tv-bolha-expandida) {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.agente-tv-bolha-toggle {
+  display: block;
+  margin-top: 4px;
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--cor-origem);
+  cursor: pointer;
 }
 
 
@@ -4366,14 +4455,6 @@
   right: 24px;
 }
 
-.agente-tv-pensamento {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 400;
-  font-style: italic;
-  color: var(--text-secondary);
-  line-height: 1.6;
-}
 
 .agente-personagem {
   animation: agente-flutuar 3.5s ease-in-out infinite;

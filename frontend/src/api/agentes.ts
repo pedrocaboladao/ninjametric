@@ -8,6 +8,7 @@ import type {
   PlanoDiario,
   ResumoEscritorio,
   BriefingGrowthHacker,
+  VendaRecente,
 } from "../types/agentes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -18,6 +19,12 @@ async function tratarResposta<T>(res: Response): Promise<T> {
     throw new Error(data?.error ?? `Erro ${res.status}`);
   }
   return res.json();
+}
+
+export async function fetchVendasRecentes(): Promise<VendaRecente[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/vendas-recentes`, { credentials: "include" });
+  const data = await tratarResposta<{ vendas: VendaRecente[] }>(res);
+  return data.vendas;
 }
 
 export async function fetchResumoEscritorio(forcar = false): Promise<ResumoEscritorio> {
