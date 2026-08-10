@@ -30,19 +30,29 @@ jobs:
             docker compose exec -T backend node dist/db/seed.js
 
             # O Growth Hacker (Opus + raciocinio "xhigh" + dados de 16 lojas) pode
-            # passar dos 60s padrao do Nginx, causando 502 antes do backend
-            # terminar de responder. Ajusta uma vez so (idempotente via grep) e
-            # sempre testa antes de recarregar -- se "nginx -t" falhar, reverte
-            # pro backup e o site continua no ar com a config anterior.
-            NGINX_CONF="/etc/nginx/sites-available/painel"
-            if [ -f "$NGINX_CONF" ] && ! grep -q "proxy_read_timeout" "$NGINX_CONF"; then
+            # passar de poucos minutos, e o arquivo real (sites-available/
+            # ninjametrics -- NAO "painel", isso era so uma suposicao errada de
+            # uma tentativa anterior) ja tinha proxy_read_timeout em 180s de
+            # antes, curto demais. Substitui o valor onde quer que apareca (nao
+            # so insere se estiver ausente) e sempre testa antes de recarregar --
+            # se "nginx -t" falhar, reverte pro backup e o site continua no ar.
+            NGINX_CONF="/etc/nginx/sites-available/ninjametrics"
+            if [ -f "$NGINX_CONF" ]; then
               cp "$NGINX_CONF" "$NGINX_CONF.bak-timeout-fix"
-              sed -i '/proxy_pass http:\/\/127\.0\.0\.1:4000;/a\    proxy_read_timeout 300s;\n    proxy_send_timeout 300s;' "$NGINX_CONF"
+              sed -i -E 's/proxy_(read|send)_timeout [0-9]+s;/proxy_\1_timeout 400s;/g' "$NGINX_CONF"
+              if ! grep -q "proxy_send_timeout" "$NGINX_CONF"; then
+                sed -i '/proxy_pass http:\/\/127\.0\.0\.1:4000;/a\    proxy_send_timeout 400s;' "$NGINX_CONF"
+              fi
+              if ! grep -q "proxy_read_timeout" "$NGINX_CONF"; then
+                sed -i '/proxy_pass http:\/\/127\.0\.0\.1:4000;/a\    proxy_read_timeout 400s;' "$NGINX_CONF"
+              fi
               if nginx -t; then
                 systemctl reload nginx
-                echo "Nginx: proxy_read_timeout ajustado para 300s em /api/ e /auth/."
+                echo "Nginx: proxy_read_timeout/proxy_send_timeout ajustados para 400s."
               else
                 echo "AVISO: nginx -t falhou apos ajustar o timeout -- revertendo pra config anterior."
                 cp "$NGINX_CONF.bak-timeout-fix" "$NGINX_CONF"
               fi
+            else
+              echo "AVISO: $NGINX_CONF nao encontrado -- ajuste de timeout do Nginx pulado."
             fi

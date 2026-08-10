@@ -52,7 +52,12 @@ expô-los via HTTPS.
 
 ## 4. Configurar o Nginx do host (proxy + HTTPS)
 
-Crie `/etc/nginx/sites-available/painel`:
+Crie `/etc/nginx/sites-available/<nome>` — **use um nome estável e documente-o aqui**
+(ex.: o nome do domínio sem TLD). O workflow de deploy (`.github/workflows/deploy.yml`)
+tem um caminho fixo pra esse arquivo pra poder ajustar o timeout automaticamente a
+cada deploy — se o nome não bater, esse ajuste é pulado silenciosamente (já
+aconteceu: o arquivo real neste projeto se chama `ninjametrics`, não `painel`
+como uma versão antiga deste guia dizia).
 
 ```nginx
 server {
@@ -62,17 +67,17 @@ server {
   location /auth/ {
     proxy_pass http://127.0.0.1:4000;
     proxy_set_header Host $host;
-    proxy_read_timeout 300s;
-    proxy_send_timeout 300s;
+    proxy_read_timeout 400s;
+    proxy_send_timeout 400s;
   }
 
   location /api/ {
     proxy_pass http://127.0.0.1:4000;
     proxy_set_header Host $host;
     # Padrão do Nginx é 60s — pouco pro Growth Hacker (Opus + raciocínio
-    # "xhigh" + dados de todas as lojas), que pode levar minutos.
-    proxy_read_timeout 300s;
-    proxy_send_timeout 300s;
+    # "xhigh" + dados de 16 lojas), que pode levar minutos.
+    proxy_read_timeout 400s;
+    proxy_send_timeout 400s;
   }
 
   location / {
