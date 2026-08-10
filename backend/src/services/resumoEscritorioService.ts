@@ -3,6 +3,7 @@ import { getVisitasContaHoje } from "./mercadoLivreApi";
 import { getDashboardData } from "./dashboardService";
 import { listarVendasFinanceiras } from "./financeiroService";
 import { dataISOBR } from "./dateUtils";
+import { contarAnunciosNegativos } from "./anunciosNegativosService";
 
 // Mesmo escopo das 4 lojas pessoais que os agentes usam (ver LOJAS_AGENTE em
 // agenteAdsService.ts) — os números das telas de parede do Modo TV são
@@ -13,6 +14,7 @@ export interface ResumoEscritorio {
   vendasHoje: number;
   conversaoMediaHoje: number | null;
   lucroAdsHoje: number | null;
+  anunciosNegativos: number;
 }
 
 // Números reais que alimentam as "telas de parede" sobrepostas no vídeo do
@@ -25,10 +27,11 @@ export async function buscarResumoEscritorio(forcar = false): Promise<ResumoEscr
   const hoje = dataISOBR(new Date());
   const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null && LOJAS_AGENTE.includes(l.id));
 
-  const [dashboard, financeiroHoje, visitasPorLoja] = await Promise.all([
+  const [dashboard, financeiroHoje, visitasPorLoja, anunciosNegativos] = await Promise.all([
     getDashboardData(undefined, LOJAS_AGENTE),
     listarVendasFinanceiras(undefined, LOJAS_AGENTE, hoje, hoje, forcar),
     Promise.all(lojas.map((l) => getVisitasContaHoje(l.id, l.ml_user_id as number, hoje, hoje))),
+    contarAnunciosNegativos(LOJAS_AGENTE),
   ]);
 
   // Conversão média do dia = vendas (unidades) / visitas da conta inteira,
@@ -54,5 +57,6 @@ export async function buscarResumoEscritorio(forcar = false): Promise<ResumoEscr
     vendasHoje: dashboard.faturamentoHoje,
     conversaoMediaHoje,
     lucroAdsHoje,
+    anunciosNegativos,
   };
 }

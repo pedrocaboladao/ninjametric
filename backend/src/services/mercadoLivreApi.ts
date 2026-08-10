@@ -274,6 +274,31 @@ export async function listarItensAtivos(lojaId: number, mlUserId: number): Promi
   return itemIds;
 }
 
+export interface MlPromocaoAtiva {
+  ativa: boolean;
+  precoPromocional: number | null;
+}
+
+// Igual ao endpoint de getPromocaoStatus, mas também captura o preço
+// promocional (deal_price) quando a promoção está rodando — pro cálculo de
+// margem simulada do anúncio (ver anunciosNegativosService.ts). Mesmo campo
+// "deal_price" descoberto na resposta de listar itens de uma campanha (ver
+// listarItensDaCampanha), aceito com fallback pra "price" por segurança.
+export async function getPromocaoAtivaDoItem(lojaId: number, itemId: string): Promise<MlPromocaoAtiva> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<Array<{ status: string; deal_price?: number; price?: number }>>(
+      `${ML_API_BASE}/seller-promotions/items/${itemId}`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
+    );
+    const ativa = data.find((p) => p.status === "started");
+    if (!ativa) return { ativa: false, precoPromocional: null };
+    return { ativa: true, precoPromocional: ativa.deal_price ?? ativa.price ?? null };
+  } catch {
+    return { ativa: false, precoPromocional: null };
+  }
+}
+
 export interface MlPromocaoDoItem {
   promotionId: string;
   type: string;

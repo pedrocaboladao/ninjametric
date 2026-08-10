@@ -26,7 +26,7 @@ async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (it
 // Margem = preço - custo cadastrado - taxa real do ML naquele preço
 // (categoria + tipo de anúncio) - imposto da loja. Null se faltar custo
 // cadastrado ou não der pra calcular a taxa do ML (categoria/tipo ausente).
-function calcularMargem(
+export function calcularMargem(
   preco: number,
   custoUnitario: number | null,
   taxaMl: number | null,

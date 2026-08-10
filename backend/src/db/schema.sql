@@ -565,4 +565,30 @@ CREATE TABLE IF NOT EXISTS agente_plano_diario_itens (
   concluido_em TIMESTAMPTZ,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Anúncios ATIVOS (não vendas passadas, ver vendas_negativas_snapshot) cujo
+-- preço efetivo (considerando promoção ativa, se tiver) já nasce abaixo do
+-- custo+taxa ML+imposto — ou seja, "estruturalmente" no prejuízo: a próxima
+-- venda desse jeito vai dar negativo, não é um acaso pontual. Não entra
+-- frete no cálculo (não existe frete real sem um pedido pra basear —
+-- mesma limitação que agente_catalogo_snapshot já aceita pro price_to_win),
+-- então a margem real de uma venda pode ser ainda pior que a estimada aqui.
+CREATE TABLE IF NOT EXISTS anuncios_negativos_snapshot (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  item_id TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  thumbnail TEXT,
+  permalink TEXT,
+  sku TEXT,
+  preco_efetivo NUMERIC(12, 2) NOT NULL,
+  em_promocao BOOLEAN NOT NULL DEFAULT false,
+  custo_unitario NUMERIC(12, 2) NOT NULL,
+  taxa_ml NUMERIC(12, 2) NOT NULL,
+  margem_estimada NUMERIC(12, 2) NOT NULL,
+  margem_percentual NUMERIC(6, 2) NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (loja_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_anuncios_negativos_snapshot_loja ON anuncios_negativos_snapshot (loja_id);
 CREATE INDEX IF NOT EXISTS idx_agente_plano_diario_itens_plano ON agente_plano_diario_itens (plano_id);

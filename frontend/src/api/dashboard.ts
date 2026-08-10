@@ -5,6 +5,7 @@ import type {
   ComparacaoSkuLoja,
   ProdutoEstoqueBaixo,
   VendaNegativa,
+  AnuncioNegativo,
 } from "../types/dashboard";
 import type { Loja } from "./lojas";
 
@@ -50,6 +51,16 @@ export async function fetchVendasNegativas(lojaId?: number | "minhas"): Promise<
   }
   const data = await res.json();
   return data.vendas;
+}
+
+export async function fetchAnunciosNegativos(lojaId?: number | "minhas"): Promise<AnuncioNegativo[]> {
+  const query = lojaId ? `?lojaId=${lojaId}` : "";
+  const res = await fetch(`${API_BASE}/api/dashboard/anuncios-negativos${query}`, { credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar anúncios com margem negativa: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.anuncios;
 }
 
 export async function fetchRankingPrecificacao(

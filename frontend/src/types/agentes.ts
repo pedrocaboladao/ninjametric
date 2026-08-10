@@ -73,6 +73,7 @@ export interface ResumoEscritorio {
   vendasHoje: number;
   conversaoMediaHoje: number | null;
   lucroAdsHoje: number | null;
+  anunciosNegativos: number;
 }
 
 export interface PerfilImagens {

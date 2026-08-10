@@ -3,8 +3,19 @@ import { useDashboardData } from "../hooks/useDashboardData";
 import { useTopVendidosPromocoes } from "../hooks/useTopVendidosPromocoes";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 import { fetchLojas, type Loja } from "../api/lojas";
-import { fetchRankingPrecificacao, fetchLojasVigilancia, fetchEstoqueBaixo, fetchVendasNegativas } from "../api/dashboard";
-import type { RankingPrecificacao as RankingPrecificacaoTipo, ProdutoEstoqueBaixo, VendaNegativa } from "../types/dashboard";
+import {
+  fetchRankingPrecificacao,
+  fetchLojasVigilancia,
+  fetchEstoqueBaixo,
+  fetchVendasNegativas,
+  fetchAnunciosNegativos,
+} from "../api/dashboard";
+import type {
+  RankingPrecificacao as RankingPrecificacaoTipo,
+  ProdutoEstoqueBaixo,
+  VendaNegativa,
+  AnuncioNegativo,
+} from "../types/dashboard";
 import { DashboardHeader } from "./DashboardHeader";
 import { HeroFaturamento } from "./HeroFaturamento";
 import { RankingLojas } from "./RankingLojas";
@@ -14,6 +25,7 @@ import { TopVendidosPromocoes } from "./TopVendidosPromocoes";
 import { RankingPrecificacao } from "./RankingPrecificacao";
 import { EstoqueBaixo } from "./EstoqueBaixo";
 import { VendasNegativas } from "./VendasNegativas";
+import { AnunciosNegativos } from "./AnunciosNegativos";
 import { PainelEstudo } from "./PainelEstudo";
 import type { Usuario } from "../types/usuarios";
 
@@ -39,6 +51,7 @@ export function Dashboard({ usuario }: Props) {
   const [lojaFiltroPrecificacao, setLojaFiltroPrecificacao] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroEstoque, setLojaFiltroEstoque] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroVendasNegativas, setLojaFiltroVendasNegativas] = useState<number | "todas" | "minhas">("todas");
+  const [lojaFiltroAnunciosNegativos, setLojaFiltroAnunciosNegativos] = useState<number | "todas" | "minhas">("todas");
   const [modoDataPrecificacao, setModoDataPrecificacao] = useState<"hoje" | "7dias">("hoje");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -92,6 +105,15 @@ export function Dashboard({ usuario }: Props) {
   );
   const { dados: vendasNegativas, erro: erroVendasNegativas } = useBuscaComCancelamento<VendaNegativa[]>(
     buscarVendasNegativas,
+    true
+  );
+
+  const buscarAnunciosNegativos = useCallback(
+    () => fetchAnunciosNegativos(lojaFiltroAnunciosNegativos === "todas" ? undefined : lojaFiltroAnunciosNegativos),
+    [lojaFiltroAnunciosNegativos]
+  );
+  const { dados: anunciosNegativos, erro: erroAnunciosNegativos } = useBuscaComCancelamento<AnuncioNegativo[]>(
+    buscarAnunciosNegativos,
     true
   );
 
@@ -225,6 +247,23 @@ export function Dashboard({ usuario }: Props) {
                   lojas={lojas}
                   lojaFiltro={lojaFiltroVendasNegativas}
                   onChangeLojaFiltro={setLojaFiltroVendasNegativas}
+                />
+              )}
+
+              {erroAnunciosNegativos && (
+                <div className="state-message state-error painel painel-top-vendidos">
+                  Erro ao carregar anúncios com margem negativa: {erroAnunciosNegativos}
+                </div>
+              )}
+              {!erroAnunciosNegativos && !anunciosNegativos && (
+                <div className="state-message painel painel-top-vendidos">Carregando anúncios com margem negativa...</div>
+              )}
+              {anunciosNegativos && (
+                <AnunciosNegativos
+                  anuncios={anunciosNegativos}
+                  lojas={lojas}
+                  lojaFiltro={lojaFiltroAnunciosNegativos}
+                  onChangeLojaFiltro={setLojaFiltroAnunciosNegativos}
                 />
               )}
             </div>

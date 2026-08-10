@@ -108,6 +108,23 @@ export interface VendaNegativa {
   margemPercentual: number | null;
 }
 
+export interface AnuncioNegativo {
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string;
+  thumbnail: string | null;
+  permalink: string | null;
+  sku: string | null;
+  precoEfetivo: number;
+  emPromocao: boolean;
+  custoUnitario: number;
+  taxaMl: number;
+  margemEstimada: number;
+  margemPercentual: number;
+  atualizadoEm: string;
+}
+
 export interface ComparacaoSkuLoja {
   lojaId: number;
   lojaNome: string;

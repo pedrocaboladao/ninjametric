@@ -1997,6 +1997,12 @@ function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
                 </div>
               );
             })}
+            {resumo.anunciosNegativos > 0 && (
+              <div className="agente-tv-parede-tela agente-tv-parede-tela-alerta">
+                <span className="agente-tv-parede-rotulo">⚠️ Margem negativa</span>
+                <span className="agente-tv-parede-valor">{resumo.anunciosNegativos} anúncio{resumo.anunciosNegativos !== 1 ? "s" : ""}</span>
+              </div>
+            )}
             <button
               type="button"
               className="agente-tv-parede-atualizar"

@@ -4432,6 +4432,18 @@
   border-bottom: none;
 }
 
+.agente-tv-parede-tela-alerta {
+  background: rgba(127, 20, 20, 0.75);
+}
+
+.agente-tv-parede-tela-alerta .agente-tv-parede-rotulo {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.agente-tv-parede-tela-alerta .agente-tv-parede-valor {
+  color: #ffb4b4;
+}
+
 .agente-tv-parede-atualizar {
   border: none;
   border-bottom-left-radius: 8px;

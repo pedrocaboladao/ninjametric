@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { getDashboardData, getTopVendidosPromocoes } from "../services/dashboardService";
 import { listarEstoqueBaixo } from "../services/estoqueService";
 import { listarVendasNegativas } from "../services/vendasNegativasService";
+import { listarAnunciosNegativos } from "../services/anunciosNegativosService";
 import { calcularRankingPrecificacao, buscarComparacaoPorSku } from "../services/precificacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
@@ -110,6 +111,19 @@ dashboardRouter.get("/vendas-negativas", async (req, res) => {
   } catch (err) {
     console.error("Erro ao montar vendas negativas:", err);
     res.status(500).json({ error: "Falha ao carregar vendas negativas." });
+  }
+});
+
+dashboardRouter.get("/anuncios-negativos", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  try {
+    const anuncios = await listarAnunciosNegativos(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ anuncios });
+  } catch (err) {
+    console.error("Erro ao montar anúncios com margem negativa:", err);
+    res.status(500).json({ error: "Falha ao carregar anúncios com margem negativa." });
   }
 });
 
