@@ -171,6 +171,15 @@ async function criarItemComFallbacks(
       }
     }
 
+    // Categoria de destino usa "Formato de venda" = Unidade, e por isso o
+    // Mercado Livre passa a exigir "Unidades por kit" (UNITS_PER_PACK) —
+    // como não é venda em kit (é unidade avulsa), o valor correto é 1,
+    // exatamente o que o próprio erro do Mercado Livre sugere.
+    if (atributoObrigatorioFaltando(err, "UNITS_PER_PACK")) {
+      payload = { ...payload, attributes: [...payload.attributes, { id: "UNITS_PER_PACK", value_name: "1" }] };
+      ajustou = true;
+    }
+
     for (const attributeId of ATRIBUTOS_CUBAGEM) {
       if (!atributoObrigatorioFaltando(err, attributeId)) continue;
       const valorOriginal = atributosOriginaisCompletos.find((a) => a.id === attributeId);

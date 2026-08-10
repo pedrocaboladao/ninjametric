@@ -67,10 +67,16 @@ export function requerRemoverGtin(err: unknown): boolean {
 // Anúncios antigos podem não ter atributos que categorias exigem hoje em dia
 // (ex.: declaração de inflamabilidade, cubagem, GTIN). O Mercado Livre usa
 // mais de um código pra essa mesma ideia — "missing_required" (obrigatório
-// direto) e "missing_conditional_required" (obrigatório dependendo de outra
-// coisa, ex.: GTIN só é obrigatório se não tiver Marca+Modelo) — por isso
-// aceita os dois.
-const CODES_ATRIBUTO_FALTANDO = new Set(["item.attributes.missing_required", "item.attribute.missing_conditional_required"]);
+// direto), "missing_conditional_required" (obrigatório dependendo de outra
+// coisa, ex.: GTIN só é obrigatório se não tiver Marca+Modelo) e
+// "business_conditional" (obrigatório por causa de outro campo já
+// preenchido, ex.: UNITS_PER_PACK quando "Formato de venda" = Unidade) —
+// por isso aceita os três.
+const CODES_ATRIBUTO_FALTANDO = new Set([
+  "item.attributes.missing_required",
+  "item.attribute.missing_conditional_required",
+  "create.item.attribute.business_conditional",
+]);
 
 export function atributoObrigatorioFaltando(err: unknown, attributeId: string): boolean {
   if (!(err instanceof ErroMercadoLivre)) return false;
