@@ -26,6 +26,7 @@ export interface VendaRecente {
   quantidade: number;
   valor: number;
   dataCriacao: string;
+  negativa: boolean;
 }
 
 export interface Oportunidade {

@@ -4271,6 +4271,19 @@
   cursor: pointer;
 }
 
+.agente-tv-bolha-tag-negativa {
+  display: inline-block;
+  margin-bottom: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--cor-origem);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 
 .agente-tv-sala {
   flex: 1;

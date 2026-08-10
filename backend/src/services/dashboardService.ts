@@ -8,7 +8,8 @@ import {
   PromocaoStatus,
   AdsStatus,
 } from "./mercadoLivreApi";
-import { janelaHoje, janelaOntemMesmoHorario, janelaUltimosDias, horaLocal, chaveJanelaDoDia } from "./dateUtils";
+import { janelaHoje, janelaOntemMesmoHorario, janelaUltimosDias, horaLocal, chaveJanelaDoDia, dataISOBR } from "./dateUtils";
+import { listarVendasFinanceiras } from "./financeiroService";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 
@@ -233,13 +234,21 @@ export interface VendaRecente {
   quantidade: number;
   valor: number;
   dataCriacao: string;
+  negativa: boolean;
 }
 
-// Feed "ao vivo" de vendas pro Modo TV — bem mais leve que
-// listarVendasFinanceiras (financeiroService.ts): sem custo/frete/imposto,
-// só o pedido bruto do dia já buscado por buscarOrdersDeTodasLojas, quebrado
-// por item de venda. Não serve pra número financeiro (não é lucro real),
-// só pra "você vendeu tal produto agora".
+// Feed "ao vivo" de vendas pro Modo TV — reaproveita listarVendasFinanceiras
+// (financeiroService.ts), só do dia de hoje, então "negativa" já sai com a
+// margem real (custo/taxa/frete/imposto), não uma estimativa.
+//
+// forcarAtualizacao=true ignora o cache de 15min do Financeiro de propósito
+// — uma venda que acabou de cair precisa aparecer marcada JÁ, não daqui a
+// até 15min. Isso não fica caro porque a parte pesada (custo de frete por
+// remessa, getCustoFreteDoEnvio em mercadoLivreApi.ts) já tem cache PRÓPRIO
+// e permanente por remessa — uma venda já vista nunca busca o frete de novo,
+// só a venda genuinamente nova gasta uma chamada real. O cache de 60s aqui
+// embaixo só evita recalcular a cada poll simultâneo do Modo TV, não
+// segura a novidade por mais que isso.
 const TTL_VENDAS_RECENTES_MS = 60 * 1000;
 const cacheVendasRecentes = new Map<string, { data: VendaRecente[]; expiraEm: number }>();
 
@@ -250,25 +259,19 @@ export async function listarVendasRecentes(lojaIds: number[]): Promise<VendaRece
     return emCache.data;
   }
 
-  const porLoja = await buscarOrdersDeTodasLojas(undefined, lojaIds);
+  const hojeStr = dataISOBR(new Date());
+  const { vendas: vendasFinanceiras } = await listarVendasFinanceiras(undefined, lojaIds, hojeStr, hojeStr, true);
 
-  const vendas: VendaRecente[] = [];
-  for (const loja of porLoja) {
-    for (const order of loja.hoje) {
-      if (!STATUS_VALIDOS.has(order.status)) continue;
-      for (const item of order.order_items) {
-        vendas.push({
-          chave: `${order.id}-${item.item.id}`,
-          lojaId: loja.lojaId,
-          lojaNome: loja.lojaNome,
-          titulo: item.item.title,
-          quantidade: item.quantity,
-          valor: item.unit_price * item.quantity,
-          dataCriacao: order.date_created,
-        });
-      }
-    }
-  }
+  const vendas: VendaRecente[] = vendasFinanceiras.map((v) => ({
+    chave: `${v.orderId}-${v.itemId}`,
+    lojaId: v.lojaId,
+    lojaNome: v.lojaNome,
+    titulo: v.titulo,
+    quantidade: v.quantidade,
+    valor: v.receitaTotal,
+    dataCriacao: v.dataCriacao,
+    negativa: v.margemContribuicao !== null && v.margemContribuicao < 0,
+  }));
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
   const top = vendas.slice(0, 30);

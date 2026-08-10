@@ -479,6 +479,7 @@ const COR_CATALOGO = "#2dd4bf";
 const COR_CONVERSAO = "#f97316";
 const COR_GROWTH = "#e11d48";
 const COR_VENDA = "#22c55e";
+const COR_VENDA_NEGATIVA = "#ef4444";
 
 // Mesa com monitor mostrando um gráfico (Ads) ou um ícone de foto (Imagens)
 // — mesma estrutura da MesaComMonitor da sala pequena, só que deslocável no
@@ -1759,6 +1760,7 @@ type ItemFeedTV =
       titulo: string;
       quantidade: number;
       valor: number;
+      negativa: boolean;
     };
 
 // Modo TV do escritório compartilhado — busca o feed dos agentes por conta
@@ -1839,6 +1841,7 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             titulo: v.titulo,
             quantidade: v.quantidade,
             valor: v.valor,
+            negativa: v.negativa,
           }),
         ),
       ].sort((a, b) => new Date(b.criadoEm).getTime() - new Date(a.criadoEm).getTime());
@@ -2081,15 +2084,19 @@ function BolhaFeedTV({
 
 function ItemFeedTVCard({ item }: { item: ItemFeedTV }) {
   if (item.tipo === "venda") {
+    const cor = item.negativa ? COR_VENDA_NEGATIVA : COR_VENDA;
     return (
       <div
         className={`agente-tv-bolha agente-tv-bolha-venda ${itemEhRecente(item.criadoEm) ? "agente-tv-bolha-novo" : ""}`}
-        style={{ "--cor-origem": COR_VENDA } as CSSProperties}
+        style={{ "--cor-origem": cor } as CSSProperties}
       >
         <div className="agente-tv-bolha-topo">
-          <span className="agente-tv-bolha-remetente">💰 Venda · {item.lojaNome}</span>
+          <span className="agente-tv-bolha-remetente">
+            {item.negativa ? "⚠️" : "💰"} Venda · {item.lojaNome}
+          </span>
           <span className="agente-tv-bolha-hora">{formatDataHora(item.criadoEm)}</span>
         </div>
+        {item.negativa && <span className="agente-tv-bolha-tag-negativa">negativa</span>}
         <div className="agente-tv-bolha-texto">
           Vendeu <b>{item.quantidade}x</b> {item.titulo} — <b>{formatCurrency(item.valor)}</b>
         </div>
