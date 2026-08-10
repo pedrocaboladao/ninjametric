@@ -133,7 +133,7 @@ function classeLinha(c: CampanhaAds, diasPeriodo: number): string {
 function motivoDestaque(c: CampanhaAds, diasPeriodo: number): string | null {
   const grupo = grupoDaCampanha(c, diasPeriodo);
   if (grupo === "semVenda") return "Ativa com gasto, mas nenhuma venda atribuída — verba parada.";
-  if (grupo === "acimaMeta") return "ACOS acima da meta — revisar orçamento ou pausar.";
+  if (grupo === "acimaMeta") return "ROAS abaixo da meta — revisar orçamento ou pausar.";
   if (grupo === "orcamentoParado") return "Indo bem, mas usando pouco do orçamento — pode dar pra escalar.";
   return null;
 }
@@ -397,8 +397,8 @@ export function Ads() {
           <span className="painel-eyebrow">Gestão de Ads</span>
           <h1>Campanhas de publicidade</h1>
           <p className="painel-sub">
-            Gasto, cliques, impressões, ACOS e TACOS real (gasto ÷ receita real do produto, incluindo venda
-            orgânica) por campanha de Product Ads, em todas as lojas. ACOS acima da meta ou campanhas ativas sem
+            Gasto, cliques, impressões, ROAS e TACOS real (gasto ÷ receita real do produto, incluindo venda
+            orgânica) por campanha de Product Ads, em todas as lojas. ROAS abaixo da meta ou campanhas ativas sem
             gasto ficam destacadas na tabela.
           </p>
         </div>
@@ -486,8 +486,8 @@ export function Ads() {
               </span>
               <span className="financeiro-stat-sub">
                 {campanhasSemMargem > 0
-                  ? `TACOS vs ACOS Ideal — ${campanhasSemMargem} campanha${campanhasSemMargem > 1 ? "s" : ""} sem dado de margem`
-                  : "TACOS real vs ACOS Ideal (margem)"}
+                  ? `TACOS vs ROAS Ideal — ${campanhasSemMargem} campanha${campanhasSemMargem > 1 ? "s" : ""} sem dado de margem`
+                  : "TACOS real vs ROAS Ideal (margem)"}
               </span>
             </div>
             <div className="financeiro-stat-card">
@@ -515,7 +515,7 @@ export function Ads() {
             <div className="financeiro-stat-card">
               <span className="financeiro-stat-label">Campanhas p/ revisar</span>
               <span className="financeiro-stat-valor financeiro-margem-negativa">{campanhasComProblema}</span>
-              <span className="financeiro-stat-sub">ACOS acima da meta ou sem gasto</span>
+              <span className="financeiro-stat-sub">ROAS abaixo da meta ou sem gasto</span>
             </div>
           </div>
 
@@ -534,7 +534,7 @@ export function Ads() {
               className={`ads-triagem-card ads-triagem-vermelho ${grupoFiltro === "acimaMeta" ? "ads-triagem-selecionado" : ""}`}
               onClick={() => alternarGrupo("acimaMeta")}
             >
-              <span className="financeiro-stat-label">ACOS acima da meta</span>
+              <span className="financeiro-stat-label">ROAS abaixo da meta</span>
               <span className="financeiro-stat-valor">{buckets.acimaMeta.qtd} campanhas</span>
               <span className="financeiro-stat-sub">
                 Gasto: {formatCurrency(buckets.acimaMeta.gasto)} · Vendas: {formatCurrency(buckets.acimaMeta.vendas)}
@@ -544,7 +544,7 @@ export function Ads() {
               type="button"
               className={`ads-triagem-card ads-triagem-azul ${grupoFiltro === "orcamentoParado" ? "ads-triagem-selecionado" : ""}`}
               onClick={() => alternarGrupo("orcamentoParado")}
-              title="Indo bem (tem venda, ACOS dentro da meta), mas gastando menos de 20% do orçamento configurado — pode dar pra investir mais."
+              title="Indo bem (tem venda, ROAS dentro da meta), mas gastando menos de 20% do orçamento configurado — pode dar pra investir mais."
             >
               <span className="financeiro-stat-label">Orçamento parado</span>
               <span className="financeiro-stat-valor">{buckets.orcamentoParado.qtd} campanhas</span>
@@ -611,7 +611,7 @@ export function Ads() {
                   ))}
                   <th
                     className="financeiro-th-numero"
-                    title="Receita do produto × ACOS Ideal (margem) menos o gasto de Ads — lucro real da campanha, já considerando a margem do produto."
+                    title="Receita do produto × ROAS Ideal (margem) menos o gasto de Ads — lucro real da campanha, já considerando a margem do produto."
                   >
                     Lucro
                   </th>
