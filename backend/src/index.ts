@@ -72,9 +72,18 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(env.port, () => {
+const server = app.listen(env.port, () => {
   console.log(`Backend rodando em http://localhost:${env.port}`);
 });
+
+// Timeouts padrão do Node (60s-120s dependendo da versão/propriedade) são
+// curtos demais pro Growth Hacker (Opus + raciocínio "xhigh" + dados de 16
+// lojas), que pode legitimamente levar minutos pra responder — sem isso o
+// próprio Node derruba a conexão antes do Nginx (já ajustado pra 300s, ver
+// deploy.yml) nem chegar a reclamar.
+server.timeout = 360_000;
+server.headersTimeout = 360_000;
+server.requestTimeout = 360_000;
 
 iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
