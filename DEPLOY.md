@@ -62,11 +62,17 @@ server {
   location /auth/ {
     proxy_pass http://127.0.0.1:4000;
     proxy_set_header Host $host;
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
   }
 
   location /api/ {
     proxy_pass http://127.0.0.1:4000;
     proxy_set_header Host $host;
+    # Padrão do Nginx é 60s — pouco pro Growth Hacker (Opus + raciocínio
+    # "xhigh" + dados de todas as lojas), que pode levar minutos.
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
   }
 
   location / {
