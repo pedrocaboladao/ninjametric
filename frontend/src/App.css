@@ -4161,6 +4161,21 @@
   gap: 12px;
   overflow-y: auto;
   padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.25) transparent;
+}
+
+.agente-tv-feed-painel::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agente-tv-feed-painel::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+}
+
+.agente-tv-feed-painel::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 @keyframes agente-tv-bolha-entrada {
@@ -4822,6 +4837,22 @@
   gap: 10px;
   max-height: 360px;
   overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+
+.agente-chat-mensagens::-webkit-scrollbar {
+  width: 6px;
+}
+
+.agente-chat-mensagens::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+}
+
+.agente-chat-mensagens::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .agente-chat-msg {
