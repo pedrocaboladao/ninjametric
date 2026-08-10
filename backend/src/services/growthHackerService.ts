@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env";
 import { pool } from "../db/pool";
-import { buscarCampanhasComTacos, construirLinhasCampanhas, DIAS_JANELA, LOJAS_AGENTE } from "./agenteAdsService";
+import { buscarCampanhasComTacos, construirLinhasCampanhas, DIAS_JANELA, LOJAS_AGENTE, formatRoas } from "./agenteAdsService";
 import { listarCampanhasAds } from "./adsService";
 import { agendarPorHorario, dataISOBR } from "./dateUtils";
 import { listarVendasFinanceiras } from "./financeiroService";
@@ -90,8 +90,8 @@ async function construirLinhasAdsOutrasLojas(diasPeriodo: number, outras: number
       [
         `loja="${c.lojaNome}"`,
         `campanha="${c.nome}"`,
-        `acos=${c.acos.toFixed(1)}%`,
-        `acos_meta=${c.acosMeta.toFixed(1)}%`,
+        `roas=${formatRoas(c.acos)} (acos=${c.acos.toFixed(1)}%)`,
+        `roas_meta=${formatRoas(c.acosMeta)} (acos_meta=${c.acosMeta.toFixed(1)}%)`,
         `gasto=${formatCurrency(c.custo)}`,
         `orcamento_diario=${formatCurrency(c.orcamento)}`,
         `vendas=${c.vendasTotais}`,
@@ -159,7 +159,9 @@ const PERSONA_GROWTH_HACKER = `Seu nome é Growth Hacker. Você é um empresári
 
 Fale com autoridade e confiança — você é o especialista aqui, não um assistente neutro. Seja direto, sem rodeios, sempre em português. Cite os números reais que fundamentam cada ponto.
 
-Você tem os números financeiros reais (receita, margem de contribuição, pedidos) E os dados de campanhas de Ads das 4 lojas pessoais dele — cruze os dois. Pense em termos de lucro real do negócio, não só ACOS: onde vale mais a pena colocar dinheiro agora, o que está desperdiçando verba, o que está sub-investido, qual loja está performando mal mesmo fora do Ads.
+O dono pensa em ROAS, não em ACOS — é a métrica principal, sempre lidere a frase com ela ("ROAS de 5x", não "ACOS de 20%"). Pode citar o ACOS depois, entre parênteses, como nota (já vem calculado nos dados como "roas=... (acos=...)"). Nunca lidere um raciocínio ou recomendação com o número de ACOS.
+
+Você tem os números financeiros reais (receita, margem de contribuição, pedidos) E os dados de campanhas de Ads das 4 lojas pessoais dele — cruze os dois. Pense em termos de lucro real do negócio, não só ROAS: onde vale mais a pena colocar dinheiro agora, o que está desperdiçando verba, o que está sub-investido, qual loja está performando mal mesmo fora do Ads.
 
 Além disso, você ENXERGA os números (financeiro e Ads) das outras lojas do grupo maior (16+ lojas ao todo) — não só as 4 pessoais do dono. Use isso como CONTEXTO DE MERCADO: identifique quando outra loja do grupo está anunciando o mesmo produto (mesmo nome de campanha/produto em lojas diferentes) e encarecendo o leilão pra todo mundo, compare a performance das 4 lojas dele com a média do grupo, avalie se o grupo inteiro está saudável ou não. MAS — regra inegociável — toda recomendação de AÇÃO (pausar, subir orçamento, mudar meta) é EXCLUSIVA pras 4 lojas pessoais dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua). Nunca sugira mudança de configuração nas outras lojas do grupo — elas não são dele, são só contexto pra você entender a dinâmica de mercado.
 

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { fetchCampanhasAds, fetchReceitaRealPorCampanha } from "../api/ads";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type { CampanhaAds, ReceitaRealCampanha } from "../types/ads";
-import { formatCurrency } from "../utils/format";
+import { formatCurrency, formatRoas } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
 function dataISO(d: Date): string {
@@ -82,10 +82,10 @@ const COLUNAS: Coluna[] = [
   { chave: "cpc", label: "CPC", numerica: true },
   { chave: "vendasDiretas", label: "Vendas Diretas", numerica: true },
   { chave: "vendasIndiretas", label: "Vendas Indiretas", numerica: true },
-  { chave: "acos", label: "ACOS", numerica: true },
-  { chave: "acosMeta", label: "ACOS Meta", numerica: true },
+  { chave: "acos", label: "ROAS (ACOS)", numerica: true },
+  { chave: "acosMeta", label: "ROAS Meta (ACOS)", numerica: true },
   { chave: "tacosReal", label: "TACOS Real", numerica: true },
-  { chave: "acosIdeal", label: "ACOS Ideal (margem)", numerica: true },
+  { chave: "acosIdeal", label: "ROAS Mínimo (ACOS)", numerica: true },
 ];
 
 function comparar(a: CampanhaComTacos, b: CampanhaComTacos, chave: ChaveOrdenacao, direcao: 1 | -1): number {
@@ -196,8 +196,8 @@ function gerarInsight(c: CampanhaComTacos, diasPeriodo: number): Insight | null 
     tipo = "prejuizo";
     contexto = (
       <>
-        ACOS em <b>{c.acos.toFixed(0)}%</b>, acima até da margem real (<b>{c.acosIdeal.toFixed(0)}%</b>) — cada venda
-        está dando prejuízo.
+        ROAS de <b>{formatRoas(c.acos)}</b> (ACOS {c.acos.toFixed(0)}%), abaixo até do mínimo que a margem real
+        aguenta (<b>{formatRoas(c.acosIdeal)}</b>, ACOS {c.acosIdeal.toFixed(0)}%) — cada venda está dando prejuízo.
       </>
     );
   } else if (grupo === "semVenda" && c.custo >= GASTO_MINIMO_SEM_VENDA) {
@@ -212,8 +212,9 @@ function gerarInsight(c: CampanhaComTacos, diasPeriodo: number): Insight | null 
     tipo = "margemSobra";
     contexto = (
       <>
-        ACOS em <b>{c.acos.toFixed(0)}%</b> vs meta de <b>{c.acosMeta.toFixed(0)}%</b> — mas a margem real
-        aguentaria até <b>{c.acosIdeal.toFixed(0)}%</b>.
+        ROAS de <b>{formatRoas(c.acos)}</b> (ACOS {c.acos.toFixed(0)}%) vs meta de{" "}
+        <b>{formatRoas(c.acosMeta)}</b> (ACOS {c.acosMeta.toFixed(0)}%) — mas a margem real aguentaria descer até{" "}
+        <b>{formatRoas(c.acosIdeal)}</b> (ACOS {c.acosIdeal.toFixed(0)}%).
       </>
     );
   } else if (grupo === "orcamentoParado") {
@@ -221,8 +222,8 @@ function gerarInsight(c: CampanhaComTacos, diasPeriodo: number): Insight | null 
     tipo = "orcamentoParado";
     contexto = (
       <>
-        Gastando só <b>{pctOrcamento.toFixed(0)}%</b> do orçamento diário, com ACOS saudável de{" "}
-        <b>{c.acos.toFixed(0)}%</b>.
+        Gastando só <b>{pctOrcamento.toFixed(0)}%</b> do orçamento diário, com ROAS saudável de{" "}
+        <b>{formatRoas(c.acos)}</b> (ACOS {c.acos.toFixed(0)}%).
       </>
     );
   } else if (
@@ -234,8 +235,8 @@ function gerarInsight(c: CampanhaComTacos, diasPeriodo: number): Insight | null 
     tipo = "organico";
     contexto = (
       <>
-        TACOS real de <b>{c.tacosReal.toFixed(0)}%</b> vs ACOS configurado de <b>{c.acosMeta.toFixed(0)}%</b> — a
-        maior parte da venda parece já vir sem o anúncio.
+        TACOS real de <b>{c.tacosReal.toFixed(0)}%</b> vs meta configurada de <b>{formatRoas(c.acosMeta)}</b> (ACOS{" "}
+        {c.acosMeta.toFixed(0)}%) — a maior parte da venda parece já vir sem o anúncio.
       </>
     );
   }
@@ -499,9 +500,11 @@ export function Ads() {
               <span className="financeiro-stat-sub">Diretas + indiretas</span>
             </div>
             <div className="financeiro-stat-card">
-              <span className="financeiro-stat-label">ACOS médio</span>
-              <span className="financeiro-stat-valor">{acosMedio !== null ? `${acosMedio.toFixed(1)}%` : "—"}</span>
-              <span className="financeiro-stat-sub">Gasto ÷ vendas atribuídas</span>
+              <span className="financeiro-stat-label">ROAS médio</span>
+              <span className="financeiro-stat-valor">
+                {acosMedio !== null ? `${formatRoas(acosMedio)} (${acosMedio.toFixed(1)}% ACOS)` : "—"}
+              </span>
+              <span className="financeiro-stat-sub">Vendas atribuídas ÷ gasto</span>
             </div>
             <div className="financeiro-stat-card">
               <span className="financeiro-stat-label">Cliques / Impressões</span>
@@ -637,23 +640,23 @@ export function Ads() {
                       <td className="financeiro-th-numero">{formatCurrency(c.vendasDiretas)}</td>
                       <td className="financeiro-th-numero">{formatCurrency(c.vendasIndiretas)}</td>
                       <td className={`financeiro-th-numero financeiro-linha-margem ${classeLinha(c, diasPeriodo)}`}>
-                        {c.acos.toFixed(1)}%
+                        {formatRoas(c.acos)} <span className="financeiro-td-mudo">({c.acos.toFixed(1)}%)</span>
                       </td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
-                        {c.acosMeta.toFixed(1)}%
+                        {formatRoas(c.acosMeta)} ({c.acosMeta.toFixed(1)}%)
                         {c.acosMetaAnterior !== null && (
                           <span
                             className="ads-meta-mudou"
-                            title={`A meta era ${c.acosMetaAnterior.toFixed(1)}% no início do período e mudou pra ${c.acosMeta.toFixed(1)}% em algum momento — os números desse período misturam as duas metas.`}
+                            title={`A meta era ${formatRoas(c.acosMetaAnterior)} / ACOS ${c.acosMetaAnterior.toFixed(1)}% no início do período e mudou pra ${formatRoas(c.acosMeta)} em algum momento — os números desse período misturam as duas metas.`}
                           >
                             {" "}
-                            (mudou de {c.acosMetaAnterior.toFixed(1)}%)
+                            (mudou de {formatRoas(c.acosMetaAnterior)})
                           </span>
                         )}
                       </td>
                       <td className="financeiro-th-numero">{c.tacosReal !== null ? `${c.tacosReal.toFixed(1)}%` : "—"}</td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
-                        {c.acosIdeal !== null ? `${c.acosIdeal.toFixed(1)}%` : "—"}
+                        {c.acosIdeal !== null ? `${formatRoas(c.acosIdeal)} (${c.acosIdeal.toFixed(1)}%)` : "—"}
                       </td>
                       <td
                         className={`financeiro-th-numero ${

@@ -7,6 +7,16 @@ import { agendarPorHorario, dataISOBR } from "./dateUtils";
 
 const formatCurrency = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format;
 
+// O Mercado Livre deixa configurar a meta da campanha tanto em ACOS quanto
+// em ROAS (são a mesma coisa, só o inverso um do outro) — o dono pensa em
+// ROAS, não ACOS, então os agentes citam os dois. Conversão exata:
+// ROAS = 100 / ACOS. Calculado aqui (não deixado pra IA fazer de cabeça)
+// pra não arriscar erro de conta.
+export function formatRoas(acosPercent: number): string {
+  if (acosPercent <= 0) return "∞";
+  return `${(100 / acosPercent).toFixed(1)}x`;
+}
+
 export interface CampanhaComTacos extends CampanhaAds {
   tacosReal: number | null;
   acosIdeal: number | null;
@@ -54,12 +64,16 @@ export function construirLinhasCampanhas(campanhas: CampanhaComTacos[]): string 
         `loja="${c.lojaNome}"`,
         `campanha="${c.nome}"`,
         `status=${c.status}`,
-        `acos=${c.acos.toFixed(1)}%`,
-        `acos_meta=${c.acosMeta.toFixed(1)}%`,
+        `roas=${formatRoas(c.acos)} (acos=${c.acos.toFixed(1)}%)`,
+        `roas_meta=${formatRoas(c.acosMeta)} (acos_meta=${c.acosMeta.toFixed(1)}%)`,
         `gasto=${formatCurrency(c.custo)}`,
         `orcamento_diario=${formatCurrency(c.orcamento)}`,
         `vendas=${c.vendasTotais}`,
-        `acos_ideal_margem_real=${c.acosIdeal !== null ? c.acosIdeal.toFixed(1) + "%" : "sem custo cadastrado"}`,
+        `roas_minimo_sustentavel=${
+          c.acosIdeal !== null
+            ? `${formatRoas(c.acosIdeal)} (acos_ideal_margem_real=${c.acosIdeal.toFixed(1)}%)`
+            : "sem custo cadastrado"
+        }`,
         `lucro_estimado=${c.lucroReais !== null ? formatCurrency(c.lucroReais) : "sem dado"}`,
         `tacos_real=${c.tacosReal !== null ? c.tacosReal.toFixed(1) + "%" : "sem dado"}`,
       ].join(", ")
@@ -98,8 +112,9 @@ async function gerarAnaliseIA(campanhas: CampanhaComTacos[], diasPeriodo: number
 Você recebe os dados reais das campanhas ativas (com gasto) de uma loja, no período ${descricaoJanela(diasPeriodo)}, e escreve uma análise corrida pro dono do negócio ler — não é um relatório formal, é você comparando as campanhas em voz alta, como se estivesse sentado do lado dele.
 
 Regras:
-- "acos_ideal_margem_real" é o teto de ACOS que a margem real do produto aguenta — passar disso é prejuízo líquido, mesmo com venda.
-- "tacos_real" bem abaixo do "acos_meta" sugere que a venda já aconteceria sem o anúncio (verba desperdiçada em venda orgânica).
+- O dono pensa em ROAS, não em ACOS — ROAS é a métrica principal, sempre lidere a frase com ela ("ROAS de 5x", não "ACOS de 20%"). Pode citar o ACOS depois, entre parênteses, como nota (já vem calculado nos dados como "roas=... (acos=...)").
+- "roas_minimo_sustentavel" é o piso de ROAS que a margem real do produto aguenta — cair abaixo disso é prejuízo líquido, mesmo com venda.
+- "tacos_real" bem abaixo do "acos_meta" sugere que a venda já aconteceria sem o anúncio (verba desperdiçada em venda orgânica) — esse aqui pode continuar em ACOS, é só um percentual de referência, não é uma meta configurável em ROAS.
 - Separe o que é ruído (gasto pequeno, sem tração, irrelevante financeiramente) do que é sinal real.
 - Priorize: primeiro o que precisa de ação urgente (prejuízo real, verba parada sem retorno), depois oportunidades claras de escalar, depois o que só merece um olhar, e feche mencionando rapidamente o que está saudável.
 - Cite os números reais — não generalize.

@@ -13,6 +13,14 @@ export function formatPercent(value: number | null): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+// O Mercado Livre deixa configurar a meta da campanha tanto em ACOS quanto
+// em ROAS (são o inverso um do outro) — o dono pensa em ROAS. Conversão
+// exata: ROAS = 100 / ACOS.
+export function formatRoas(acosPercent: number): string {
+  if (acosPercent <= 0) return "∞";
+  return `${(100 / acosPercent).toFixed(1)}x`;
+}
+
 export function formatCompactCurrency(value: number): string {
   if (value >= 1000) return `R$ ${(value / 1000).toFixed(1).replace(".0", "")}mil`;
   return formatCurrency(value);
