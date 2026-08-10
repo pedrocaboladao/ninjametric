@@ -24,6 +24,17 @@ function erro(res: Response, err: unknown, fallback: string) {
   res.status(400).json({ error: mensagem });
 }
 
+// Diagnóstico temporário — só pra achar em quantos segundos alguma camada
+// de proxy corta a conexão do Growth Hacker (502/504 mesmo depois de
+// ajustar Nginx e Node). Espera "ms" milissegundos sem fazer nada e
+// responde — sem custo de IA, testa só a infraestrutura. Remover depois de
+// resolvido.
+agentesRouter.get("/debug/lento", async (req, res) => {
+  const ms = Number(req.query.ms) || 30000;
+  await new Promise((resolve) => setTimeout(resolve, ms));
+  res.json({ ok: true, esperouMs: ms });
+});
+
 agentesRouter.get("/resumo-escritorio", async (req, res) => {
   try {
     res.json(await buscarResumoEscritorio(req.query.forcar === "1"));
