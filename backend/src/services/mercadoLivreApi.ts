@@ -393,7 +393,15 @@ export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): 
       comprador: costs.receiver?.cost ?? null,
       itensNoEnvio: Math.max(1, shipment.shipping_items?.length ?? 1),
     };
-    cacheFreteEnvio.set(shippingId, resultado);
+    // Só grava no cache permanente se veio um custo de vendedor real
+    // (> 0) — um envio muito recente (ver listarVendasRecentes, que agora
+    // consulta quase em tempo real) pode responder R$0 porque o Mercado
+    // Livre ainda não terminou de calcular o frete daquele envio. Cachear
+    // esse R$0 pra sempre travaria o frete errado permanentemente; sem
+    // cachear, a próxima consulta tenta de novo até vir o valor real.
+    if (resultado.vendedor !== null && resultado.vendedor > 0) {
+      cacheFreteEnvio.set(shippingId, resultado);
+    }
     return resultado;
   } catch {
     return { vendedor: null, comprador: null, itensNoEnvio: 1 };
