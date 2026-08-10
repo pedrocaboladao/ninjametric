@@ -18,6 +18,9 @@ const LOJAS = [
   "Collor Mix",
   "Lux Collor",
   "Fábrica de Tintas",
+  "Tinthaus",
+  "Buy Gomes",
+  "Macedo Tintas",
 ];
 
 async function seed() {
