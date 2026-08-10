@@ -14,6 +14,7 @@ import {
   fetchPensamentosAds,
   perguntarGrowthHacker,
   fetchBriefingsGrowthHacker,
+  verificarBriefingGrowthHackerAgora,
   tratarFotoProduto,
   criarArtePromocional,
   gerarKitFotos,
@@ -936,6 +937,7 @@ function ChatAgente() {
 function GrowthHacker() {
   const [briefings, setBriefings] = useState<BriefingGrowthHacker[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -949,6 +951,22 @@ function GrowthHacker() {
     carregar();
   }, [carregar]);
 
+  // Gera de verdade (Opus + xhigh, ~US$0,35-0,65) — não é uma checagem
+  // barata como a dos outros agentes. Serve pra testar sem esperar até
+  // amanhã de manhã, ou refazer o briefing do dia se algo tiver falhado.
+  async function gerarAgora() {
+    setGerando(true);
+    setErro(null);
+    try {
+      await verificarBriefingGrowthHackerAgora();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao gerar o briefing.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
   return (
     <>
       <div className="financeiro-topo">
@@ -959,6 +977,11 @@ function GrowthHacker() {
             lojas sozinho e te dá dicas fortes de como ganhar mais dinheiro. Quer discutir ou decidir algo agora?
             Conversa com ele direto ali embaixo.
           </p>
+        </div>
+        <div className="financeiro-filtros">
+          <button type="button" className="btn-responder financeiro-btn-hoje" onClick={gerarAgora} disabled={gerando}>
+            {gerando ? "Gerando..." : "Gerar briefing agora"}
+          </button>
         </div>
       </div>
 

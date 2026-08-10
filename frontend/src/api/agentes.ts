@@ -105,6 +105,14 @@ export async function fetchBriefingsGrowthHacker(): Promise<BriefingGrowthHacker
   return data.pensamentos;
 }
 
+export async function verificarBriefingGrowthHackerAgora(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/growth-hacker/verificar`, {
+    method: "POST",
+    credentials: "include",
+  });
+  await tratarResposta(res);
+}
+
 export async function tratarFotoProduto(imagemBase64: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/agentes/imagens/tratar-foto`, {
     method: "POST",

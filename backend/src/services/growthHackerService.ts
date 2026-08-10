@@ -30,15 +30,30 @@ async function construirLinhasFinanceiroPorLojas(diasPeriodo: number, lojaIds: n
   const dataInicio = dataISOBR(inicio);
   const dataFim = dataISOBR(hoje);
 
+  // Uma loja falhando (token vencido, API do ML fora do ar naquela hora) não
+  // pode derrubar o contexto inteiro — antes um Promise.all sem .catch()
+  // por loja fazia isso: qualquer uma das 16 falhando quebrava o briefing
+  // inteiro (foi o que aconteceu no dia 10/08 às 8h). Loja que falha vira
+  // "sem dado" na linha dela, o resto segue normal.
   const [lojas, resultadosPorLoja] = await Promise.all([
     listLojas(),
-    Promise.all(lojaIds.map((lojaId) => listarVendasFinanceiras(lojaId, lojaIds, dataInicio, dataFim))),
+    Promise.all(
+      lojaIds.map((lojaId) =>
+        listarVendasFinanceiras(lojaId, lojaIds, dataInicio, dataFim).catch((err) => {
+          console.error(`Growth Hacker: falha ao buscar financeiro da loja ${lojaId}, pulando essa loja:`, err);
+          return null;
+        })
+      )
+    ),
   ]);
   const nomePorLoja = new Map(lojas.map((l) => [l.id, l.nome]));
 
   return lojaIds
     .map((lojaId, i) => {
       const resultado = resultadosPorLoja[i];
+      if (resultado === null) {
+        return `loja="${nomePorLoja.get(lojaId) ?? `Loja ${lojaId}`}", erro="falha ao buscar dados financeiros dessa loja"`;
+      }
       let receitaTotal = 0;
       let margemTotal = 0;
       let itensSemCusto = 0;
@@ -110,11 +125,21 @@ async function construirLinhasAdsOutrasLojas(diasPeriodo: number, outras: number
 async function montarContextoNegocio(diasPeriodo: number, apenasAtivasComGasto: boolean): Promise<string> {
   const outras = await idsOutrasLojas();
 
+  // Cada bloco tem seu próprio fallback — uma parte falhando (ex.: API do ML
+  // fora do ar pra uma seção específica) não pode derrubar o briefing
+  // inteiro. Antes um Promise.all sem proteção fazia isso (foi o que
+  // aconteceu no dia 10/08 às 8h: "Não consegui montar o briefing de hoje").
   const [campanhasComTacos, financeiroSuas, financeiroOutras, adsOutras] = await Promise.all([
-    buscarCampanhasComTacos(diasPeriodo),
+    buscarCampanhasComTacos(diasPeriodo).catch((err) => {
+      console.error("Growth Hacker: falha ao buscar campanhas das suas 4 lojas:", err);
+      return [];
+    }),
     construirLinhasFinanceiroPorLojas(diasPeriodo, LOJAS_AGENTE),
     construirLinhasFinanceiroPorLojas(diasPeriodo, outras),
-    construirLinhasAdsOutrasLojas(diasPeriodo, outras),
+    construirLinhasAdsOutrasLojas(diasPeriodo, outras).catch((err) => {
+      console.error("Growth Hacker: falha ao buscar Ads das outras lojas do grupo:", err);
+      return "Falha ao buscar dados das outras lojas do grupo.";
+    }),
   ]);
 
   const campanhasFiltradas = apenasAtivasComGasto
