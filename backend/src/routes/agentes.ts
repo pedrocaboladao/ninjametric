@@ -1,6 +1,12 @@
 import { Router, Response } from "express";
 import { listarPensamentos } from "../services/agenteAdsService";
-import { perguntarGrowthHacker, listarBriefings, type MensagemChat } from "../services/growthHackerService";
+import {
+  perguntarGrowthHacker,
+  listarBriefings,
+  montarContextoNegocio,
+  type MensagemChat,
+} from "../services/growthHackerService";
+import { DIAS_JANELA } from "../services/agenteAdsService";
 import { tratarFotoProduto, criarArtePromocional, gerarKitFotos, type DadosKitFotos } from "../services/agenteImagensService";
 import {
   listarPerfis,
@@ -33,6 +39,20 @@ agentesRouter.get("/debug/lento", async (req, res) => {
   const ms = Number(req.query.ms) || 30000;
   await new Promise((resolve) => setTimeout(resolve, ms));
   res.json({ ok: true, esperouMs: ms });
+});
+
+// Diagnóstico temporário — testa só a busca de dados (financeiro + Ads das
+// 16 lojas) que o Growth Hacker faz ANTES de chamar a IA, sem custo de IA
+// nenhum. Se travar/falhar aqui, o problema é na busca, não na chamada pro
+// Claude nem em timeout de infraestrutura. Remover depois de resolvido.
+agentesRouter.get("/debug/contexto", async (_req, res) => {
+  const inicio = Date.now();
+  try {
+    const contexto = await montarContextoNegocio(DIAS_JANELA, false);
+    res.json({ ok: true, tamanhoCaracteres: contexto.length, decorridoMs: Date.now() - inicio });
+  } catch (err) {
+    erro(res, err, `Falha ao montar contexto (${Date.now() - inicio}ms).`);
+  }
 });
 
 agentesRouter.get("/resumo-escritorio", async (req, res) => {

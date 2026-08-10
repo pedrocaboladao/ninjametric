@@ -107,7 +107,7 @@ async function construirLinhasAdsOutrasLojas(diasPeriodo: number, outras: number
 // "apenasAtivasComGasto" filtra as campanhas das 4 lojas mostradas — o chat
 // mostra tudo (o dono pode perguntar sobre uma pausada), o briefing só
 // ativas com gasto (é o que importa pra ação do dia).
-async function montarContextoNegocio(diasPeriodo: number, apenasAtivasComGasto: boolean): Promise<string> {
+export async function montarContextoNegocio(diasPeriodo: number, apenasAtivasComGasto: boolean): Promise<string> {
   const outras = await idsOutrasLojas();
 
   const [campanhasComTacos, financeiroSuas, financeiroOutras, adsOutras] = await Promise.all([
