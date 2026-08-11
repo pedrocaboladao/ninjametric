@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { listarCampanhasAds } from "../services/adsService";
 import { listarReceitaRealPorCampanha } from "../services/tacosService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
+import { pool } from "../db/pool";
 
 export const adsRouter = Router();
 
@@ -49,6 +50,59 @@ adsRouter.get("/", async (req, res) => {
   } catch (err) {
     console.error("Erro ao listar campanhas de Ads:", err);
     res.status(500).json({ error: "Falha ao carregar campanhas de Ads." });
+  }
+});
+
+// TEMPORÁRIO — só pra achar a causa da divergência entre Financeiro (usa
+// ads_gasto_diario) e Gestão de Ads (usa listarCampanhasAds ao vivo).
+// Remover depois de identificar o problema.
+adsRouter.get("/debug/snapshot-diario", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  const { dataInicio, dataFim } = extrairDatas(req);
+  if (!dataInicio || !dataFim) {
+    res.status(400).json({ error: "Informe dataInicio e dataFim (YYYY-MM-DD)." });
+    return;
+  }
+
+  try {
+    const lojaIds = filtro.lojaId !== undefined ? [filtro.lojaId] : filtro.lojasPermitidas;
+    const params: unknown[] = [dataInicio, dataFim];
+    let condLoja = "";
+    if (lojaIds !== undefined) {
+      params.push(lojaIds);
+      condLoja = "AND loja_id = ANY($3::int[])";
+    }
+
+    const { rows } = await pool.query<{
+      loja_id: number;
+      campanha_id: number;
+      data: string;
+      nome: string;
+      custo: string;
+      atualizado_em: string;
+    }>(
+      `SELECT loja_id, campanha_id, data::text AS data, nome, custo, atualizado_em
+       FROM ads_gasto_diario
+       WHERE data BETWEEN $1 AND $2 ${condLoja}
+       ORDER BY data, campanha_id`,
+      params
+    );
+
+    const somaPorDia = new Map<string, number>();
+    for (const r of rows) {
+      somaPorDia.set(r.data, (somaPorDia.get(r.data) ?? 0) + Number(r.custo));
+    }
+
+    res.json({
+      totalLinhas: rows.length,
+      somaPorDia: Object.fromEntries(somaPorDia),
+      totalGeral: Array.from(somaPorDia.values()).reduce((a, b) => a + b, 0),
+      linhas: rows,
+    });
+  } catch (err) {
+    console.error("Erro no debug de snapshot diario de ads:", err);
+    res.status(500).json({ error: "Falha ao consultar snapshot diario." });
   }
 });
 
