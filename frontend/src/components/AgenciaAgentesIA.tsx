@@ -13,6 +13,7 @@ import remarkGfm from "remark-gfm";
 import {
   fetchPensamentosAds,
   perguntarGrowthHacker,
+  perguntarDiretorAds,
   fetchBriefingsGrowthHacker,
   verificarBriefingGrowthHackerAgora,
   tratarFotoProduto,
@@ -34,6 +35,7 @@ import {
   fetchResumoEscritorio,
   fetchVendasRecentes,
   type SugestaoOriginalKit,
+  type RespostaChatAgente,
 } from "../api/agentes";
 import type {
   PensamentoAds,
@@ -47,6 +49,7 @@ import type {
   BriefingGrowthHacker,
 } from "../types/agentes";
 import { formatDataHora, formatCurrency } from "../utils/format";
+import { fetchLojas, type Loja } from "../api/lojas";
 
 // Robô parado num ambiente (só chão + paredes, sem móveis) com um balão de
 // fala animado (efeito "digitando...") ao lado. Desenhado à mão em SVG, no
@@ -837,12 +840,20 @@ interface MensagemExibida extends MensagemChat {
 }
 
 
+interface PropsChatAgente {
+  perguntar: (pergunta: string, historico: MensagemChat[]) => Promise<RespostaChatAgente>;
+  placeholder?: string;
+  mensagemVazia?: string;
+}
+
 // Pergunta livre pro agente — mantém o histórico só na memória da página
 // (não persiste como o feed/pensamentos), a cada pergunta ele busca os
 // dados atuais das campanhas de novo no backend, então a resposta nunca
 // fica desatualizada. Modelo mais forte (Opus) + raciocínio real exibido —
 // pedido explícito do dono: "eu pensando e falando, ele pensando e falando".
-function ChatAgente() {
+// Reaproveitado por qualquer agente de chat (Growth Hacker, Diretor de
+// Ads...) via a prop `perguntar`, que só muda a chamada de API por baixo.
+function ChatAgente({ perguntar, placeholder, mensagemVazia }: PropsChatAgente) {
   const [mensagens, setMensagens] = useState<MensagemExibida[]>([]);
   const [input, setInput] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -861,7 +872,7 @@ function ChatAgente() {
     setErroChat(null);
     setEnviando(true);
     try {
-      const { resposta, pensamento } = await perguntarGrowthHacker(pergunta, historico);
+      const { resposta, pensamento } = await perguntar(pergunta, historico);
       setMensagens((m) => [...m, { papel: "agente", texto: resposta, pensamento }]);
     } catch (err) {
       setErroChat(err instanceof Error ? err.message : "Falha ao perguntar pro agente.");
@@ -878,8 +889,8 @@ function ChatAgente() {
 
       {mensagens.length === 0 && (
         <div className="state-message">
-          Pergunte algo sobre o financeiro ou as campanhas de Ads das suas 4 lojas, ou peça um plano de ação — ele
-          decide e recomenda com os dados reais e atuais, mostrando o raciocínio antes da resposta.
+          {mensagemVazia ??
+            "Pergunte algo sobre o financeiro ou as campanhas de Ads das suas 4 lojas, ou peça um plano de ação — ele decide e recomenda com os dados reais e atuais, mostrando o raciocínio antes da resposta."}
         </div>
       )}
 
@@ -919,7 +930,7 @@ function ChatAgente() {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ex: qual campanha está no prejuízo agora?"
+          placeholder={placeholder ?? "Ex: qual campanha está no prejuízo agora?"}
           disabled={enviando}
         />
         <button type="submit" className="btn-responder" disabled={enviando || !input.trim()}>
@@ -1000,7 +1011,77 @@ function GrowthHacker() {
         {briefings?.map((b) => <PensamentoCard key={b.id} pensamento={b} />)}
       </div>
 
-      <ChatAgente />
+      <ChatAgente perguntar={perguntarGrowthHacker} />
+    </>
+  );
+}
+
+// Especialista em Ads que enxerga e pode recomendar ação pras 16 lojas do
+// grupo inteiro, com a mesma profundidade de análise (ROAS/tacos/lucro
+// real) que o Growth Hacker usa pras 4 — diferente dele, que só age nas 4
+// pessoais. Competição saudável entre as outras 12 é permitida e até
+// incentivada; a soberania das 4 só entra quando alguma delas disputa o
+// mesmo produto: pode ajudar a outra loja a melhorar, nunca a ultrapassar
+// a loja do dono nesse produto específico. Só chat sob demanda (sem
+// briefing automático: rodar sozinho 1x/dia pras 16 lojas sairia caro).
+function DiretorAdsGrupo() {
+  const [lojas, setLojas] = useState<Loja[]>([]);
+  const [lojaSelecionada, setLojaSelecionada] = useState<number | "todas">("todas");
+
+  useEffect(() => {
+    fetchLojas()
+      .then(setLojas)
+      .catch(() => {});
+  }, []);
+
+  // Identidade muda quando a loja selecionada muda — não tem problema
+  // (diferente do onSair do Modo TV): ChatAgente só lê `perguntar` na hora
+  // de enviar, nenhum efeito depende da identidade dele.
+  const perguntar = useCallback(
+    (pergunta: string, historico: MensagemChat[]) =>
+      perguntarDiretorAds(pergunta, historico, lojaSelecionada === "todas" ? undefined : lojaSelecionada),
+    [lojaSelecionada]
+  );
+
+  const nomeLojaSelecionada = lojaSelecionada === "todas" ? null : lojas.find((l) => l.id === lojaSelecionada)?.nome;
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Diretor de Ads do Grupo</h1>
+          <p className="painel-sub">
+            Chefão de Ads que enxerga e recomenda ação pras 16 lojas do grupo, com a mesma profundidade de análise
+            que o Growth Hacker usa nas suas 4. Incentiva competição saudável entre as outras contas — só entra a
+            soberania das suas 4 quando alguma delas disputa o mesmo produto: pode ajudar a outra loja a subir de
+            posição, nunca a ultrapassar a sua.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={lojaSelecionada}
+            onChange={(e) => setLojaSelecionada(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+          >
+            <option value="todas">Todas as 16 lojas</option>
+            {lojas.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <ChatAgente
+        perguntar={perguntar}
+        placeholder={nomeLojaSelecionada ? `Ex: como está o Ads da ${nomeLojaSelecionada}?` : "Ex: como está o Ads do grupo hoje?"}
+        mensagemVazia={
+          nomeLojaSelecionada
+            ? `Análise focada só na ${nomeLojaSelecionada} — mesma profundidade, sem o resto do grupo disputando espaço na resposta.`
+            : "Pergunte sobre o Ads de qualquer loja do grupo — competição saudável entre as outras contas, mas nenhuma pode ultrapassar as suas 4 num produto disputado. Quer focar numa loja só? Selecione ela ali em cima."
+        }
+      />
     </>
   );
 }
@@ -1910,7 +1991,7 @@ function ChatModoTV() {
       {/* display:none em vez de desmontar — minimizar não pode apagar o
           histórico da conversa (o componente teria que remontar do zero). */}
       <div className="agente-tv-chat-corpo" style={{ display: aberto ? undefined : "none" }}>
-        <ChatAgente />
+        <ChatAgente perguntar={perguntarGrowthHacker} />
       </div>
     </div>
   );
@@ -2463,7 +2544,7 @@ function PlanoDoDia() {
 
 export function AgenciaAgentesIA() {
   const [agente, setAgente] = useState<
-    "plano" | "ads" | "growth" | "imagens" | "oportunidades" | "catalogo" | "conversao"
+    "plano" | "ads" | "growth" | "diretorAds" | "imagens" | "oportunidades" | "catalogo" | "conversao"
   >("plano");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
@@ -2507,6 +2588,13 @@ export function AgenciaAgentesIA() {
         </button>
         <button
           type="button"
+          className={`agente-tab ${agente === "diretorAds" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("diretorAds")}
+        >
+          Diretor de Ads do Grupo
+        </button>
+        <button
+          type="button"
           className={`agente-tab ${agente === "imagens" ? "agente-tab-ativa" : ""}`}
           onClick={() => setAgente("imagens")}
         >
@@ -2538,6 +2626,7 @@ export function AgenciaAgentesIA() {
       {agente === "plano" && <PlanoDoDia />}
       {agente === "ads" && <AnalistaAds />}
       {agente === "growth" && <GrowthHacker />}
+      {agente === "diretorAds" && <DiretorAdsGrupo />}
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}
       {agente === "catalogo" && <AgenteCatalogo />}

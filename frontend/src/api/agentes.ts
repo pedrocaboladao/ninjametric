@@ -99,6 +99,20 @@ export async function perguntarGrowthHacker(pergunta: string, historico: Mensage
   return tratarResposta<RespostaChatAgente>(res);
 }
 
+export async function perguntarDiretorAds(
+  pergunta: string,
+  historico: MensagemChat[],
+  lojaId?: number
+): Promise<RespostaChatAgente> {
+  const res = await fetch(`${API_BASE}/api/agentes/diretor-ads/perguntar`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pergunta, historico, lojaId }),
+  });
+  return tratarResposta<RespostaChatAgente>(res);
+}
+
 export async function fetchBriefingsGrowthHacker(): Promise<BriefingGrowthHacker[]> {
   const res = await fetch(`${API_BASE}/api/agentes/growth-hacker/feed`, { credentials: "include" });
   const data = await tratarResposta<{ pensamentos: BriefingGrowthHacker[] }>(res);

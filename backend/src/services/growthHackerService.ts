@@ -192,7 +192,7 @@ Além disso, você ENXERGA os números (financeiro e Ads) das outras lojas do gr
 
 Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer, não devolva a decisão pro dono.`;
 
-function extrairRespostaEPensamento(resposta: Anthropic.Message): { pensamento: string | null; texto: string } {
+export function extrairRespostaEPensamento(resposta: Anthropic.Message): { pensamento: string | null; texto: string } {
   const pensamento = resposta.content
     .filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking")
     .map((b) => b.thinking)

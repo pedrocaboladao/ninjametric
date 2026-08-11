@@ -21,6 +21,7 @@ import { listarPensamentosCatalogo } from "../services/agenteCatalogoService";
 import { listarPensamentosConversao } from "../services/agenteConversaoService";
 import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from "../services/agentePlanoDiarioService";
 import { buscarResumoEscritorio } from "../services/resumoEscritorioService";
+import { perguntarDiretorAds } from "../services/diretorAdsService";
 
 export const agentesRouter = Router();
 
@@ -104,6 +105,26 @@ agentesRouter.post("/ads/perguntar", async (req, res) => {
     res.json({ resposta, pensamento });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
+  }
+});
+
+agentesRouter.post("/diretor-ads/perguntar", async (req, res) => {
+  const { pergunta, historico, lojaId } = req.body ?? {};
+  if (typeof pergunta !== "string" || !pergunta.trim()) {
+    res.status(400).json({ error: "Pergunta inválida." });
+    return;
+  }
+  const historicoValido: MensagemChat[] = Array.isArray(historico)
+    ? historico.filter(
+        (m): m is MensagemChat => !!m && (m.papel === "usuario" || m.papel === "agente") && typeof m.texto === "string"
+      )
+    : [];
+  const lojaIdValido = typeof lojaId === "number" && Number.isInteger(lojaId) ? lojaId : undefined;
+  try {
+    const { resposta, pensamento } = await perguntarDiretorAds(pergunta.trim(), historicoValido, lojaIdValido);
+    res.json({ resposta, pensamento });
+  } catch (err) {
+    erro(res, err, "Falha ao perguntar pro Diretor de Ads.");
   }
 });
 
