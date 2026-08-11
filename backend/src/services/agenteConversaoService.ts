@@ -66,12 +66,23 @@ async function coletarConversaoDaLoja(loja: Loja): Promise<ItemConversao[]> {
     }
   }
 
-  const resultados = await comConcorrenciaLimitada(Array.from(itens.values()), 8, async (item) => {
+  const resultadosBrutos = await comConcorrenciaLimitada(Array.from(itens.values()), 8, async (item) => {
     const visitas = await getVisitasItem(loja.id, item.id, dataInicio, dataFim);
-    return { itemId: item.id, titulo: item.title, visitas: visitas ?? 0, vendas: vendasPorItem.get(item.id) ?? 0 };
+    return { itemId: item.id, titulo: item.title, visitas, vendas: vendasPorItem.get(item.id) ?? 0 };
   });
 
-  return resultados
+  // Se TODAS as buscas de visita falharam (API do ML fora do ar, token
+  // ruim), isso não é "sem tráfego" — é falha de dados. Sem essa
+  // distinção, uma falha sistêmica virava silenciosamente "0 visitas em
+  // tudo", passava pelo filtro de MIN_VISITAS e saía como "nenhum anúncio
+  // com tráfego suficiente" — indistinguível de um dia genuinamente parado,
+  // mesmo em lojas com venda/Ads ativo de verdade no mesmo período.
+  if (resultadosBrutos.length > 0 && resultadosBrutos.every((r) => r.visitas === null)) {
+    throw new Error("Falha ao buscar visitas de todos os anúncios ativos dessa loja (API do Mercado Livre indisponível?)");
+  }
+
+  return resultadosBrutos
+    .map((r) => ({ ...r, visitas: r.visitas ?? 0 }))
     .filter((r) => r.visitas >= MIN_VISITAS)
     .map((r) => ({ ...r, conversao: r.vendas / r.visitas }));
 }

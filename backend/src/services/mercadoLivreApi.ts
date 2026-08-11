@@ -516,7 +516,12 @@ export async function getVisitasItem(lojaId: number, itemId: string, dataInicio:
       params: { ids: itemId, date_from: dataInicio, date_to: dataFim },
     });
     return data.total_visits;
-  } catch {
+  } catch (err) {
+    // Logado (não só engolido) — null aqui vira "0 visitas" na análise de
+    // conversão (ver coletarConversaoDaLoja em agenteConversaoService.ts),
+    // que some silenciosamente do relatório se ficar indistinguível de uma
+    // falha real de API. O log é o que permite diferenciar as duas coisas.
+    console.error(`getVisitasItem: falha ao buscar visitas do item ${itemId} (loja ${lojaId}):`, err);
     return null;
   }
 }

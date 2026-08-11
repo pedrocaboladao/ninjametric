@@ -36,7 +36,21 @@ export async function listarReceitaRealPorCampanha(
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
 
-  const { vendas } = await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim);
+  // Sem try/catch aqui, uma falha pontual do Financeiro (token, API do ML
+  // fora do ar) derrubava a função inteira — e como isso é chamado dentro
+  // de buscarCampanhasComTacos (agenteAdsService.ts) junto com
+  // listarCampanhasAds via Promise.all, o erro subia e apagava a lista de
+  // campanhas INTEIRA de quem chamou (ex.: o Growth Hacker relatando
+  // "nenhuma campanha encontrada" mesmo com campanhas ativas de verdade,
+  // gastando dinheiro). Sem esse cruzamento de receita real, as campanhas
+  // ainda aparecem (vêm de listarCampanhasAds, que já é resiliente por
+  // loja) — só ficam sem tacos_real/acos_ideal/lucro_estimado dessa vez.
+  let vendas: Awaited<ReturnType<typeof listarVendasFinanceiras>>["vendas"] = [];
+  try {
+    vendas = (await listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim)).vendas;
+  } catch (err) {
+    console.error("listarReceitaRealPorCampanha: falha ao buscar vendas do Financeiro, seguindo sem receita real:", err);
+  }
 
   const receitaPorItem = new Map<string, number>();
   const margemPorItem = new Map<string, number>();
