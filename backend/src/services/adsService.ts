@@ -165,51 +165,15 @@ export async function capturarGastoAdsDoDia(): Promise<void> {
   }
 }
 
-function listarDiasEntre(inicio: string, fim: string): string[] {
-  const dias: string[] = [];
-  let atual = new Date(`${inicio}T00:00:00Z`);
-  const fimData = new Date(`${fim}T00:00:00Z`);
-  while (atual <= fimData) {
-    dias.push(atual.toISOString().slice(0, 10));
-    atual = new Date(atual.getTime() + 24 * 60 * 60 * 1000);
-  }
-  return dias;
-}
-
-// Agrupa dias soltos (ex.: [01,02,03,10,11]) em faixas contínuas
-// ([{01,03},{10,11}]) — pra pedir pro Mercado Livre numa chamada só por
-// faixa, em vez de uma chamada por dia individual.
-function agruparEmFaixas(dias: string[]): { inicio: string; fim: string }[] {
-  if (dias.length === 0) return [];
-  const ordenados = [...dias].sort();
-  const faixas: { inicio: string; fim: string }[] = [];
-  let inicioFaixa = ordenados[0];
-  let anterior = ordenados[0];
-  for (let i = 1; i < ordenados.length; i++) {
-    const atual = ordenados[i];
-    const diasEntre = (new Date(atual).getTime() - new Date(anterior).getTime()) / (24 * 60 * 60 * 1000);
-    if (diasEntre > 1) {
-      faixas.push({ inicio: inicioFaixa, fim: anterior });
-      inicioFaixa = atual;
-    }
-    anterior = atual;
-  }
-  faixas.push({ inicio: inicioFaixa, fim: anterior });
-  return faixas;
-}
-
-function ontemISO(dataISO: string): string {
-  const d = new Date(`${dataISO}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-// Soma o gasto de Ads dia a dia. Dias fechados (tudo antes de hoje) usam a
-// foto guardada (ver capturarGastoAdsDoDia) — imune a campanha excluída —
-// com fallback ao vivo só pra faixa que falta. Hoje é tratado à parte,
-// abaixo: nunca confia só na foto (pode estar até 4h desatualizada, o
-// Financeiro não pode ficar preso a esse atraso), sempre busca ao vivo pro
-// dia de hoje e soma.
+// Ao vivo é a fonte de verdade — confirmado bater exato com o Mercado Livre
+// (total e por campanha; ver histórico de investigação de 11/08/2026). A
+// soma dia a dia do retrato salvo (ads_gasto_diario) tinha uma imprecisão
+// sistemática de ~9% mesmo em dias sem nenhum problema de captura — por
+// isso não soma mais o retrato direto. O retrato agora só serve pra
+// recuperar o gasto de campanhas que foram EXCLUÍDAS e por isso sumiram da
+// busca ao vivo (o Mercado Livre "esquece" campanha excluída ao consultar
+// ao vivo) — reaproveita listarCampanhasAds (mesma busca+cache da tela de
+// Gestão de Ads) em vez de duplicar a chamada à API.
 export async function obterGastoAdsHistorico(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
@@ -223,85 +187,33 @@ export async function obterGastoAdsHistorico(
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
   if (lojas.length === 0) return 0;
-  const lojaIds = lojas.map((l) => l.id);
 
   const hoje = janelaHoje().agora.slice(0, 10);
   const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const dataInicioReal = dataInicio ?? seteDiasAtras;
   const dataFimReal = dataFim ?? hoje;
 
-  let total = 0;
+  const campanhasAoVivo = await listarCampanhasAds(lojaIdFiltro, lojasPermitidas, dataInicioReal, dataFimReal);
+  let total = campanhasAoVivo.reduce((soma, c) => soma + c.custo, 0);
 
-  const dataFimFechados = dataFimReal < hoje ? dataFimReal : ontemISO(hoje);
-  if (dataInicioReal <= dataFimFechados) {
-    const [{ rows: somaRows }, { rows: diasRows }] = await Promise.all([
-      pool.query<{ soma: string | null }>(
-        `SELECT SUM(custo) AS soma FROM ads_gasto_diario WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3`,
-        [lojaIds, dataInicioReal, dataFimFechados]
-      ),
-      pool.query<{ loja_id: number; data: string }>(
-        `SELECT DISTINCT loja_id, data::text AS data FROM ads_gasto_diario WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3`,
-        [lojaIds, dataInicioReal, dataFimFechados]
-      ),
-    ]);
-    total += Number(somaRows[0]?.soma ?? 0);
-
-    const diasCapturadosPorLoja = new Map<number, Set<string>>();
-    for (const r of diasRows) {
-      if (!diasCapturadosPorLoja.has(r.loja_id)) diasCapturadosPorLoja.set(r.loja_id, new Set());
-      diasCapturadosPorLoja.get(r.loja_id)!.add(r.data);
-    }
-
-    const todosOsDias = listarDiasEntre(dataInicioReal, dataFimFechados);
-
-    for (const loja of lojas) {
-      const capturados = diasCapturadosPorLoja.get(loja.id) ?? new Set<string>();
-      const faltando = todosOsDias.filter((d) => !capturados.has(d));
-      const faixas = agruparEmFaixas(faltando);
-      if (faixas.length === 0) continue;
-
-      const advertiserId = await getAdvertiserId(loja.id);
-      if (advertiserId === null) continue;
-
-      for (const faixa of faixas) {
-        try {
-          const campanhas = await getCampanhasAds(loja.id, advertiserId, faixa.inicio, faixa.fim);
-          total += campanhas.reduce((soma, c) => soma + c.metrics.cost, 0);
-        } catch {
-          // melhor esforço: se essa faixa falhar, só não soma ela
-        }
-      }
-    }
+  const idsAoVivoPorLoja = new Map<number, Set<number>>();
+  for (const c of campanhasAoVivo) {
+    if (!idsAoVivoPorLoja.has(c.lojaId)) idsAoVivoPorLoja.set(c.lojaId, new Set());
+    idsAoVivoPorLoja.get(c.lojaId)!.add(c.campanhaId);
   }
 
-  if (dataInicioReal <= hoje && hoje <= dataFimReal) {
-    const { rows: snapshotHojeRows } = await pool.query<{ loja_id: number; soma: string | null }>(
-      `SELECT loja_id, SUM(custo) AS soma FROM ads_gasto_diario WHERE loja_id = ANY($1) AND data = $2 GROUP BY loja_id`,
-      [lojaIds, hoje]
-    );
-    const snapshotHojePorLoja = new Map<number, number>();
-    for (const r of snapshotHojeRows) snapshotHojePorLoja.set(r.loja_id, Number(r.soma ?? 0));
-
-    // Uma loja de cada vez seria lento com muitas lojas (essa parte roda
-    // sempre, não só quando falta foto) — busca todas em paralelo.
-    const custosHoje = await Promise.all(
-      lojas.map(async (loja) => {
-        const snapshotLoja = snapshotHojePorLoja.get(loja.id) ?? 0;
-        const advertiserId = await getAdvertiserId(loja.id);
-        if (advertiserId === null) return snapshotLoja;
-        try {
-          const campanhas = await getCampanhasAds(loja.id, advertiserId, hoje, hoje);
-          const custoAoVivo = campanhas.reduce((soma, c) => soma + c.metrics.cost, 0);
-          // Usa o maior entre ao vivo e a foto de hoje: o ao vivo reflete o
-          // gasto mais atual, mas se uma campanha foi excluída hoje mesmo
-          // (some do ao vivo) a foto ainda guarda o que já foi gasto por ela.
-          return Math.max(custoAoVivo, snapshotLoja);
-        } catch {
-          return snapshotLoja;
-        }
-      })
-    );
-    total += custosHoje.reduce((soma, c) => soma + c, 0);
+  const lojaIds = lojas.map((l) => l.id);
+  const { rows } = await pool.query<{ loja_id: number; campanha_id: string; soma: string }>(
+    `SELECT loja_id, campanha_id, SUM(custo) AS soma FROM ads_gasto_diario
+     WHERE loja_id = ANY($1) AND data BETWEEN $2 AND $3
+     GROUP BY loja_id, campanha_id`,
+    [lojaIds, dataInicioReal, dataFimReal]
+  );
+  for (const r of rows) {
+    const idsDaLoja = idsAoVivoPorLoja.get(r.loja_id) ?? new Set<number>();
+    if (!idsDaLoja.has(Number(r.campanha_id))) {
+      total += Number(r.soma);
+    }
   }
 
   return total;
