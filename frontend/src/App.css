@@ -4303,6 +4303,11 @@
   z-index: 5;
 }
 
+.agente-tv-chat-direita {
+  left: auto;
+  right: 20px;
+}
+
 .agente-tv-chat-cabecalho {
   width: 100%;
   display: flex;
@@ -4352,6 +4357,14 @@
 .agente-tv-chat-corpo .painel-eyebrow,
 .agente-tv-chat-corpo .state-message {
   color: rgba(255, 255, 255, 0.6);
+}
+
+.agente-tv-chat-corpo .dashboard-select {
+  width: 100%;
+  margin-bottom: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #fff;
 }
 
 .agente-tv-overlay .agente-svg-grande {

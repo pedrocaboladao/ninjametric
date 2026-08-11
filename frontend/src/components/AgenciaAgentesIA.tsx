@@ -1968,32 +1968,90 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
       <div className="agente-tv-sala">
         <SalaModoTV alertaAds={false} />
-        <ChatModoTV />
+        <ChatModoTV titulo="Growth Hacker" emoji="💬" perguntar={perguntarGrowthHacker} lado="esquerda" />
+        <ChatDiretorAdsModoTV />
       </div>
     </div>
   );
 }
 
-// Chat do Growth Hacker sobreposto ao vídeo do escritório, canto inferior
-// esquerdo — estilo caixa de chat de jogo (recolhível, pra não tampar a
-// cena quando não estiver em uso). Reaproveita o mesmo <ChatAgente /> da
-// aba "Growth Hacker" (mesmo backend, mesmo histórico de conversa não
-// persistido) — só muda a casca visual ao redor.
-function ChatModoTV() {
+interface PropsChatModoTV {
+  titulo: string;
+  emoji: string;
+  perguntar: (pergunta: string, historico: MensagemChat[]) => Promise<RespostaChatAgente>;
+  lado: "esquerda" | "direita";
+  extra?: ReactNode;
+}
+
+// Chat de um agente sobreposto ao vídeo do escritório — estilo caixa de
+// chat de jogo (recolhível, pra não tampar a cena quando não estiver em
+// uso). Reaproveita o mesmo <ChatAgente /> das abas de cada agente (mesmo
+// backend, mesmo histórico de conversa não persistido) — só muda a casca
+// visual ao redor. Parametrizado (título/emoji/perguntar/lado) pra
+// hospedar mais de um agente ao mesmo tempo, um em cada canto inferior.
+// `extra` é um slot opcional pra controles extra (ex.: seletor de loja do
+// Diretor de Ads) renderizado logo acima do chat, só quando aberto.
+function ChatModoTV({ titulo, emoji, perguntar, lado, extra }: PropsChatModoTV) {
   const [aberto, setAberto] = useState(true);
 
   return (
-    <div className="agente-tv-chat">
+    <div className={`agente-tv-chat ${lado === "direita" ? "agente-tv-chat-direita" : ""}`}>
       <button type="button" className="agente-tv-chat-cabecalho" onClick={() => setAberto((v) => !v)}>
-        <span>💬 Growth Hacker</span>
+        <span>
+          {emoji} {titulo}
+        </span>
         <span className="agente-tv-chat-toggle">{aberto ? "▾ minimizar" : "▴ abrir"}</span>
       </button>
       {/* display:none em vez de desmontar — minimizar não pode apagar o
           histórico da conversa (o componente teria que remontar do zero). */}
       <div className="agente-tv-chat-corpo" style={{ display: aberto ? undefined : "none" }}>
-        <ChatAgente perguntar={perguntarGrowthHacker} />
+        {extra}
+        <ChatAgente perguntar={perguntar} />
       </div>
     </div>
+  );
+}
+
+// Wrapper do chat do Diretor de Ads no Modo TV — igual ao da aba "Agentes
+// IA" (mesmo seletor de loja, mesma ideia de foco numa conta só), só que
+// dentro da caixa recolhível sobreposta ao vídeo.
+function ChatDiretorAdsModoTV() {
+  const [lojas, setLojas] = useState<Loja[]>([]);
+  const [lojaSelecionada, setLojaSelecionada] = useState<number | "todas">("todas");
+
+  useEffect(() => {
+    fetchLojas()
+      .then(setLojas)
+      .catch(() => {});
+  }, []);
+
+  const perguntar = useCallback(
+    (pergunta: string, historico: MensagemChat[]) =>
+      perguntarDiretorAds(pergunta, historico, lojaSelecionada === "todas" ? undefined : lojaSelecionada),
+    [lojaSelecionada]
+  );
+
+  return (
+    <ChatModoTV
+      titulo="Diretor de Ads"
+      emoji="📣"
+      perguntar={perguntar}
+      lado="direita"
+      extra={
+        <select
+          className="dashboard-select"
+          value={lojaSelecionada}
+          onChange={(e) => setLojaSelecionada(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+        >
+          <option value="todas">Todas as 16 lojas</option>
+          {lojas.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.nome}
+            </option>
+          ))}
+        </select>
+      }
+    />
   );
 }
 
