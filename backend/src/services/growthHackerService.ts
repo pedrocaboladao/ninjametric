@@ -229,16 +229,45 @@ export interface RespostaChatAgente {
   resposta: string;
 }
 
+// Histórico do chat persistido no banco (ver growth_hacker_mensagens em
+// schema.sql) — pedido do dono pra continuar a conversa entre sessões e
+// entre computadores diferentes, não só durante a aba aberta. Sempre
+// mantido com no máximo LIMITE_HISTORICO_CHAT linhas (10 perguntas + 10
+// respostas): cabe folgado no custo — o histórico entra como tokens de
+// ENTRADA (US$5/milhão), muito mais barato que o "pensar" do Opus em
+// esforço xhigh (US$25/milhão de saída), que já domina o custo de cada
+// pergunta de qualquer forma.
+const LIMITE_HISTORICO_CHAT = 20;
+
+export async function listarMensagensChat(): Promise<MensagemChat[]> {
+  const { rows } = await pool.query<{ papel: string; texto: string }>(
+    `SELECT papel, texto FROM growth_hacker_mensagens ORDER BY criado_em DESC LIMIT $1`,
+    [LIMITE_HISTORICO_CHAT]
+  );
+  return rows.reverse().map((r) => ({ papel: r.papel as "usuario" | "agente", texto: r.texto }));
+}
+
+async function salvarMensagemChat(papel: "usuario" | "agente", texto: string): Promise<void> {
+  await pool.query(`INSERT INTO growth_hacker_mensagens (papel, texto) VALUES ($1, $2)`, [papel, texto]);
+  await pool.query(
+    `DELETE FROM growth_hacker_mensagens WHERE id NOT IN (
+       SELECT id FROM growth_hacker_mensagens ORDER BY criado_em DESC LIMIT $1
+     )`,
+    [LIMITE_HISTORICO_CHAT]
+  );
+}
+
 // Chat direto com o agente — pergunta livre do dono, respondida com o
 // contexto de negócio completo (suas 4 lojas + resto do grupo, ver
 // montarContextoNegocio), buscado na hora, não reaproveita cache do
-// briefing automático abaixo. "diasPeriodo" é opcional (pedido do dono pra
-// poder puxar 24h em vez do padrão de 7 dias, quando quiser olhar só o
-// dia de hoje) — o briefing automático abaixo continua fixo em 7 dias,
-// esse parâmetro só afeta o chat manual.
+// briefing automático abaixo. O histórico agora vem do banco (não mais do
+// navegador) — ver listarMensagensChat/salvarMensagemChat acima.
+// "diasPeriodo" é opcional (pedido do dono pra poder puxar 24h em vez do
+// padrão de 7 dias, quando quiser olhar só o dia de hoje) — o briefing
+// automático abaixo continua fixo em 7 dias, esse parâmetro só afeta o
+// chat manual.
 export async function perguntarGrowthHacker(
   pergunta: string,
-  historico: MensagemChat[],
   diasPeriodo: number = DIAS_JANELA
 ): Promise<RespostaChatAgente> {
   const client = obterClienteAnthropic();
@@ -246,7 +275,7 @@ export async function perguntarGrowthHacker(
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
   }
 
-  const contexto = await montarContextoNegocio(diasPeriodo, false);
+  const [contexto, historico] = await Promise.all([montarContextoNegocio(diasPeriodo, false), listarMensagensChat()]);
 
   // .create() tem um teto de ~10min pra respostas não-streaming — com Opus +
   // thinking em esforço "xhigh" e teto de 24000 tokens, o SDK recusa de cara
@@ -278,6 +307,16 @@ Quando o dono pedir um plano de ação, uma recomendação, ou "o que eu faço a
   );
 
   const { pensamento, texto } = extrairRespostaEPensamento(resposta);
+
+  // Best-effort — falha ao salvar não pode derrubar a resposta que o dono
+  // já recebeu, só perde a persistência dessa troca específica.
+  try {
+    await salvarMensagemChat("usuario", pergunta);
+    await salvarMensagemChat("agente", texto);
+  } catch (err) {
+    console.error("Growth Hacker: falha ao salvar histórico do chat:", err);
+  }
+
   return { pensamento, resposta: texto };
 }
 

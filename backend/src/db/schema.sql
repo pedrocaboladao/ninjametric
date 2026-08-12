@@ -592,3 +592,16 @@ CREATE TABLE IF NOT EXISTS anuncios_negativos_snapshot (
 );
 CREATE INDEX IF NOT EXISTS idx_anuncios_negativos_snapshot_loja ON anuncios_negativos_snapshot (loja_id);
 CREATE INDEX IF NOT EXISTS idx_agente_plano_diario_itens_plano ON agente_plano_diario_itens (plano_id);
+
+-- Histórico do chat manual do Growth Hacker — pedido do dono pra continuar
+-- a conversa mesmo depois de atualizar a página ou trocar de computador
+-- (antes só vivia na memória da aba do navegador). Mantida sempre com no
+-- máximo LIMITE_HISTORICO_CHAT linhas (20 = 10 perguntas + 10 respostas,
+-- ver growthHackerService.ts) — a limpeza acontece a cada mensagem nova,
+-- não precisa de índice (tabela sempre pequena de propósito).
+CREATE TABLE IF NOT EXISTS growth_hacker_mensagens (
+  id SERIAL PRIMARY KEY,
+  papel TEXT NOT NULL,
+  texto TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);

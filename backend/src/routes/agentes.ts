@@ -4,6 +4,7 @@ import {
   perguntarGrowthHacker,
   listarBriefings,
   gerarBriefingDiario,
+  listarMensagensChat,
   type MensagemChat,
 } from "../services/growthHackerService";
 import { listarVendasRecentes } from "../services/dashboardService";
@@ -90,21 +91,18 @@ agentesRouter.get("/ads/pensamentos", async (_req, res) => {
 });
 
 agentesRouter.post("/ads/perguntar", async (req, res) => {
-  const { pergunta, historico, diasPeriodo } = req.body ?? {};
+  const { pergunta, diasPeriodo } = req.body ?? {};
   if (typeof pergunta !== "string" || !pergunta.trim()) {
     res.status(400).json({ error: "Pergunta inválida." });
     return;
   }
-  const historicoValido: MensagemChat[] = Array.isArray(historico)
-    ? historico.filter(
-        (m): m is MensagemChat => !!m && (m.papel === "usuario" || m.papel === "agente") && typeof m.texto === "string"
-      )
-    : [];
   // Só aceita 1 (24h) ou 7 (padrão) — as duas opções que o filtro do chat
-  // oferece; qualquer outro valor cai no padrão de 7 dias da função.
+  // oferece; qualquer outro valor cai no padrão de 7 dias da função. O
+  // histórico não vem mais do corpo da requisição — agora é persistido no
+  // banco (ver listarMensagensChat/salvarMensagemChat em growthHackerService.ts).
   const diasPeriodoValido = diasPeriodo === 1 || diasPeriodo === 7 ? diasPeriodo : undefined;
   try {
-    const { resposta, pensamento } = await perguntarGrowthHacker(pergunta.trim(), historicoValido, diasPeriodoValido);
+    const { resposta, pensamento } = await perguntarGrowthHacker(pergunta.trim(), diasPeriodoValido);
     res.json({ resposta, pensamento });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
@@ -136,6 +134,14 @@ agentesRouter.get("/growth-hacker/feed", async (_req, res) => {
     res.json({ pensamentos: await listarBriefings() });
   } catch (err) {
     erro(res, err, "Falha ao carregar o briefing do Growth Hacker.");
+  }
+});
+
+agentesRouter.get("/growth-hacker/mensagens", async (_req, res) => {
+  try {
+    res.json({ mensagens: await listarMensagensChat() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o histórico do chat.");
   }
 });
 

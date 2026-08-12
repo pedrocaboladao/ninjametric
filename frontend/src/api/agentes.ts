@@ -89,18 +89,23 @@ export interface RespostaChatAgente {
   pensamento: string | null;
 }
 
-export async function perguntarGrowthHacker(
-  pergunta: string,
-  historico: MensagemChat[],
-  diasPeriodo?: number
-): Promise<RespostaChatAgente> {
+// O histórico agora fica salvo no servidor (ver growth_hacker_mensagens),
+// não precisa mais mandar do navegador — por isso não recebe "historico"
+// como os outros agentes de chat.
+export async function perguntarGrowthHacker(pergunta: string, diasPeriodo?: number): Promise<RespostaChatAgente> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/perguntar`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pergunta, historico, diasPeriodo }),
+    body: JSON.stringify({ pergunta, diasPeriodo }),
   });
   return tratarResposta<RespostaChatAgente>(res);
+}
+
+export async function fetchMensagensGrowthHacker(): Promise<MensagemChat[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/growth-hacker/mensagens`, { credentials: "include" });
+  const data = await tratarResposta<{ mensagens: MensagemChat[] }>(res);
+  return data.mensagens;
 }
 
 export async function perguntarDiretorAds(

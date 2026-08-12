@@ -13,6 +13,7 @@ import remarkGfm from "remark-gfm";
 import {
   fetchPensamentosAds,
   perguntarGrowthHacker,
+  fetchMensagensGrowthHacker,
   perguntarDiretorAds,
   fetchBriefingsGrowthHacker,
   verificarBriefingGrowthHackerAgora,
@@ -844,6 +845,10 @@ interface PropsChatAgente {
   perguntar: (pergunta: string, historico: MensagemChat[]) => Promise<RespostaChatAgente>;
   placeholder?: string;
   mensagemVazia?: string;
+  // Histórico já existente pra pré-carregar a conversa (ex.: Growth Hacker,
+  // que persiste no servidor) — undefined/omitido = começa vazia, como os
+  // agentes sem histórico salvo (ex.: Diretor de Ads).
+  mensagensIniciais?: MensagemChat[];
 }
 
 // Pergunta livre pro agente — mantém o histórico só na memória da página
@@ -853,8 +858,8 @@ interface PropsChatAgente {
 // pedido explícito do dono: "eu pensando e falando, ele pensando e falando".
 // Reaproveitado por qualquer agente de chat (Growth Hacker, Diretor de
 // Ads...) via a prop `perguntar`, que só muda a chamada de API por baixo.
-function ChatAgente({ perguntar, placeholder, mensagemVazia }: PropsChatAgente) {
-  const [mensagens, setMensagens] = useState<MensagemExibida[]>([]);
+function ChatAgente({ perguntar, placeholder, mensagemVazia, mensagensIniciais }: PropsChatAgente) {
+  const [mensagens, setMensagens] = useState<MensagemExibida[]>(mensagensIniciais ?? []);
   const [input, setInput] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroChat, setErroChat] = useState<string | null>(null);
@@ -951,6 +956,10 @@ function GrowthHacker() {
   const [erro, setErro] = useState<string | null>(null);
   const [gerando, setGerando] = useState(false);
   const [diasPeriodo, setDiasPeriodo] = useState<1 | 7>(7);
+  // null = ainda não sabemos o histórico salvo — só monta o <ChatAgente />
+  // depois de carregar, senão ele fixaria vazio (useState só lê o valor
+  // inicial na primeira renderização).
+  const [mensagensChat, setMensagensChat] = useState<MensagemChat[] | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -963,6 +972,12 @@ function GrowthHacker() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    fetchMensagensGrowthHacker()
+      .then(setMensagensChat)
+      .catch(() => setMensagensChat([]));
+  }, []);
 
   // Gera de verdade (Opus + xhigh, ~US$0,35-0,65) — não é uma checagem
   // barata como a dos outros agentes. Serve pra testar sem esperar até
@@ -980,8 +995,10 @@ function GrowthHacker() {
     }
   }
 
+  // Histórico já persiste no servidor (ver fetchMensagensGrowthHacker) —
+  // o "historico" que o ChatAgente monta localmente não é mais usado aqui.
   const perguntar = useCallback(
-    (pergunta: string, historico: MensagemChat[]) => perguntarGrowthHacker(pergunta, historico, diasPeriodo),
+    (pergunta: string, _historico: MensagemChat[]) => perguntarGrowthHacker(pergunta, diasPeriodo),
     [diasPeriodo]
   );
 
@@ -1026,10 +1043,13 @@ function GrowthHacker() {
         {briefings?.map((b) => <PensamentoCard key={b.id} pensamento={b} />)}
       </div>
 
-      <ChatAgente
-        perguntar={perguntar}
-        placeholder={diasPeriodo === 1 ? "Ex: como está o Ads hoje?" : "Ex: qual campanha está no prejuízo agora?"}
-      />
+      {mensagensChat !== null && (
+        <ChatAgente
+          perguntar={perguntar}
+          placeholder={diasPeriodo === 1 ? "Ex: como está o Ads hoje?" : "Ex: qual campanha está no prejuízo agora?"}
+          mensagensIniciais={mensagensChat}
+        />
+      )}
     </>
   );
 }
@@ -1999,6 +2019,7 @@ interface PropsChatModoTV {
   perguntar: (pergunta: string, historico: MensagemChat[]) => Promise<RespostaChatAgente>;
   lado: "esquerda" | "direita";
   extra?: ReactNode;
+  mensagensIniciais?: MensagemChat[];
 }
 
 // Chat de um agente sobreposto ao vídeo do escritório — estilo caixa de
@@ -2009,7 +2030,7 @@ interface PropsChatModoTV {
 // hospedar mais de um agente ao mesmo tempo, um em cada canto inferior.
 // `extra` é um slot opcional pra controles extra (ex.: seletor de loja do
 // Diretor de Ads) renderizado logo acima do chat, só quando aberto.
-function ChatModoTV({ titulo, emoji, perguntar, lado, extra }: PropsChatModoTV) {
+function ChatModoTV({ titulo, emoji, perguntar, lado, extra, mensagensIniciais }: PropsChatModoTV) {
   const [aberto, setAberto] = useState(true);
 
   return (
@@ -2024,7 +2045,7 @@ function ChatModoTV({ titulo, emoji, perguntar, lado, extra }: PropsChatModoTV) 
           histórico da conversa (o componente teria que remontar do zero). */}
       <div className="agente-tv-chat-corpo" style={{ display: aberto ? undefined : "none" }}>
         {extra}
-        <ChatAgente perguntar={perguntar} />
+        <ChatAgente perguntar={perguntar} mensagensIniciais={mensagensIniciais} />
       </div>
     </div>
   );
@@ -2035,11 +2056,22 @@ function ChatModoTV({ titulo, emoji, perguntar, lado, extra }: PropsChatModoTV) 
 // puxar só o dia de hoje quando quiser.
 function ChatGrowthHackerModoTV() {
   const [diasPeriodo, setDiasPeriodo] = useState<1 | 7>(7);
+  const [mensagensChat, setMensagensChat] = useState<MensagemChat[] | null>(null);
+
+  useEffect(() => {
+    fetchMensagensGrowthHacker()
+      .then(setMensagensChat)
+      .catch(() => setMensagensChat([]));
+  }, []);
 
   const perguntar = useCallback(
-    (pergunta: string, historico: MensagemChat[]) => perguntarGrowthHacker(pergunta, historico, diasPeriodo),
+    (pergunta: string, _historico: MensagemChat[]) => perguntarGrowthHacker(pergunta, diasPeriodo),
     [diasPeriodo]
   );
+
+  // Só monta depois de carregar o histórico salvo — senão o ChatAgente
+  // fixaria vazio (useState só lê o valor inicial na primeira renderização).
+  if (mensagensChat === null) return null;
 
   return (
     <ChatModoTV
@@ -2047,6 +2079,7 @@ function ChatGrowthHackerModoTV() {
       emoji="💬"
       perguntar={perguntar}
       lado="esquerda"
+      mensagensIniciais={mensagensChat}
       extra={
         <select
           className="dashboard-select"
