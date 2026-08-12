@@ -155,6 +155,30 @@ export async function registrarLote(
   return tratarResposta<FormulaLote>(res);
 }
 
+export async function atualizarLote(
+  formulaId: number,
+  loteId: number,
+  data: string,
+  pesoRealKg: number,
+  observacao: string | null
+): Promise<FormulaLote> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes/${loteId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ data, pesoRealKg, observacao }),
+  });
+  return tratarResposta<FormulaLote>(res);
+}
+
+export async function excluirLote(formulaId: number, loteId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes/${loteId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta(res);
+}
+
 export async function fetchDadosMl(
   formulaId: number,
   sku: string,

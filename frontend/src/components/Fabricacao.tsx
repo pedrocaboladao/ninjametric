@@ -13,12 +13,14 @@ import {
   excluirFormula,
   fetchLotes,
   registrarLote,
+  atualizarLote,
+  excluirLote,
   fetchDadosMl,
 } from "../api/fabricacao";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type { MateriaPrima, MateriaPrimaCompra, FormulaResumo, Formula, FormulaLote } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash, IconClock, IconMoney } from "./icons";
+import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench } from "./icons";
 
 function MateriasPrimasSecao({
   materiasPrimas,
@@ -427,6 +429,12 @@ function LotesSecao({ formula }: { formula: Formula }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editData, setEditData] = useState("");
+  const [editPesoReal, setEditPesoReal] = useState("");
+  const [editObservacao, setEditObservacao] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   const carregar = useCallback(() => {
     fetchLotes(formula.id).then(setLotes).catch(() => setLotes([]));
   }, [formula.id]);
@@ -452,6 +460,42 @@ function LotesSecao({ formula }: { formula: Formula }) {
       setErro(err instanceof Error ? err.message : "Falha ao registrar lote.");
     } finally {
       setSalvando(false);
+    }
+  }
+
+  function iniciarEdicao(lote: FormulaLote) {
+    setEditandoId(lote.id);
+    setEditData(lote.data);
+    setEditPesoReal(String(lote.pesoRealKg));
+    setEditObservacao(lote.observacao ?? "");
+    setErro(null);
+  }
+
+  async function salvarEdicao(loteId: number) {
+    const peso = Number(editPesoReal.replace(",", "."));
+    if (!editData || !Number.isFinite(peso) || peso <= 0) {
+      setErro("Informe data e peso real válidos.");
+      return;
+    }
+    setSalvandoEdicao(true);
+    setErro(null);
+    try {
+      await atualizarLote(formula.id, loteId, editData, peso, editObservacao.trim() || null);
+      setEditandoId(null);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao atualizar lote.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function excluir(loteId: number) {
+    try {
+      await excluirLote(formula.id, loteId);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir lote.");
     }
   }
 
@@ -495,22 +539,68 @@ function LotesSecao({ formula }: { formula: Formula }) {
               <th className="financeiro-th-numero">Real</th>
               <th className="financeiro-th-numero">Diferença</th>
               <th>Observação</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {lotes.map((l) => (
-              <tr key={l.id}>
-                <td>{l.data}</td>
-                <td className="financeiro-th-numero">{l.pesoPrevistoKg}kg</td>
-                <td className="financeiro-th-numero">{l.pesoRealKg}kg</td>
-                <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
-                  {l.diferencaKg >= 0 ? "+" : ""}
-                  {l.diferencaKg.toFixed(2)}kg
-                  {l.diferencaPercentual !== null && ` (${l.diferencaPercentual >= 0 ? "+" : ""}${l.diferencaPercentual.toFixed(1)}%)`}
-                </td>
-                <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
-              </tr>
-            ))}
+            {lotes.map((l) =>
+              editandoId === l.id ? (
+                <tr key={l.id}>
+                  <td>
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      type="date"
+                      value={editData}
+                      onChange={(e) => setEditData(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
+                  <td className="financeiro-th-numero">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={editPesoReal}
+                      onChange={(e) => setEditPesoReal(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                  <td>
+                    <input
+                      className="clonar-input"
+                      value={editObservacao}
+                      onChange={(e) => setEditObservacao(e.target.value)}
+                    />
+                  </td>
+                  <td>
+                    <button type="button" className="btn-responder" disabled={salvandoEdicao} onClick={() => salvarEdicao(l.id)}>
+                      {salvandoEdicao ? "..." : "Salvar"}
+                    </button>
+                    <button type="button" className="btn-excluir" onClick={() => setEditandoId(null)}>
+                      Cancelar
+                    </button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={l.id}>
+                  <td>{l.data}</td>
+                  <td className="financeiro-th-numero">{l.pesoPrevistoKg}kg</td>
+                  <td className="financeiro-th-numero">{l.pesoRealKg}kg</td>
+                  <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
+                    {l.diferencaKg >= 0 ? "+" : ""}
+                    {l.diferencaKg.toFixed(2)}kg
+                    {l.diferencaPercentual !== null && ` (${l.diferencaPercentual >= 0 ? "+" : ""}${l.diferencaPercentual.toFixed(1)}%)`}
+                  </td>
+                  <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
+                  <td>
+                    <button type="button" className="btn-excluir" onClick={() => iniciarEdicao(l)} title="Editar">
+                      <IconWrench size={14} />
+                    </button>
+                    <button type="button" className="btn-excluir" onClick={() => excluir(l.id)} title="Excluir">
+                      <IconTrash size={14} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       )}

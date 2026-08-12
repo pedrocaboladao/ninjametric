@@ -532,6 +532,37 @@ export async function registrarLote(
   return mapearLote(rows[0]);
 }
 
+// peso_previsto_kg não é editável de propósito — é o snapshot de quando o
+// lote foi registrado, editar só o que a pessoa realmente pode ter errado
+// ao digitar (data, peso real, observação).
+export async function atualizarLote(
+  id: number,
+  data: string,
+  pesoRealKg: number,
+  observacao: string | null
+): Promise<FormulaLote> {
+  const { rows } = await pool.query<{
+    id: number;
+    formula_id: number;
+    data: string;
+    peso_previsto_kg: string;
+    peso_real_kg: string;
+    observacao: string | null;
+    criado_em: string;
+  }>(
+    `UPDATE formula_lotes SET data = $2, peso_real_kg = $3, observacao = $4
+     WHERE id = $1
+     RETURNING id, formula_id, data, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
+    [id, data, pesoRealKg, observacao]
+  );
+  if (rows.length === 0) throw new Error("Lote não encontrado.");
+  return mapearLote(rows[0]);
+}
+
+export async function excluirLote(id: number): Promise<void> {
+  await pool.query("DELETE FROM formula_lotes WHERE id = $1", [id]);
+}
+
 const DIAS_JANELA_ML = 30;
 
 function dataISO(d: Date): string {

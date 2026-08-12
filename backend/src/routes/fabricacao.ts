@@ -13,6 +13,8 @@ import {
   excluirFormula,
   listarLotes,
   registrarLote,
+  atualizarLote,
+  excluirLote,
   obterDadosMlPorSku,
   type ItemEntrada,
   type EmbalagemEntrada,
@@ -331,6 +333,45 @@ fabricacaoRouter.post("/formulas/:id/lotes", async (req, res) => {
     );
   } catch (err) {
     erro(res, err, "Falha ao registrar lote.");
+  }
+});
+
+fabricacaoRouter.put("/formulas/:id/lotes/:loteId", async (req, res) => {
+  const loteId = Number(req.params.loteId);
+  if (!Number.isInteger(loteId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const { data, pesoRealKg, observacao } = req.body ?? {};
+  const peso = Number(pesoRealKg);
+  if (typeof data !== "string" || !data.trim()) {
+    res.status(400).json({ error: "Informe a data do lote." });
+    return;
+  }
+  if (!Number.isFinite(peso) || peso <= 0) {
+    res.status(400).json({ error: "Peso real inválido." });
+    return;
+  }
+  try {
+    res.json(
+      await atualizarLote(loteId, data, peso, typeof observacao === "string" && observacao.trim() ? observacao.trim() : null)
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao atualizar lote.");
+  }
+});
+
+fabricacaoRouter.delete("/formulas/:id/lotes/:loteId", async (req, res) => {
+  const loteId = Number(req.params.loteId);
+  if (!Number.isInteger(loteId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirLote(loteId);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir lote.");
   }
 });
 
