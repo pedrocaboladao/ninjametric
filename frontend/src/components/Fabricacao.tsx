@@ -539,6 +539,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
               <th className="financeiro-th-numero">Real</th>
               <th className="financeiro-th-numero">Diferença</th>
               <th className="financeiro-th-numero">Valor</th>
+              <th className="financeiro-th-numero">Custo real/kg</th>
               <th>Observação</th>
               <th></th>
             </tr>
@@ -563,6 +564,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
                       onChange={(e) => setEditPesoReal(e.target.value)}
                     />
                   </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td>
@@ -594,6 +596,9 @@ function LotesSecao({ formula }: { formula: Formula }) {
                   <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
                     {l.diferencaKg >= 0 ? "+" : ""}
                     {formatCurrency(l.diferencaKg * formula.custoPorKg)}
+                  </td>
+                  <td className="financeiro-th-numero">
+                    {formatCurrency((formula.custoPorKg * l.pesoPrevistoKg) / l.pesoRealKg)}
                   </td>
                   <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
                   <td>
