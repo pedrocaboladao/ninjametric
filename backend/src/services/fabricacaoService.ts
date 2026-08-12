@@ -7,25 +7,63 @@ export interface MateriaPrima {
   custoPorKg: number;
 }
 
-export interface FormulaItem {
+export interface MateriaPrimaCompra {
   id: number;
   materiaPrimaId: number;
-  materiaPrimaNome: string;
+  data: string;
+  quantidadeKg: number;
+  valorPago: number;
+  valorFrete: number;
+  custoPorKg: number;
+  criadoEm: string;
+}
+
+export interface FormulaItem {
+  id: number;
+  tipo: "materia_prima" | "formula";
+  materiaPrimaId: number | null;
+  materiaPrimaNome: string | null;
+  subFormulaId: number | null;
+  subFormulaNome: string | null;
   custoPorKg: number;
   percentual: number;
+}
+
+export interface FormulaEmbalagem {
+  id: number;
+  formulaId: number;
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  sku: string | null;
+  ordem: number;
+  custoProduto: number;
+  custoFinal: number;
+}
+
+export interface FormulaLote {
+  id: number;
+  formulaId: number;
+  data: string;
+  pesoPrevistoKg: number;
+  pesoRealKg: number;
+  observacao: string | null;
+  diferencaKg: number;
+  diferencaPercentual: number | null;
+  criadoEm: string;
 }
 
 export interface FormulaResumo {
   id: number;
   nome: string;
-  sku: string | null;
   pesoLoteKg: number;
-  custoEmbalagem: number;
-  custoFabricacao: number;
+  custoPorKg: number;
+  custoFabricacaoTotal: number;
 }
 
 export interface Formula extends FormulaResumo {
   itens: FormulaItem[];
+  embalagens: FormulaEmbalagem[];
 }
 
 export interface DadosMlSku {
@@ -36,11 +74,10 @@ export interface DadosMlSku {
   qtdVendas: number;
 }
 
-// Mesma conta das planilhas de produção já usadas na fábrica: cada item
-// vira massa (% do peso do lote) × custo por kg, somado dá o custo de
-// fabricação; embalagem entra por fora (não é % da fórmula, é por unidade).
-export function calcularCustoFormula(itens: { percentual: number; custoPorKg: number }[], pesoLoteKg: number): number {
-  return itens.reduce((soma, item) => soma + (item.percentual / 100) * pesoLoteKg * item.custoPorKg, 0);
+// pg devolve colunas DATE como objeto Date (meia-noite UTC) — sem isso, o
+// JSON.stringify vira um timestamp ISO completo em vez de "AAAA-MM-DD".
+function dataParaISO(valor: unknown): string {
+  return valor instanceof Date ? valor.toISOString().slice(0, 10) : String(valor).slice(0, 10);
 }
 
 export async function listarMateriasPrimas(): Promise<MateriaPrima[]> {
@@ -69,140 +106,430 @@ export async function excluirMateriaPrima(id: number): Promise<void> {
   await pool.query("DELETE FROM materias_primas WHERE id = $1", [id]);
 }
 
-export async function listarFormulas(): Promise<FormulaResumo[]> {
-  const { rows } = await pool.query<{
-    id: number;
-    nome: string;
-    sku: string | null;
-    peso_lote_kg: string;
-    custo_embalagem: string;
-  }>("SELECT id, nome, sku, peso_lote_kg, custo_embalagem FROM formulas ORDER BY nome");
-
-  const itensPorFormula = await obterItensPorFormula(rows.map((r) => r.id));
-
-  return rows.map((r) => {
-    const itens = itensPorFormula.get(r.id) ?? [];
-    const pesoLoteKg = Number(r.peso_lote_kg);
-    return {
-      id: r.id,
-      nome: r.nome,
-      sku: r.sku,
-      pesoLoteKg,
-      custoEmbalagem: Number(r.custo_embalagem),
-      custoFabricacao: calcularCustoFormula(itens, pesoLoteKg) + Number(r.custo_embalagem),
-    };
-  });
+function mapearCompra(r: {
+  id: number;
+  materia_prima_id: number;
+  data: string;
+  quantidade_kg: string;
+  valor_pago: string;
+  valor_frete: string;
+  custo_por_kg: string;
+  criado_em: string;
+}): MateriaPrimaCompra {
+  return {
+    id: r.id,
+    materiaPrimaId: r.materia_prima_id,
+    data: dataParaISO(r.data),
+    quantidadeKg: Number(r.quantidade_kg),
+    valorPago: Number(r.valor_pago),
+    valorFrete: Number(r.valor_frete),
+    custoPorKg: Number(r.custo_por_kg),
+    criadoEm: r.criado_em,
+  };
 }
 
-async function obterItensPorFormula(formulaIds: number[]): Promise<Map<number, FormulaItem[]>> {
-  const mapa = new Map<number, FormulaItem[]>();
-  if (formulaIds.length === 0) return mapa;
+export async function listarComprasMateriaPrima(materiaPrimaId: number, limite = 10): Promise<MateriaPrimaCompra[]> {
+  const { rows } = await pool.query<{
+    id: number;
+    materia_prima_id: number;
+    data: string;
+    quantidade_kg: string;
+    valor_pago: string;
+    valor_frete: string;
+    custo_por_kg: string;
+    criado_em: string;
+  }>(
+    `SELECT id, materia_prima_id, data, quantidade_kg, valor_pago, valor_frete, custo_por_kg, criado_em
+     FROM materia_prima_compras WHERE materia_prima_id = $1 ORDER BY data DESC, id DESC LIMIT $2`,
+    [materiaPrimaId, limite]
+  );
+  return rows.map(mapearCompra);
+}
 
+// Registrar uma compra recalcula o custo/kg (valor pago + frete, dividido
+// pela quantidade) e já atualiza materias_primas.custo_por_kg pra esse
+// valor — é o jeito "oficial" de manter o custo em dia; a edição manual do
+// campo continua existindo em paralelo pra ajustes rápidos.
+export async function registrarCompraMateriaPrima(
+  materiaPrimaId: number,
+  data: string,
+  quantidadeKg: number,
+  valorPago: number,
+  valorFrete: number
+): Promise<MateriaPrimaCompra> {
+  const custoPorKg = (valorPago + valorFrete) / quantidadeKg;
+  const { rows } = await pool.query<{
+    id: number;
+    materia_prima_id: number;
+    data: string;
+    quantidade_kg: string;
+    valor_pago: string;
+    valor_frete: string;
+    custo_por_kg: string;
+    criado_em: string;
+  }>(
+    `INSERT INTO materia_prima_compras (materia_prima_id, data, quantidade_kg, valor_pago, valor_frete, custo_por_kg)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     RETURNING id, materia_prima_id, data, quantidade_kg, valor_pago, valor_frete, custo_por_kg, criado_em`,
+    [materiaPrimaId, data, quantidadeKg, valorPago, valorFrete, custoPorKg]
+  );
+  await pool.query("UPDATE materias_primas SET custo_por_kg = $2, atualizado_em = now() WHERE id = $1", [
+    materiaPrimaId,
+    custoPorKg,
+  ]);
+  return mapearCompra(rows[0]);
+}
+
+interface ItemBruto {
+  id: number;
+  formulaId: number;
+  materiaPrimaId: number | null;
+  materiaPrimaNome: string | null;
+  materiaPrimaCustoPorKg: number | null;
+  subFormulaId: number | null;
+  subFormulaNome: string | null;
+  percentual: number;
+}
+
+async function buscarTodosItens(): Promise<ItemBruto[]> {
   const { rows } = await pool.query<{
     id: number;
     formula_id: number;
-    materia_prima_id: number;
-    materia_prima_nome: string;
-    custo_por_kg: string;
+    materia_prima_id: number | null;
+    materia_prima_nome: string | null;
+    materia_prima_custo_por_kg: string | null;
+    sub_formula_id: number | null;
+    sub_formula_nome: string | null;
     percentual: string;
   }>(
-    `SELECT fi.id, fi.formula_id, fi.materia_prima_id, mp.nome AS materia_prima_nome, mp.custo_por_kg, fi.percentual
+    `SELECT fi.id, fi.formula_id, fi.materia_prima_id, mp.nome AS materia_prima_nome, mp.custo_por_kg AS materia_prima_custo_por_kg,
+            fi.sub_formula_id, sf.nome AS sub_formula_nome, fi.percentual
      FROM formula_itens fi
-     JOIN materias_primas mp ON mp.id = fi.materia_prima_id
-     WHERE fi.formula_id = ANY($1)
-     ORDER BY fi.id`,
-    [formulaIds]
+     LEFT JOIN materias_primas mp ON mp.id = fi.materia_prima_id
+     LEFT JOIN formulas sf ON sf.id = fi.sub_formula_id
+     ORDER BY fi.id`
   );
+  return rows.map((r) => ({
+    id: r.id,
+    formulaId: r.formula_id,
+    materiaPrimaId: r.materia_prima_id,
+    materiaPrimaNome: r.materia_prima_nome,
+    materiaPrimaCustoPorKg: r.materia_prima_custo_por_kg !== null ? Number(r.materia_prima_custo_por_kg) : null,
+    subFormulaId: r.sub_formula_id,
+    subFormulaNome: r.sub_formula_nome,
+    percentual: Number(r.percentual),
+  }));
+}
 
-  for (const r of rows) {
-    if (!mapa.has(r.formula_id)) mapa.set(r.formula_id, []);
-    mapa.get(r.formula_id)!.push({
-      id: r.id,
-      materiaPrimaId: r.materia_prima_id,
-      materiaPrimaNome: r.materia_prima_nome,
-      custoPorKg: Number(r.custo_por_kg),
-      percentual: Number(r.percentual),
-    });
+function agruparPorFormula(itens: ItemBruto[]): Map<number, ItemBruto[]> {
+  const mapa = new Map<number, ItemBruto[]>();
+  for (const item of itens) {
+    if (!mapa.has(item.formulaId)) mapa.set(item.formulaId, []);
+    mapa.get(item.formulaId)!.push(item);
   }
   return mapa;
 }
 
+// Custo por kg de cada fórmula = soma de (percentual% × custo/kg de cada
+// item), onde o item pode ser matéria-prima direta OU outra fórmula (custo
+// dela calculado recursivamente aqui mesmo) — é assim que "custo da cor =
+// custo da Base usada + custo da pigmentação" fica automático. emCalculo
+// evita loop infinito se por algum motivo um ciclo escapar da validação de
+// escrita (não deveria acontecer, mas não trava o cálculo se acontecer).
+function calcularCustoPorKgTodasFormulas(
+  formulaIds: number[],
+  itensPorFormula: Map<number, ItemBruto[]>
+): Map<number, number> {
+  const custoCache = new Map<number, number>();
+  const emCalculo = new Set<number>();
+
+  function custoDe(formulaId: number): number {
+    if (custoCache.has(formulaId)) return custoCache.get(formulaId)!;
+    if (emCalculo.has(formulaId)) return 0;
+    emCalculo.add(formulaId);
+    let custo = 0;
+    for (const item of itensPorFormula.get(formulaId) ?? []) {
+      const fracao = item.percentual / 100;
+      if (item.materiaPrimaId !== null) {
+        custo += fracao * (item.materiaPrimaCustoPorKg ?? 0);
+      } else if (item.subFormulaId !== null) {
+        custo += fracao * custoDe(item.subFormulaId);
+      }
+    }
+    emCalculo.delete(formulaId);
+    custoCache.set(formulaId, custo);
+    return custo;
+  }
+
+  for (const id of formulaIds) custoDe(id);
+  return custoCache;
+}
+
+export async function listarFormulas(): Promise<FormulaResumo[]> {
+  const { rows } = await pool.query<{ id: number; nome: string; peso_lote_kg: string }>(
+    "SELECT id, nome, peso_lote_kg FROM formulas ORDER BY nome"
+  );
+  const itensPorFormula = agruparPorFormula(await buscarTodosItens());
+  const custoPorKgMap = calcularCustoPorKgTodasFormulas(
+    rows.map((r) => r.id),
+    itensPorFormula
+  );
+
+  return rows.map((r) => {
+    const pesoLoteKg = Number(r.peso_lote_kg);
+    const custoPorKg = custoPorKgMap.get(r.id) ?? 0;
+    return { id: r.id, nome: r.nome, pesoLoteKg, custoPorKg, custoFabricacaoTotal: custoPorKg * pesoLoteKg };
+  });
+}
+
 export async function obterFormula(id: number): Promise<Formula | null> {
-  const { rows } = await pool.query<{
-    id: number;
-    nome: string;
-    sku: string | null;
-    peso_lote_kg: string;
-    custo_embalagem: string;
-  }>("SELECT id, nome, sku, peso_lote_kg, custo_embalagem FROM formulas WHERE id = $1", [id]);
+  const { rows } = await pool.query<{ id: number; nome: string; peso_lote_kg: string }>(
+    "SELECT id, nome, peso_lote_kg FROM formulas WHERE id = $1",
+    [id]
+  );
   if (rows.length === 0) return null;
 
-  const itensPorFormula = await obterItensPorFormula([id]);
-  const itens = itensPorFormula.get(id) ?? [];
+  // Precisa do custo de TODAS as fórmulas (não só desta) pra resolver
+  // sub-fórmulas aninhadas em qualquer profundidade.
+  const [todasFormulas, itensBrutos, embalagensRes] = await Promise.all([
+    pool.query<{ id: number }>("SELECT id FROM formulas"),
+    buscarTodosItens(),
+    pool.query<{
+      id: number;
+      formula_id: number;
+      nome: string;
+      peso_kg: string;
+      custo_embalagem: string;
+      sku: string | null;
+      ordem: number;
+    }>(
+      "SELECT id, formula_id, nome, peso_kg, custo_embalagem, sku, ordem FROM formula_embalagens WHERE formula_id = $1 ORDER BY ordem, id",
+      [id]
+    ),
+  ]);
+
+  const itensPorFormula = agruparPorFormula(itensBrutos);
+  const custoPorKgMap = calcularCustoPorKgTodasFormulas(
+    todasFormulas.rows.map((r) => r.id),
+    itensPorFormula
+  );
+
   const pesoLoteKg = Number(rows[0].peso_lote_kg);
-  const custoEmbalagem = Number(rows[0].custo_embalagem);
+  const custoPorKg = custoPorKgMap.get(id) ?? 0;
+
+  const itens: FormulaItem[] = (itensPorFormula.get(id) ?? []).map((item) => ({
+    id: item.id,
+    tipo: item.materiaPrimaId !== null ? "materia_prima" : "formula",
+    materiaPrimaId: item.materiaPrimaId,
+    materiaPrimaNome: item.materiaPrimaNome,
+    subFormulaId: item.subFormulaId,
+    subFormulaNome: item.subFormulaNome,
+    custoPorKg: item.materiaPrimaId !== null ? item.materiaPrimaCustoPorKg ?? 0 : custoPorKgMap.get(item.subFormulaId!) ?? 0,
+    percentual: item.percentual,
+  }));
+
+  const embalagens: FormulaEmbalagem[] = embalagensRes.rows.map((e) => {
+    const pesoKg = Number(e.peso_kg);
+    const custoEmbalagem = Number(e.custo_embalagem);
+    const custoProduto = custoPorKg * pesoKg;
+    return {
+      id: e.id,
+      formulaId: e.formula_id,
+      nome: e.nome,
+      pesoKg,
+      custoEmbalagem,
+      sku: e.sku,
+      ordem: e.ordem,
+      custoProduto,
+      custoFinal: custoProduto + custoEmbalagem,
+    };
+  });
 
   return {
-    id: rows[0].id,
+    id,
     nome: rows[0].nome,
-    sku: rows[0].sku,
     pesoLoteKg,
-    custoEmbalagem,
-    custoFabricacao: calcularCustoFormula(itens, pesoLoteKg) + custoEmbalagem,
+    custoPorKg,
+    custoFabricacaoTotal: custoPorKg * pesoLoteKg,
     itens,
+    embalagens,
   };
 }
 
-interface ItemEntrada {
-  materiaPrimaId: number;
+export interface ItemEntrada {
+  materiaPrimaId: number | null;
+  subFormulaId: number | null;
   percentual: number;
 }
 
-// Substitui a lista de itens inteira (delete + insert) em vez de tentar
-// diffar item a item — a tela sempre manda a lista completa da fórmula,
-// então não tem ganho em fazer diff, só complexidade a mais.
+export interface EmbalagemEntrada {
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  sku: string | null;
+}
+
+// Retorna true se "formulaId" depende (direta ou indiretamente) de "alvoId"
+// — usado pra bloquear ciclo (fórmula A usando fórmula B que usa A) antes
+// de salvar, já que o banco não tem como impedir isso sozinho.
+async function formulaDependeDe(formulaId: number, alvoId: number, visitados = new Set<number>()): Promise<boolean> {
+  if (formulaId === alvoId) return true;
+  if (visitados.has(formulaId)) return false;
+  visitados.add(formulaId);
+  const { rows } = await pool.query<{ sub_formula_id: number }>(
+    "SELECT sub_formula_id FROM formula_itens WHERE formula_id = $1 AND sub_formula_id IS NOT NULL",
+    [formulaId]
+  );
+  for (const r of rows) {
+    if (await formulaDependeDe(r.sub_formula_id, alvoId, visitados)) return true;
+  }
+  return false;
+}
+
+async function validarSemCiclo(formulaId: number, itens: ItemEntrada[]): Promise<void> {
+  for (const item of itens) {
+    if (item.subFormulaId === null) continue;
+    if (item.subFormulaId === formulaId) {
+      throw new Error("Uma fórmula não pode usar a si mesma como ingrediente.");
+    }
+    if (await formulaDependeDe(item.subFormulaId, formulaId)) {
+      throw new Error(
+        "Isso criaria um ciclo: a fórmula que você quer usar como ingrediente já depende (direta ou indiretamente) desta fórmula."
+      );
+    }
+  }
+}
+
 async function salvarItens(formulaId: number, itens: ItemEntrada[]): Promise<void> {
   await pool.query("DELETE FROM formula_itens WHERE formula_id = $1", [formulaId]);
   for (const item of itens) {
     await pool.query(
-      "INSERT INTO formula_itens (formula_id, materia_prima_id, percentual) VALUES ($1, $2, $3)",
-      [formulaId, item.materiaPrimaId, item.percentual]
+      "INSERT INTO formula_itens (formula_id, materia_prima_id, sub_formula_id, percentual) VALUES ($1, $2, $3, $4)",
+      [formulaId, item.materiaPrimaId, item.subFormulaId, item.percentual]
+    );
+  }
+}
+
+async function salvarEmbalagens(formulaId: number, embalagens: EmbalagemEntrada[]): Promise<void> {
+  await pool.query("DELETE FROM formula_embalagens WHERE formula_id = $1", [formulaId]);
+  let ordem = 0;
+  for (const e of embalagens) {
+    await pool.query(
+      "INSERT INTO formula_embalagens (formula_id, nome, peso_kg, custo_embalagem, sku, ordem) VALUES ($1, $2, $3, $4, $5, $6)",
+      [formulaId, e.nome, e.pesoKg, e.custoEmbalagem, e.sku, ordem++]
     );
   }
 }
 
 export async function criarFormula(
   nome: string,
-  sku: string | null,
   pesoLoteKg: number,
-  custoEmbalagem: number,
-  itens: ItemEntrada[]
+  itens: ItemEntrada[],
+  embalagens: EmbalagemEntrada[]
 ): Promise<number> {
   const { rows } = await pool.query<{ id: number }>(
-    "INSERT INTO formulas (nome, sku, peso_lote_kg, custo_embalagem) VALUES ($1, $2, $3, $4) RETURNING id",
-    [nome, sku, pesoLoteKg, custoEmbalagem]
+    "INSERT INTO formulas (nome, peso_lote_kg) VALUES ($1, $2) RETURNING id",
+    [nome, pesoLoteKg]
   );
   await salvarItens(rows[0].id, itens);
+  await salvarEmbalagens(rows[0].id, embalagens);
   return rows[0].id;
 }
 
 export async function atualizarFormula(
   id: number,
   nome: string,
-  sku: string | null,
   pesoLoteKg: number,
-  custoEmbalagem: number,
-  itens: ItemEntrada[]
+  itens: ItemEntrada[],
+  embalagens: EmbalagemEntrada[]
 ): Promise<void> {
-  await pool.query(
-    "UPDATE formulas SET nome = $2, sku = $3, peso_lote_kg = $4, custo_embalagem = $5, atualizado_em = now() WHERE id = $1",
-    [id, nome, sku, pesoLoteKg, custoEmbalagem]
-  );
+  await validarSemCiclo(id, itens);
+  await pool.query("UPDATE formulas SET nome = $2, peso_lote_kg = $3, atualizado_em = now() WHERE id = $1", [
+    id,
+    nome,
+    pesoLoteKg,
+  ]);
   await salvarItens(id, itens);
+  await salvarEmbalagens(id, embalagens);
 }
 
 export async function excluirFormula(id: number): Promise<void> {
   await pool.query("DELETE FROM formulas WHERE id = $1", [id]);
+}
+
+function mapearLote(r: {
+  id: number;
+  formula_id: number;
+  data: string;
+  peso_previsto_kg: string;
+  peso_real_kg: string;
+  observacao: string | null;
+  criado_em: string;
+}): FormulaLote {
+  const pesoPrevistoKg = Number(r.peso_previsto_kg);
+  const pesoRealKg = Number(r.peso_real_kg);
+  const diferencaKg = pesoRealKg - pesoPrevistoKg;
+  return {
+    id: r.id,
+    formulaId: r.formula_id,
+    data: dataParaISO(r.data),
+    pesoPrevistoKg,
+    pesoRealKg,
+    observacao: r.observacao,
+    diferencaKg,
+    diferencaPercentual: pesoPrevistoKg > 0 ? (diferencaKg / pesoPrevistoKg) * 100 : null,
+    criadoEm: r.criado_em,
+  };
+}
+
+export async function listarLotes(formulaId: number): Promise<FormulaLote[]> {
+  const { rows } = await pool.query<{
+    id: number;
+    formula_id: number;
+    data: string;
+    peso_previsto_kg: string;
+    peso_real_kg: string;
+    observacao: string | null;
+    criado_em: string;
+  }>(
+    `SELECT id, formula_id, data, peso_previsto_kg, peso_real_kg, observacao, criado_em
+     FROM formula_lotes WHERE formula_id = $1 ORDER BY data DESC, id DESC`,
+    [formulaId]
+  );
+  return rows.map(mapearLote);
+}
+
+// peso_previsto_kg é sempre o peso_lote_kg ATUAL da fórmula no momento do
+// registro (snapshot) — se a fórmula mudar de peso depois, os lotes já
+// registrados continuam comparando com o previsto de quando rodaram.
+export async function registrarLote(
+  formulaId: number,
+  data: string,
+  pesoRealKg: number,
+  observacao: string | null
+): Promise<FormulaLote> {
+  const { rows: formulaRows } = await pool.query<{ peso_lote_kg: string }>(
+    "SELECT peso_lote_kg FROM formulas WHERE id = $1",
+    [formulaId]
+  );
+  if (formulaRows.length === 0) throw new Error("Fórmula não encontrada.");
+  const pesoPrevistoKg = Number(formulaRows[0].peso_lote_kg);
+
+  const { rows } = await pool.query<{
+    id: number;
+    formula_id: number;
+    data: string;
+    peso_previsto_kg: string;
+    peso_real_kg: string;
+    observacao: string | null;
+    criado_em: string;
+  }>(
+    `INSERT INTO formula_lotes (formula_id, data, peso_previsto_kg, peso_real_kg, observacao)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, formula_id, data, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
+    [formulaId, data, pesoPrevistoKg, pesoRealKg, observacao]
+  );
+  return mapearLote(rows[0]);
 }
 
 const DIAS_JANELA_ML = 30;
@@ -216,7 +543,9 @@ function dataISO(d: Date): string {
 // (listarVendasFinanceiras), sem chamada nova ao Mercado Livre nem
 // duplicar lógica de custo/tarifa/frete. Cada "Total" que vem de lá já é
 // por linha de venda (valor × quantidade), por isso divide pela
-// quantidade pra virar "por unidade" antes de tirar a média.
+// quantidade pra virar "por unidade" antes de tirar a média. Chamada por
+// SKU de EMBALAGEM (cada tamanho de envase costuma ser um anúncio
+// separado no ML), não mais por SKU da fórmula inteira.
 export async function obterDadosMlPorSku(
   sku: string,
   lojaIdFiltro?: number,

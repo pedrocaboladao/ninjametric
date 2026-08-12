@@ -1,4 +1,11 @@
-import type { MateriaPrima, FormulaResumo, Formula, DadosMlSku } from "../types/fabricacao";
+import type {
+  MateriaPrima,
+  MateriaPrimaCompra,
+  FormulaResumo,
+  Formula,
+  FormulaLote,
+  DadosMlSku,
+} from "../types/fabricacao";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -44,6 +51,30 @@ export async function excluirMateriaPrima(id: number): Promise<void> {
   await tratarResposta(res);
 }
 
+export async function fetchComprasMateriaPrima(materiaPrimaId: number): Promise<MateriaPrimaCompra[]> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/materias-primas/${materiaPrimaId}/compras`, {
+    credentials: "include",
+  });
+  const data = await tratarResposta<{ compras: MateriaPrimaCompra[] }>(res);
+  return data.compras;
+}
+
+export async function registrarCompraMateriaPrima(
+  materiaPrimaId: number,
+  data: string,
+  quantidadeKg: number,
+  valorPago: number,
+  valorFrete: number
+): Promise<MateriaPrimaCompra> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/materias-primas/${materiaPrimaId}/compras`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ data, quantidadeKg, valorPago, valorFrete }),
+  });
+  return tratarResposta<MateriaPrimaCompra>(res);
+}
+
 export async function fetchFormulas(): Promise<FormulaResumo[]> {
   const res = await fetch(`${API_BASE}/api/fabricacao/formulas`, { credentials: "include" });
   const data = await tratarResposta<{ formulas: FormulaResumo[] }>(res);
@@ -55,12 +86,24 @@ export async function fetchFormula(id: number): Promise<Formula> {
   return tratarResposta<Formula>(res);
 }
 
+export interface ItemEntrada {
+  materiaPrimaId: number | null;
+  subFormulaId: number | null;
+  percentual: number;
+}
+
+export interface EmbalagemEntrada {
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  sku: string | null;
+}
+
 export interface FormulaEntrada {
   nome: string;
-  sku: string | null;
   pesoLoteKg: number;
-  custoEmbalagem: number;
-  itens: { materiaPrimaId: number; percentual: number }[];
+  itens: ItemEntrada[];
+  embalagens: EmbalagemEntrada[];
 }
 
 export async function criarFormula(entrada: FormulaEntrada): Promise<{ id: number }> {
@@ -91,8 +134,33 @@ export async function excluirFormula(id: number): Promise<void> {
   await tratarResposta(res);
 }
 
-export async function fetchDadosMl(formulaId: number, lojaFiltro: number | "todas" | "minhas"): Promise<DadosMlSku> {
-  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+export async function fetchLotes(formulaId: number): Promise<FormulaLote[]> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes`, { credentials: "include" });
+  const data = await tratarResposta<{ lotes: FormulaLote[] }>(res);
+  return data.lotes;
+}
+
+export async function registrarLote(
+  formulaId: number,
+  data: string,
+  pesoRealKg: number,
+  observacao: string | null
+): Promise<FormulaLote> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ data, pesoRealKg, observacao }),
+  });
+  return tratarResposta<FormulaLote>(res);
+}
+
+export async function fetchDadosMl(
+  formulaId: number,
+  sku: string,
+  lojaFiltro: number | "todas" | "minhas"
+): Promise<DadosMlSku> {
+  const params = new URLSearchParams({ sku, lojaId: String(lojaFiltro) });
   const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/dados-ml?${params}`, {
     credentials: "include",
   });

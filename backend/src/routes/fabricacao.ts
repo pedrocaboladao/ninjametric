@@ -4,12 +4,18 @@ import {
   criarMateriaPrima,
   atualizarMateriaPrima,
   excluirMateriaPrima,
+  listarComprasMateriaPrima,
+  registrarCompraMateriaPrima,
   listarFormulas,
   obterFormula,
   criarFormula,
   atualizarFormula,
   excluirFormula,
+  listarLotes,
+  registrarLote,
   obterDadosMlPorSku,
+  type ItemEntrada,
+  type EmbalagemEntrada,
 } from "../services/fabricacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
@@ -21,21 +27,38 @@ function erro(res: Response, err: unknown, fallback: string) {
   res.status(400).json({ error: mensagem });
 }
 
-interface ItemEntrada {
-  materiaPrimaId: number;
-  percentual: number;
-}
-
 function validarItens(valor: unknown): ItemEntrada[] | null {
   if (!Array.isArray(valor)) return null;
   const itens: ItemEntrada[] = [];
   for (const item of valor) {
-    const materiaPrimaId = Number(item?.materiaPrimaId);
+    const materiaPrimaId = item?.materiaPrimaId === null || item?.materiaPrimaId === undefined ? null : Number(item.materiaPrimaId);
+    const subFormulaId = item?.subFormulaId === null || item?.subFormulaId === undefined ? null : Number(item.subFormulaId);
     const percentual = Number(item?.percentual);
-    if (!Number.isInteger(materiaPrimaId) || !Number.isFinite(percentual) || percentual < 0) return null;
-    itens.push({ materiaPrimaId, percentual });
+    const umTipo =
+      (materiaPrimaId !== null && subFormulaId === null) || (materiaPrimaId === null && subFormulaId !== null);
+    if (!umTipo) return null;
+    if (materiaPrimaId !== null && !Number.isInteger(materiaPrimaId)) return null;
+    if (subFormulaId !== null && !Number.isInteger(subFormulaId)) return null;
+    if (!Number.isFinite(percentual) || percentual < 0) return null;
+    itens.push({ materiaPrimaId, subFormulaId, percentual });
   }
   return itens;
+}
+
+function validarEmbalagens(valor: unknown): EmbalagemEntrada[] | null {
+  if (!Array.isArray(valor)) return null;
+  const embalagens: EmbalagemEntrada[] = [];
+  for (const e of valor) {
+    const nome = typeof e?.nome === "string" ? e.nome.trim() : "";
+    const pesoKg = Number(e?.pesoKg);
+    const custoEmbalagem = Number(e?.custoEmbalagem);
+    const sku = typeof e?.sku === "string" && e.sku.trim() ? e.sku.trim() : null;
+    if (!nome || !Number.isFinite(pesoKg) || pesoKg <= 0 || !Number.isFinite(custoEmbalagem) || custoEmbalagem < 0) {
+      return null;
+    }
+    embalagens.push({ nome, pesoKg, custoEmbalagem, sku });
+  }
+  return embalagens;
 }
 
 // Mesmo padrão duplicado por arquivo do resto do sistema (ver financeiro.ts,
@@ -124,6 +147,52 @@ fabricacaoRouter.delete("/materias-primas/:id", async (req, res) => {
   }
 });
 
+fabricacaoRouter.get("/materias-primas/:id/compras", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    res.json({ compras: await listarComprasMateriaPrima(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar compras.");
+  }
+});
+
+fabricacaoRouter.post("/materias-primas/:id/compras", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const { data, quantidadeKg, valorPago, valorFrete } = req.body ?? {};
+  const quantidade = Number(quantidadeKg);
+  const pago = Number(valorPago);
+  const frete = Number(valorFrete ?? 0);
+  if (typeof data !== "string" || !data.trim()) {
+    res.status(400).json({ error: "Informe a data da compra." });
+    return;
+  }
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    res.status(400).json({ error: "Quantidade (kg) inválida." });
+    return;
+  }
+  if (!Number.isFinite(pago) || pago < 0) {
+    res.status(400).json({ error: "Valor pago inválido." });
+    return;
+  }
+  if (!Number.isFinite(frete) || frete < 0) {
+    res.status(400).json({ error: "Valor de frete inválido." });
+    return;
+  }
+  try {
+    res.json(await registrarCompraMateriaPrima(id, data, quantidade, pago, frete));
+  } catch (err) {
+    erro(res, err, "Falha ao registrar compra.");
+  }
+});
+
 fabricacaoRouter.get("/formulas", async (_req, res) => {
   try {
     res.json({ formulas: await listarFormulas() });
@@ -151,19 +220,14 @@ fabricacaoRouter.get("/formulas/:id", async (req, res) => {
 });
 
 fabricacaoRouter.post("/formulas", async (req, res) => {
-  const { nome, sku, pesoLoteKg, custoEmbalagem, itens } = req.body ?? {};
+  const { nome, pesoLoteKg, itens, embalagens } = req.body ?? {};
   if (typeof nome !== "string" || !nome.trim()) {
     res.status(400).json({ error: "Informe o nome da fórmula." });
     return;
   }
   const peso = Number(pesoLoteKg);
-  const embalagem = Number(custoEmbalagem);
   if (!Number.isFinite(peso) || peso <= 0) {
     res.status(400).json({ error: "Peso do lote inválido." });
-    return;
-  }
-  if (!Number.isFinite(embalagem) || embalagem < 0) {
-    res.status(400).json({ error: "Custo de embalagem inválido." });
     return;
   }
   const itensValidados = validarItens(itens);
@@ -171,14 +235,13 @@ fabricacaoRouter.post("/formulas", async (req, res) => {
     res.status(400).json({ error: "Itens da fórmula inválidos." });
     return;
   }
+  const embalagensValidadas = validarEmbalagens(embalagens ?? []);
+  if (embalagensValidadas === null) {
+    res.status(400).json({ error: "Tamanhos de envase inválidos." });
+    return;
+  }
   try {
-    const id = await criarFormula(
-      nome.trim(),
-      typeof sku === "string" && sku.trim() ? sku.trim() : null,
-      peso,
-      embalagem,
-      itensValidados
-    );
+    const id = await criarFormula(nome.trim(), peso, itensValidados, embalagensValidadas);
     res.json({ id });
   } catch (err) {
     erro(res, err, "Falha ao criar fórmula.");
@@ -191,19 +254,14 @@ fabricacaoRouter.put("/formulas/:id", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { nome, sku, pesoLoteKg, custoEmbalagem, itens } = req.body ?? {};
+  const { nome, pesoLoteKg, itens, embalagens } = req.body ?? {};
   if (typeof nome !== "string" || !nome.trim()) {
     res.status(400).json({ error: "Informe o nome da fórmula." });
     return;
   }
   const peso = Number(pesoLoteKg);
-  const embalagem = Number(custoEmbalagem);
   if (!Number.isFinite(peso) || peso <= 0) {
     res.status(400).json({ error: "Peso do lote inválido." });
-    return;
-  }
-  if (!Number.isFinite(embalagem) || embalagem < 0) {
-    res.status(400).json({ error: "Custo de embalagem inválido." });
     return;
   }
   const itensValidados = validarItens(itens);
@@ -211,15 +269,13 @@ fabricacaoRouter.put("/formulas/:id", async (req, res) => {
     res.status(400).json({ error: "Itens da fórmula inválidos." });
     return;
   }
+  const embalagensValidadas = validarEmbalagens(embalagens ?? []);
+  if (embalagensValidadas === null) {
+    res.status(400).json({ error: "Tamanhos de envase inválidos." });
+    return;
+  }
   try {
-    await atualizarFormula(
-      id,
-      nome.trim(),
-      typeof sku === "string" && sku.trim() ? sku.trim() : null,
-      peso,
-      embalagem,
-      itensValidados
-    );
+    await atualizarFormula(id, nome.trim(), peso, itensValidados, embalagensValidadas);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao atualizar fórmula.");
@@ -236,13 +292,52 @@ fabricacaoRouter.delete("/formulas/:id", async (req, res) => {
     await excluirFormula(id);
     res.json({ ok: true });
   } catch (err) {
-    erro(res, err, "Falha ao excluir fórmula.");
+    erro(res, err, "Não foi possível excluir — confira se essa fórmula está sendo usada como ingrediente de outra.");
+  }
+});
+
+fabricacaoRouter.get("/formulas/:id/lotes", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    res.json({ lotes: await listarLotes(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar lotes de produção.");
+  }
+});
+
+fabricacaoRouter.post("/formulas/:id/lotes", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const { data, pesoRealKg, observacao } = req.body ?? {};
+  const peso = Number(pesoRealKg);
+  if (typeof data !== "string" || !data.trim()) {
+    res.status(400).json({ error: "Informe a data do lote." });
+    return;
+  }
+  if (!Number.isFinite(peso) || peso <= 0) {
+    res.status(400).json({ error: "Peso real inválido." });
+    return;
+  }
+  try {
+    res.json(
+      await registrarLote(id, data, peso, typeof observacao === "string" && observacao.trim() ? observacao.trim() : null)
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao registrar lote.");
   }
 });
 
 fabricacaoRouter.get("/formulas/:id/dados-ml", async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) {
+  const sku = req.query.sku;
+  if (!Number.isInteger(id) || typeof sku !== "string" || !sku.trim()) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
@@ -250,16 +345,7 @@ fabricacaoRouter.get("/formulas/:id/dados-ml", async (req, res) => {
   if (!filtro) return;
 
   try {
-    const formula = await obterFormula(id);
-    if (!formula) {
-      res.status(404).json({ error: "Fórmula não encontrada." });
-      return;
-    }
-    if (!formula.sku) {
-      res.status(400).json({ error: "Essa fórmula não tem SKU vinculado." });
-      return;
-    }
-    res.json(await obterDadosMlPorSku(formula.sku, filtro.lojaId, filtro.lojasPermitidas));
+    res.json(await obterDadosMlPorSku(sku.trim(), filtro.lojaId, filtro.lojasPermitidas));
   } catch (err) {
     erro(res, err, "Falha ao buscar dados do Mercado Livre.");
   }

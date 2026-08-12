@@ -260,8 +260,8 @@ ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS grupo_rateio_id INTEGER 
 ALTER TABLE contas_lancamentos ADD COLUMN IF NOT EXISTS rateio_total INTEGER;
 CREATE INDEX IF NOT EXISTS idx_contas_lancamentos_grupo_rateio ON contas_lancamentos (grupo_rateio_id);
 
--- Fabricação: custo de produção das próprias fórmulas (a fábrica do grupo,
--- não revenda) — matéria-prima cadastrada uma vez (nome + custo/kg),
+-- Custo de Fabricação: custo de produção das próprias fórmulas (a fábrica do
+-- grupo, não revenda) — matéria-prima cadastrada uma vez (nome + custo/kg),
 -- reaproveitada em várias fórmulas. Sem loja_id: a fábrica é única, atende
 -- todas as lojas.
 CREATE TABLE IF NOT EXISTS materias_primas (
@@ -271,12 +271,33 @@ CREATE TABLE IF NOT EXISTS materias_primas (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Fórmula = receita fixa de matérias-primas em % (ver formula_itens),
--- aplicada sobre peso_lote_kg (peso da unidade vendida, ex.: 18 pro balde
--- de 18L) + custo_embalagem (balde/rótulo, por unidade). sku vincula à
--- venda real no Mercado Livre (mesmo SKU do Financeiro/Produtos/
--- Correções) pra puxar preço/frete/tarifa reais — nullable, dá pra
--- cadastrar a fórmula antes de ter o vínculo.
+-- Histórico de compras de cada matéria-prima — valor pago + frete já
+-- embutido, dividido pela quantidade, dá o custo/kg real daquela compra.
+-- Ao registrar uma compra, materias_primas.custo_por_kg é atualizado pra
+-- esse valor (vira o custo "atual" usado no cálculo das fórmulas), mas a
+-- edição manual do custo/kg continua existindo em paralelo pra ajustes
+-- rápidos sem precisar lançar uma compra formal.
+CREATE TABLE IF NOT EXISTS materia_prima_compras (
+  id SERIAL PRIMARY KEY,
+  materia_prima_id INTEGER NOT NULL REFERENCES materias_primas(id) ON DELETE CASCADE,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  quantidade_kg NUMERIC(12, 3) NOT NULL,
+  valor_pago NUMERIC(12, 2) NOT NULL,
+  valor_frete NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  custo_por_kg NUMERIC(12, 4) NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_materia_prima_compras_materia ON materia_prima_compras (materia_prima_id, data DESC);
+
+-- Fórmula = receita em % (ver formula_itens) aplicada sobre peso_lote_kg —
+-- desde a expansão pro "Custo de Fabricação", peso_lote_kg é o LOTE INTEIRO
+-- fabricado (ex.: 1400kg), não mais o peso de uma unidade vendida. Uma
+-- fórmula pode ser uma "Base" (matéria-prima pura, ex.: Base A) ou um
+-- produto final que usa uma Base como ingrediente (ver sub_formula_id em
+-- formula_itens) — não existe coluna de "tipo", isso é implícito por quem
+-- referencia quem. sku/custo_embalagem antigos ficam sem uso (substituídos
+-- por formula_embalagens, que suporta vários tamanhos de envase por
+-- fórmula) — não removidos do banco pra evitar migração destrutiva.
 CREATE TABLE IF NOT EXISTS formulas (
   id SERIAL PRIMARY KEY,
   nome TEXT NOT NULL,
@@ -286,13 +307,66 @@ CREATE TABLE IF NOT EXISTS formulas (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Item da fórmula: OU matéria-prima crua OU outra fórmula (sub-receita,
+-- ex.: uma cor usando uma Base) — nunca os dois. O custo de uma fórmula que
+-- referencia outra é calculado recursivamente em fabricacaoService.ts, com
+-- proteção contra ciclo (A usar B que usa A) feita na validação de escrita,
+-- não aqui no banco. CREATE primeiro (banco novo já nasce com o formato
+-- certo), ALTER depois (banco existente, criado antes da sub_formula_id
+-- existir, é atualizado por cima — os ALTER viram no-op num banco novo).
 CREATE TABLE IF NOT EXISTS formula_itens (
   id SERIAL PRIMARY KEY,
   formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
-  materia_prima_id INTEGER NOT NULL REFERENCES materias_primas(id) ON DELETE RESTRICT,
-  percentual NUMERIC(6, 3) NOT NULL
+  materia_prima_id INTEGER REFERENCES materias_primas(id) ON DELETE RESTRICT,
+  sub_formula_id INTEGER REFERENCES formulas(id) ON DELETE RESTRICT,
+  percentual NUMERIC(6, 3) NOT NULL,
+  CONSTRAINT formula_itens_um_tipo CHECK (
+    (materia_prima_id IS NOT NULL AND sub_formula_id IS NULL) OR
+    (materia_prima_id IS NULL AND sub_formula_id IS NOT NULL)
+  )
 );
+ALTER TABLE formula_itens ALTER COLUMN materia_prima_id DROP NOT NULL;
+ALTER TABLE formula_itens ADD COLUMN IF NOT EXISTS sub_formula_id INTEGER REFERENCES formulas(id) ON DELETE RESTRICT;
+-- Postgres não tem "ADD CONSTRAINT IF NOT EXISTS" — checa em pg_constraint antes.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'formula_itens_um_tipo') THEN
+    ALTER TABLE formula_itens ADD CONSTRAINT formula_itens_um_tipo CHECK (
+      (materia_prima_id IS NOT NULL AND sub_formula_id IS NULL) OR
+      (materia_prima_id IS NULL AND sub_formula_id IS NOT NULL)
+    );
+  END IF;
+END $$;
 CREATE INDEX IF NOT EXISTS idx_formula_itens_formula ON formula_itens (formula_id);
+CREATE INDEX IF NOT EXISTS idx_formula_itens_sub_formula ON formula_itens (sub_formula_id);
+
+-- Tamanhos de envase de uma fórmula (Bombona 45kg, Balde 18kg...) — cada um
+-- com seu próprio custo de embalagem e, opcionalmente, seu próprio SKU (cada
+-- tamanho costuma ser um anúncio separado no Mercado Livre).
+CREATE TABLE IF NOT EXISTS formula_embalagens (
+  id SERIAL PRIMARY KEY,
+  formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  peso_kg NUMERIC(12, 3) NOT NULL,
+  custo_embalagem NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  sku TEXT,
+  ordem INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_formula_embalagens_formula ON formula_embalagens (formula_id);
+
+-- Histórico de lotes de produção real — cada vez que a fórmula é fabricada
+-- de verdade, registra o peso real de saída pra comparar com o teórico da
+-- fórmula (déficit/superávit calculado na leitura, não guardado aqui).
+CREATE TABLE IF NOT EXISTS formula_lotes (
+  id SERIAL PRIMARY KEY,
+  formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  peso_previsto_kg NUMERIC(12, 3) NOT NULL,
+  peso_real_kg NUMERIC(12, 3) NOT NULL,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_formula_lotes_formula ON formula_lotes (formula_id, data DESC);
 
 -- Promoções: campanha do vendedor (SELLER_CAMPAIGN) no Mercado Livre tem
 -- prazo máximo de 14 dias — não existe renovação automática nativa da

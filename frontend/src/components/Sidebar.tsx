@@ -161,7 +161,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
               onClick={() => onChangeView("fabricacao")}
             >
               <IconFlask size={16} />
-              <span>Fabricação</span>
+              <span>Custo de Fabricação</span>
             </button>
             <div className="sidebar-divider" />
           </>

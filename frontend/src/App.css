@@ -3497,6 +3497,30 @@
   gap: 10px;
 }
 
+.fabricacao-compras {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-panel-alt);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin: 6px 0 4px;
+}
+
+.fabricacao-embalagem-linha {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+}
+
+.fabricacao-embalagem-linha .fabricacao-editor-topo {
+  grid-template-columns: 2fr 1fr 1fr 1.5fr auto;
+  align-items: center;
+}
+
 .ean-card {
   background: var(--bg-panel);
   border: 1px solid var(--border);
