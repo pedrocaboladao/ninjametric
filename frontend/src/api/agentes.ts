@@ -89,12 +89,16 @@ export interface RespostaChatAgente {
   pensamento: string | null;
 }
 
-export async function perguntarGrowthHacker(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
+export async function perguntarGrowthHacker(
+  pergunta: string,
+  historico: MensagemChat[],
+  diasPeriodo?: number
+): Promise<RespostaChatAgente> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/perguntar`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pergunta, historico }),
+    body: JSON.stringify({ pergunta, historico, diasPeriodo }),
   });
   return tratarResposta<RespostaChatAgente>(res);
 }

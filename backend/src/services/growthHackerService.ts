@@ -232,14 +232,21 @@ export interface RespostaChatAgente {
 // Chat direto com o agente — pergunta livre do dono, respondida com o
 // contexto de negócio completo (suas 4 lojas + resto do grupo, ver
 // montarContextoNegocio), buscado na hora, não reaproveita cache do
-// briefing automático abaixo.
-export async function perguntarGrowthHacker(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
+// briefing automático abaixo. "diasPeriodo" é opcional (pedido do dono pra
+// poder puxar 24h em vez do padrão de 7 dias, quando quiser olhar só o
+// dia de hoje) — o briefing automático abaixo continua fixo em 7 dias,
+// esse parâmetro só afeta o chat manual.
+export async function perguntarGrowthHacker(
+  pergunta: string,
+  historico: MensagemChat[],
+  diasPeriodo: number = DIAS_JANELA
+): Promise<RespostaChatAgente> {
   const client = obterClienteAnthropic();
   if (!client) {
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
   }
 
-  const contexto = await montarContextoNegocio(DIAS_JANELA, false);
+  const contexto = await montarContextoNegocio(diasPeriodo, false);
 
   // .create() tem um teto de ~10min pra respostas não-streaming — com Opus +
   // thinking em esforço "xhigh" e teto de 24000 tokens, o SDK recusa de cara

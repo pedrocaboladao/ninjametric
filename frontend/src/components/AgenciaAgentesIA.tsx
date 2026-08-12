@@ -950,6 +950,7 @@ function GrowthHacker() {
   const [briefings, setBriefings] = useState<BriefingGrowthHacker[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [gerando, setGerando] = useState(false);
+  const [diasPeriodo, setDiasPeriodo] = useState<1 | 7>(7);
 
   const carregar = useCallback(async () => {
     try {
@@ -979,6 +980,11 @@ function GrowthHacker() {
     }
   }
 
+  const perguntar = useCallback(
+    (pergunta: string, historico: MensagemChat[]) => perguntarGrowthHacker(pergunta, historico, diasPeriodo),
+    [diasPeriodo]
+  );
+
   return (
     <>
       <div className="financeiro-topo">
@@ -991,6 +997,15 @@ function GrowthHacker() {
           </p>
         </div>
         <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={diasPeriodo}
+            onChange={(e) => setDiasPeriodo(Number(e.target.value) === 1 ? 1 : 7)}
+            title="Período que o chat considera nas respostas"
+          >
+            <option value={7}>Últimos 7 dias</option>
+            <option value={1}>Últimas 24h</option>
+          </select>
           <button type="button" className="btn-responder financeiro-btn-hoje" onClick={gerarAgora} disabled={gerando}>
             {gerando ? "Gerando..." : "Gerar briefing agora"}
           </button>
@@ -1011,7 +1026,10 @@ function GrowthHacker() {
         {briefings?.map((b) => <PensamentoCard key={b.id} pensamento={b} />)}
       </div>
 
-      <ChatAgente perguntar={perguntarGrowthHacker} />
+      <ChatAgente
+        perguntar={perguntar}
+        placeholder={diasPeriodo === 1 ? "Ex: como está o Ads hoje?" : "Ex: qual campanha está no prejuízo agora?"}
+      />
     </>
   );
 }
@@ -1968,7 +1986,7 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
 
       <div className="agente-tv-sala">
         <SalaModoTV alertaAds={false} />
-        <ChatModoTV titulo="Growth Hacker" emoji="💬" perguntar={perguntarGrowthHacker} lado="esquerda" />
+        <ChatGrowthHackerModoTV />
         <ChatDiretorAdsModoTV />
       </div>
     </div>
@@ -2009,6 +2027,37 @@ function ChatModoTV({ titulo, emoji, perguntar, lado, extra }: PropsChatModoTV) 
         <ChatAgente perguntar={perguntar} />
       </div>
     </div>
+  );
+}
+
+// Wrapper do chat do Growth Hacker no Modo TV — mesmo seletor de período
+// (7 dias / 24h) que a aba "Agentes IA" tem, pedido do dono pra poder
+// puxar só o dia de hoje quando quiser.
+function ChatGrowthHackerModoTV() {
+  const [diasPeriodo, setDiasPeriodo] = useState<1 | 7>(7);
+
+  const perguntar = useCallback(
+    (pergunta: string, historico: MensagemChat[]) => perguntarGrowthHacker(pergunta, historico, diasPeriodo),
+    [diasPeriodo]
+  );
+
+  return (
+    <ChatModoTV
+      titulo="Growth Hacker"
+      emoji="💬"
+      perguntar={perguntar}
+      lado="esquerda"
+      extra={
+        <select
+          className="dashboard-select"
+          value={diasPeriodo}
+          onChange={(e) => setDiasPeriodo(Number(e.target.value) === 1 ? 1 : 7)}
+        >
+          <option value={7}>Últimos 7 dias</option>
+          <option value={1}>Últimas 24h</option>
+        </select>
+      }
+    />
   );
 }
 

@@ -90,7 +90,7 @@ agentesRouter.get("/ads/pensamentos", async (_req, res) => {
 });
 
 agentesRouter.post("/ads/perguntar", async (req, res) => {
-  const { pergunta, historico } = req.body ?? {};
+  const { pergunta, historico, diasPeriodo } = req.body ?? {};
   if (typeof pergunta !== "string" || !pergunta.trim()) {
     res.status(400).json({ error: "Pergunta inválida." });
     return;
@@ -100,8 +100,11 @@ agentesRouter.post("/ads/perguntar", async (req, res) => {
         (m): m is MensagemChat => !!m && (m.papel === "usuario" || m.papel === "agente") && typeof m.texto === "string"
       )
     : [];
+  // Só aceita 1 (24h) ou 7 (padrão) — as duas opções que o filtro do chat
+  // oferece; qualquer outro valor cai no padrão de 7 dias da função.
+  const diasPeriodoValido = diasPeriodo === 1 || diasPeriodo === 7 ? diasPeriodo : undefined;
   try {
-    const { resposta, pensamento } = await perguntarGrowthHacker(pergunta.trim(), historicoValido);
+    const { resposta, pensamento } = await perguntarGrowthHacker(pergunta.trim(), historicoValido, diasPeriodoValido);
     res.json({ resposta, pensamento });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro agente.");
