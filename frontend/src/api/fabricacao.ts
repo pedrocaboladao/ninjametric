@@ -75,6 +75,31 @@ export async function registrarCompraMateriaPrima(
   return tratarResposta<MateriaPrimaCompra>(res);
 }
 
+export async function atualizarCompraMateriaPrima(
+  materiaPrimaId: number,
+  compraId: number,
+  data: string,
+  quantidadeKg: number,
+  valorPago: number,
+  valorFrete: number
+): Promise<MateriaPrimaCompra> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/materias-primas/${materiaPrimaId}/compras/${compraId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ data, quantidadeKg, valorPago, valorFrete }),
+  });
+  return tratarResposta<MateriaPrimaCompra>(res);
+}
+
+export async function excluirCompraMateriaPrima(materiaPrimaId: number, compraId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/materias-primas/${materiaPrimaId}/compras/${compraId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta(res);
+}
+
 export async function fetchFormulas(): Promise<FormulaResumo[]> {
   const res = await fetch(`${API_BASE}/api/fabricacao/formulas`, { credentials: "include" });
   const data = await tratarResposta<{ formulas: FormulaResumo[] }>(res);

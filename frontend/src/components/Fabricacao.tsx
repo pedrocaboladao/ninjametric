@@ -6,6 +6,8 @@ import {
   excluirMateriaPrima,
   fetchComprasMateriaPrima,
   registrarCompraMateriaPrima,
+  atualizarCompraMateriaPrima,
+  excluirCompraMateriaPrima,
   fetchFormulas,
   fetchFormula,
   criarFormula,
@@ -170,6 +172,13 @@ function ComprasMateriaPrima({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editData, setEditData] = useState("");
+  const [editQuantidadeKg, setEditQuantidadeKg] = useState("");
+  const [editValorPago, setEditValorPago] = useState("");
+  const [editValorFrete, setEditValorFrete] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   const carregar = useCallback(() => {
     fetchComprasMateriaPrima(materiaPrima.id).then(setCompras).catch(() => setCompras([]));
   }, [materiaPrima.id]);
@@ -201,6 +210,46 @@ function ComprasMateriaPrima({
       setErro(err instanceof Error ? err.message : "Falha ao registrar compra.");
     } finally {
       setSalvando(false);
+    }
+  }
+
+  function iniciarEdicao(compra: MateriaPrimaCompra) {
+    setEditandoId(compra.id);
+    setEditData(compra.data);
+    setEditQuantidadeKg(String(compra.quantidadeKg));
+    setEditValorPago(String(compra.valorPago));
+    setEditValorFrete(String(compra.valorFrete));
+    setErro(null);
+  }
+
+  async function salvarEdicao(compraId: number) {
+    const quantidade = Number(editQuantidadeKg.replace(",", "."));
+    const pago = Number(editValorPago.replace(",", "."));
+    const frete = Number(editValorFrete.replace(",", ".")) || 0;
+    if (!editData || !Number.isFinite(quantidade) || quantidade <= 0 || !Number.isFinite(pago) || pago < 0) {
+      setErro("Preencha data, quantidade e valor pago corretamente.");
+      return;
+    }
+    setSalvandoEdicao(true);
+    setErro(null);
+    try {
+      await atualizarCompraMateriaPrima(materiaPrima.id, compraId, editData, quantidade, pago, frete);
+      setEditandoId(null);
+      carregar();
+      onCustoAtualizado();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao atualizar compra.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function excluir(compraId: number) {
+    try {
+      await excluirCompraMateriaPrima(materiaPrima.id, compraId);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir compra.");
     }
   }
 
@@ -247,18 +296,70 @@ function ComprasMateriaPrima({
               <th className="financeiro-th-numero">Pago</th>
               <th className="financeiro-th-numero">Frete</th>
               <th className="financeiro-th-numero">Custo/kg</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {compras.map((c) => (
-              <tr key={c.id}>
-                <td>{c.data}</td>
-                <td className="financeiro-th-numero">{c.quantidadeKg}kg</td>
-                <td className="financeiro-th-numero">{formatCurrency(c.valorPago)}</td>
-                <td className="financeiro-th-numero">{formatCurrency(c.valorFrete)}</td>
-                <td className="financeiro-th-numero">{formatCurrency(c.custoPorKg)}</td>
-              </tr>
-            ))}
+            {compras.map((c) =>
+              editandoId === c.id ? (
+                <tr key={c.id}>
+                  <td>
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      type="date"
+                      value={editData}
+                      onChange={(e) => setEditData(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={editQuantidadeKg}
+                      onChange={(e) => setEditQuantidadeKg(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={editValorPago}
+                      onChange={(e) => setEditValorPago(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={editValorFrete}
+                      onChange={(e) => setEditValorFrete(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                  <td>
+                    <button type="button" className="btn-responder" disabled={salvandoEdicao} onClick={() => salvarEdicao(c.id)}>
+                      {salvandoEdicao ? "..." : "Salvar"}
+                    </button>
+                    <button type="button" className="btn-excluir" onClick={() => setEditandoId(null)}>
+                      Cancelar
+                    </button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={c.id}>
+                  <td>{c.data}</td>
+                  <td className="financeiro-th-numero">{c.quantidadeKg}kg</td>
+                  <td className="financeiro-th-numero">{formatCurrency(c.valorPago)}</td>
+                  <td className="financeiro-th-numero">{formatCurrency(c.valorFrete)}</td>
+                  <td className="financeiro-th-numero">{formatCurrency(c.custoPorKg)}</td>
+                  <td>
+                    <button type="button" className="btn-excluir" onClick={() => iniciarEdicao(c)} title="Editar">
+                      <IconWrench size={14} />
+                    </button>
+                    <button type="button" className="btn-excluir" onClick={() => excluir(c.id)} title="Excluir">
+                      <IconTrash size={14} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            )}
           </tbody>
         </table>
       )}

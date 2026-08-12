@@ -6,6 +6,8 @@ import {
   excluirMateriaPrima,
   listarComprasMateriaPrima,
   registrarCompraMateriaPrima,
+  atualizarCompraMateriaPrima,
+  excluirCompraMateriaPrima,
   listarFormulas,
   obterFormula,
   criarFormula,
@@ -192,6 +194,53 @@ fabricacaoRouter.post("/materias-primas/:id/compras", async (req, res) => {
     res.json(await registrarCompraMateriaPrima(id, data, quantidade, pago, frete));
   } catch (err) {
     erro(res, err, "Falha ao registrar compra.");
+  }
+});
+
+fabricacaoRouter.put("/materias-primas/:id/compras/:compraId", async (req, res) => {
+  const compraId = Number(req.params.compraId);
+  if (!Number.isInteger(compraId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const { data, quantidadeKg, valorPago, valorFrete } = req.body ?? {};
+  const quantidade = Number(quantidadeKg);
+  const pago = Number(valorPago);
+  const frete = Number(valorFrete ?? 0);
+  if (typeof data !== "string" || !data.trim()) {
+    res.status(400).json({ error: "Informe a data da compra." });
+    return;
+  }
+  if (!Number.isFinite(quantidade) || quantidade <= 0) {
+    res.status(400).json({ error: "Quantidade (kg) inválida." });
+    return;
+  }
+  if (!Number.isFinite(pago) || pago < 0) {
+    res.status(400).json({ error: "Valor pago inválido." });
+    return;
+  }
+  if (!Number.isFinite(frete) || frete < 0) {
+    res.status(400).json({ error: "Valor de frete inválido." });
+    return;
+  }
+  try {
+    res.json(await atualizarCompraMateriaPrima(compraId, data, quantidade, pago, frete));
+  } catch (err) {
+    erro(res, err, "Falha ao atualizar compra.");
+  }
+});
+
+fabricacaoRouter.delete("/materias-primas/:id/compras/:compraId", async (req, res) => {
+  const compraId = Number(req.params.compraId);
+  if (!Number.isInteger(compraId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirCompraMateriaPrima(compraId);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir compra.");
   }
 });
 

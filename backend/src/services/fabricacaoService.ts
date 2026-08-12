@@ -180,6 +180,48 @@ export async function registrarCompraMateriaPrima(
   return mapearCompra(rows[0]);
 }
 
+// Editar uma compra recalcula o custo/kg dela e também atualiza
+// materias_primas.custo_por_kg — mesmo efeito de registrar de novo, já
+// que editar é "corrigir o que devia ter sido digitado da primeira vez".
+export async function atualizarCompraMateriaPrima(
+  id: number,
+  data: string,
+  quantidadeKg: number,
+  valorPago: number,
+  valorFrete: number
+): Promise<MateriaPrimaCompra> {
+  const custoPorKg = (valorPago + valorFrete) / quantidadeKg;
+  const { rows } = await pool.query<{
+    id: number;
+    materia_prima_id: number;
+    data: string;
+    quantidade_kg: string;
+    valor_pago: string;
+    valor_frete: string;
+    custo_por_kg: string;
+    criado_em: string;
+  }>(
+    `UPDATE materia_prima_compras
+     SET data = $2, quantidade_kg = $3, valor_pago = $4, valor_frete = $5, custo_por_kg = $6
+     WHERE id = $1
+     RETURNING id, materia_prima_id, data, quantidade_kg, valor_pago, valor_frete, custo_por_kg, criado_em`,
+    [id, data, quantidadeKg, valorPago, valorFrete, custoPorKg]
+  );
+  if (rows.length === 0) throw new Error("Compra não encontrada.");
+  await pool.query("UPDATE materias_primas SET custo_por_kg = $2, atualizado_em = now() WHERE id = $1", [
+    rows[0].materia_prima_id,
+    custoPorKg,
+  ]);
+  return mapearCompra(rows[0]);
+}
+
+// Excluir uma compra não mexe no custo/kg atual da matéria-prima (evita
+// ambiguidade sobre qual compra restante "deveria" virar o novo custo) —
+// se precisar ajustar depois, dá pra editar o custo/kg direto no card.
+export async function excluirCompraMateriaPrima(id: number): Promise<void> {
+  await pool.query("DELETE FROM materia_prima_compras WHERE id = $1", [id]);
+}
+
 interface ItemBruto {
   id: number;
   formulaId: number;
