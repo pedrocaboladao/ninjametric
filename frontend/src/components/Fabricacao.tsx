@@ -540,6 +540,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
               <th className="financeiro-th-numero">Diferença</th>
               <th className="financeiro-th-numero">Valor</th>
               <th className="financeiro-th-numero">Custo real/kg</th>
+              <th className="financeiro-th-numero">Preço final pós-lote</th>
               <th>Observação</th>
               <th></th>
             </tr>
@@ -564,6 +565,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
                       onChange={(e) => setEditPesoReal(e.target.value)}
                     />
                   </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
@@ -599,6 +601,21 @@ function LotesSecao({ formula }: { formula: Formula }) {
                   </td>
                   <td className="financeiro-th-numero">
                     {formatCurrency((formula.custoPorKg * l.pesoPrevistoKg) / l.pesoRealKg)}
+                  </td>
+                  <td className="financeiro-th-numero">
+                    {formula.embalagens.length === 0 ? (
+                      <span className="financeiro-td-mudo">sem envase</span>
+                    ) : (
+                      formula.embalagens.map((e) => {
+                        const custoRealPorKg = (formula.custoPorKg * l.pesoPrevistoKg) / l.pesoRealKg;
+                        const precoFinal = e.pesoKg * custoRealPorKg + e.custoEmbalagem;
+                        return (
+                          <div key={e.id} className="fabricacao-lote-preco-linha">
+                            <span className="financeiro-td-mudo">{e.nome}:</span> {formatCurrency(precoFinal)}
+                          </div>
+                        );
+                      })
+                    )}
                   </td>
                   <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
                   <td>

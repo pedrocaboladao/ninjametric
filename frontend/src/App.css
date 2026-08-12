@@ -3521,6 +3521,14 @@
   align-items: center;
 }
 
+.fabricacao-lote-preco-linha {
+  white-space: nowrap;
+}
+
+.fabricacao-lote-preco-linha + .fabricacao-lote-preco-linha {
+  margin-top: 4px;
+}
+
 .ean-card {
   background: var(--bg-panel);
   border: 1px solid var(--border);
