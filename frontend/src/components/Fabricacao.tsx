@@ -705,12 +705,25 @@ function envasesEntradaDeQuantidades(embalagens: FormulaEmbalagem[], quantidades
     .filter((e) => e.quantidade > 0);
 }
 
-function LotesSecao({ formula }: { formula: Formula }) {
+function LotesSecao({
+  formula,
+  onEmbalagensExternasAtualizadas,
+}: {
+  formula: Formula;
+  onEmbalagensExternasAtualizadas: (embalagens: FormulaEmbalagem[]) => void;
+}) {
   const [lotes, setLotes] = useState<FormulaLote[] | null>(null);
   // Cópia local editável — a fórmula em si (prop, vinda de cima) só
   // atualiza quando o editor é reaberto, mas adicionar/editar um tamanho
   // de envase aqui precisa refletir na hora, sem fechar/reabrir a fórmula.
-  const [embalagensAtuais, setEmbalagensAtuais] = useState<FormulaEmbalagem[]>(formula.embalagens);
+  // onEmbalagensExternasAtualizadas mantém o "Salvar fórmula" do editor em
+  // dia também — senão ele reescreve os envases com a cópia antiga dele
+  // e apaga o que foi adicionado/editado aqui (bug real que já aconteceu).
+  const [embalagensAtuais, setEmbalagensAtuaisState] = useState<FormulaEmbalagem[]>(formula.embalagens);
+  function setEmbalagensAtuais(novas: FormulaEmbalagem[]) {
+    setEmbalagensAtuaisState(novas);
+    onEmbalagensExternasAtualizadas(novas);
+  }
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
   const [horaInicio, setHoraInicio] = useState("");
   const [horaTermino, setHoraTermino] = useState("");
@@ -1318,7 +1331,14 @@ function FormulaEditor({
         ))}
       </div>
 
-      {!ehNova && <LotesSecao formula={formula} />}
+      {!ehNova && (
+        <LotesSecao
+          formula={formula}
+          onEmbalagensExternasAtualizadas={(novas) =>
+            setEmbalagens(novas.map((e) => ({ id: e.id, nome: e.nome, pesoKg: String(e.pesoKg), custoEmbalagem: String(e.custoEmbalagem), sku: e.sku ?? "" })))
+          }
+        />
+      )}
 
       <div className="fabricacao-editor-acoes">
         <button type="button" className="btn-responder" disabled={salvando} onClick={salvar}>
