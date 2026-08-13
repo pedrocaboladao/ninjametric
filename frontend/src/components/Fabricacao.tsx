@@ -1068,7 +1068,16 @@ function FormulaEditor({
   );
 }
 
-const FORMULA_VAZIA: Formula = { id: 0, nome: "", pesoLoteKg: 1, custoPorKg: 0, custoFabricacaoTotal: 0, itens: [], embalagens: [] };
+const FORMULA_VAZIA: Formula = {
+  id: 0,
+  nome: "",
+  pesoLoteKg: 1,
+  custoPorKg: 0,
+  custoFabricacaoTotal: 0,
+  subFormulaIds: [],
+  itens: [],
+  embalagens: [],
+};
 
 export function Fabricacao() {
   const [materiasPrimas, setMateriasPrimas] = useState<MateriaPrima[]>([]);
@@ -1084,6 +1093,33 @@ export function Fabricacao() {
       return novo;
     });
   }
+
+  const [basesExpandidas, setBasesExpandidas] = useState<Set<number>>(new Set());
+  function alternarBaseExpandida(id: number) {
+    setBasesExpandidas((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  // Fórmulas que dependem de outra (ex.: uma cor que usa uma Base) não
+  // aparecem soltas na lista — ficam agrupadas dentro da fórmula-base
+  // delas, que vira expansível. Fórmula sem dependência nenhuma (seja
+  // porque é uma Base, seja porque é solta mesmo) fica no topo.
+  const filhosPorBase = useMemo(() => {
+    const mapa = new Map<number, FormulaResumo[]>();
+    for (const f of formulas ?? []) {
+      for (const baseId of f.subFormulaIds) {
+        if (!mapa.has(baseId)) mapa.set(baseId, []);
+        mapa.get(baseId)!.push(f);
+      }
+    }
+    return mapa;
+  }, [formulas]);
+
+  const formulasTopo = useMemo(() => (formulas ?? []).filter((f) => f.subFormulaIds.length === 0), [formulas]);
 
   const carregarMateriasPrimas = useCallback(() => {
     fetchMateriasPrimas().then(setMateriasPrimas).catch(() => {});
@@ -1135,7 +1171,7 @@ export function Fabricacao() {
           <button type="button" className="fabricacao-secao-toggle" onClick={alternarFormulasAberta}>
             <IconChevron open={formulasAberta} />
             <IconFlask size={16} />
-            <h2>Fórmulas</h2>
+            <h2>Fórmulas Emborrachadas</h2>
             <span className="financeiro-td-mudo">({formulas?.length ?? 0})</span>
           </button>
           <button
@@ -1158,13 +1194,51 @@ export function Fabricacao() {
             {carregandoFormula && <div className="state-message">Carregando fórmula...</div>}
 
             {!formulaAberta &&
-              formulas?.map((f) => (
-                <button key={f.id} type="button" className="fabricacao-formula-card" onClick={() => abrirFormula(f.id)}>
-                  <span className="fabricacao-formula-nome">{f.nome}</span>
-                  <span className="financeiro-td-mudo">{f.pesoLoteKg}kg por lote</span>
-                  <span className="fabricacao-formula-custo">{formatCurrency(f.custoFabricacaoTotal)}</span>
-                </button>
-              ))}
+              formulasTopo.map((f) => {
+                const filhos = filhosPorBase.get(f.id) ?? [];
+                const temFilhos = filhos.length > 0;
+                const expandida = basesExpandidas.has(f.id);
+                return (
+                  <div key={f.id}>
+                    <div className="fabricacao-formula-linha">
+                      {temFilhos && (
+                        <button
+                          type="button"
+                          className="fabricacao-formula-expandir"
+                          onClick={() => alternarBaseExpandida(f.id)}
+                          title={expandida ? "Recolher cores" : `Mostrar ${filhos.length} cor(es)`}
+                        >
+                          <IconChevron open={expandida} />
+                        </button>
+                      )}
+                      <button type="button" className="fabricacao-formula-card" onClick={() => abrirFormula(f.id)}>
+                        <span className="fabricacao-formula-nome">
+                          {f.nome}
+                          {temFilhos && <span className="financeiro-td-mudo"> ({filhos.length})</span>}
+                        </span>
+                        <span className="financeiro-td-mudo">{f.pesoLoteKg}kg por lote</span>
+                        <span className="fabricacao-formula-custo">{formatCurrency(f.custoFabricacaoTotal)}</span>
+                      </button>
+                    </div>
+                    {temFilhos && expandida && (
+                      <div className="fabricacao-formula-filhos">
+                        {filhos.map((filho) => (
+                          <button
+                            key={filho.id}
+                            type="button"
+                            className="fabricacao-formula-card fabricacao-formula-card-filho"
+                            onClick={() => abrirFormula(filho.id)}
+                          >
+                            <span className="fabricacao-formula-nome">{filho.nome}</span>
+                            <span className="financeiro-td-mudo">{filho.pesoLoteKg}kg por lote</span>
+                            <span className="fabricacao-formula-custo">{formatCurrency(filho.custoFabricacaoTotal)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
             {formulaAberta && formulas && (
               <FormulaEditor

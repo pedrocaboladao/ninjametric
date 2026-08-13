@@ -59,6 +59,7 @@ export interface FormulaResumo {
   pesoLoteKg: number;
   custoPorKg: number;
   custoFabricacaoTotal: number;
+  subFormulaIds: number[];
 }
 
 export interface Formula extends FormulaResumo {
@@ -320,7 +321,20 @@ export async function listarFormulas(): Promise<FormulaResumo[]> {
   return rows.map((r) => {
     const pesoLoteKg = Number(r.peso_lote_kg);
     const custoPorKg = custoPorKgMap.get(r.id) ?? 0;
-    return { id: r.id, nome: r.nome, pesoLoteKg, custoPorKg, custoFabricacaoTotal: custoPorKg * pesoLoteKg };
+    // IDs das fórmulas que ESTA usa como ingrediente (ex.: uma cor aponta
+    // pra sua Base) — o frontend usa isso pra agrupar cores dentro da Base
+    // delas em vez de mostrar tudo numa lista só.
+    const subFormulaIds = (itensPorFormula.get(r.id) ?? [])
+      .filter((item) => item.subFormulaId !== null)
+      .map((item) => item.subFormulaId!);
+    return {
+      id: r.id,
+      nome: r.nome,
+      pesoLoteKg,
+      custoPorKg,
+      custoFabricacaoTotal: custoPorKg * pesoLoteKg,
+      subFormulaIds,
+    };
   });
 }
 
@@ -393,6 +407,7 @@ export async function obterFormula(id: number): Promise<Formula | null> {
     pesoLoteKg,
     custoPorKg,
     custoFabricacaoTotal: custoPorKg * pesoLoteKg,
+    subFormulaIds: itens.filter((i) => i.subFormulaId !== null).map((i) => i.subFormulaId!),
     itens,
     embalagens,
   };

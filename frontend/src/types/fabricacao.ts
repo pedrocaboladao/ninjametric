@@ -56,6 +56,7 @@ export interface FormulaResumo {
   pesoLoteKg: number;
   custoPorKg: number;
   custoFabricacaoTotal: number;
+  subFormulaIds: number[];
 }
 
 export interface Formula extends FormulaResumo {
