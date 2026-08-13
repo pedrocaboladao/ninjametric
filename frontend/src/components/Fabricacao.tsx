@@ -13,6 +13,8 @@ import {
   criarFormula,
   atualizarFormula,
   excluirFormula,
+  adicionarEmbalagem,
+  atualizarEmbalagem,
   fetchLotes,
   fetchTodosLotes,
   registrarLote,
@@ -560,28 +562,138 @@ function EmbalagemLinha({
 // Linha de input "nome do envase: [quantidade]" reaproveitada tanto pra
 // lançar um lote novo quanto pra editar um já existente.
 function QuantidadesEnvaseInputs({
+  formulaId,
   embalagens,
   quantidades,
   onMudar,
+  onEmbalagensAtualizadas,
 }: {
+  formulaId: number;
   embalagens: FormulaEmbalagem[];
   quantidades: Record<number, string>;
   onMudar: (embalagemId: number, valor: string) => void;
+  onEmbalagensAtualizadas: (embalagens: FormulaEmbalagem[]) => void;
 }) {
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editPeso, setEditPeso] = useState("");
+  const [editCusto, setEditCusto] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  const [mostrandoNovo, setMostrandoNovo] = useState(false);
+  const [novoNome, setNovoNome] = useState("");
+  const [novoPeso, setNovoPeso] = useState("");
+  const [novoCusto, setNovoCusto] = useState("");
+  const [salvandoNovo, setSalvandoNovo] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
   const pesoTotal = embalagens.reduce((soma, e) => soma + (Number(quantidades[e.id]?.replace(",", ".")) || 0) * e.pesoKg, 0);
+
+  async function atualizarLista() {
+    const f = await fetchFormula(formulaId);
+    onEmbalagensAtualizadas(f.embalagens);
+  }
+
+  function iniciarEdicaoEmbalagem(e: FormulaEmbalagem) {
+    setEditandoId(e.id);
+    setEditNome(e.nome);
+    setEditPeso(String(e.pesoKg));
+    setEditCusto(String(e.custoEmbalagem));
+    setErro(null);
+  }
+
+  async function salvarEdicaoEmbalagem(embalagemId: number) {
+    const peso = Number(editPeso.replace(",", "."));
+    const custo = Number(editCusto.replace(",", "."));
+    if (!editNome.trim() || !Number.isFinite(peso) || peso <= 0 || !Number.isFinite(custo) || custo < 0) {
+      setErro("Preencha nome, peso e custo válidos.");
+      return;
+    }
+    setSalvandoEdicao(true);
+    setErro(null);
+    try {
+      await atualizarEmbalagem(formulaId, embalagemId, { nome: editNome.trim(), pesoKg: peso, custoEmbalagem: custo, sku: null });
+      setEditandoId(null);
+      await atualizarLista();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao atualizar tamanho.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function adicionarNovoTamanho() {
+    const peso = Number(novoPeso.replace(",", "."));
+    const custo = Number(novoCusto.replace(",", "."));
+    if (!novoNome.trim() || !Number.isFinite(peso) || peso <= 0 || !Number.isFinite(custo) || custo < 0) {
+      setErro("Preencha nome, peso e custo válidos.");
+      return;
+    }
+    setSalvandoNovo(true);
+    setErro(null);
+    try {
+      await adicionarEmbalagem(formulaId, { nome: novoNome.trim(), pesoKg: peso, custoEmbalagem: custo, sku: null });
+      setNovoNome("");
+      setNovoPeso("");
+      setNovoCusto("");
+      setMostrandoNovo(false);
+      await atualizarLista();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao adicionar tamanho.");
+    } finally {
+      setSalvandoNovo(false);
+    }
+  }
+
   return (
     <div className="fabricacao-lote-quantidades">
-      {embalagens.map((e) => (
-        <label key={e.id} className="fabricacao-campo-label">
-          {e.nome} (unid.)
-          <input
-            className="clonar-input fabricacao-input-pequeno"
-            placeholder="0"
-            value={quantidades[e.id] ?? ""}
-            onChange={(ev) => onMudar(e.id, ev.target.value)}
-          />
-        </label>
-      ))}
+      {erro && <div className="state-message state-error">{erro}</div>}
+      {embalagens.map((e) =>
+        editandoId === e.id ? (
+          <div key={e.id} className="fabricacao-lote-envase-edicao">
+            <input className="clonar-input fabricacao-input-pequeno" placeholder="Nome" value={editNome} onChange={(ev) => setEditNome(ev.target.value)} />
+            <input className="clonar-input fabricacao-input-pequeno" placeholder="Peso (kg)" value={editPeso} onChange={(ev) => setEditPeso(ev.target.value)} />
+            <input className="clonar-input fabricacao-input-pequeno" placeholder="Custo (R$)" value={editCusto} onChange={(ev) => setEditCusto(ev.target.value)} />
+            <button type="button" className="btn-responder" disabled={salvandoEdicao} onClick={() => salvarEdicaoEmbalagem(e.id)}>
+              {salvandoEdicao ? "..." : "Salvar"}
+            </button>
+            <button type="button" className="btn-excluir" onClick={() => setEditandoId(null)}>
+              Cancelar
+            </button>
+          </div>
+        ) : (
+          <label key={e.id} className="fabricacao-campo-label">
+            <button type="button" className="fabricacao-envase-nome-editavel" onClick={() => iniciarEdicaoEmbalagem(e)} title="Clique pra editar nome/peso/preço">
+              {e.nome} ({formatCurrency(e.custoEmbalagem)}) <IconWrench size={11} />
+            </button>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="0"
+              value={quantidades[e.id] ?? ""}
+              onChange={(ev) => onMudar(e.id, ev.target.value)}
+            />
+          </label>
+        )
+      )}
+
+      {mostrandoNovo ? (
+        <div className="fabricacao-lote-envase-edicao">
+          <input className="clonar-input fabricacao-input-pequeno" placeholder="Nome (ex: Balde 45kg)" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
+          <input className="clonar-input fabricacao-input-pequeno" placeholder="Peso (kg)" value={novoPeso} onChange={(e) => setNovoPeso(e.target.value)} />
+          <input className="clonar-input fabricacao-input-pequeno" placeholder="Custo (R$)" value={novoCusto} onChange={(e) => setNovoCusto(e.target.value)} />
+          <button type="button" className="btn-responder" disabled={salvandoNovo} onClick={adicionarNovoTamanho}>
+            {salvandoNovo ? "..." : "Adicionar"}
+          </button>
+          <button type="button" className="btn-excluir" onClick={() => setMostrandoNovo(false)}>
+            Cancelar
+          </button>
+        </div>
+      ) : (
+        <button type="button" className="btn-excluir" onClick={() => setMostrandoNovo(true)}>
+          <IconPlus size={13} /> Novo tamanho
+        </button>
+      )}
+
       <span className="financeiro-td-mudo">Peso real total: {pesoTotal.toFixed(2)}kg</span>
     </div>
   );
@@ -595,6 +707,10 @@ function envasesEntradaDeQuantidades(embalagens: FormulaEmbalagem[], quantidades
 
 function LotesSecao({ formula }: { formula: Formula }) {
   const [lotes, setLotes] = useState<FormulaLote[] | null>(null);
+  // Cópia local editável — a fórmula em si (prop, vinda de cima) só
+  // atualiza quando o editor é reaberto, mas adicionar/editar um tamanho
+  // de envase aqui precisa refletir na hora, sem fechar/reabrir a fórmula.
+  const [embalagensAtuais, setEmbalagensAtuais] = useState<FormulaEmbalagem[]>(formula.embalagens);
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
   const [horaInicio, setHoraInicio] = useState("");
   const [horaTermino, setHoraTermino] = useState("");
@@ -630,7 +746,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
       setErro("Informe a data, o peso previsto e o peso real.");
       return;
     }
-    const envases = envasesEntradaDeQuantidades(formula.embalagens, quantidades);
+    const envases = envasesEntradaDeQuantidades(embalagensAtuais, quantidades);
     setSalvando(true);
     setErro(null);
     try {
@@ -657,7 +773,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
     setEditPesoPrevisto(String(lote.pesoPrevistoKg));
     setEditPesoReal(String(lote.pesoRealKg));
     const preenchidas: Record<number, string> = {};
-    for (const e of formula.embalagens) {
+    for (const e of embalagensAtuais) {
       const existente = lote.envases.find((le) => le.nome === e.nome);
       if (existente) preenchidas[e.id] = String(existente.quantidade);
     }
@@ -673,7 +789,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
       setErro("Informe a data, o peso previsto e o peso real.");
       return;
     }
-    const envases = envasesEntradaDeQuantidades(formula.embalagens, editQuantidades);
+    const envases = envasesEntradaDeQuantidades(embalagensAtuais, editQuantidades);
     setSalvandoEdicao(true);
     setErro(null);
     try {
@@ -752,13 +868,13 @@ function LotesSecao({ formula }: { formula: Formula }) {
           onChange={(e) => setObservacao(e.target.value)}
         />
       </div>
-      {formula.embalagens.length > 0 && (
-        <QuantidadesEnvaseInputs
-          embalagens={formula.embalagens}
-          quantidades={quantidades}
-          onMudar={(id, valor) => setQuantidades((atual) => ({ ...atual, [id]: valor }))}
-        />
-      )}
+      <QuantidadesEnvaseInputs
+        formulaId={formula.id}
+        embalagens={embalagensAtuais}
+        quantidades={quantidades}
+        onMudar={(id, valor) => setQuantidades((atual) => ({ ...atual, [id]: valor }))}
+        onEmbalagensAtualizadas={setEmbalagensAtuais}
+      />
       <button type="button" className="btn-responder" disabled={salvando} onClick={registrar}>
         <IconPlus size={15} /> {salvando ? "..." : "Registrar lote"}
       </button>
@@ -828,13 +944,13 @@ function LotesSecao({ formula }: { formula: Formula }) {
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td colSpan={2}>
-                    {formula.embalagens.length > 0 && (
-                      <QuantidadesEnvaseInputs
-                        embalagens={formula.embalagens}
-                        quantidades={editQuantidades}
-                        onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
-                      />
-                    )}
+                    <QuantidadesEnvaseInputs
+                      formulaId={formula.id}
+                      embalagens={embalagensAtuais}
+                      quantidades={editQuantidades}
+                      onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                      onEmbalagensAtualizadas={setEmbalagensAtuais}
+                    />
                     <input
                       className="clonar-input"
                       placeholder="Observação"
@@ -1449,15 +1565,15 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                   onChange={(e) => setNovaObservacao(e.target.value)}
                 />
               </div>
-              {novaFormulaEmbalagens === null ? (
+              {novaFormulaEmbalagens === null || novaFormulaId === null ? (
                 <div className="state-message">Carregando tamanhos de envase...</div>
-              ) : novaFormulaEmbalagens.length === 0 ? (
-                <div className="state-message">Essa fórmula não tem nenhum tamanho de envase cadastrado ainda.</div>
               ) : (
                 <QuantidadesEnvaseInputs
+                  formulaId={novaFormulaId}
                   embalagens={novaFormulaEmbalagens}
                   quantidades={novasQuantidades}
                   onMudar={(id, valor) => setNovasQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                  onEmbalagensAtualizadas={setNovaFormulaEmbalagens}
                 />
               )}
               <div className="fabricacao-editor-acoes">
@@ -1542,9 +1658,11 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                           <span className="financeiro-td-mudo">Carregando...</span>
                         ) : (
                           <QuantidadesEnvaseInputs
+                            formulaId={l.formulaId}
                             embalagens={editFormulaEmbalagens}
                             quantidades={editQuantidades}
                             onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                            onEmbalagensAtualizadas={setEditFormulaEmbalagens}
                           />
                         )}
                         <input

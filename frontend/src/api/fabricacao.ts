@@ -3,6 +3,7 @@ import type {
   MateriaPrimaCompra,
   FormulaResumo,
   Formula,
+  FormulaEmbalagem,
   FormulaLote,
   FormulaLoteComFormula,
   DadosMlSku,
@@ -158,6 +159,37 @@ export async function excluirFormula(id: number): Promise<void> {
     credentials: "include",
   });
   await tratarResposta(res);
+}
+
+export interface EmbalagemFormularioEntrada {
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  sku: string | null;
+}
+
+export async function adicionarEmbalagem(formulaId: number, entrada: EmbalagemFormularioEntrada): Promise<FormulaEmbalagem> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/embalagens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<FormulaEmbalagem>(res);
+}
+
+export async function atualizarEmbalagem(
+  formulaId: number,
+  embalagemId: number,
+  entrada: EmbalagemFormularioEntrada
+): Promise<FormulaEmbalagem> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/embalagens/${embalagemId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<FormulaEmbalagem>(res);
 }
 
 export async function fetchLotes(formulaId: number): Promise<FormulaLote[]> {

@@ -13,6 +13,8 @@ import {
   criarFormula,
   atualizarFormula,
   excluirFormula,
+  adicionarEmbalagem,
+  atualizarEmbalagem,
   listarLotes,
   listarTodosLotes,
   registrarLote,
@@ -380,6 +382,69 @@ fabricacaoRouter.delete("/formulas/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Não foi possível excluir — confira se essa fórmula está sendo usada como ingrediente de outra.");
+  }
+});
+
+// Adiciona/edita UM tamanho de envase sem precisar reenviar a fórmula
+// inteira — usado direto na tela de lançar lote, pra poder cadastrar ou
+// corrigir um tamanho sem sair de lá.
+fabricacaoRouter.post("/formulas/:id/embalagens", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const { nome, pesoKg, custoEmbalagem, sku } = req.body ?? {};
+  const nomeTratado = typeof nome === "string" ? nome.trim() : "";
+  const peso = Number(pesoKg);
+  const custo = Number(custoEmbalagem);
+  if (!nomeTratado) {
+    res.status(400).json({ error: "Informe o nome do tamanho de envase." });
+    return;
+  }
+  if (!Number.isFinite(peso) || peso <= 0) {
+    res.status(400).json({ error: "Peso inválido." });
+    return;
+  }
+  if (!Number.isFinite(custo) || custo < 0) {
+    res.status(400).json({ error: "Custo de embalagem inválido." });
+    return;
+  }
+  try {
+    res.json(await adicionarEmbalagem(id, nomeTratado, peso, custo, typeof sku === "string" && sku.trim() ? sku.trim() : null));
+  } catch (err) {
+    erro(res, err, "Falha ao adicionar tamanho de envase.");
+  }
+});
+
+fabricacaoRouter.put("/formulas/:id/embalagens/:embalagemId", async (req, res) => {
+  const embalagemId = Number(req.params.embalagemId);
+  if (!Number.isInteger(embalagemId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const { nome, pesoKg, custoEmbalagem, sku } = req.body ?? {};
+  const nomeTratado = typeof nome === "string" ? nome.trim() : "";
+  const peso = Number(pesoKg);
+  const custo = Number(custoEmbalagem);
+  if (!nomeTratado) {
+    res.status(400).json({ error: "Informe o nome do tamanho de envase." });
+    return;
+  }
+  if (!Number.isFinite(peso) || peso <= 0) {
+    res.status(400).json({ error: "Peso inválido." });
+    return;
+  }
+  if (!Number.isFinite(custo) || custo < 0) {
+    res.status(400).json({ error: "Custo de embalagem inválido." });
+    return;
+  }
+  try {
+    res.json(
+      await atualizarEmbalagem(embalagemId, nomeTratado, peso, custo, typeof sku === "string" && sku.trim() ? sku.trim() : null)
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao atualizar tamanho de envase.");
   }
 });
 

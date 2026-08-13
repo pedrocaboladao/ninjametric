@@ -495,6 +495,81 @@ async function salvarEmbalagens(formulaId: number, embalagens: EmbalagemEntrada[
   }
 }
 
+function mapearEmbalagem(
+  e: { id: number; formula_id: number; nome: string; peso_kg: string; custo_embalagem: string; sku: string | null; ordem: number },
+  custoPorKg: number
+): FormulaEmbalagem {
+  const pesoKg = Number(e.peso_kg);
+  const custoEmbalagem = Number(e.custo_embalagem);
+  const custoProduto = custoPorKg * pesoKg;
+  return {
+    id: e.id,
+    formulaId: e.formula_id,
+    nome: e.nome,
+    pesoKg,
+    custoEmbalagem,
+    sku: e.sku,
+    ordem: e.ordem,
+    custoProduto,
+    custoFinal: custoProduto + custoEmbalagem,
+  };
+}
+
+// Adiciona/edita UM tamanho de envase sem mexer nos outros já cadastrados
+// — diferente de salvarEmbalagens (usado ao salvar a fórmula inteira, que
+// apaga e recria tudo), pensado pra ser chamado direto da tela de lançar
+// lote, sem precisar reenviar a fórmula inteira (itens, etc).
+export async function adicionarEmbalagem(
+  formulaId: number,
+  nome: string,
+  pesoKg: number,
+  custoEmbalagem: number,
+  sku: string | null
+): Promise<FormulaEmbalagem> {
+  const { rows } = await pool.query<{
+    id: number;
+    formula_id: number;
+    nome: string;
+    peso_kg: string;
+    custo_embalagem: string;
+    sku: string | null;
+    ordem: number;
+  }>(
+    `INSERT INTO formula_embalagens (formula_id, nome, peso_kg, custo_embalagem, sku, ordem)
+     VALUES ($1, $2, $3, $4, $5, (SELECT COALESCE(MAX(ordem), -1) + 1 FROM formula_embalagens WHERE formula_id = $1))
+     RETURNING id, formula_id, nome, peso_kg, custo_embalagem, sku, ordem`,
+    [formulaId, nome, pesoKg, custoEmbalagem, sku]
+  );
+  const custoPorKgMap = await obterCustosPorKgTodasFormulas();
+  return mapearEmbalagem(rows[0], custoPorKgMap.get(formulaId) ?? 0);
+}
+
+export async function atualizarEmbalagem(
+  id: number,
+  nome: string,
+  pesoKg: number,
+  custoEmbalagem: number,
+  sku: string | null
+): Promise<FormulaEmbalagem> {
+  const { rows } = await pool.query<{
+    id: number;
+    formula_id: number;
+    nome: string;
+    peso_kg: string;
+    custo_embalagem: string;
+    sku: string | null;
+    ordem: number;
+  }>(
+    `UPDATE formula_embalagens SET nome = $2, peso_kg = $3, custo_embalagem = $4, sku = $5
+     WHERE id = $1
+     RETURNING id, formula_id, nome, peso_kg, custo_embalagem, sku, ordem`,
+    [id, nome, pesoKg, custoEmbalagem, sku]
+  );
+  if (rows.length === 0) throw new Error("Tamanho de envase não encontrado.");
+  const custoPorKgMap = await obterCustosPorKgTodasFormulas();
+  return mapearEmbalagem(rows[0], custoPorKgMap.get(rows[0].formula_id) ?? 0);
+}
+
 export async function criarFormula(
   nome: string,
   pesoLoteKg: number,
