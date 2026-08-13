@@ -278,6 +278,16 @@ export function IconFlask({ size = 18 }: IconProps) {
   );
 }
 
+export function IconChimney({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M8 21V10M16 21V10M8 10h8" />
+      <path d="M6.5 10 8 6h8l1.5 4" />
+      <path d="M9.5 5c1-1-1-2 0-3M14 4c1-1-1-2 0-3" />
+    </svg>
+  );
+}
+
 export function IconBarcode({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

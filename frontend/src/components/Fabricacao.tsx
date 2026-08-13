@@ -22,7 +22,7 @@ import {
 import { fetchLojas, type Loja } from "../api/lojas";
 import type { MateriaPrima, MateriaPrimaCompra, FormulaResumo, Formula, FormulaLote } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench, IconChevron } from "./icons";
+import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench, IconChevron, IconChimney, IconFlask } from "./icons";
 
 function MateriasPrimasSecao({
   materiasPrimas,
@@ -93,6 +93,7 @@ function MateriasPrimasSecao({
     <div className="fabricacao-secao">
       <button type="button" className="fabricacao-secao-toggle" onClick={alternarAberta}>
         <IconChevron open={aberta} />
+        <IconChimney size={17} />
         <h2>Matérias-primas</h2>
         <span className="financeiro-td-mudo">({materiasPrimas.length})</span>
       </button>
@@ -1074,6 +1075,15 @@ export function Fabricacao() {
   const [formulas, setFormulas] = useState<FormulaResumo[] | null>(null);
   const [formulaAberta, setFormulaAberta] = useState<Formula | null>(null);
   const [carregandoFormula, setCarregandoFormula] = useState(false);
+  const [formulasAberta, setFormulasAberta] = useState(() => localStorage.getItem("fabricacao-formulas-aberta") !== "false");
+
+  function alternarFormulasAberta() {
+    setFormulasAberta((atual) => {
+      const novo = !atual;
+      localStorage.setItem("fabricacao-formulas-aberta", String(novo));
+      return novo;
+    });
+  }
 
   const carregarMateriasPrimas = useCallback(() => {
     fetchMateriasPrimas().then(setMateriasPrimas).catch(() => {});
@@ -1122,7 +1132,12 @@ export function Fabricacao() {
 
       <div className="fabricacao-secao">
         <div className="fabricacao-secao-titulo-acao">
-          <h2>Fórmulas</h2>
+          <button type="button" className="fabricacao-secao-toggle" onClick={alternarFormulasAberta}>
+            <IconChevron open={formulasAberta} />
+            <IconFlask size={16} />
+            <h2>Fórmulas</h2>
+            <span className="financeiro-td-mudo">({formulas?.length ?? 0})</span>
+          </button>
           <button
             type="button"
             className="btn-responder"
@@ -1134,30 +1149,34 @@ export function Fabricacao() {
           </button>
         </div>
 
-        {formulas === null && <div className="state-message">Carregando...</div>}
-        {formulas?.length === 0 && !formulaAberta && (
-          <div className="state-message">Nenhuma fórmula cadastrada ainda.</div>
-        )}
-        {carregandoFormula && <div className="state-message">Carregando fórmula...</div>}
+        {(formulasAberta || formulaAberta) && (
+          <>
+            {formulas === null && <div className="state-message">Carregando...</div>}
+            {formulas?.length === 0 && !formulaAberta && (
+              <div className="state-message">Nenhuma fórmula cadastrada ainda.</div>
+            )}
+            {carregandoFormula && <div className="state-message">Carregando fórmula...</div>}
 
-        {!formulaAberta &&
-          formulas?.map((f) => (
-            <button key={f.id} type="button" className="fabricacao-formula-card" onClick={() => abrirFormula(f.id)}>
-              <span className="fabricacao-formula-nome">{f.nome}</span>
-              <span className="financeiro-td-mudo">{f.pesoLoteKg}kg por lote</span>
-              <span className="fabricacao-formula-custo">{formatCurrency(f.custoFabricacaoTotal)}</span>
-            </button>
-          ))}
+            {!formulaAberta &&
+              formulas?.map((f) => (
+                <button key={f.id} type="button" className="fabricacao-formula-card" onClick={() => abrirFormula(f.id)}>
+                  <span className="fabricacao-formula-nome">{f.nome}</span>
+                  <span className="financeiro-td-mudo">{f.pesoLoteKg}kg por lote</span>
+                  <span className="fabricacao-formula-custo">{formatCurrency(f.custoFabricacaoTotal)}</span>
+                </button>
+              ))}
 
-        {formulaAberta && formulas && (
-          <FormulaEditor
-            formula={formulaAberta}
-            materiasPrimas={materiasPrimas}
-            formulas={formulas}
-            onSalvo={fecharEditor}
-            onCancelar={() => setFormulaAberta(null)}
-            onExcluido={fecharEditor}
-          />
+            {formulaAberta && formulas && (
+              <FormulaEditor
+                formula={formulaAberta}
+                materiasPrimas={materiasPrimas}
+                formulas={formulas}
+                onSalvo={fecharEditor}
+                onCancelar={() => setFormulaAberta(null)}
+                onExcluido={fecharEditor}
+              />
+            )}
+          </>
         )}
       </div>
     </div>
