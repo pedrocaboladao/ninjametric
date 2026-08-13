@@ -739,6 +739,16 @@ function LotesSecao({ formula }: { formula: Formula }) {
     carregar();
   }, [carregar]);
 
+  // Preenche o Real sozinho conforme as quantidades de envase vão sendo
+  // digitadas — só no lançamento de um lote novo (na edição não mexe, pra
+  // não sobrescrever um valor que já foi ajustado por causa de sobra).
+  // Continua editável: se mudar uma quantidade de novo, recalcula por
+  // cima do que tiver digitado ali.
+  useEffect(() => {
+    const total = embalagensAtuais.reduce((soma, e) => soma + (Number(quantidades[e.id]?.replace(",", ".")) || 0) * e.pesoKg, 0);
+    setPesoReal(total > 0 ? String(Number(total.toFixed(3))) : "");
+  }, [quantidades, embalagensAtuais]);
+
   async function registrar() {
     const previsto = Number(pesoPrevisto.replace(",", "."));
     const real = Number(pesoReal.replace(",", "."));
@@ -1373,6 +1383,17 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
       .then((f) => setNovaFormulaEmbalagens(f.embalagens))
       .catch(() => setNovaFormulaEmbalagens([]));
   }, [mostrandoForm, novaFormulaId, formulas]);
+
+  // Mesmo comportamento do LotesSecao: Real sozinho a partir das
+  // quantidades de envase, continua editável por cima.
+  useEffect(() => {
+    if (!novaFormulaEmbalagens) return;
+    const total = novaFormulaEmbalagens.reduce(
+      (soma, e) => soma + (Number(novasQuantidades[e.id]?.replace(",", ".")) || 0) * e.pesoKg,
+      0
+    );
+    setNovoPesoReal(total > 0 ? String(Number(total.toFixed(3))) : "");
+  }, [novasQuantidades, novaFormulaEmbalagens]);
 
   function alternarAberta() {
     setAberta((atual) => {
