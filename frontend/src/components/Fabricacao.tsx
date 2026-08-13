@@ -923,6 +923,10 @@ function FormulaEditor({
 
   return (
     <div className="fabricacao-editor">
+      <button type="button" className="clonar-voltar-topo" onClick={onCancelar}>
+        ← Voltar
+      </button>
+
       {erro && <div className="state-message state-error">{erro}</div>}
 
       <div className="fabricacao-editor-topo">
