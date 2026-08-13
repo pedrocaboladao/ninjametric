@@ -14,13 +14,21 @@ import {
   atualizarFormula,
   excluirFormula,
   fetchLotes,
+  fetchTodosLotes,
   registrarLote,
   atualizarLote,
   excluirLote,
   fetchDadosMl,
 } from "../api/fabricacao";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { MateriaPrima, MateriaPrimaCompra, FormulaResumo, Formula, FormulaLote } from "../types/fabricacao";
+import type {
+  MateriaPrima,
+  MateriaPrimaCompra,
+  FormulaResumo,
+  Formula,
+  FormulaLote,
+  FormulaLoteComFormula,
+} from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench, IconChevron, IconChimney, IconFlask } from "./icons";
 
@@ -1072,6 +1080,168 @@ function FormulaEditor({
   );
 }
 
+function HistoricoLotesGlobalSecao() {
+  const [aberta, setAberta] = useState(() => localStorage.getItem("fabricacao-historico-lotes-aberta") === "true");
+  const [lotes, setLotes] = useState<FormulaLoteComFormula[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [editData, setEditData] = useState("");
+  const [editPesoReal, setEditPesoReal] = useState("");
+  const [editObservacao, setEditObservacao] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  const carregar = useCallback(() => {
+    fetchTodosLotes().then(setLotes).catch(() => setLotes([]));
+  }, []);
+
+  useEffect(() => {
+    if (aberta && lotes === null) carregar();
+  }, [aberta, lotes, carregar]);
+
+  function alternarAberta() {
+    setAberta((atual) => {
+      const novo = !atual;
+      localStorage.setItem("fabricacao-historico-lotes-aberta", String(novo));
+      if (novo && lotes === null) carregar();
+      return novo;
+    });
+  }
+
+  function iniciarEdicao(lote: FormulaLoteComFormula) {
+    setEditandoId(lote.id);
+    setEditData(lote.data);
+    setEditPesoReal(String(lote.pesoRealKg));
+    setEditObservacao(lote.observacao ?? "");
+    setErro(null);
+  }
+
+  async function salvarEdicao(lote: FormulaLoteComFormula) {
+    const peso = Number(editPesoReal.replace(",", "."));
+    if (!editData || !Number.isFinite(peso) || peso <= 0) {
+      setErro("Informe data e peso real válidos.");
+      return;
+    }
+    setSalvandoEdicao(true);
+    setErro(null);
+    try {
+      await atualizarLote(lote.formulaId, lote.id, editData, peso, editObservacao.trim() || null);
+      setEditandoId(null);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao atualizar lote.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function excluir(lote: FormulaLoteComFormula) {
+    try {
+      await excluirLote(lote.formulaId, lote.id);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir lote.");
+    }
+  }
+
+  return (
+    <div className="fabricacao-secao">
+      <button type="button" className="fabricacao-secao-toggle" onClick={alternarAberta}>
+        <IconChevron open={aberta} />
+        <IconClock size={16} />
+        <h2>Histórico de lotes</h2>
+        {lotes !== null && <span className="financeiro-td-mudo">({lotes.length})</span>}
+      </button>
+
+      {aberta && (
+        <>
+          <p className="painel-sub">Todos os lotes de produção de todas as fórmulas juntos, do mais recente pro mais antigo.</p>
+          {erro && <div className="state-message state-error">{erro}</div>}
+          {lotes === null && <div className="state-message">Carregando...</div>}
+          {lotes?.length === 0 && <div className="state-message">Nenhum lote registrado ainda.</div>}
+          {lotes && lotes.length > 0 && (
+            <table className="financeiro-tabela">
+              <thead>
+                <tr>
+                  <th>Fórmula</th>
+                  <th>Data</th>
+                  <th className="financeiro-th-numero">Previsto</th>
+                  <th className="financeiro-th-numero">Real</th>
+                  <th className="financeiro-th-numero">Diferença</th>
+                  <th>Observação</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {lotes.map((l) =>
+                  editandoId === l.id ? (
+                    <tr key={l.id}>
+                      <td className="financeiro-td-mudo">{l.formulaNome}</td>
+                      <td>
+                        <input
+                          className="clonar-input fabricacao-input-pequeno"
+                          type="date"
+                          value={editData}
+                          onChange={(e) => setEditData(e.target.value)}
+                        />
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
+                      <td className="financeiro-th-numero">
+                        <input
+                          className="clonar-input fabricacao-input-pequeno"
+                          value={editPesoReal}
+                          onChange={(e) => setEditPesoReal(e.target.value)}
+                        />
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                      <td>
+                        <input
+                          className="clonar-input"
+                          value={editObservacao}
+                          onChange={(e) => setEditObservacao(e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <button type="button" className="btn-responder" disabled={salvandoEdicao} onClick={() => salvarEdicao(l)}>
+                          {salvandoEdicao ? "..." : "Salvar"}
+                        </button>
+                        <button type="button" className="btn-excluir" onClick={() => setEditandoId(null)}>
+                          Cancelar
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr key={l.id}>
+                      <td>{l.formulaNome}</td>
+                      <td>{l.data}</td>
+                      <td className="financeiro-th-numero">{l.pesoPrevistoKg}kg</td>
+                      <td className="financeiro-th-numero">{l.pesoRealKg}kg</td>
+                      <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
+                        {l.diferencaKg >= 0 ? "+" : ""}
+                        {l.diferencaKg.toFixed(2)}kg
+                        {l.diferencaPercentual !== null && ` (${l.diferencaPercentual >= 0 ? "+" : ""}${l.diferencaPercentual.toFixed(1)}%)`}
+                      </td>
+                      <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
+                      <td>
+                        <button type="button" className="btn-excluir" onClick={() => iniciarEdicao(l)} title="Editar">
+                          <IconWrench size={14} />
+                        </button>
+                        <button type="button" className="btn-excluir" onClick={() => excluir(l)} title="Excluir">
+                          <IconTrash size={14} />
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 const FORMULA_VAZIA: Formula = {
   id: 0,
   nome: "",
@@ -1257,6 +1427,8 @@ export function Fabricacao() {
           </>
         )}
       </div>
+
+      <HistoricoLotesGlobalSecao />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   atualizarFormula,
   excluirFormula,
   listarLotes,
+  listarTodosLotes,
   registrarLote,
   atualizarLote,
   excluirLote,
@@ -249,6 +250,16 @@ fabricacaoRouter.get("/formulas", async (_req, res) => {
     res.json({ formulas: await listarFormulas() });
   } catch (err) {
     erro(res, err, "Falha ao carregar fórmulas.");
+  }
+});
+
+// Caminho próprio (não "/formulas/lotes") pra não colidir com a rota
+// "/formulas/:id" — "lotes" viraria um :id inválido se ficasse aninhado ali.
+fabricacaoRouter.get("/lotes", async (_req, res) => {
+  try {
+    res.json({ lotes: await listarTodosLotes() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar histórico de lotes.");
   }
 });
 

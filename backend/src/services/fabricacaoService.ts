@@ -53,6 +53,10 @@ export interface FormulaLote {
   criadoEm: string;
 }
 
+export interface FormulaLoteComFormula extends FormulaLote {
+  formulaNome: string;
+}
+
 export interface FormulaResumo {
   id: number;
   nome: string;
@@ -554,6 +558,29 @@ export async function listarLotes(formulaId: number): Promise<FormulaLote[]> {
     [formulaId]
   );
   return rows.map(mapearLote);
+}
+
+// Todos os lotes de todas as fórmulas juntos, com o nome da fórmula pra
+// identificar de qual é cada um — usado no card "Histórico de lotes" da
+// tela principal, que dá uma visão geral sem precisar abrir fórmula por
+// fórmula.
+export async function listarTodosLotes(): Promise<FormulaLoteComFormula[]> {
+  const { rows } = await pool.query<{
+    id: number;
+    formula_id: number;
+    formula_nome: string;
+    data: string;
+    peso_previsto_kg: string;
+    peso_real_kg: string;
+    observacao: string | null;
+    criado_em: string;
+  }>(
+    `SELECT fl.id, fl.formula_id, f.nome AS formula_nome, fl.data, fl.peso_previsto_kg, fl.peso_real_kg, fl.observacao, fl.criado_em
+     FROM formula_lotes fl
+     JOIN formulas f ON f.id = fl.formula_id
+     ORDER BY fl.data DESC, fl.id DESC`
+  );
+  return rows.map((r) => ({ ...mapearLote(r), formulaNome: r.formula_nome }));
 }
 
 // peso_previsto_kg é sempre o peso_lote_kg ATUAL da fórmula no momento do

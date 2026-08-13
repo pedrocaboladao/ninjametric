@@ -4,6 +4,7 @@ import type {
   FormulaResumo,
   Formula,
   FormulaLote,
+  FormulaLoteComFormula,
   DadosMlSku,
 } from "../types/fabricacao";
 
@@ -162,6 +163,12 @@ export async function excluirFormula(id: number): Promise<void> {
 export async function fetchLotes(formulaId: number): Promise<FormulaLote[]> {
   const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes`, { credentials: "include" });
   const data = await tratarResposta<{ lotes: FormulaLote[] }>(res);
+  return data.lotes;
+}
+
+export async function fetchTodosLotes(): Promise<FormulaLoteComFormula[]> {
+  const res = await fetch(`${API_BASE}/api/fabricacao/lotes`, { credentials: "include" });
+  const data = await tratarResposta<{ lotes: FormulaLoteComFormula[] }>(res);
   return data.lotes;
 }
 

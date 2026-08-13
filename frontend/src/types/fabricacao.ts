@@ -50,6 +50,10 @@ export interface FormulaLote {
   criadoEm: string;
 }
 
+export interface FormulaLoteComFormula extends FormulaLote {
+  formulaNome: string;
+}
+
 export interface FormulaResumo {
   id: number;
   nome: string;
