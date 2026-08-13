@@ -21,6 +21,7 @@ import {
   obterDadosMlPorSku,
   type ItemEntrada,
   type EmbalagemEntrada,
+  type EnvaseLoteEntrada,
 } from "../services/fabricacaoService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
@@ -64,6 +65,30 @@ function validarEmbalagens(valor: unknown): EmbalagemEntrada[] | null {
     embalagens.push({ nome, pesoKg, custoEmbalagem, sku });
   }
   return embalagens;
+}
+
+// Só entra na lista o tamanho que realmente foi preenchido (quantidade >
+// 0) — a tela manda todos os tamanhos cadastrados na fórmula, mesmo os
+// com quantidade 0/vazia, e o backend filtra.
+function validarEnvasesLote(valor: unknown): EnvaseLoteEntrada[] | null {
+  if (!Array.isArray(valor)) return null;
+  const envases: EnvaseLoteEntrada[] = [];
+  for (const e of valor) {
+    const nome = typeof e?.nome === "string" ? e.nome.trim() : "";
+    const pesoKg = Number(e?.pesoKg);
+    const custoEmbalagem = Number(e?.custoEmbalagem);
+    const quantidade = Number(e?.quantidade);
+    if (!nome || !Number.isFinite(pesoKg) || pesoKg <= 0 || !Number.isFinite(custoEmbalagem) || custoEmbalagem < 0) {
+      return null;
+    }
+    if (!Number.isInteger(quantidade) || quantidade < 0) return null;
+    if (quantidade > 0) envases.push({ nome, pesoKg, custoEmbalagem, quantidade });
+  }
+  return envases;
+}
+
+function horarioOuNulo(valor: unknown): string | null {
+  return typeof valor === "string" && valor.trim() ? valor.trim() : null;
 }
 
 // Mesmo padrão duplicado por arquivo do resto do sistema (ver financeiro.ts,
@@ -377,19 +402,26 @@ fabricacaoRouter.post("/formulas/:id/lotes", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { data, pesoRealKg, observacao } = req.body ?? {};
-  const peso = Number(pesoRealKg);
+  const { data, horaInicio, horaTermino, envases, observacao } = req.body ?? {};
   if (typeof data !== "string" || !data.trim()) {
     res.status(400).json({ error: "Informe a data do lote." });
     return;
   }
-  if (!Number.isFinite(peso) || peso <= 0) {
-    res.status(400).json({ error: "Peso real inválido." });
+  const envasesValidados = validarEnvasesLote(envases);
+  if (envasesValidados === null) {
+    res.status(400).json({ error: "Quantidades de envase inválidas." });
     return;
   }
   try {
     res.json(
-      await registrarLote(id, data, peso, typeof observacao === "string" && observacao.trim() ? observacao.trim() : null)
+      await registrarLote(
+        id,
+        data,
+        horarioOuNulo(horaInicio),
+        horarioOuNulo(horaTermino),
+        envasesValidados,
+        typeof observacao === "string" && observacao.trim() ? observacao.trim() : null
+      )
     );
   } catch (err) {
     erro(res, err, "Falha ao registrar lote.");
@@ -402,19 +434,26 @@ fabricacaoRouter.put("/formulas/:id/lotes/:loteId", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { data, pesoRealKg, observacao } = req.body ?? {};
-  const peso = Number(pesoRealKg);
+  const { data, horaInicio, horaTermino, envases, observacao } = req.body ?? {};
   if (typeof data !== "string" || !data.trim()) {
     res.status(400).json({ error: "Informe a data do lote." });
     return;
   }
-  if (!Number.isFinite(peso) || peso <= 0) {
-    res.status(400).json({ error: "Peso real inválido." });
+  const envasesValidados = validarEnvasesLote(envases);
+  if (envasesValidados === null) {
+    res.status(400).json({ error: "Quantidades de envase inválidas." });
     return;
   }
   try {
     res.json(
-      await atualizarLote(loteId, data, peso, typeof observacao === "string" && observacao.trim() ? observacao.trim() : null)
+      await atualizarLote(
+        loteId,
+        data,
+        horarioOuNulo(horaInicio),
+        horarioOuNulo(horaTermino),
+        envasesValidados,
+        typeof observacao === "string" && observacao.trim() ? observacao.trim() : null
+      )
     );
   } catch (err) {
     erro(res, err, "Falha ao atualizar lote.");

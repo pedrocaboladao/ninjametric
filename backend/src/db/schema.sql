@@ -357,6 +357,9 @@ CREATE INDEX IF NOT EXISTS idx_formula_embalagens_formula ON formula_embalagens 
 -- Histórico de lotes de produção real — cada vez que a fórmula é fabricada
 -- de verdade, registra o peso real de saída pra comparar com o teórico da
 -- fórmula (déficit/superávit calculado na leitura, não guardado aqui).
+-- peso_real_kg é derivado da soma dos envases reais (ver formula_lote_envases)
+-- — não é mais digitado direto, fica guardado aqui só pra não precisar somar
+-- toda vez que listar.
 CREATE TABLE IF NOT EXISTS formula_lotes (
   id SERIAL PRIMARY KEY,
   formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
@@ -366,7 +369,27 @@ CREATE TABLE IF NOT EXISTS formula_lotes (
   observacao TEXT,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE formula_lotes ADD COLUMN IF NOT EXISTS hora_inicio TIME;
+ALTER TABLE formula_lotes ADD COLUMN IF NOT EXISTS hora_termino TIME;
 CREATE INDEX IF NOT EXISTS idx_formula_lotes_formula ON formula_lotes (formula_id, data DESC);
+
+-- Quantas unidades de cada tamanho de envase saíram de um lote específico
+-- — um lote pode ser fracionado em mais de um tamanho (ex.: parte em
+-- balde de 18kg, parte em galão de 4kg), e as sobras/faltas de cada
+-- tamanho é o que soma pro peso_real_kg do lote. Guarda nome/peso/custo
+-- de embalagem como SNAPSHOT (não FK pra formula_embalagens) porque
+-- editar a fórmula recria as linhas de formula_embalagens do zero (ver
+-- salvarEmbalagens em fabricacaoService.ts) — um FK quebraria o histórico
+-- de lotes antigos toda vez que a fórmula fosse editada.
+CREATE TABLE IF NOT EXISTS formula_lote_envases (
+  id SERIAL PRIMARY KEY,
+  lote_id INTEGER NOT NULL REFERENCES formula_lotes(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  peso_kg NUMERIC(12, 3) NOT NULL,
+  custo_embalagem NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  quantidade INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_formula_lote_envases_lote ON formula_lote_envases (lote_id);
 
 -- Promoções: campanha do vendedor (SELLER_CAMPAIGN) no Mercado Livre tem
 -- prazo máximo de 14 dias — não existe renovação automática nativa da

@@ -172,17 +172,26 @@ export async function fetchTodosLotes(): Promise<FormulaLoteComFormula[]> {
   return data.lotes;
 }
 
+export interface EnvaseLoteEntrada {
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  quantidade: number;
+}
+
 export async function registrarLote(
   formulaId: number,
   data: string,
-  pesoRealKg: number,
+  horaInicio: string | null,
+  horaTermino: string | null,
+  envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
   const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ data, pesoRealKg, observacao }),
+    body: JSON.stringify({ data, horaInicio, horaTermino, envases, observacao }),
   });
   return tratarResposta<FormulaLote>(res);
 }
@@ -191,14 +200,16 @@ export async function atualizarLote(
   formulaId: number,
   loteId: number,
   data: string,
-  pesoRealKg: number,
+  horaInicio: string | null,
+  horaTermino: string | null,
+  envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
   const res = await fetch(`${API_BASE}/api/fabricacao/formulas/${formulaId}/lotes/${loteId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ data, pesoRealKg, observacao }),
+    body: JSON.stringify({ data, horaInicio, horaTermino, envases, observacao }),
   });
   return tratarResposta<FormulaLote>(res);
 }

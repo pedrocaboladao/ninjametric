@@ -19,6 +19,7 @@ import {
   atualizarLote,
   excluirLote,
   fetchDadosMl,
+  type EnvaseLoteEntrada,
 } from "../api/fabricacao";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type {
@@ -26,6 +27,7 @@ import type {
   MateriaPrimaCompra,
   FormulaResumo,
   Formula,
+  FormulaEmbalagem,
   FormulaLote,
   FormulaLoteComFormula,
 } from "../types/fabricacao";
@@ -555,17 +557,57 @@ function EmbalagemLinha({
   );
 }
 
+// Linha de input "nome do envase: [quantidade]" reaproveitada tanto pra
+// lançar um lote novo quanto pra editar um já existente.
+function QuantidadesEnvaseInputs({
+  embalagens,
+  quantidades,
+  onMudar,
+}: {
+  embalagens: FormulaEmbalagem[];
+  quantidades: Record<number, string>;
+  onMudar: (embalagemId: number, valor: string) => void;
+}) {
+  const pesoTotal = embalagens.reduce((soma, e) => soma + (Number(quantidades[e.id]?.replace(",", ".")) || 0) * e.pesoKg, 0);
+  return (
+    <div className="fabricacao-lote-quantidades">
+      {embalagens.map((e) => (
+        <label key={e.id} className="fabricacao-campo-label">
+          {e.nome} (unid.)
+          <input
+            className="clonar-input fabricacao-input-pequeno"
+            placeholder="0"
+            value={quantidades[e.id] ?? ""}
+            onChange={(ev) => onMudar(e.id, ev.target.value)}
+          />
+        </label>
+      ))}
+      <span className="financeiro-td-mudo">Peso real total: {pesoTotal.toFixed(2)}kg</span>
+    </div>
+  );
+}
+
+function envasesEntradaDeQuantidades(embalagens: FormulaEmbalagem[], quantidades: Record<number, string>): EnvaseLoteEntrada[] {
+  return embalagens
+    .map((e) => ({ nome: e.nome, pesoKg: e.pesoKg, custoEmbalagem: e.custoEmbalagem, quantidade: Math.trunc(Number(quantidades[e.id]?.replace(",", ".")) || 0) }))
+    .filter((e) => e.quantidade > 0);
+}
+
 function LotesSecao({ formula }: { formula: Formula }) {
   const [lotes, setLotes] = useState<FormulaLote[] | null>(null);
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
-  const [pesoReal, setPesoReal] = useState("");
+  const [horaInicio, setHoraInicio] = useState("");
+  const [horaTermino, setHoraTermino] = useState("");
+  const [quantidades, setQuantidades] = useState<Record<number, string>>({});
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [editData, setEditData] = useState("");
-  const [editPesoReal, setEditPesoReal] = useState("");
+  const [editHoraInicio, setEditHoraInicio] = useState("");
+  const [editHoraTermino, setEditHoraTermino] = useState("");
+  const [editQuantidades, setEditQuantidades] = useState<Record<number, string>>({});
   const [editObservacao, setEditObservacao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
@@ -578,16 +620,18 @@ function LotesSecao({ formula }: { formula: Formula }) {
   }, [carregar]);
 
   async function registrar() {
-    const peso = Number(pesoReal.replace(",", "."));
-    if (!data || !Number.isFinite(peso) || peso <= 0) {
-      setErro("Informe data e peso real válidos.");
+    const envases = envasesEntradaDeQuantidades(formula.embalagens, quantidades);
+    if (!data || envases.length === 0) {
+      setErro("Informe a data e ao menos uma quantidade de envase.");
       return;
     }
     setSalvando(true);
     setErro(null);
     try {
-      await registrarLote(formula.id, data, peso, observacao.trim() || null);
-      setPesoReal("");
+      await registrarLote(formula.id, data, horaInicio || null, horaTermino || null, envases, observacao.trim() || null);
+      setQuantidades({});
+      setHoraInicio("");
+      setHoraTermino("");
       setObservacao("");
       carregar();
     } catch (err) {
@@ -600,21 +644,36 @@ function LotesSecao({ formula }: { formula: Formula }) {
   function iniciarEdicao(lote: FormulaLote) {
     setEditandoId(lote.id);
     setEditData(lote.data);
-    setEditPesoReal(String(lote.pesoRealKg));
+    setEditHoraInicio(lote.horaInicio ?? "");
+    setEditHoraTermino(lote.horaTermino ?? "");
+    const preenchidas: Record<number, string> = {};
+    for (const e of formula.embalagens) {
+      const existente = lote.envases.find((le) => le.nome === e.nome);
+      if (existente) preenchidas[e.id] = String(existente.quantidade);
+    }
+    setEditQuantidades(preenchidas);
     setEditObservacao(lote.observacao ?? "");
     setErro(null);
   }
 
   async function salvarEdicao(loteId: number) {
-    const peso = Number(editPesoReal.replace(",", "."));
-    if (!editData || !Number.isFinite(peso) || peso <= 0) {
-      setErro("Informe data e peso real válidos.");
+    const envases = envasesEntradaDeQuantidades(formula.embalagens, editQuantidades);
+    if (!editData || envases.length === 0) {
+      setErro("Informe a data e ao menos uma quantidade de envase.");
       return;
     }
     setSalvandoEdicao(true);
     setErro(null);
     try {
-      await atualizarLote(formula.id, loteId, editData, peso, editObservacao.trim() || null);
+      await atualizarLote(
+        formula.id,
+        loteId,
+        editData,
+        editHoraInicio || null,
+        editHoraTermino || null,
+        envases,
+        editObservacao.trim() || null
+      );
       setEditandoId(null);
       carregar();
     } catch (err) {
@@ -633,34 +692,56 @@ function LotesSecao({ formula }: { formula: Formula }) {
     }
   }
 
+  const semEnvase = formula.embalagens.length === 0;
+
   return (
     <div className="fabricacao-secao-ml">
       <h3>
         <IconClock size={16} /> Histórico de lotes de produção
       </h3>
       <p className="painel-sub">
-        Peso previsto pela fórmula: {formula.pesoLoteKg}kg. Registre o que realmente saiu de cada lote pra
-        acompanhar déficit/superávit.
+        Peso previsto pela fórmula: {formula.pesoLoteKg}kg. Registre quantas unidades de cada tamanho de envase
+        realmente saíram do lote — o peso real e o déficit/superávit são calculados sozinhos.
       </p>
       {erro && <div className="state-message state-error">{erro}</div>}
-      <div className="financeiro-busca">
-        <input className="clonar-input fabricacao-input-pequeno" type="date" value={data} onChange={(e) => setData(e.target.value)} />
-        <input
-          className="clonar-input fabricacao-input-pequeno"
-          placeholder="Peso real (kg)"
-          value={pesoReal}
-          onChange={(e) => setPesoReal(e.target.value)}
-        />
-        <input
-          className="clonar-input"
-          placeholder="Observação (opcional)"
-          value={observacao}
-          onChange={(e) => setObservacao(e.target.value)}
-        />
-        <button type="button" className="btn-responder" disabled={salvando} onClick={registrar}>
-          <IconPlus size={15} /> {salvando ? "..." : "Registrar lote"}
-        </button>
-      </div>
+
+      {semEnvase ? (
+        <div className="state-message">Cadastre ao menos um tamanho de envase na fórmula pra poder lançar lotes.</div>
+      ) : (
+        <>
+          <div className="financeiro-busca">
+            <input className="clonar-input fabricacao-input-pequeno" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="time"
+              value={horaInicio}
+              onChange={(e) => setHoraInicio(e.target.value)}
+              title="Início"
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="time"
+              value={horaTermino}
+              onChange={(e) => setHoraTermino(e.target.value)}
+              title="Término"
+            />
+            <input
+              className="clonar-input"
+              placeholder="Observação (opcional)"
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+            />
+          </div>
+          <QuantidadesEnvaseInputs
+            embalagens={formula.embalagens}
+            quantidades={quantidades}
+            onMudar={(id, valor) => setQuantidades((atual) => ({ ...atual, [id]: valor }))}
+          />
+          <button type="button" className="btn-responder" disabled={salvando} onClick={registrar}>
+            <IconPlus size={15} /> {salvando ? "..." : "Registrar lote"}
+          </button>
+        </>
+      )}
 
       {lotes === null && <div className="state-message">Carregando lotes...</div>}
       {lotes?.length === 0 && <div className="state-message">Nenhum lote registrado ainda.</div>}
@@ -669,12 +750,14 @@ function LotesSecao({ formula }: { formula: Formula }) {
           <thead>
             <tr>
               <th>Data</th>
+              <th>Início</th>
+              <th>Término</th>
               <th className="financeiro-th-numero">Previsto</th>
               <th className="financeiro-th-numero">Real</th>
               <th className="financeiro-th-numero">Diferença</th>
               <th className="financeiro-th-numero">Valor</th>
               <th className="financeiro-th-numero">Custo real/kg</th>
-              <th className="financeiro-th-numero">Preço final pós-lote</th>
+              <th className="financeiro-th-numero">Envase (custo diluído)</th>
               <th>Observação</th>
               <th></th>
             </tr>
@@ -691,18 +774,30 @@ function LotesSecao({ formula }: { formula: Formula }) {
                       onChange={(e) => setEditData(e.target.value)}
                     />
                   </td>
+                  <td colSpan={2}>
+                    <div className="fabricacao-editor-topo" style={{ gridTemplateColumns: "1fr 1fr" }}>
+                      <input
+                        className="clonar-input fabricacao-input-pequeno"
+                        type="time"
+                        value={editHoraInicio}
+                        onChange={(e) => setEditHoraInicio(e.target.value)}
+                      />
+                      <input
+                        className="clonar-input fabricacao-input-pequeno"
+                        type="time"
+                        value={editHoraTermino}
+                        onChange={(e) => setEditHoraTermino(e.target.value)}
+                      />
+                    </div>
+                  </td>
                   <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
-                  <td className="financeiro-th-numero">
-                    <input
-                      className="clonar-input fabricacao-input-pequeno"
-                      value={editPesoReal}
-                      onChange={(e) => setEditPesoReal(e.target.value)}
+                  <td colSpan={4}>
+                    <QuantidadesEnvaseInputs
+                      embalagens={formula.embalagens}
+                      quantidades={editQuantidades}
+                      onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
                     />
                   </td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td>
                     <input
                       className="clonar-input"
@@ -722,6 +817,8 @@ function LotesSecao({ formula }: { formula: Formula }) {
               ) : (
                 <tr key={l.id}>
                   <td>{l.data}</td>
+                  <td className="financeiro-td-mudo">{l.horaInicio ?? "—"}</td>
+                  <td className="financeiro-td-mudo">{l.horaTermino ?? "—"}</td>
                   <td className="financeiro-th-numero">{l.pesoPrevistoKg}kg</td>
                   <td className="financeiro-th-numero">{l.pesoRealKg}kg</td>
                   <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
@@ -733,22 +830,16 @@ function LotesSecao({ formula }: { formula: Formula }) {
                     {l.diferencaKg >= 0 ? "+" : ""}
                     {formatCurrency(l.diferencaKg * formula.custoPorKg)}
                   </td>
+                  <td className="financeiro-th-numero">{formatCurrency(l.custoRealPorKg)}</td>
                   <td className="financeiro-th-numero">
-                    {formatCurrency((formula.custoPorKg * l.pesoPrevistoKg) / l.pesoRealKg)}
-                  </td>
-                  <td className="financeiro-th-numero">
-                    {formula.embalagens.length === 0 ? (
-                      <span className="financeiro-td-mudo">sem envase</span>
+                    {l.envases.length === 0 ? (
+                      <span className="financeiro-td-mudo">—</span>
                     ) : (
-                      formula.embalagens.map((e) => {
-                        const custoRealPorKg = (formula.custoPorKg * l.pesoPrevistoKg) / l.pesoRealKg;
-                        const precoFinal = e.pesoKg * custoRealPorKg + e.custoEmbalagem;
-                        return (
-                          <div key={e.id} className="fabricacao-lote-preco-linha">
-                            <span className="financeiro-td-mudo">{e.nome}:</span> {formatCurrency(precoFinal)}
-                          </div>
-                        );
-                      })
+                      l.envases.map((e) => (
+                        <div key={e.id} className="fabricacao-lote-preco-linha">
+                          {e.quantidade}× {e.nome}: {formatCurrency(e.custoDiluido)}/un
+                        </div>
+                      ))
                     )}
                   </td>
                   <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
@@ -1087,14 +1178,20 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
 
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [editData, setEditData] = useState("");
-  const [editPesoReal, setEditPesoReal] = useState("");
+  const [editHoraInicio, setEditHoraInicio] = useState("");
+  const [editHoraTermino, setEditHoraTermino] = useState("");
+  const [editFormulaEmbalagens, setEditFormulaEmbalagens] = useState<FormulaEmbalagem[] | null>(null);
+  const [editQuantidades, setEditQuantidades] = useState<Record<number, string>>({});
   const [editObservacao, setEditObservacao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
 
   const [mostrandoForm, setMostrandoForm] = useState(false);
   const [novaFormulaId, setNovaFormulaId] = useState<number | null>(null);
+  const [novaFormulaEmbalagens, setNovaFormulaEmbalagens] = useState<FormulaEmbalagem[] | null>(null);
   const [novaData, setNovaData] = useState(() => new Date().toISOString().slice(0, 10));
-  const [novoPesoReal, setNovoPesoReal] = useState("");
+  const [novaHoraInicio, setNovaHoraInicio] = useState("");
+  const [novaHoraTermino, setNovaHoraTermino] = useState("");
+  const [novasQuantidades, setNovasQuantidades] = useState<Record<number, string>>({});
   const [novaObservacao, setNovaObservacao] = useState("");
   const [salvandoNovo, setSalvandoNovo] = useState(false);
 
@@ -1105,6 +1202,15 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
   useEffect(() => {
     if (aberta && lotes === null) carregar();
   }, [aberta, lotes, carregar]);
+
+  useEffect(() => {
+    if (!mostrandoForm || novaFormulaId === null) return;
+    setNovaFormulaEmbalagens(null);
+    setNovasQuantidades({});
+    fetchFormula(novaFormulaId)
+      .then((f) => setNovaFormulaEmbalagens(f.embalagens))
+      .catch(() => setNovaFormulaEmbalagens([]));
+  }, [mostrandoForm, novaFormulaId]);
 
   function alternarAberta() {
     setAberta((atual) => {
@@ -1119,22 +1225,27 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
     setMostrandoForm(true);
     setNovaFormulaId(formulas[0]?.id ?? null);
     setNovaData(new Date().toISOString().slice(0, 10));
-    setNovoPesoReal("");
+    setNovaHoraInicio("");
+    setNovaHoraTermino("");
     setNovaObservacao("");
     setErro(null);
     if (lotes === null) carregar();
   }
 
   async function lancarLote() {
-    const peso = Number(novoPesoReal.replace(",", "."));
-    if (!novaFormulaId || !novaData || !Number.isFinite(peso) || peso <= 0) {
-      setErro("Escolha a fórmula e informe data e peso real válidos.");
+    if (!novaFormulaId || !novaData || !novaFormulaEmbalagens) {
+      setErro("Escolha a fórmula e informe a data.");
+      return;
+    }
+    const envases = envasesEntradaDeQuantidades(novaFormulaEmbalagens, novasQuantidades);
+    if (envases.length === 0) {
+      setErro("Informe ao menos uma quantidade de envase.");
       return;
     }
     setSalvandoNovo(true);
     setErro(null);
     try {
-      await registrarLote(novaFormulaId, novaData, peso, novaObservacao.trim() || null);
+      await registrarLote(novaFormulaId, novaData, novaHoraInicio || null, novaHoraTermino || null, envases, novaObservacao.trim() || null);
       setMostrandoForm(false);
       carregar();
     } catch (err) {
@@ -1144,24 +1255,51 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
     }
   }
 
-  function iniciarEdicao(lote: FormulaLoteComFormula) {
+  async function iniciarEdicao(lote: FormulaLoteComFormula) {
     setEditandoId(lote.id);
     setEditData(lote.data);
-    setEditPesoReal(String(lote.pesoRealKg));
+    setEditHoraInicio(lote.horaInicio ?? "");
+    setEditHoraTermino(lote.horaTermino ?? "");
     setEditObservacao(lote.observacao ?? "");
+    setEditFormulaEmbalagens(null);
+    setEditQuantidades({});
     setErro(null);
+    try {
+      const f = await fetchFormula(lote.formulaId);
+      setEditFormulaEmbalagens(f.embalagens);
+      const preenchidas: Record<number, string> = {};
+      for (const e of f.embalagens) {
+        const existente = lote.envases.find((le) => le.nome === e.nome);
+        if (existente) preenchidas[e.id] = String(existente.quantidade);
+      }
+      setEditQuantidades(preenchidas);
+    } catch {
+      setEditFormulaEmbalagens([]);
+    }
   }
 
   async function salvarEdicao(lote: FormulaLoteComFormula) {
-    const peso = Number(editPesoReal.replace(",", "."));
-    if (!editData || !Number.isFinite(peso) || peso <= 0) {
-      setErro("Informe data e peso real válidos.");
+    if (!editData || !editFormulaEmbalagens) {
+      setErro("Informe a data.");
+      return;
+    }
+    const envases = envasesEntradaDeQuantidades(editFormulaEmbalagens, editQuantidades);
+    if (envases.length === 0) {
+      setErro("Informe ao menos uma quantidade de envase.");
       return;
     }
     setSalvandoEdicao(true);
     setErro(null);
     try {
-      await atualizarLote(lote.formulaId, lote.id, editData, peso, editObservacao.trim() || null);
+      await atualizarLote(
+        lote.formulaId,
+        lote.id,
+        editData,
+        editHoraInicio || null,
+        editHoraTermino || null,
+        envases,
+        editObservacao.trim() || null
+      );
       setEditandoId(null);
       carregar();
     } catch (err) {
@@ -1206,43 +1344,66 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
           {erro && <div className="state-message state-error">{erro}</div>}
 
           {mostrandoForm && (
-            <div className="financeiro-busca">
-              <select
-                className="dashboard-select"
-                value={novaFormulaId ?? ""}
-                onChange={(e) => setNovaFormulaId(Number(e.target.value))}
-              >
-                {formulas.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome}
-                  </option>
-                ))}
-              </select>
-              <input
-                className="clonar-input fabricacao-input-pequeno"
-                type="date"
-                value={novaData}
-                onChange={(e) => setNovaData(e.target.value)}
-              />
-              <input
-                className="clonar-input fabricacao-input-pequeno"
-                placeholder="Peso real (kg)"
-                value={novoPesoReal}
-                onChange={(e) => setNovoPesoReal(e.target.value)}
-              />
-              <input
-                className="clonar-input"
-                placeholder="Observação (opcional)"
-                value={novaObservacao}
-                onChange={(e) => setNovaObservacao(e.target.value)}
-              />
-              <button type="button" className="btn-responder" disabled={salvandoNovo} onClick={lancarLote}>
-                {salvandoNovo ? "..." : "Salvar"}
-              </button>
-              <button type="button" className="btn-excluir" onClick={() => setMostrandoForm(false)}>
-                Cancelar
-              </button>
-            </div>
+            <>
+              <div className="financeiro-busca">
+                <select
+                  className="dashboard-select"
+                  value={novaFormulaId ?? ""}
+                  onChange={(e) => setNovaFormulaId(Number(e.target.value))}
+                >
+                  {formulas.map((f) => (
+                    <option key={f.id} value={f.id}>
+                      {f.nome}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  className="clonar-input fabricacao-input-pequeno"
+                  type="date"
+                  value={novaData}
+                  onChange={(e) => setNovaData(e.target.value)}
+                />
+                <input
+                  className="clonar-input fabricacao-input-pequeno"
+                  type="time"
+                  value={novaHoraInicio}
+                  onChange={(e) => setNovaHoraInicio(e.target.value)}
+                  title="Início"
+                />
+                <input
+                  className="clonar-input fabricacao-input-pequeno"
+                  type="time"
+                  value={novaHoraTermino}
+                  onChange={(e) => setNovaHoraTermino(e.target.value)}
+                  title="Término"
+                />
+                <input
+                  className="clonar-input"
+                  placeholder="Observação (opcional)"
+                  value={novaObservacao}
+                  onChange={(e) => setNovaObservacao(e.target.value)}
+                />
+              </div>
+              {novaFormulaEmbalagens === null ? (
+                <div className="state-message">Carregando tamanhos de envase...</div>
+              ) : novaFormulaEmbalagens.length === 0 ? (
+                <div className="state-message">Essa fórmula não tem nenhum tamanho de envase cadastrado ainda.</div>
+              ) : (
+                <QuantidadesEnvaseInputs
+                  embalagens={novaFormulaEmbalagens}
+                  quantidades={novasQuantidades}
+                  onMudar={(id, valor) => setNovasQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                />
+              )}
+              <div className="fabricacao-editor-acoes">
+                <button type="button" className="btn-responder" disabled={salvandoNovo} onClick={lancarLote}>
+                  {salvandoNovo ? "..." : "Salvar"}
+                </button>
+                <button type="button" className="btn-excluir" onClick={() => setMostrandoForm(false)}>
+                  Cancelar
+                </button>
+              </div>
+            </>
           )}
 
           {lotes === null && <div className="state-message">Carregando...</div>}
@@ -1253,9 +1414,14 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                 <tr>
                   <th>Fórmula</th>
                   <th>Data</th>
+                  <th>Início</th>
+                  <th>Término</th>
                   <th className="financeiro-th-numero">Previsto</th>
                   <th className="financeiro-th-numero">Real</th>
                   <th className="financeiro-th-numero">Diferença</th>
+                  <th className="financeiro-th-numero">Valor</th>
+                  <th className="financeiro-th-numero">Custo real/kg</th>
+                  <th className="financeiro-th-numero">Envase (custo diluído)</th>
                   <th>Observação</th>
                   <th></th>
                 </tr>
@@ -1273,15 +1439,34 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                           onChange={(e) => setEditData(e.target.value)}
                         />
                       </td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
-                      <td className="financeiro-th-numero">
+                      <td>
                         <input
                           className="clonar-input fabricacao-input-pequeno"
-                          value={editPesoReal}
-                          onChange={(e) => setEditPesoReal(e.target.value)}
+                          type="time"
+                          value={editHoraInicio}
+                          onChange={(e) => setEditHoraInicio(e.target.value)}
                         />
                       </td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                      <td>
+                        <input
+                          className="clonar-input fabricacao-input-pequeno"
+                          type="time"
+                          value={editHoraTermino}
+                          onChange={(e) => setEditHoraTermino(e.target.value)}
+                        />
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
+                      <td colSpan={4}>
+                        {editFormulaEmbalagens === null ? (
+                          <span className="financeiro-td-mudo">Carregando...</span>
+                        ) : (
+                          <QuantidadesEnvaseInputs
+                            embalagens={editFormulaEmbalagens}
+                            quantidades={editQuantidades}
+                            onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                          />
+                        )}
+                      </td>
                       <td>
                         <input
                           className="clonar-input"
@@ -1302,12 +1487,33 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                     <tr key={l.id}>
                       <td>{l.formulaNome}</td>
                       <td>{l.data}</td>
+                      <td className="financeiro-td-mudo">{l.horaInicio ?? "—"}</td>
+                      <td className="financeiro-td-mudo">{l.horaTermino ?? "—"}</td>
                       <td className="financeiro-th-numero">{l.pesoPrevistoKg}kg</td>
                       <td className="financeiro-th-numero">{l.pesoRealKg}kg</td>
                       <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
                         {l.diferencaKg >= 0 ? "+" : ""}
                         {l.diferencaKg.toFixed(2)}kg
                         {l.diferencaPercentual !== null && ` (${l.diferencaPercentual >= 0 ? "+" : ""}${l.diferencaPercentual.toFixed(1)}%)`}
+                      </td>
+                      <td className={`financeiro-th-numero ${l.diferencaKg >= 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}`}>
+                        {l.diferencaKg >= 0 ? "+" : ""}
+                        {(() => {
+                          const formula = formulas.find((f) => f.id === l.formulaId);
+                          return formatCurrency(l.diferencaKg * (formula?.custoPorKg ?? 0));
+                        })()}
+                      </td>
+                      <td className="financeiro-th-numero">{formatCurrency(l.custoRealPorKg)}</td>
+                      <td className="financeiro-th-numero">
+                        {l.envases.length === 0 ? (
+                          <span className="financeiro-td-mudo">—</span>
+                        ) : (
+                          l.envases.map((e) => (
+                            <div key={e.id} className="fabricacao-lote-preco-linha">
+                              {e.quantidade}× {e.nome}: {formatCurrency(e.custoDiluido)}/un
+                            </div>
+                          ))
+                        )}
                       </td>
                       <td className="financeiro-td-mudo">{l.observacao ?? "—"}</td>
                       <td>

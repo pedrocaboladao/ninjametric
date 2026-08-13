@@ -3566,6 +3566,16 @@
   align-items: center;
 }
 
+.fabricacao-lote-quantidades {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 14px;
+  background: var(--bg-panel-alt);
+  border-radius: 10px;
+  padding: 12px 16px;
+}
+
 .fabricacao-lote-preco-linha {
   white-space: nowrap;
 }

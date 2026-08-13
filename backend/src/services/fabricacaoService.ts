@@ -41,15 +41,28 @@ export interface FormulaEmbalagem {
   custoFinal: number;
 }
 
+export interface FormulaLoteEnvase {
+  id: number;
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  quantidade: number;
+  custoDiluido: number;
+}
+
 export interface FormulaLote {
   id: number;
   formulaId: number;
   data: string;
+  horaInicio: string | null;
+  horaTermino: string | null;
   pesoPrevistoKg: number;
   pesoRealKg: number;
   observacao: string | null;
   diferencaKg: number;
   diferencaPercentual: number | null;
+  custoRealPorKg: number;
+  envases: FormulaLoteEnvase[];
   criadoEm: string;
 }
 
@@ -518,46 +531,121 @@ export async function excluirFormula(id: number): Promise<void> {
   await pool.query("DELETE FROM formulas WHERE id = $1", [id]);
 }
 
-function mapearLote(r: {
+interface LoteRow {
   id: number;
   formula_id: number;
   data: string;
+  hora_inicio: string | null;
+  hora_termino: string | null;
   peso_previsto_kg: string;
   peso_real_kg: string;
   observacao: string | null;
   criado_em: string;
-}): FormulaLote {
+}
+
+interface EnvaseLoteBruto {
+  id: number;
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  quantidade: number;
+}
+
+// custoPorKgTeorico é o custo/kg da FÓRMULA (calculado a partir da receita)
+// — custoRealPorKg do lote é esse valor "esticado ou encolhido" pelo
+// rendimento real: custo total do lote (fixo, da receita) dividido pelo
+// peso que realmente saiu. É o que "dilui" o déficit/superávit no custo de
+// cada envase (custoDiluido = peso do envase × custoRealPorKg + embalagem).
+function mapearLote(r: LoteRow, envasesBrutos: EnvaseLoteBruto[], custoPorKgTeorico: number): FormulaLote {
   const pesoPrevistoKg = Number(r.peso_previsto_kg);
   const pesoRealKg = Number(r.peso_real_kg);
   const diferencaKg = pesoRealKg - pesoPrevistoKg;
+  const custoRealPorKg = pesoRealKg > 0 ? (custoPorKgTeorico * pesoPrevistoKg) / pesoRealKg : 0;
   return {
     id: r.id,
     formulaId: r.formula_id,
     data: dataParaISO(r.data),
+    horaInicio: r.hora_inicio ? r.hora_inicio.slice(0, 5) : null,
+    horaTermino: r.hora_termino ? r.hora_termino.slice(0, 5) : null,
     pesoPrevistoKg,
     pesoRealKg,
     observacao: r.observacao,
     diferencaKg,
     diferencaPercentual: pesoPrevistoKg > 0 ? (diferencaKg / pesoPrevistoKg) * 100 : null,
+    custoRealPorKg,
+    envases: envasesBrutos.map((e) => ({ ...e, custoDiluido: e.pesoKg * custoRealPorKg + e.custoEmbalagem })),
     criadoEm: r.criado_em,
   };
 }
 
-export async function listarLotes(formulaId: number): Promise<FormulaLote[]> {
+async function obterCustosPorKgTodasFormulas(): Promise<Map<number, number>> {
+  const { rows } = await pool.query<{ id: number }>("SELECT id FROM formulas");
+  const itensPorFormula = agruparPorFormula(await buscarTodosItens());
+  return calcularCustoPorKgTodasFormulas(
+    rows.map((r) => r.id),
+    itensPorFormula
+  );
+}
+
+async function buscarEnvasesPorLote(loteIds: number[]): Promise<Map<number, EnvaseLoteBruto[]>> {
+  const mapa = new Map<number, EnvaseLoteBruto[]>();
+  if (loteIds.length === 0) return mapa;
   const { rows } = await pool.query<{
     id: number;
-    formula_id: number;
-    data: string;
-    peso_previsto_kg: string;
-    peso_real_kg: string;
-    observacao: string | null;
-    criado_em: string;
+    lote_id: number;
+    nome: string;
+    peso_kg: string;
+    custo_embalagem: string;
+    quantidade: number;
   }>(
-    `SELECT id, formula_id, data, peso_previsto_kg, peso_real_kg, observacao, criado_em
-     FROM formula_lotes WHERE formula_id = $1 ORDER BY data DESC, id DESC`,
-    [formulaId]
+    "SELECT id, lote_id, nome, peso_kg, custo_embalagem, quantidade FROM formula_lote_envases WHERE lote_id = ANY($1) ORDER BY id",
+    [loteIds]
   );
-  return rows.map(mapearLote);
+  for (const r of rows) {
+    if (!mapa.has(r.lote_id)) mapa.set(r.lote_id, []);
+    mapa.get(r.lote_id)!.push({
+      id: r.id,
+      nome: r.nome,
+      pesoKg: Number(r.peso_kg),
+      custoEmbalagem: Number(r.custo_embalagem),
+      quantidade: r.quantidade,
+    });
+  }
+  return mapa;
+}
+
+export interface EnvaseLoteEntrada {
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  quantidade: number;
+}
+
+async function salvarEnvasesLote(loteId: number, envases: EnvaseLoteEntrada[]): Promise<EnvaseLoteBruto[]> {
+  await pool.query("DELETE FROM formula_lote_envases WHERE lote_id = $1", [loteId]);
+  const inseridos: EnvaseLoteBruto[] = [];
+  for (const e of envases) {
+    const { rows } = await pool.query<{ id: number }>(
+      "INSERT INTO formula_lote_envases (lote_id, nome, peso_kg, custo_embalagem, quantidade) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+      [loteId, e.nome, e.pesoKg, e.custoEmbalagem, e.quantidade]
+    );
+    inseridos.push({ id: rows[0].id, nome: e.nome, pesoKg: e.pesoKg, custoEmbalagem: e.custoEmbalagem, quantidade: e.quantidade });
+  }
+  return inseridos;
+}
+
+export async function listarLotes(formulaId: number): Promise<FormulaLote[]> {
+  const [lotesRes, custoPorKgMap] = await Promise.all([
+    pool.query<LoteRow>(
+      `SELECT id, formula_id, data, hora_inicio, hora_termino, peso_previsto_kg, peso_real_kg, observacao, criado_em
+       FROM formula_lotes WHERE formula_id = $1 ORDER BY data DESC, id DESC`,
+      [formulaId]
+    ),
+    obterCustosPorKgTodasFormulas(),
+  ]);
+  const envasesPorLote = await buscarEnvasesPorLote(lotesRes.rows.map((r) => r.id));
+  const custoPorKgTeorico = custoPorKgMap.get(formulaId) ?? 0;
+  return lotesRes.rows.map((r) => mapearLote(r, envasesPorLote.get(r.id) ?? [], custoPorKgTeorico));
 }
 
 // Todos os lotes de todas as fórmulas juntos, com o nome da fórmula pra
@@ -565,31 +653,35 @@ export async function listarLotes(formulaId: number): Promise<FormulaLote[]> {
 // tela principal, que dá uma visão geral sem precisar abrir fórmula por
 // fórmula.
 export async function listarTodosLotes(): Promise<FormulaLoteComFormula[]> {
-  const { rows } = await pool.query<{
-    id: number;
-    formula_id: number;
-    formula_nome: string;
-    data: string;
-    peso_previsto_kg: string;
-    peso_real_kg: string;
-    observacao: string | null;
-    criado_em: string;
-  }>(
-    `SELECT fl.id, fl.formula_id, f.nome AS formula_nome, fl.data, fl.peso_previsto_kg, fl.peso_real_kg, fl.observacao, fl.criado_em
-     FROM formula_lotes fl
-     JOIN formulas f ON f.id = fl.formula_id
-     ORDER BY fl.data DESC, fl.id DESC`
-  );
-  return rows.map((r) => ({ ...mapearLote(r), formulaNome: r.formula_nome }));
+  const [lotesRes, custoPorKgMap] = await Promise.all([
+    pool.query<LoteRow & { formula_nome: string }>(
+      `SELECT fl.id, fl.formula_id, f.nome AS formula_nome, fl.data, fl.hora_inicio, fl.hora_termino,
+              fl.peso_previsto_kg, fl.peso_real_kg, fl.observacao, fl.criado_em
+       FROM formula_lotes fl
+       JOIN formulas f ON f.id = fl.formula_id
+       ORDER BY fl.data DESC, fl.id DESC`
+    ),
+    obterCustosPorKgTodasFormulas(),
+  ]);
+  const envasesPorLote = await buscarEnvasesPorLote(lotesRes.rows.map((r) => r.id));
+  return lotesRes.rows.map((r) => ({
+    ...mapearLote(r, envasesPorLote.get(r.id) ?? [], custoPorKgMap.get(r.formula_id) ?? 0),
+    formulaNome: r.formula_nome,
+  }));
 }
 
 // peso_previsto_kg é sempre o peso_lote_kg ATUAL da fórmula no momento do
 // registro (snapshot) — se a fórmula mudar de peso depois, os lotes já
 // registrados continuam comparando com o previsto de quando rodaram.
+// peso_real_kg não é mais digitado direto — é a soma de peso×quantidade
+// de cada tamanho de envase realmente preenchido (um lote pode virar mais
+// de um tamanho, ex.: parte em balde 18kg, parte em galão 4kg).
 export async function registrarLote(
   formulaId: number,
   data: string,
-  pesoRealKg: number,
+  horaInicio: string | null,
+  horaTermino: string | null,
+  envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
   const { rows: formulaRows } = await pool.query<{ peso_lote_kg: string }>(
@@ -598,49 +690,44 @@ export async function registrarLote(
   );
   if (formulaRows.length === 0) throw new Error("Fórmula não encontrada.");
   const pesoPrevistoKg = Number(formulaRows[0].peso_lote_kg);
+  const pesoRealKg = envases.reduce((soma, e) => soma + e.pesoKg * e.quantidade, 0);
+  if (pesoRealKg <= 0) throw new Error("Informe ao menos uma quantidade de envase preenchida.");
 
-  const { rows } = await pool.query<{
-    id: number;
-    formula_id: number;
-    data: string;
-    peso_previsto_kg: string;
-    peso_real_kg: string;
-    observacao: string | null;
-    criado_em: string;
-  }>(
-    `INSERT INTO formula_lotes (formula_id, data, peso_previsto_kg, peso_real_kg, observacao)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, formula_id, data, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
-    [formulaId, data, pesoPrevistoKg, pesoRealKg, observacao]
+  const { rows } = await pool.query<LoteRow>(
+    `INSERT INTO formula_lotes (formula_id, data, hora_inicio, hora_termino, peso_previsto_kg, peso_real_kg, observacao)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
+     RETURNING id, formula_id, data, hora_inicio, hora_termino, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
+    [formulaId, data, horaInicio, horaTermino, pesoPrevistoKg, pesoRealKg, observacao]
   );
-  return mapearLote(rows[0]);
+  const envasesSalvos = await salvarEnvasesLote(rows[0].id, envases);
+  const custoPorKgMap = await obterCustosPorKgTodasFormulas();
+  return mapearLote(rows[0], envasesSalvos, custoPorKgMap.get(formulaId) ?? 0);
 }
 
 // peso_previsto_kg não é editável de propósito — é o snapshot de quando o
 // lote foi registrado, editar só o que a pessoa realmente pode ter errado
-// ao digitar (data, peso real, observação).
+// ao digitar (data, horários, quantidades de envase, observação).
 export async function atualizarLote(
   id: number,
   data: string,
-  pesoRealKg: number,
+  horaInicio: string | null,
+  horaTermino: string | null,
+  envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
-  const { rows } = await pool.query<{
-    id: number;
-    formula_id: number;
-    data: string;
-    peso_previsto_kg: string;
-    peso_real_kg: string;
-    observacao: string | null;
-    criado_em: string;
-  }>(
-    `UPDATE formula_lotes SET data = $2, peso_real_kg = $3, observacao = $4
+  const pesoRealKg = envases.reduce((soma, e) => soma + e.pesoKg * e.quantidade, 0);
+  if (pesoRealKg <= 0) throw new Error("Informe ao menos uma quantidade de envase preenchida.");
+
+  const { rows } = await pool.query<LoteRow>(
+    `UPDATE formula_lotes SET data = $2, hora_inicio = $3, hora_termino = $4, peso_real_kg = $5, observacao = $6
      WHERE id = $1
-     RETURNING id, formula_id, data, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
-    [id, data, pesoRealKg, observacao]
+     RETURNING id, formula_id, data, hora_inicio, hora_termino, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
+    [id, data, horaInicio, horaTermino, pesoRealKg, observacao]
   );
   if (rows.length === 0) throw new Error("Lote não encontrado.");
-  return mapearLote(rows[0]);
+  const envasesSalvos = await salvarEnvasesLote(id, envases);
+  const custoPorKgMap = await obterCustosPorKgTodasFormulas();
+  return mapearLote(rows[0], envasesSalvos, custoPorKgMap.get(rows[0].formula_id) ?? 0);
 }
 
 export async function excluirLote(id: number): Promise<void> {

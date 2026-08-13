@@ -38,15 +38,28 @@ export interface FormulaEmbalagem {
   custoFinal: number;
 }
 
+export interface FormulaLoteEnvase {
+  id: number;
+  nome: string;
+  pesoKg: number;
+  custoEmbalagem: number;
+  quantidade: number;
+  custoDiluido: number;
+}
+
 export interface FormulaLote {
   id: number;
   formulaId: number;
   data: string;
+  horaInicio: string | null;
+  horaTermino: string | null;
   pesoPrevistoKg: number;
   pesoRealKg: number;
   observacao: string | null;
   diferencaKg: number;
   diferencaPercentual: number | null;
+  custoRealPorKg: number;
+  envases: FormulaLoteEnvase[];
   criadoEm: string;
 }
 
