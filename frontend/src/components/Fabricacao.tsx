@@ -1080,7 +1080,7 @@ function FormulaEditor({
   );
 }
 
-function HistoricoLotesGlobalSecao() {
+function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) {
   const [aberta, setAberta] = useState(() => localStorage.getItem("fabricacao-historico-lotes-aberta") === "true");
   const [lotes, setLotes] = useState<FormulaLoteComFormula[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
@@ -1090,6 +1090,13 @@ function HistoricoLotesGlobalSecao() {
   const [editPesoReal, setEditPesoReal] = useState("");
   const [editObservacao, setEditObservacao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  const [mostrandoForm, setMostrandoForm] = useState(false);
+  const [novaFormulaId, setNovaFormulaId] = useState<number | null>(null);
+  const [novaData, setNovaData] = useState(() => new Date().toISOString().slice(0, 10));
+  const [novoPesoReal, setNovoPesoReal] = useState("");
+  const [novaObservacao, setNovaObservacao] = useState("");
+  const [salvandoNovo, setSalvandoNovo] = useState(false);
 
   const carregar = useCallback(() => {
     fetchTodosLotes().then(setLotes).catch(() => setLotes([]));
@@ -1106,6 +1113,35 @@ function HistoricoLotesGlobalSecao() {
       if (novo && lotes === null) carregar();
       return novo;
     });
+  }
+
+  function abrirFormularioNovo() {
+    setMostrandoForm(true);
+    setNovaFormulaId(formulas[0]?.id ?? null);
+    setNovaData(new Date().toISOString().slice(0, 10));
+    setNovoPesoReal("");
+    setNovaObservacao("");
+    setErro(null);
+    if (lotes === null) carregar();
+  }
+
+  async function lancarLote() {
+    const peso = Number(novoPesoReal.replace(",", "."));
+    if (!novaFormulaId || !novaData || !Number.isFinite(peso) || peso <= 0) {
+      setErro("Escolha a fórmula e informe data e peso real válidos.");
+      return;
+    }
+    setSalvandoNovo(true);
+    setErro(null);
+    try {
+      await registrarLote(novaFormulaId, novaData, peso, novaObservacao.trim() || null);
+      setMostrandoForm(false);
+      carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao lançar lote.");
+    } finally {
+      setSalvandoNovo(false);
+    }
   }
 
   function iniciarEdicao(lote: FormulaLoteComFormula) {
@@ -1146,17 +1182,69 @@ function HistoricoLotesGlobalSecao() {
 
   return (
     <div className="fabricacao-secao">
-      <button type="button" className="fabricacao-secao-toggle" onClick={alternarAberta}>
-        <IconChevron open={aberta} />
-        <IconClock size={16} />
-        <h2>Histórico de lotes</h2>
-        {lotes !== null && <span className="financeiro-td-mudo">({lotes.length})</span>}
-      </button>
+      <div className="fabricacao-secao-titulo-acao">
+        <button type="button" className="fabricacao-secao-toggle" onClick={alternarAberta}>
+          <IconChevron open={aberta} />
+          <IconClock size={16} />
+          <h2>Histórico de lotes</h2>
+          {lotes !== null && <span className="financeiro-td-mudo">({lotes.length})</span>}
+        </button>
+        <button
+          type="button"
+          className="btn-responder"
+          disabled={formulas.length === 0}
+          title={formulas.length === 0 ? "Cadastre ao menos uma fórmula primeiro" : undefined}
+          onClick={abrirFormularioNovo}
+        >
+          <IconPlus size={15} /> Lançar lote
+        </button>
+      </div>
 
-      {aberta && (
+      {(aberta || mostrandoForm) && (
         <>
           <p className="painel-sub">Todos os lotes de produção de todas as fórmulas juntos, do mais recente pro mais antigo.</p>
           {erro && <div className="state-message state-error">{erro}</div>}
+
+          {mostrandoForm && (
+            <div className="financeiro-busca">
+              <select
+                className="dashboard-select"
+                value={novaFormulaId ?? ""}
+                onChange={(e) => setNovaFormulaId(Number(e.target.value))}
+              >
+                {formulas.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.nome}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="clonar-input fabricacao-input-pequeno"
+                type="date"
+                value={novaData}
+                onChange={(e) => setNovaData(e.target.value)}
+              />
+              <input
+                className="clonar-input fabricacao-input-pequeno"
+                placeholder="Peso real (kg)"
+                value={novoPesoReal}
+                onChange={(e) => setNovoPesoReal(e.target.value)}
+              />
+              <input
+                className="clonar-input"
+                placeholder="Observação (opcional)"
+                value={novaObservacao}
+                onChange={(e) => setNovaObservacao(e.target.value)}
+              />
+              <button type="button" className="btn-responder" disabled={salvandoNovo} onClick={lancarLote}>
+                {salvandoNovo ? "..." : "Salvar"}
+              </button>
+              <button type="button" className="btn-excluir" onClick={() => setMostrandoForm(false)}>
+                Cancelar
+              </button>
+            </div>
+          )}
+
           {lotes === null && <div className="state-message">Carregando...</div>}
           {lotes?.length === 0 && <div className="state-message">Nenhum lote registrado ainda.</div>}
           {lotes && lotes.length > 0 && (
@@ -1428,7 +1516,7 @@ export function Fabricacao() {
         )}
       </div>
 
-      <HistoricoLotesGlobalSecao />
+      <HistoricoLotesGlobalSecao formulas={formulas ?? []} />
     </div>
   );
 }
