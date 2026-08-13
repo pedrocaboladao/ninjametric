@@ -22,7 +22,7 @@ import {
 import { fetchLojas, type Loja } from "../api/lojas";
 import type { MateriaPrima, MateriaPrimaCompra, FormulaResumo, Formula, FormulaLote } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench } from "./icons";
+import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench, IconChevron } from "./icons";
 
 function MateriasPrimasSecao({
   materiasPrimas,
@@ -38,6 +38,15 @@ function MateriasPrimasSecao({
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [custoEditado, setCustoEditado] = useState("");
   const [comprasAbertasId, setComprasAbertasId] = useState<number | null>(null);
+  const [aberta, setAberta] = useState(() => localStorage.getItem("fabricacao-materias-primas-aberta") !== "false");
+
+  function alternarAberta() {
+    setAberta((atual) => {
+      const novo = !atual;
+      localStorage.setItem("fabricacao-materias-primas-aberta", String(novo));
+      return novo;
+    });
+  }
 
   async function adicionar() {
     const custo = Number(novoCusto.replace(",", "."));
@@ -82,77 +91,92 @@ function MateriasPrimasSecao({
 
   return (
     <div className="fabricacao-secao">
-      <h2>Matérias-primas</h2>
-      <p className="painel-sub">
-        Cadastro único, reaproveitado em quantas fórmulas precisar — mudar o custo aqui atualiza todas as fórmulas
-        que usam essa matéria-prima. Registre as compras reais (valor pago + frete) pra manter o custo/kg em dia.
-      </p>
-      {erro && <div className="state-message state-error">{erro}</div>}
-      <div className="financeiro-busca">
-        <input className="clonar-input" placeholder="Nome da matéria-prima" value={novoNome} onChange={(e) => setNovoNome(e.target.value)} />
-        <input
-          className="clonar-input"
-          placeholder="Custo por kg (R$)"
-          value={novoCusto}
-          onChange={(e) => setNovoCusto(e.target.value)}
-        />
-        <button type="button" className="btn-responder" disabled={salvando} onClick={adicionar}>
-          <IconPlus size={15} /> {salvando ? "..." : "Adicionar"}
-        </button>
-      </div>
+      <button type="button" className="fabricacao-secao-toggle" onClick={alternarAberta}>
+        <IconChevron open={aberta} />
+        <h2>Matérias-primas</h2>
+        <span className="financeiro-td-mudo">({materiasPrimas.length})</span>
+      </button>
 
-      {materiasPrimas.length === 0 && <div className="state-message">Nenhuma matéria-prima cadastrada ainda.</div>}
-      {materiasPrimas.map((mp) => (
-        <div key={mp.id}>
-          <div className="financeiro-impostos-linha">
-            <span>{mp.nome}</span>
-            {editandoId === mp.id ? (
-              <div className="financeiro-impostos-campo">
-                <input
-                  className="clonar-input fabricacao-input-pequeno"
-                  value={custoEditado}
-                  onChange={(e) => setCustoEditado(e.target.value)}
-                  autoFocus
-                />
-                <button type="button" className="btn-responder" onClick={() => salvarEdicao(mp.id, mp.nome)}>
-                  Salvar
-                </button>
-                <button type="button" className="btn-excluir" onClick={() => setEditandoId(null)}>
-                  Cancelar
-                </button>
-              </div>
-            ) : (
-              <div className="financeiro-impostos-campo">
-                <button
-                  type="button"
-                  className="fabricacao-custo-botao"
-                  onClick={() => {
-                    setEditandoId(mp.id);
-                    setCustoEditado(String(mp.custoPorKg));
-                  }}
-                  title="Clique pra editar"
-                >
-                  {formatCurrency(mp.custoPorKg)}/kg
-                </button>
-                <button
-                  type="button"
-                  className="btn-excluir"
-                  onClick={() => setComprasAbertasId(comprasAbertasId === mp.id ? null : mp.id)}
-                  title="Compras"
-                >
-                  <IconMoney size={14} />
-                </button>
-                <button type="button" className="btn-excluir" onClick={() => excluir(mp.id)} title="Excluir">
-                  <IconTrash size={14} />
-                </button>
-              </div>
-            )}
+      {aberta && (
+        <>
+          <p className="painel-sub">
+            Cadastro único, reaproveitado em quantas fórmulas precisar — mudar o custo aqui atualiza todas as
+            fórmulas que usam essa matéria-prima. Registre as compras reais (valor pago + frete) pra manter o
+            custo/kg em dia.
+          </p>
+          {erro && <div className="state-message state-error">{erro}</div>}
+          <div className="financeiro-busca">
+            <input
+              className="clonar-input"
+              placeholder="Nome da matéria-prima"
+              value={novoNome}
+              onChange={(e) => setNovoNome(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Custo por kg (R$)"
+              value={novoCusto}
+              onChange={(e) => setNovoCusto(e.target.value)}
+            />
+            <button type="button" className="btn-responder" disabled={salvando} onClick={adicionar}>
+              <IconPlus size={15} /> {salvando ? "..." : "Adicionar"}
+            </button>
           </div>
-          {comprasAbertasId === mp.id && (
-            <ComprasMateriaPrima materiaPrima={mp} onCustoAtualizado={onMudou} />
-          )}
-        </div>
-      ))}
+
+          {materiasPrimas.length === 0 && <div className="state-message">Nenhuma matéria-prima cadastrada ainda.</div>}
+          {materiasPrimas.map((mp) => (
+            <div key={mp.id}>
+              <div className="financeiro-impostos-linha">
+                <span>{mp.nome}</span>
+                {editandoId === mp.id ? (
+                  <div className="financeiro-impostos-campo">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={custoEditado}
+                      onChange={(e) => setCustoEditado(e.target.value)}
+                      autoFocus
+                    />
+                    <button type="button" className="btn-responder" onClick={() => salvarEdicao(mp.id, mp.nome)}>
+                      Salvar
+                    </button>
+                    <button type="button" className="btn-excluir" onClick={() => setEditandoId(null)}>
+                      Cancelar
+                    </button>
+                  </div>
+                ) : (
+                  <div className="financeiro-impostos-campo">
+                    <button
+                      type="button"
+                      className="fabricacao-custo-botao"
+                      onClick={() => {
+                        setEditandoId(mp.id);
+                        setCustoEditado(String(mp.custoPorKg));
+                      }}
+                      title="Clique pra editar"
+                    >
+                      {formatCurrency(mp.custoPorKg)}/kg
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-excluir"
+                      onClick={() => setComprasAbertasId(comprasAbertasId === mp.id ? null : mp.id)}
+                      title="Compras"
+                    >
+                      <IconMoney size={14} />
+                    </button>
+                    <button type="button" className="btn-excluir" onClick={() => excluir(mp.id)} title="Excluir">
+                      <IconTrash size={14} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              {comprasAbertasId === mp.id && (
+                <ComprasMateriaPrima materiaPrima={mp} onCustoAtualizado={onMudou} />
+              )}
+            </div>
+          ))}
+        </>
+      )}
     </div>
   );
 }
