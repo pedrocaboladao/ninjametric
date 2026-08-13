@@ -681,18 +681,11 @@ export async function registrarLote(
   data: string,
   horaInicio: string | null,
   horaTermino: string | null,
+  pesoPrevistoKg: number,
+  pesoRealKg: number,
   envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
-  const { rows: formulaRows } = await pool.query<{ peso_lote_kg: string }>(
-    "SELECT peso_lote_kg FROM formulas WHERE id = $1",
-    [formulaId]
-  );
-  if (formulaRows.length === 0) throw new Error("Fórmula não encontrada.");
-  const pesoPrevistoKg = Number(formulaRows[0].peso_lote_kg);
-  const pesoRealKg = envases.reduce((soma, e) => soma + e.pesoKg * e.quantidade, 0);
-  if (pesoRealKg <= 0) throw new Error("Informe ao menos uma quantidade de envase preenchida.");
-
   const { rows } = await pool.query<LoteRow>(
     `INSERT INTO formula_lotes (formula_id, data, hora_inicio, hora_termino, peso_previsto_kg, peso_real_kg, observacao)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -704,25 +697,26 @@ export async function registrarLote(
   return mapearLote(rows[0], envasesSalvos, custoPorKgMap.get(formulaId) ?? 0);
 }
 
-// peso_previsto_kg não é editável de propósito — é o snapshot de quando o
-// lote foi registrado, editar só o que a pessoa realmente pode ter errado
-// ao digitar (data, horários, quantidades de envase, observação).
+// Previsto e real são digitados direto, editáveis a qualquer momento — na
+// prática o rateio por tamanho de envase raramente fecha exatamente com o
+// peso real (sempre sobra alguma coisa não classificada), então os
+// envases são só um detalhamento complementar pro cálculo de custo
+// diluído por unidade, não a fonte da verdade do peso real do lote.
 export async function atualizarLote(
   id: number,
   data: string,
   horaInicio: string | null,
   horaTermino: string | null,
+  pesoPrevistoKg: number,
+  pesoRealKg: number,
   envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
-  const pesoRealKg = envases.reduce((soma, e) => soma + e.pesoKg * e.quantidade, 0);
-  if (pesoRealKg <= 0) throw new Error("Informe ao menos uma quantidade de envase preenchida.");
-
   const { rows } = await pool.query<LoteRow>(
-    `UPDATE formula_lotes SET data = $2, hora_inicio = $3, hora_termino = $4, peso_real_kg = $5, observacao = $6
+    `UPDATE formula_lotes SET data = $2, hora_inicio = $3, hora_termino = $4, peso_previsto_kg = $5, peso_real_kg = $6, observacao = $7
      WHERE id = $1
      RETURNING id, formula_id, data, hora_inicio, hora_termino, peso_previsto_kg, peso_real_kg, observacao, criado_em`,
-    [id, data, horaInicio, horaTermino, pesoRealKg, observacao]
+    [id, data, horaInicio, horaTermino, pesoPrevistoKg, pesoRealKg, observacao]
   );
   if (rows.length === 0) throw new Error("Lote não encontrado.");
   const envasesSalvos = await salvarEnvasesLote(id, envases);

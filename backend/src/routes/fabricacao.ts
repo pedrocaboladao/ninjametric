@@ -402,9 +402,19 @@ fabricacaoRouter.post("/formulas/:id/lotes", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { data, horaInicio, horaTermino, envases, observacao } = req.body ?? {};
+  const { data, horaInicio, horaTermino, pesoPrevistoKg, pesoRealKg, envases, observacao } = req.body ?? {};
+  const previsto = Number(pesoPrevistoKg);
+  const real = Number(pesoRealKg);
   if (typeof data !== "string" || !data.trim()) {
     res.status(400).json({ error: "Informe a data do lote." });
+    return;
+  }
+  if (!Number.isFinite(previsto) || previsto <= 0) {
+    res.status(400).json({ error: "Peso previsto inválido." });
+    return;
+  }
+  if (!Number.isFinite(real) || real <= 0) {
+    res.status(400).json({ error: "Peso real inválido." });
     return;
   }
   const envasesValidados = validarEnvasesLote(envases);
@@ -419,6 +429,8 @@ fabricacaoRouter.post("/formulas/:id/lotes", async (req, res) => {
         data,
         horarioOuNulo(horaInicio),
         horarioOuNulo(horaTermino),
+        previsto,
+        real,
         envasesValidados,
         typeof observacao === "string" && observacao.trim() ? observacao.trim() : null
       )
@@ -434,9 +446,19 @@ fabricacaoRouter.put("/formulas/:id/lotes/:loteId", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { data, horaInicio, horaTermino, envases, observacao } = req.body ?? {};
+  const { data, horaInicio, horaTermino, pesoPrevistoKg, pesoRealKg, envases, observacao } = req.body ?? {};
+  const previsto = Number(pesoPrevistoKg);
+  const real = Number(pesoRealKg);
   if (typeof data !== "string" || !data.trim()) {
     res.status(400).json({ error: "Informe a data do lote." });
+    return;
+  }
+  if (!Number.isFinite(previsto) || previsto <= 0) {
+    res.status(400).json({ error: "Peso previsto inválido." });
+    return;
+  }
+  if (!Number.isFinite(real) || real <= 0) {
+    res.status(400).json({ error: "Peso real inválido." });
     return;
   }
   const envasesValidados = validarEnvasesLote(envases);
@@ -451,6 +473,8 @@ fabricacaoRouter.put("/formulas/:id/lotes/:loteId", async (req, res) => {
         data,
         horarioOuNulo(horaInicio),
         horarioOuNulo(horaTermino),
+        previsto,
+        real,
         envasesValidados,
         typeof observacao === "string" && observacao.trim() ? observacao.trim() : null
       )

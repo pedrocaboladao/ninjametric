@@ -598,6 +598,8 @@ function LotesSecao({ formula }: { formula: Formula }) {
   const [data, setData] = useState(() => new Date().toISOString().slice(0, 10));
   const [horaInicio, setHoraInicio] = useState("");
   const [horaTermino, setHoraTermino] = useState("");
+  const [pesoPrevisto, setPesoPrevisto] = useState(() => String(formula.pesoLoteKg));
+  const [pesoReal, setPesoReal] = useState("");
   const [quantidades, setQuantidades] = useState<Record<number, string>>({});
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -607,6 +609,8 @@ function LotesSecao({ formula }: { formula: Formula }) {
   const [editData, setEditData] = useState("");
   const [editHoraInicio, setEditHoraInicio] = useState("");
   const [editHoraTermino, setEditHoraTermino] = useState("");
+  const [editPesoPrevisto, setEditPesoPrevisto] = useState("");
+  const [editPesoReal, setEditPesoReal] = useState("");
   const [editQuantidades, setEditQuantidades] = useState<Record<number, string>>({});
   const [editObservacao, setEditObservacao] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
@@ -620,15 +624,19 @@ function LotesSecao({ formula }: { formula: Formula }) {
   }, [carregar]);
 
   async function registrar() {
-    const envases = envasesEntradaDeQuantidades(formula.embalagens, quantidades);
-    if (!data || envases.length === 0) {
-      setErro("Informe a data e ao menos uma quantidade de envase.");
+    const previsto = Number(pesoPrevisto.replace(",", "."));
+    const real = Number(pesoReal.replace(",", "."));
+    if (!data || !Number.isFinite(previsto) || previsto <= 0 || !Number.isFinite(real) || real <= 0) {
+      setErro("Informe a data, o peso previsto e o peso real.");
       return;
     }
+    const envases = envasesEntradaDeQuantidades(formula.embalagens, quantidades);
     setSalvando(true);
     setErro(null);
     try {
-      await registrarLote(formula.id, data, horaInicio || null, horaTermino || null, envases, observacao.trim() || null);
+      await registrarLote(formula.id, data, horaInicio || null, horaTermino || null, previsto, real, envases, observacao.trim() || null);
+      setPesoPrevisto(String(formula.pesoLoteKg));
+      setPesoReal("");
       setQuantidades({});
       setHoraInicio("");
       setHoraTermino("");
@@ -646,6 +654,8 @@ function LotesSecao({ formula }: { formula: Formula }) {
     setEditData(lote.data);
     setEditHoraInicio(lote.horaInicio ?? "");
     setEditHoraTermino(lote.horaTermino ?? "");
+    setEditPesoPrevisto(String(lote.pesoPrevistoKg));
+    setEditPesoReal(String(lote.pesoRealKg));
     const preenchidas: Record<number, string> = {};
     for (const e of formula.embalagens) {
       const existente = lote.envases.find((le) => le.nome === e.nome);
@@ -657,11 +667,13 @@ function LotesSecao({ formula }: { formula: Formula }) {
   }
 
   async function salvarEdicao(loteId: number) {
-    const envases = envasesEntradaDeQuantidades(formula.embalagens, editQuantidades);
-    if (!editData || envases.length === 0) {
-      setErro("Informe a data e ao menos uma quantidade de envase.");
+    const previsto = Number(editPesoPrevisto.replace(",", "."));
+    const real = Number(editPesoReal.replace(",", "."));
+    if (!editData || !Number.isFinite(previsto) || previsto <= 0 || !Number.isFinite(real) || real <= 0) {
+      setErro("Informe a data, o peso previsto e o peso real.");
       return;
     }
+    const envases = envasesEntradaDeQuantidades(formula.embalagens, editQuantidades);
     setSalvandoEdicao(true);
     setErro(null);
     try {
@@ -671,6 +683,8 @@ function LotesSecao({ formula }: { formula: Formula }) {
         editData,
         editHoraInicio || null,
         editHoraTermino || null,
+        previsto,
+        real,
         envases,
         editObservacao.trim() || null
       );
@@ -692,56 +706,62 @@ function LotesSecao({ formula }: { formula: Formula }) {
     }
   }
 
-  const semEnvase = formula.embalagens.length === 0;
-
   return (
     <div className="fabricacao-secao-ml">
       <h3>
         <IconClock size={16} /> Histórico de lotes de produção
       </h3>
       <p className="painel-sub">
-        Peso previsto pela fórmula: {formula.pesoLoteKg}kg. Registre quantas unidades de cada tamanho de envase
-        realmente saíram do lote — o peso real e o déficit/superávit são calculados sozinhos.
+        Previsto e real são digitados direto (dá pra editar os dois a qualquer momento). O detalhamento por
+        tamanho de envase é opcional, só pra ratear as sobras — não precisa fechar exatamente com o peso real.
       </p>
       {erro && <div className="state-message state-error">{erro}</div>}
 
-      {semEnvase ? (
-        <div className="state-message">Cadastre ao menos um tamanho de envase na fórmula pra poder lançar lotes.</div>
-      ) : (
-        <>
-          <div className="financeiro-busca">
-            <input className="clonar-input fabricacao-input-pequeno" type="date" value={data} onChange={(e) => setData(e.target.value)} />
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              type="time"
-              value={horaInicio}
-              onChange={(e) => setHoraInicio(e.target.value)}
-              title="Início"
-            />
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              type="time"
-              value={horaTermino}
-              onChange={(e) => setHoraTermino(e.target.value)}
-              title="Término"
-            />
-            <input
-              className="clonar-input"
-              placeholder="Observação (opcional)"
-              value={observacao}
-              onChange={(e) => setObservacao(e.target.value)}
-            />
-          </div>
-          <QuantidadesEnvaseInputs
-            embalagens={formula.embalagens}
-            quantidades={quantidades}
-            onMudar={(id, valor) => setQuantidades((atual) => ({ ...atual, [id]: valor }))}
-          />
-          <button type="button" className="btn-responder" disabled={salvando} onClick={registrar}>
-            <IconPlus size={15} /> {salvando ? "..." : "Registrar lote"}
-          </button>
-        </>
+      <div className="financeiro-busca">
+        <input className="clonar-input fabricacao-input-pequeno" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          type="time"
+          value={horaInicio}
+          onChange={(e) => setHoraInicio(e.target.value)}
+          title="Início"
+        />
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          type="time"
+          value={horaTermino}
+          onChange={(e) => setHoraTermino(e.target.value)}
+          title="Término"
+        />
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          placeholder="Previsto (kg)"
+          value={pesoPrevisto}
+          onChange={(e) => setPesoPrevisto(e.target.value)}
+        />
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          placeholder="Real (kg)"
+          value={pesoReal}
+          onChange={(e) => setPesoReal(e.target.value)}
+        />
+        <input
+          className="clonar-input"
+          placeholder="Observação (opcional)"
+          value={observacao}
+          onChange={(e) => setObservacao(e.target.value)}
+        />
+      </div>
+      {formula.embalagens.length > 0 && (
+        <QuantidadesEnvaseInputs
+          embalagens={formula.embalagens}
+          quantidades={quantidades}
+          onMudar={(id, valor) => setQuantidades((atual) => ({ ...atual, [id]: valor }))}
+        />
       )}
+      <button type="button" className="btn-responder" disabled={salvando} onClick={registrar}>
+        <IconPlus size={15} /> {salvando ? "..." : "Registrar lote"}
+      </button>
 
       {lotes === null && <div className="state-message">Carregando lotes...</div>}
       {lotes?.length === 0 && <div className="state-message">Nenhum lote registrado ainda.</div>}
@@ -774,33 +794,50 @@ function LotesSecao({ formula }: { formula: Formula }) {
                       onChange={(e) => setEditData(e.target.value)}
                     />
                   </td>
-                  <td colSpan={2}>
-                    <div className="fabricacao-editor-topo" style={{ gridTemplateColumns: "1fr 1fr" }}>
-                      <input
-                        className="clonar-input fabricacao-input-pequeno"
-                        type="time"
-                        value={editHoraInicio}
-                        onChange={(e) => setEditHoraInicio(e.target.value)}
-                      />
-                      <input
-                        className="clonar-input fabricacao-input-pequeno"
-                        type="time"
-                        value={editHoraTermino}
-                        onChange={(e) => setEditHoraTermino(e.target.value)}
-                      />
-                    </div>
-                  </td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
-                  <td colSpan={4}>
-                    <QuantidadesEnvaseInputs
-                      embalagens={formula.embalagens}
-                      quantidades={editQuantidades}
-                      onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                  <td>
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      type="time"
+                      value={editHoraInicio}
+                      onChange={(e) => setEditHoraInicio(e.target.value)}
                     />
                   </td>
                   <td>
                     <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      type="time"
+                      value={editHoraTermino}
+                      onChange={(e) => setEditHoraTermino(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={editPesoPrevisto}
+                      onChange={(e) => setEditPesoPrevisto(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero">
+                    <input
+                      className="clonar-input fabricacao-input-pequeno"
+                      value={editPesoReal}
+                      onChange={(e) => setEditPesoReal(e.target.value)}
+                    />
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                  <td colSpan={2}>
+                    {formula.embalagens.length > 0 && (
+                      <QuantidadesEnvaseInputs
+                        embalagens={formula.embalagens}
+                        quantidades={editQuantidades}
+                        onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
+                      />
+                    )}
+                    <input
                       className="clonar-input"
+                      placeholder="Observação"
                       value={editObservacao}
                       onChange={(e) => setEditObservacao(e.target.value)}
                     />
@@ -1180,6 +1217,8 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
   const [editData, setEditData] = useState("");
   const [editHoraInicio, setEditHoraInicio] = useState("");
   const [editHoraTermino, setEditHoraTermino] = useState("");
+  const [editPesoPrevisto, setEditPesoPrevisto] = useState("");
+  const [editPesoReal, setEditPesoReal] = useState("");
   const [editFormulaEmbalagens, setEditFormulaEmbalagens] = useState<FormulaEmbalagem[] | null>(null);
   const [editQuantidades, setEditQuantidades] = useState<Record<number, string>>({});
   const [editObservacao, setEditObservacao] = useState("");
@@ -1191,6 +1230,8 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
   const [novaData, setNovaData] = useState(() => new Date().toISOString().slice(0, 10));
   const [novaHoraInicio, setNovaHoraInicio] = useState("");
   const [novaHoraTermino, setNovaHoraTermino] = useState("");
+  const [novoPesoPrevisto, setNovoPesoPrevisto] = useState("");
+  const [novoPesoReal, setNovoPesoReal] = useState("");
   const [novasQuantidades, setNovasQuantidades] = useState<Record<number, string>>({});
   const [novaObservacao, setNovaObservacao] = useState("");
   const [salvandoNovo, setSalvandoNovo] = useState(false);
@@ -1207,10 +1248,12 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
     if (!mostrandoForm || novaFormulaId === null) return;
     setNovaFormulaEmbalagens(null);
     setNovasQuantidades({});
+    const formulaResumo = formulas.find((f) => f.id === novaFormulaId);
+    setNovoPesoPrevisto(formulaResumo ? String(formulaResumo.pesoLoteKg) : "");
     fetchFormula(novaFormulaId)
       .then((f) => setNovaFormulaEmbalagens(f.embalagens))
       .catch(() => setNovaFormulaEmbalagens([]));
-  }, [mostrandoForm, novaFormulaId]);
+  }, [mostrandoForm, novaFormulaId, formulas]);
 
   function alternarAberta() {
     setAberta((atual) => {
@@ -1227,25 +1270,33 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
     setNovaData(new Date().toISOString().slice(0, 10));
     setNovaHoraInicio("");
     setNovaHoraTermino("");
+    setNovoPesoReal("");
     setNovaObservacao("");
     setErro(null);
     if (lotes === null) carregar();
   }
 
   async function lancarLote() {
-    if (!novaFormulaId || !novaData || !novaFormulaEmbalagens) {
-      setErro("Escolha a fórmula e informe a data.");
+    const previsto = Number(novoPesoPrevisto.replace(",", "."));
+    const real = Number(novoPesoReal.replace(",", "."));
+    if (!novaFormulaId || !novaData || !Number.isFinite(previsto) || previsto <= 0 || !Number.isFinite(real) || real <= 0) {
+      setErro("Escolha a fórmula e informe data, previsto e real.");
       return;
     }
-    const envases = envasesEntradaDeQuantidades(novaFormulaEmbalagens, novasQuantidades);
-    if (envases.length === 0) {
-      setErro("Informe ao menos uma quantidade de envase.");
-      return;
-    }
+    const envases = envasesEntradaDeQuantidades(novaFormulaEmbalagens ?? [], novasQuantidades);
     setSalvandoNovo(true);
     setErro(null);
     try {
-      await registrarLote(novaFormulaId, novaData, novaHoraInicio || null, novaHoraTermino || null, envases, novaObservacao.trim() || null);
+      await registrarLote(
+        novaFormulaId,
+        novaData,
+        novaHoraInicio || null,
+        novaHoraTermino || null,
+        previsto,
+        real,
+        envases,
+        novaObservacao.trim() || null
+      );
       setMostrandoForm(false);
       carregar();
     } catch (err) {
@@ -1260,6 +1311,8 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
     setEditData(lote.data);
     setEditHoraInicio(lote.horaInicio ?? "");
     setEditHoraTermino(lote.horaTermino ?? "");
+    setEditPesoPrevisto(String(lote.pesoPrevistoKg));
+    setEditPesoReal(String(lote.pesoRealKg));
     setEditObservacao(lote.observacao ?? "");
     setEditFormulaEmbalagens(null);
     setEditQuantidades({});
@@ -1279,15 +1332,13 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
   }
 
   async function salvarEdicao(lote: FormulaLoteComFormula) {
-    if (!editData || !editFormulaEmbalagens) {
-      setErro("Informe a data.");
+    const previsto = Number(editPesoPrevisto.replace(",", "."));
+    const real = Number(editPesoReal.replace(",", "."));
+    if (!editData || !Number.isFinite(previsto) || previsto <= 0 || !Number.isFinite(real) || real <= 0) {
+      setErro("Informe data, previsto e real.");
       return;
     }
-    const envases = envasesEntradaDeQuantidades(editFormulaEmbalagens, editQuantidades);
-    if (envases.length === 0) {
-      setErro("Informe ao menos uma quantidade de envase.");
-      return;
-    }
+    const envases = envasesEntradaDeQuantidades(editFormulaEmbalagens ?? [], editQuantidades);
     setSalvandoEdicao(true);
     setErro(null);
     try {
@@ -1297,6 +1348,8 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
         editData,
         editHoraInicio || null,
         editHoraTermino || null,
+        previsto,
+        real,
         envases,
         editObservacao.trim() || null
       );
@@ -1378,6 +1431,18 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                   title="Término"
                 />
                 <input
+                  className="clonar-input fabricacao-input-pequeno"
+                  placeholder="Previsto (kg)"
+                  value={novoPesoPrevisto}
+                  onChange={(e) => setNovoPesoPrevisto(e.target.value)}
+                />
+                <input
+                  className="clonar-input fabricacao-input-pequeno"
+                  placeholder="Real (kg)"
+                  value={novoPesoReal}
+                  onChange={(e) => setNovoPesoReal(e.target.value)}
+                />
+                <input
                   className="clonar-input"
                   placeholder="Observação (opcional)"
                   value={novaObservacao}
@@ -1455,8 +1520,24 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                           onChange={(e) => setEditHoraTermino(e.target.value)}
                         />
                       </td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">{l.pesoPrevistoKg}kg</td>
-                      <td colSpan={4}>
+                      <td className="financeiro-th-numero">
+                        <input
+                          className="clonar-input fabricacao-input-pequeno"
+                          value={editPesoPrevisto}
+                          onChange={(e) => setEditPesoPrevisto(e.target.value)}
+                        />
+                      </td>
+                      <td className="financeiro-th-numero">
+                        <input
+                          className="clonar-input fabricacao-input-pequeno"
+                          value={editPesoReal}
+                          onChange={(e) => setEditPesoReal(e.target.value)}
+                        />
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                      <td colSpan={2}>
                         {editFormulaEmbalagens === null ? (
                           <span className="financeiro-td-mudo">Carregando...</span>
                         ) : (
@@ -1466,10 +1547,9 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                             onMudar={(id, valor) => setEditQuantidades((atual) => ({ ...atual, [id]: valor }))}
                           />
                         )}
-                      </td>
-                      <td>
                         <input
                           className="clonar-input"
+                          placeholder="Observação"
                           value={editObservacao}
                           onChange={(e) => setEditObservacao(e.target.value)}
                         />

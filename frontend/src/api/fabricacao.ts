@@ -184,6 +184,8 @@ export async function registrarLote(
   data: string,
   horaInicio: string | null,
   horaTermino: string | null,
+  pesoPrevistoKg: number,
+  pesoRealKg: number,
   envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
@@ -191,7 +193,7 @@ export async function registrarLote(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ data, horaInicio, horaTermino, envases, observacao }),
+    body: JSON.stringify({ data, horaInicio, horaTermino, pesoPrevistoKg, pesoRealKg, envases, observacao }),
   });
   return tratarResposta<FormulaLote>(res);
 }
@@ -202,6 +204,8 @@ export async function atualizarLote(
   data: string,
   horaInicio: string | null,
   horaTermino: string | null,
+  pesoPrevistoKg: number,
+  pesoRealKg: number,
   envases: EnvaseLoteEntrada[],
   observacao: string | null
 ): Promise<FormulaLote> {
@@ -209,7 +213,7 @@ export async function atualizarLote(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ data, horaInicio, horaTermino, envases, observacao }),
+    body: JSON.stringify({ data, horaInicio, horaTermino, pesoPrevistoKg, pesoRealKg, envases, observacao }),
   });
   return tratarResposta<FormulaLote>(res);
 }
