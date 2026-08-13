@@ -570,6 +570,20 @@ export async function atualizarEmbalagem(
   return mapearEmbalagem(rows[0], custoPorKgMap.get(rows[0].formula_id) ?? 0);
 }
 
+// Os 6 tamanhos de envase que a fábrica usa pra praticamente tudo (mesmo
+// preço de embalagem não importa a cor de dentro) — toda fórmula nova
+// nasce com eles pra não precisar recadastrar toda vez; se o usuário já
+// mandou algum envase no formulário de criação, respeita a escolha dele
+// em vez de aplicar o padrão.
+const EMBALAGENS_PADRAO: EmbalagemEntrada[] = [
+  { nome: "Balde 18kg", pesoKg: 18, custoEmbalagem: 8.47, sku: null },
+  { nome: "Bombona 45kg", pesoKg: 45, custoEmbalagem: 22, sku: null },
+  { nome: "Bombona 30kg", pesoKg: 30, custoEmbalagem: 10, sku: null },
+  { nome: "Balde 12kg", pesoKg: 12, custoEmbalagem: 7.33, sku: null },
+  { nome: "Balde 3,6kg", pesoKg: 3.6, custoEmbalagem: 3.42, sku: null },
+  { nome: "Galão 1kg", pesoKg: 1, custoEmbalagem: 3.3, sku: null },
+];
+
 export async function criarFormula(
   nome: string,
   pesoLoteKg: number,
@@ -581,7 +595,7 @@ export async function criarFormula(
     [nome, pesoLoteKg]
   );
   await salvarItens(rows[0].id, itens);
-  await salvarEmbalagens(rows[0].id, embalagens);
+  await salvarEmbalagens(rows[0].id, embalagens.length > 0 ? embalagens : EMBALAGENS_PADRAO);
   return rows[0].id;
 }
 
