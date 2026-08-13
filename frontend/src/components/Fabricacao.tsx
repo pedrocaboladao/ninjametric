@@ -892,6 +892,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
               <th className="financeiro-th-numero">Real</th>
               <th className="financeiro-th-numero">Diferença</th>
               <th className="financeiro-th-numero">Valor</th>
+              <th className="financeiro-th-numero">Custo previsto/kg</th>
               <th className="financeiro-th-numero">Custo real/kg</th>
               <th className="financeiro-th-numero">Envase (custo diluído)</th>
               <th>Observação</th>
@@ -943,6 +944,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                   <td colSpan={2}>
                     <QuantidadesEnvaseInputs
                       formulaId={formula.id}
@@ -983,6 +985,7 @@ function LotesSecao({ formula }: { formula: Formula }) {
                     {l.diferencaKg >= 0 ? "+" : ""}
                     {formatCurrency(l.diferencaKg * formula.custoPorKg)}
                   </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">{formatCurrency(formula.custoPorKg)}</td>
                   <td className="financeiro-th-numero">{formatCurrency(l.custoRealPorKg)}</td>
                   <td className="financeiro-th-numero">
                     {l.envases.length === 0 ? (
@@ -1601,6 +1604,7 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                   <th className="financeiro-th-numero">Real</th>
                   <th className="financeiro-th-numero">Diferença</th>
                   <th className="financeiro-th-numero">Valor</th>
+                  <th className="financeiro-th-numero">Custo previsto/kg</th>
                   <th className="financeiro-th-numero">Custo real/kg</th>
                   <th className="financeiro-th-numero">Envase (custo diluído)</th>
                   <th>Observação</th>
@@ -1653,6 +1657,7 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                       <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                       <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                       <td className="financeiro-th-numero financeiro-td-mudo">—</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">—</td>
                       <td colSpan={2}>
                         {editFormulaEmbalagens === null ? (
                           <span className="financeiro-td-mudo">Carregando...</span>
@@ -1700,6 +1705,9 @@ function HistoricoLotesGlobalSecao({ formulas }: { formulas: FormulaResumo[] }) 
                           const formula = formulas.find((f) => f.id === l.formulaId);
                           return formatCurrency(l.diferencaKg * (formula?.custoPorKg ?? 0));
                         })()}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {formatCurrency(formulas.find((f) => f.id === l.formulaId)?.custoPorKg ?? 0)}
                       </td>
                       <td className="financeiro-th-numero">{formatCurrency(l.custoRealPorKg)}</td>
                       <td className="financeiro-th-numero">
