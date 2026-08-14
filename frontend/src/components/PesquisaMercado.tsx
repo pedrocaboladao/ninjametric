@@ -567,7 +567,7 @@ function AnunciosSecao({ categoriaId }: { categoriaId: number }) {
                     <th>Vendedor</th>
                     <th>Produto</th>
                     <th>Marca</th>
-                    <th>Modo entrega</th>
+                    <th>Entrega</th>
                     <th>Frete grátis</th>
                     <th>Catálogo</th>
                     <th className="financeiro-th-numero">Qtde</th>
@@ -578,11 +578,15 @@ function AnunciosSecao({ categoriaId }: { categoriaId: number }) {
                 <tbody>
                   {anuncios.map((a) => (
                     <tr key={a.id}>
-                      <td>{a.vendedor}</td>
+                      <td className="pesquisa-td-vendedor" title={a.vendedor}>
+                        {a.vendedor}
+                      </td>
                       <td className="financeiro-td-titulo" title={a.produto}>
                         {a.produto}
                       </td>
-                      <td className="financeiro-td-mudo">{a.marca ?? "—"}</td>
+                      <td className="pesquisa-td-marca financeiro-td-mudo" title={a.marca ?? undefined}>
+                        {a.marca ?? "—"}
+                      </td>
                       <td className="financeiro-td-mudo">{a.modoEntrega ?? "—"}</td>
                       <td className="financeiro-td-mudo">{a.freteGratis ? "Sim" : "Não"}</td>
                       <td className="financeiro-td-mudo">{a.catalogo ? "Sim" : "Não"}</td>

@@ -5327,6 +5327,20 @@
   margin-bottom: 14px;
 }
 
+.pesquisa-td-vendedor {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pesquisa-td-marca {
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pesquisa-remover-linha {
   background: none;
   border: none;
