@@ -9,8 +9,7 @@
     "start": "node dist/index.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
-    "importar-pesquisa-historico": "tsx src/db/importarPesquisaHistorico.ts",
-    "testar-busca-ml-publica": "tsx src/db/testarBuscaMlPublica.ts"
+    "importar-pesquisa-historico": "tsx src/db/importarPesquisaHistorico.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",
