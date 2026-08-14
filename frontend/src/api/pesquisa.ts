@@ -1,4 +1,10 @@
-import type { PesquisaCategoria, PesquisaRankingLinha, PesquisaEvolucao, ResumoImportacaoPlanilha } from "../types/pesquisa";
+import type {
+  PesquisaCategoria,
+  PesquisaRankingLinha,
+  PesquisaEvolucao,
+  ResumoImportacaoPlanilha,
+  PesquisaAnuncio,
+} from "../types/pesquisa";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -88,4 +94,34 @@ export async function importarPlanilha(arquivo: File): Promise<ResumoImportacaoP
   });
   const data = await tratarResposta<{ resumo: ResumoImportacaoPlanilha[] }>(res);
   return data.resumo;
+}
+
+export async function importarAnuncios(categoriaId: number, data: string, arquivo: File): Promise<{ linhas: number }> {
+  const formData = new FormData();
+  formData.append("data", data);
+  formData.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/pesquisa/categorias/${categoriaId}/anuncios/importar`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  return tratarResposta<{ linhas: number }>(res);
+}
+
+export async function fetchSnapshotsAnuncios(categoriaId: number): Promise<string[]> {
+  const res = await fetch(`${API_BASE}/api/pesquisa/categorias/${categoriaId}/anuncios/snapshots`, {
+    credentials: "include",
+  });
+  const data = await tratarResposta<{ snapshots: string[] }>(res);
+  return data.snapshots;
+}
+
+export async function fetchAnuncios(categoriaId: number, data: string, vendedor: string): Promise<PesquisaAnuncio[]> {
+  const params = new URLSearchParams({ data });
+  if (vendedor.trim()) params.set("vendedor", vendedor.trim());
+  const res = await fetch(`${API_BASE}/api/pesquisa/categorias/${categoriaId}/anuncios?${params}`, {
+    credentials: "include",
+  });
+  const dataResp = await tratarResposta<{ anuncios: PesquisaAnuncio[] }>(res);
+  return dataResp.anuncios;
 }

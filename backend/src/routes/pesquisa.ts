@@ -10,6 +10,9 @@ import {
   excluirLancamento,
   obterEvolucao,
   importarPlanilha,
+  importarAnuncios,
+  listarSnapshotsAnuncios,
+  buscarAnuncios,
   type LancamentoEntrada,
 } from "../services/pesquisaService";
 
@@ -125,5 +128,42 @@ pesquisaRouter.post("/importar-planilha", upload.single("arquivo"), async (req: 
     res.json({ resumo });
   } catch (err) {
     erro(res, err, "Erro ao importar planilha");
+  }
+});
+
+pesquisaRouter.post(
+  "/categorias/:id/anuncios/importar",
+  upload.single("arquivo"),
+  async (req: Request, res: Response) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+      const dataSnapshot = typeof req.body?.data === "string" ? req.body.data : "";
+      if (!dataSnapshot) return res.status(400).json({ error: "Data é obrigatória" });
+      const resultado = await importarAnuncios(Number(req.params.id), dataSnapshot, req.file.buffer);
+      res.json(resultado);
+    } catch (err) {
+      erro(res, err, "Erro ao importar anúncios");
+    }
+  }
+);
+
+pesquisaRouter.get("/categorias/:id/anuncios/snapshots", async (req: Request, res: Response) => {
+  try {
+    const snapshots = await listarSnapshotsAnuncios(Number(req.params.id));
+    res.json({ snapshots });
+  } catch (err) {
+    erro(res, err, "Erro ao listar snapshots de anúncios");
+  }
+});
+
+pesquisaRouter.get("/categorias/:id/anuncios", async (req: Request, res: Response) => {
+  try {
+    const data = typeof req.query.data === "string" ? req.query.data : "";
+    if (!data) return res.status(400).json({ error: "Parâmetro data é obrigatório" });
+    const vendedor = typeof req.query.vendedor === "string" ? req.query.vendedor : null;
+    const anuncios = await buscarAnuncios(Number(req.params.id), data, vendedor);
+    res.json({ anuncios });
+  } catch (err) {
+    erro(res, err, "Erro ao buscar anúncios");
   }
 });

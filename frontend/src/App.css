@@ -5316,6 +5316,17 @@
   display: none;
 }
 
+.pesquisa-anuncios-acoes {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pesquisa-input-busca-vendedor {
+  max-width: 320px;
+  margin-bottom: 14px;
+}
+
 .pesquisa-remover-linha {
   background: none;
   border: none;

@@ -722,3 +722,22 @@ CREATE TABLE IF NOT EXISTS pesquisa_mercado (
 );
 
 CREATE INDEX IF NOT EXISTS idx_pesquisa_mercado_categoria_mes ON pesquisa_mercado (categoria_id, mes DESC);
+
+CREATE TABLE IF NOT EXISTS pesquisa_anuncios (
+  id SERIAL PRIMARY KEY,
+  categoria_id INTEGER NOT NULL REFERENCES pesquisa_categorias(id) ON DELETE CASCADE,
+  data_snapshot DATE NOT NULL,
+  vendedor TEXT NOT NULL,
+  produto TEXT NOT NULL,
+  marca TEXT,
+  frete_gratis BOOLEAN NOT NULL DEFAULT false,
+  qtde INTEGER NOT NULL,
+  preco_unitario NUMERIC(12, 2) NOT NULL,
+  modo_entrega TEXT,
+  total NUMERIC(14, 2) NOT NULL,
+  catalogo BOOLEAN NOT NULL DEFAULT false,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pesquisa_anuncios_categoria_data ON pesquisa_anuncios (categoria_id, data_snapshot DESC);
+CREATE INDEX IF NOT EXISTS idx_pesquisa_anuncios_vendedor ON pesquisa_anuncios (vendedor);

@@ -28,3 +28,17 @@ export interface ResumoImportacaoPlanilha {
   linhas: number;
   meses: number;
 }
+
+export interface PesquisaAnuncio {
+  id: number;
+  vendedor: string;
+  produto: string;
+  marca: string | null;
+  freteGratis: boolean;
+  qtde: number;
+  precoUnitario: number;
+  modoEntrega: string | null;
+  total: number;
+  catalogo: boolean;
+  dataSnapshot: string;
+}

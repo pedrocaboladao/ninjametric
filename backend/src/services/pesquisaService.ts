@@ -290,3 +290,176 @@ export async function importarPlanilha(buffer: Buffer): Promise<ResumoImportacao
 
   return resumo;
 }
+
+export interface PesquisaAnuncio {
+  id: number;
+  vendedor: string;
+  produto: string;
+  marca: string | null;
+  freteGratis: boolean;
+  qtde: number;
+  precoUnitario: number;
+  modoEntrega: string | null;
+  total: number;
+  catalogo: boolean;
+  dataSnapshot: string;
+}
+
+function paraSimNao(v: unknown): boolean {
+  return typeof v === "string" && v.trim().toLowerCase() === "sim";
+}
+
+function normalizarCabecalho(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+
+export async function importarAnuncios(
+  categoriaId: number,
+  dataSnapshot: string,
+  buffer: Buffer
+): Promise<{ linhas: number }> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) throw new Error("Planilha vazia");
+
+  const cabecalho = worksheet.getRow(1);
+  const colunas: Record<string, number> = {};
+  for (let col = 1; col <= worksheet.columnCount; col++) {
+    const rotulo = normalizarCabecalho(celulaParaValor(cabecalho.getCell(col)));
+    if (rotulo) colunas[rotulo] = col;
+  }
+
+  const obrigatorias = ["vendedor", "produto", "qtde", "total"];
+  for (const nome of obrigatorias) {
+    if (!(nome in colunas)) throw new Error(`Coluna "${nome}" não encontrada na planilha`);
+  }
+
+  interface LinhaAnuncio {
+    vendedor: string;
+    produto: string;
+    marca: string | null;
+    freteGratis: boolean;
+    qtde: number;
+    precoUnitario: number;
+    modoEntrega: string | null;
+    total: number;
+    catalogo: boolean;
+  }
+
+  const linhas: LinhaAnuncio[] = [];
+  for (let r = 2; r <= worksheet.rowCount; r++) {
+    const row = worksheet.getRow(r);
+    const get = (nome: string) => (colunas[nome] !== undefined ? celulaParaValor(row.getCell(colunas[nome])) : null);
+
+    const vendedorBruto = get("vendedor");
+    const produtoBruto = get("produto");
+    if (vendedorBruto === null || vendedorBruto === undefined) continue;
+    if (produtoBruto === null || produtoBruto === undefined) continue;
+
+    const vendedor = corrigirMojibake(String(vendedorBruto));
+    const produto = corrigirMojibake(String(produtoBruto));
+    if (!vendedor || !produto) continue;
+
+    const qtde = paraNumero(get("qtde"));
+    const total = paraNumero(get("total"));
+    if (qtde === null || total === null) continue;
+
+    const marcaBruto = get("marca");
+    const modoEntregaBruto = get("modo entrega");
+
+    linhas.push({
+      vendedor,
+      produto,
+      marca: typeof marcaBruto === "string" ? corrigirMojibake(marcaBruto) : null,
+      freteGratis: paraSimNao(get("frete grátis") ?? get("frete gratis")),
+      qtde,
+      precoUnitario: paraNumero(get("preço unitário") ?? get("preco unitario")) ?? 0,
+      modoEntrega: typeof modoEntregaBruto === "string" ? modoEntregaBruto.trim() : null,
+      total,
+      catalogo: paraSimNao(get("catálogo") ?? get("catalogo")),
+    });
+  }
+
+  if (linhas.length === 0) return { linhas: 0 };
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM pesquisa_anuncios WHERE categoria_id = $1 AND data_snapshot = $2", [
+      categoriaId,
+      dataSnapshot,
+    ]);
+    for (const l of linhas) {
+      await client.query(
+        `INSERT INTO pesquisa_anuncios
+         (categoria_id, data_snapshot, vendedor, produto, marca, frete_gratis, qtde, preco_unitario, modo_entrega, total, catalogo)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          categoriaId,
+          dataSnapshot,
+          l.vendedor,
+          l.produto,
+          l.marca,
+          l.freteGratis,
+          l.qtde,
+          l.precoUnitario,
+          l.modoEntrega,
+          l.total,
+          l.catalogo,
+        ]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return { linhas: linhas.length };
+}
+
+export async function listarSnapshotsAnuncios(categoriaId: number): Promise<string[]> {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT to_char(data_snapshot, 'YYYY-MM-DD') AS data FROM pesquisa_anuncios
+     WHERE categoria_id = $1 ORDER BY data DESC`,
+    [categoriaId]
+  );
+  return rows.map((r) => r.data);
+}
+
+export async function buscarAnuncios(
+  categoriaId: number,
+  dataSnapshot: string,
+  vendedor: string | null
+): Promise<PesquisaAnuncio[]> {
+  const params: unknown[] = [categoriaId, dataSnapshot];
+  let filtroVendedor = "";
+  if (vendedor && vendedor.trim()) {
+    params.push(`%${vendedor.trim()}%`);
+    filtroVendedor = `AND vendedor ILIKE $${params.length}`;
+  }
+  const { rows } = await pool.query(
+    `SELECT id, vendedor, produto, marca, frete_gratis, qtde, preco_unitario, modo_entrega, total, catalogo,
+            to_char(data_snapshot, 'YYYY-MM-DD') AS data_snapshot
+     FROM pesquisa_anuncios
+     WHERE categoria_id = $1 AND data_snapshot = $2 ${filtroVendedor}
+     ORDER BY total DESC`,
+    params
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    vendedor: r.vendedor,
+    produto: r.produto,
+    marca: r.marca,
+    freteGratis: r.frete_gratis,
+    qtde: Number(r.qtde),
+    precoUnitario: Number(r.preco_unitario),
+    modoEntrega: r.modo_entrega,
+    total: Number(r.total),
+    catalogo: r.catalogo,
+    dataSnapshot: r.data_snapshot,
+  }));
+}

@@ -8,8 +8,11 @@ import {
   salvarLancamentosDoMes,
   fetchEvolucao,
   importarPlanilha,
+  importarAnuncios,
+  fetchSnapshotsAnuncios,
+  fetchAnuncios,
 } from "../api/pesquisa";
-import type { PesquisaCategoria, PesquisaEvolucao, ResumoImportacaoPlanilha } from "../types/pesquisa";
+import type { PesquisaCategoria, PesquisaEvolucao, ResumoImportacaoPlanilha, PesquisaAnuncio } from "../types/pesquisa";
 import { formatCurrency } from "../utils/format";
 
 interface LinhaEditavel {
@@ -431,6 +434,172 @@ export function PesquisaMercado() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          <AnunciosSecao categoriaId={categoriaId} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function hojeIso(): string {
+  const agora = new Date();
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}-${String(agora.getDate()).padStart(2, "0")}`;
+}
+
+function formatDataCurta(dataIso: string): string {
+  const [ano, mes, dia] = dataIso.split("-");
+  return `${dia}/${mes}/${ano}`;
+}
+
+function AnunciosSecao({ categoriaId }: { categoriaId: number }) {
+  const [snapshots, setSnapshots] = useState<string[]>([]);
+  const [snapshotSelecionado, setSnapshotSelecionado] = useState<string>("");
+  const [vendedorFiltro, setVendedorFiltro] = useState("");
+  const [anuncios, setAnuncios] = useState<PesquisaAnuncio[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const inputArquivoRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetchSnapshotsAnuncios(categoriaId)
+      .then((lista) => {
+        setSnapshots(lista);
+        setSnapshotSelecionado(lista[0] ?? "");
+      })
+      .catch(() => {});
+  }, [categoriaId]);
+
+  useEffect(() => {
+    if (!snapshotSelecionado) {
+      setAnuncios([]);
+      return;
+    }
+    setCarregando(true);
+    setErro(null);
+    fetchAnuncios(categoriaId, snapshotSelecionado, vendedorFiltro)
+      .then(setAnuncios)
+      .catch((e) => setErro(e instanceof Error ? e.message : "Erro ao buscar anúncios"))
+      .finally(() => setCarregando(false));
+  }, [categoriaId, snapshotSelecionado, vendedorFiltro]);
+
+  async function handleImportar(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    setImportando(true);
+    setErro(null);
+    try {
+      const data = hojeIso();
+      await importarAnuncios(categoriaId, data, arquivo);
+      const lista = await fetchSnapshotsAnuncios(categoriaId);
+      setSnapshots(lista);
+      setSnapshotSelecionado(data);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao importar anúncios");
+    } finally {
+      setImportando(false);
+      if (inputArquivoRef.current) inputArquivoRef.current.value = "";
+    }
+  }
+
+  return (
+    <div className="pesquisa-card">
+      <div className="pesquisa-card-topo">
+        <h2>Anúncios</h2>
+        <div className="pesquisa-anuncios-acoes">
+          {snapshots.length > 0 && (
+            <select
+              className="dashboard-select"
+              value={snapshotSelecionado}
+              onChange={(e) => setSnapshotSelecionado(e.target.value)}
+            >
+              {snapshots.map((s) => (
+                <option key={s} value={s}>
+                  {formatDataCurta(s)}
+                </option>
+              ))}
+            </select>
+          )}
+          <input
+            ref={inputArquivoRef}
+            type="file"
+            accept=".xlsx"
+            className="pesquisa-input-arquivo-oculto"
+            onChange={handleImportar}
+          />
+          <button
+            type="button"
+            className="btn-secundario"
+            disabled={importando}
+            onClick={() => inputArquivoRef.current?.click()}
+          >
+            {importando ? "Importando..." : "Importar anúncios (.xlsx)"}
+          </button>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      {snapshots.length === 0 ? (
+        <p className="painel-sub">
+          Nenhum anúncio importado ainda pra essa categoria — clique em "Importar anúncios" e envie a planilha
+          exportada do sistema de pesquisa (uma linha por anúncio, com vendedor, produto, qtde e total).
+        </p>
+      ) : (
+        <>
+          <input
+            className="clonar-input pesquisa-input-busca-vendedor"
+            placeholder="Buscar por vendedor..."
+            value={vendedorFiltro}
+            onChange={(e) => setVendedorFiltro(e.target.value)}
+          />
+
+          {carregando ? (
+            <p className="painel-sub">Carregando...</p>
+          ) : (
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    <th>Vendedor</th>
+                    <th>Produto</th>
+                    <th>Marca</th>
+                    <th>Modo entrega</th>
+                    <th>Frete grátis</th>
+                    <th>Catálogo</th>
+                    <th className="financeiro-th-numero">Qtde</th>
+                    <th className="financeiro-th-numero">Preço unit.</th>
+                    <th className="financeiro-th-numero">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {anuncios.map((a) => (
+                    <tr key={a.id}>
+                      <td>{a.vendedor}</td>
+                      <td className="financeiro-td-titulo" title={a.produto}>
+                        {a.produto}
+                      </td>
+                      <td className="financeiro-td-mudo">{a.marca ?? "—"}</td>
+                      <td className="financeiro-td-mudo">{a.modoEntrega ?? "—"}</td>
+                      <td className="financeiro-td-mudo">{a.freteGratis ? "Sim" : "Não"}</td>
+                      <td className="financeiro-td-mudo">{a.catalogo ? "Sim" : "Não"}</td>
+                      <td className="financeiro-th-numero">{a.qtde}</td>
+                      <td className="financeiro-th-numero">{formatCurrency(a.precoUnitario)}</td>
+                      <td className="financeiro-th-numero">{formatCurrency(a.total)}</td>
+                    </tr>
+                  ))}
+                  {anuncios.length === 0 && (
+                    <tr>
+                      <td colSpan={9} className="financeiro-td-mudo">
+                        Nenhum anúncio encontrado.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           )}
         </>
