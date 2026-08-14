@@ -1,4 +1,4 @@
-import type { PesquisaCategoria, PesquisaRankingLinha, PesquisaEvolucao } from "../types/pesquisa";
+import type { PesquisaCategoria, PesquisaRankingLinha, PesquisaEvolucao, ResumoImportacaoPlanilha } from "../types/pesquisa";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -76,4 +76,16 @@ export async function excluirLancamento(id: number): Promise<void> {
 export async function fetchEvolucao(categoriaId: number): Promise<PesquisaEvolucao> {
   const res = await fetch(`${API_BASE}/api/pesquisa/categorias/${categoriaId}/evolucao`, { credentials: "include" });
   return tratarResposta<PesquisaEvolucao>(res);
+}
+
+export async function importarPlanilha(arquivo: File): Promise<ResumoImportacaoPlanilha[]> {
+  const formData = new FormData();
+  formData.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/pesquisa/importar-planilha`, {
+    method: "POST",
+    credentials: "include",
+    body: formData,
+  });
+  const data = await tratarResposta<{ resumo: ResumoImportacaoPlanilha[] }>(res);
+  return data.resumo;
 }

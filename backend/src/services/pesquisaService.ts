@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { pool } from "../db/pool";
 
 export interface PesquisaCategoria {
@@ -158,4 +159,134 @@ export async function obterEvolucao(categoriaId: number): Promise<PesquisaEvoluc
     totalMercadoPorMes: meses.map((mes) => totalMercadoPorMes.get(mes) ?? 0),
     series,
   };
+}
+
+export interface ResumoImportacaoPlanilha {
+  categoria: string;
+  criada: boolean;
+  linhas: number;
+  meses: number;
+}
+
+function corrigirMojibake(valor: string): string {
+  const limpo = valor.replace(/ /g, " ").trim();
+  const corrigido = Buffer.from(limpo, "latin1").toString("utf8");
+  return corrigido.includes("�") ? limpo : corrigido;
+}
+
+function celulaParaValor(cell: ExcelJS.Cell): unknown {
+  const v = cell.value as unknown;
+  if (v && typeof v === "object") {
+    const obj = v as Record<string, unknown>;
+    if ("result" in obj) return obj.result;
+    if ("text" in obj) return obj.text; // célula com hyperlink: { text, hyperlink }
+    if ("richText" in obj && Array.isArray(obj.richText)) {
+      return (obj.richText as { text: string }[]).map((p) => p.text).join("");
+    }
+  }
+  return v;
+}
+
+function paraNumero(v: unknown): number | null {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") {
+    const n = Number(v.replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function ordAnoMes(d: Date): number {
+  return d.getFullYear() * 12 + d.getMonth();
+}
+
+export async function importarPlanilha(buffer: Buffer): Promise<ResumoImportacaoPlanilha[]> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer as unknown as ExcelJS.Buffer);
+
+  const resumo: ResumoImportacaoPlanilha[] = [];
+
+  for (const worksheet of workbook.worksheets) {
+    const nomeCategoria = corrigirMojibake(worksheet.name);
+    const numColunas = worksheet.columnCount;
+    const numLinhas = worksheet.rowCount;
+    if (numLinhas < 3 || numColunas < 3) continue;
+
+    const linhaDatas = worksheet.getRow(1);
+    const linhaRotulos = worksheet.getRow(2);
+
+    type Bloco = { col: number; data: Date };
+    const blocos: Bloco[] = [];
+    for (let col = 1; col <= numColunas; col++) {
+      const valorData = celulaParaValor(linhaDatas.getCell(col));
+      if (valorData instanceof Date) {
+        const rotulo = celulaParaValor(linhaRotulos.getCell(col));
+        if (typeof rotulo === "string" && rotulo.trim().toLowerCase().startsWith("vendedor")) {
+          blocos.push({ col, data: valorData });
+        }
+      }
+    }
+    if (blocos.length === 0) continue;
+
+    // corrige erros de digitação de ano no cabeçalho reconstruindo a
+    // sequência a partir do MÊS (sempre consecutivo/crescente nessas
+    // planilhas), ignorando o ano gravado exceto no primeiro bloco
+    let anoAtual = blocos[0].data.getFullYear();
+    let mesAnterior: number | null = null;
+    for (const bloco of blocos) {
+      const mes = bloco.data.getMonth();
+      if (mesAnterior !== null && mes <= mesAnterior) anoAtual++;
+      mesAnterior = mes;
+      bloco.data = new Date(anoAtual, mes, 1);
+    }
+
+    const agregado = new Map<string, { mes: string; vendedor: string; qtde: number; totalReais: number }>();
+    for (const bloco of blocos) {
+      const mes = `${bloco.data.getFullYear()}-${String(bloco.data.getMonth() + 1).padStart(2, "0")}`;
+      for (let r = 3; r <= numLinhas; r++) {
+        const row = worksheet.getRow(r);
+        const vendedorBruto = celulaParaValor(row.getCell(bloco.col));
+        if (typeof vendedorBruto !== "string" || !vendedorBruto.trim()) continue;
+        const qtde = paraNumero(celulaParaValor(row.getCell(bloco.col + 1)));
+        const total = paraNumero(celulaParaValor(row.getCell(bloco.col + 2)));
+        if (qtde === null || total === null) continue;
+        const vendedor = corrigirMojibake(vendedorBruto);
+        if (!vendedor) continue;
+        const chave = `${mes}|${vendedor}`;
+        const atual = agregado.get(chave);
+        if (atual) {
+          atual.qtde += qtde;
+          atual.totalReais += total;
+        } else {
+          agregado.set(chave, { mes, vendedor, qtde, totalReais: total });
+        }
+      }
+    }
+
+    if (agregado.size === 0) continue;
+
+    const { rows: existentes } = await pool.query("SELECT id FROM pesquisa_categorias WHERE nome = $1", [nomeCategoria]);
+    let categoriaId: number;
+    let criada = false;
+    if (existentes.length > 0) {
+      categoriaId = existentes[0].id;
+    } else {
+      const nova = await criarCategoria(nomeCategoria);
+      categoriaId = nova.id;
+      criada = true;
+    }
+
+    const porMes = new Map<string, LancamentoEntrada[]>();
+    for (const linha of agregado.values()) {
+      if (!porMes.has(linha.mes)) porMes.set(linha.mes, []);
+      porMes.get(linha.mes)!.push({ vendedor: linha.vendedor, qtde: linha.qtde, totalReais: linha.totalReais });
+    }
+    for (const [mes, linhas] of porMes) {
+      await salvarLancamentosDoMes(categoriaId, mes, linhas);
+    }
+
+    resumo.push({ categoria: nomeCategoria, criada, linhas: agregado.size, meses: porMes.size });
+  }
+
+  return resumo;
 }

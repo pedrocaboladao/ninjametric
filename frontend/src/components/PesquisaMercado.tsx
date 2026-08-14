@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCategorias,
   criarCategoria,
@@ -7,8 +7,9 @@ import {
   fetchRanking,
   salvarLancamentosDoMes,
   fetchEvolucao,
+  importarPlanilha,
 } from "../api/pesquisa";
-import type { PesquisaCategoria, PesquisaEvolucao } from "../types/pesquisa";
+import type { PesquisaCategoria, PesquisaEvolucao, ResumoImportacaoPlanilha } from "../types/pesquisa";
 import { formatCurrency } from "../utils/format";
 
 interface LinhaEditavel {
@@ -45,6 +46,38 @@ export function PesquisaMercado() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [evolucao, setEvolucao] = useState<PesquisaEvolucao | null>(null);
+
+  const [importando, setImportando] = useState(false);
+  const [resumoImportacao, setResumoImportacao] = useState<ResumoImportacaoPlanilha[] | null>(null);
+  const inputArquivoRef = useRef<HTMLInputElement>(null);
+
+  async function handleImportarArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    if (!arquivo) return;
+    setImportando(true);
+    setErro(null);
+    setResumoImportacao(null);
+    try {
+      const resumo = await importarPlanilha(arquivo);
+      setResumoImportacao(resumo);
+      const cats = await fetchCategorias();
+      setCategorias(cats);
+      if (categoriaId !== null) {
+        const [ranking, evo] = await Promise.all([fetchRanking(categoriaId, mes), fetchEvolucao(categoriaId)]);
+        setLinhas(
+          ranking.length > 0
+            ? ranking.map((r) => ({ vendedor: r.vendedor, qtde: String(r.qtde), totalReais: String(r.totalReais) }))
+            : [linhaVazia()]
+        );
+        setEvolucao(evo);
+      }
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao importar planilha");
+    } finally {
+      setImportando(false);
+      if (inputArquivoRef.current) inputArquivoRef.current.value = "";
+    }
+  }
 
   useEffect(() => {
     fetchCategorias()
@@ -167,9 +200,58 @@ export function PesquisaMercado() {
             mês.
           </p>
         </div>
+        <div className="financeiro-filtros">
+          <input
+            ref={inputArquivoRef}
+            type="file"
+            accept=".xlsx"
+            className="pesquisa-input-arquivo-oculto"
+            onChange={handleImportarArquivo}
+          />
+          <button
+            type="button"
+            className="btn-responder"
+            disabled={importando}
+            onClick={() => inputArquivoRef.current?.click()}
+          >
+            {importando ? "Importando..." : "Importar planilha (.xlsx)"}
+          </button>
+        </div>
       </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
+
+      {resumoImportacao && (
+        <div className="pesquisa-card">
+          <h2>Resultado da importação</h2>
+          {resumoImportacao.length === 0 ? (
+            <p className="painel-sub">Nenhuma aba com dados reconhecíveis foi encontrada nesse arquivo.</p>
+          ) : (
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    <th>Categoria</th>
+                    <th className="financeiro-th-numero">Lançamentos</th>
+                    <th className="financeiro-th-numero">Meses</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {resumoImportacao.map((r) => (
+                    <tr key={r.categoria}>
+                      <td>{r.categoria}</td>
+                      <td className="financeiro-th-numero">{r.linhas}</td>
+                      <td className="financeiro-th-numero">{r.meses}</td>
+                      <td className="financeiro-td-mudo">{r.criada ? "categoria criada" : "atualizada"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="pesquisa-categorias-barra">
         <select

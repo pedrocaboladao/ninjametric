@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import multer from "multer";
 import {
   listarCategorias,
   criarCategoria,
@@ -8,10 +9,13 @@ import {
   salvarLancamentosDoMes,
   excluirLancamento,
   obterEvolucao,
+  importarPlanilha,
   type LancamentoEntrada,
 } from "../services/pesquisaService";
 
 export const pesquisaRouter = Router();
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
 function erro(res: Response, err: unknown, fallback: string) {
   console.error(fallback, err);
@@ -111,5 +115,15 @@ pesquisaRouter.get("/categorias/:id/evolucao", async (req: Request, res: Respons
     res.json(evolucao);
   } catch (err) {
     erro(res, err, "Erro ao obter evolução");
+  }
+});
+
+pesquisaRouter.post("/importar-planilha", upload.single("arquivo"), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: "Nenhum arquivo enviado" });
+    const resumo = await importarPlanilha(req.file.buffer);
+    res.json({ resumo });
+  } catch (err) {
+    erro(res, err, "Erro ao importar planilha");
   }
 });

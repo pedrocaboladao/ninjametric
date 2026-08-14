@@ -21,3 +21,10 @@ export interface PesquisaEvolucao {
   totalMercadoPorMes: number[];
   series: PesquisaEvolucaoSerie[];
 }
+
+export interface ResumoImportacaoPlanilha {
+  categoria: string;
+  criada: boolean;
+  linhas: number;
+  meses: number;
+}
