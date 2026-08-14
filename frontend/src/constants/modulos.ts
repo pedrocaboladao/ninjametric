@@ -16,6 +16,7 @@ export const MODULOS: Modulo[] = [
   { chave: "ads", label: "Gestão de Ads" },
   { chave: "fabricacao", label: "Custo de Fabricação" },
   { chave: "promocoes", label: "Promoções" },
+  { chave: "pesquisa", label: "Pesquisa de Mercado" },
   { chave: "tarefas", label: "Tarefas" },
   { chave: "funcionarios", label: "Funcionários" },
 ];

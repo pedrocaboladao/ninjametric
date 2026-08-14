@@ -11,6 +11,15 @@ export function IconChart({ size = 18 }: IconProps) {
   );
 }
 
+export function IconSearch({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <path d="M20 20l-4.8-4.8" />
+    </svg>
+  );
+}
+
 export function IconQuestion({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

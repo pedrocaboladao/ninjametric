@@ -20,6 +20,7 @@ import {
   IconBarcode,
   IconTag,
   IconRobot,
+  IconSearch,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -40,6 +41,7 @@ export type View =
   | "fabricacao"
   | "ean"
   | "promocoes"
+  | "pesquisa"
   | "agentes";
 
 interface Props {
@@ -70,6 +72,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFabricacao = temPermissao(usuario, "fabricacao");
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
+  const podePesquisa = temPermissao(usuario, "pesquisa");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
 
   const iniciais =
@@ -175,6 +178,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconTag size={16} />
               <span>Promoções</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podePesquisa && (
+          <>
+            <button
+              className={`sidebar-item ${view === "pesquisa" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("pesquisa")}
+            >
+              <IconSearch size={16} />
+              <span>Pesquisa de Mercado</span>
             </button>
             <div className="sidebar-divider" />
           </>

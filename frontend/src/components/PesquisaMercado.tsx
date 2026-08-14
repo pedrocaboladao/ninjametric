@@ -1,0 +1,358 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  fetchCategorias,
+  criarCategoria,
+  excluirCategoria,
+  fetchMeses,
+  fetchRanking,
+  salvarLancamentosDoMes,
+  fetchEvolucao,
+} from "../api/pesquisa";
+import type { PesquisaCategoria, PesquisaEvolucao } from "../types/pesquisa";
+import { formatCurrency } from "../utils/format";
+
+interface LinhaEditavel {
+  vendedor: string;
+  qtde: string;
+  totalReais: string;
+}
+
+function mesAtualPadrao(): string {
+  const agora = new Date();
+  return `${agora.getFullYear()}-${String(agora.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function linhaVazia(): LinhaEditavel {
+  return { vendedor: "", qtde: "", totalReais: "" };
+}
+
+function formatMesCurto(mesIso: string): string {
+  const [ano, mes] = mesIso.split("-");
+  const data = new Date(Number(ano), Number(mes) - 1, 1);
+  return data.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }).replace(".", "");
+}
+
+export function PesquisaMercado() {
+  const [categorias, setCategorias] = useState<PesquisaCategoria[]>([]);
+  const [categoriaId, setCategoriaId] = useState<number | null>(null);
+  const [novaCategoria, setNovaCategoria] = useState("");
+  const [mostrarNovaCategoria, setMostrarNovaCategoria] = useState(false);
+
+  const [mes, setMes] = useState(mesAtualPadrao());
+  const [linhas, setLinhas] = useState<LinhaEditavel[]>([linhaVazia()]);
+  const [carregandoMes, setCarregandoMes] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [evolucao, setEvolucao] = useState<PesquisaEvolucao | null>(null);
+
+  useEffect(() => {
+    fetchCategorias()
+      .then((cats) => {
+        setCategorias(cats);
+        if (cats.length > 0) setCategoriaId((atual) => atual ?? cats[0].id);
+      })
+      .catch((e) => setErro(e instanceof Error ? e.message : "Erro ao carregar categorias"));
+  }, []);
+
+  useEffect(() => {
+    if (categoriaId === null) return;
+    fetchMeses(categoriaId)
+      .then((meses) => {
+        if (meses.length > 0) setMes(meses[0].slice(0, 7));
+      })
+      .catch(() => {});
+    fetchEvolucao(categoriaId)
+      .then(setEvolucao)
+      .catch(() => setEvolucao(null));
+  }, [categoriaId]);
+
+  useEffect(() => {
+    if (categoriaId === null || !mes) return;
+    setCarregandoMes(true);
+    setErro(null);
+    fetchRanking(categoriaId, mes)
+      .then((ranking) => {
+        setLinhas(
+          ranking.length > 0
+            ? ranking.map((r) => ({ vendedor: r.vendedor, qtde: String(r.qtde), totalReais: String(r.totalReais) }))
+            : [linhaVazia()]
+        );
+      })
+      .catch((e) => setErro(e instanceof Error ? e.message : "Erro ao carregar lançamentos do mês"))
+      .finally(() => setCarregandoMes(false));
+  }, [categoriaId, mes]);
+
+  const totalMesDraft = useMemo(
+    () => linhas.reduce((soma, l) => soma + (Number(l.totalReais) || 0), 0),
+    [linhas]
+  );
+
+  function atualizarLinha(index: number, campo: keyof LinhaEditavel, valor: string) {
+    setLinhas((atual) => atual.map((l, i) => (i === index ? { ...l, [campo]: valor } : l)));
+  }
+
+  function adicionarLinha() {
+    setLinhas((atual) => [...atual, linhaVazia()]);
+  }
+
+  function removerLinha(index: number) {
+    setLinhas((atual) => atual.filter((_, i) => i !== index));
+  }
+
+  async function adicionarCategoria() {
+    const nome = novaCategoria.trim();
+    if (!nome) return;
+    try {
+      const categoria = await criarCategoria(nome);
+      setCategorias((atual) => [...atual, categoria].sort((a, b) => a.nome.localeCompare(b.nome)));
+      setCategoriaId(categoria.id);
+      setNovaCategoria("");
+      setMostrarNovaCategoria(false);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao criar categoria");
+    }
+  }
+
+  async function removerCategoriaAtual() {
+    if (categoriaId === null) return;
+    const categoria = categorias.find((c) => c.id === categoriaId);
+    if (!categoria) return;
+    if (
+      !confirm(`Excluir a categoria "${categoria.nome}"? Todos os dados lançados nela serão apagados. Não tem como desfazer.`)
+    )
+      return;
+    try {
+      await excluirCategoria(categoriaId);
+      const restantes = categorias.filter((c) => c.id !== categoriaId);
+      setCategorias(restantes);
+      setCategoriaId(restantes.length > 0 ? restantes[0].id : null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao excluir categoria");
+    }
+  }
+
+  async function salvar() {
+    if (categoriaId === null) return;
+    const validas = linhas
+      .filter((l) => l.vendedor.trim())
+      .map((l) => ({ vendedor: l.vendedor.trim(), qtde: Number(l.qtde) || 0, totalReais: Number(l.totalReais) || 0 }));
+    setSalvando(true);
+    setErro(null);
+    try {
+      await salvarLancamentosDoMes(categoriaId, mes, validas);
+      const [ranking, evo] = await Promise.all([fetchRanking(categoriaId, mes), fetchEvolucao(categoriaId)]);
+      setLinhas(
+        ranking.length > 0
+          ? ranking.map((r) => ({ vendedor: r.vendedor, qtde: String(r.qtde), totalReais: String(r.totalReais) }))
+          : [linhaVazia()]
+      );
+      setEvolucao(evo);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar lançamentos");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="financeiro-page">
+      <div className="financeiro-topo">
+        <div>
+          <span className="painel-eyebrow">Pesquisa de Mercado</span>
+          <h1>Ranking de vendedores por categoria</h1>
+          <p className="painel-sub">
+            Lance mês a mês o que os concorrentes venderam em cada categoria — os dados vêm do sistema externo de
+            pesquisa de mercado. A participação % é calculada automaticamente a partir do total de cada vendedor no
+            mês.
+          </p>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="pesquisa-categorias-barra">
+        <select
+          className="dashboard-select"
+          value={categoriaId ?? ""}
+          onChange={(e) => setCategoriaId(e.target.value ? Number(e.target.value) : null)}
+        >
+          {categorias.length === 0 && <option value="">Nenhuma categoria cadastrada</option>}
+          {categorias.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome}
+            </option>
+          ))}
+        </select>
+
+        {mostrarNovaCategoria ? (
+          <>
+            <input
+              className="clonar-input pesquisa-input-categoria"
+              placeholder="Nome da categoria"
+              value={novaCategoria}
+              onChange={(e) => setNovaCategoria(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && adicionarCategoria()}
+              autoFocus
+            />
+            <button type="button" className="btn-responder" onClick={adicionarCategoria}>
+              Adicionar
+            </button>
+            <button
+              type="button"
+              className="btn-secundario"
+              onClick={() => {
+                setMostrarNovaCategoria(false);
+                setNovaCategoria("");
+              }}
+            >
+              Cancelar
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn-secundario" onClick={() => setMostrarNovaCategoria(true)}>
+              + Nova categoria
+            </button>
+            {categoriaId !== null && (
+              <button type="button" className="btn-excluir" onClick={removerCategoriaAtual}>
+                Excluir categoria
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {categorias.length === 0 && (
+        <div className="state-message">Cadastre uma categoria (ex: "Tintas a óleo", "Vernizes") pra começar.</div>
+      )}
+
+      {categoriaId !== null && (
+        <>
+          <div className="pesquisa-card">
+            <div className="pesquisa-card-topo">
+              <h2>Lançamento do mês</h2>
+              <input
+                type="month"
+                className="clonar-input pesquisa-input-mes"
+                value={mes}
+                onChange={(e) => setMes(e.target.value)}
+              />
+            </div>
+
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    <th>Vendedor</th>
+                    <th className="financeiro-th-numero">Qtde vendida</th>
+                    <th className="financeiro-th-numero">Total (R$)</th>
+                    <th className="financeiro-th-numero">Participação</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhas.map((linha, i) => {
+                    const totalNum = Number(linha.totalReais) || 0;
+                    const participacao = totalMesDraft > 0 ? (totalNum / totalMesDraft) * 100 : 0;
+                    return (
+                      <tr key={i}>
+                        <td>
+                          <input
+                            className="clonar-input"
+                            value={linha.vendedor}
+                            onChange={(e) => atualizarLinha(i, "vendedor", e.target.value)}
+                            placeholder="Nome do vendedor/loja"
+                          />
+                        </td>
+                        <td className="financeiro-th-numero">
+                          <input
+                            type="number"
+                            className="clonar-input pesquisa-input-numero"
+                            value={linha.qtde}
+                            onChange={(e) => atualizarLinha(i, "qtde", e.target.value)}
+                            min={0}
+                          />
+                        </td>
+                        <td className="financeiro-th-numero">
+                          <input
+                            type="number"
+                            className="clonar-input pesquisa-input-numero"
+                            value={linha.totalReais}
+                            onChange={(e) => atualizarLinha(i, "totalReais", e.target.value)}
+                            min={0}
+                            step="0.01"
+                          />
+                        </td>
+                        <td className="financeiro-th-numero financeiro-td-mudo">{participacao.toFixed(1)}%</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="pesquisa-remover-linha"
+                            onClick={() => removerLinha(i)}
+                            title="Remover linha"
+                          >
+                            ×
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pesquisa-card-acoes">
+              <button type="button" className="btn-secundario" onClick={adicionarLinha}>
+                + Vendedor
+              </button>
+              <button type="button" className="btn-responder" onClick={salvar} disabled={salvando || carregandoMes}>
+                {salvando ? "Salvando..." : "Salvar mês"}
+              </button>
+            </div>
+          </div>
+
+          {evolucao && evolucao.meses.length > 0 && (
+            <div className="pesquisa-card">
+              <h2>Evolução por mês</h2>
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>Vendedor</th>
+                      {evolucao.meses.map((m) => (
+                        <th key={m} className="financeiro-th-numero">
+                          {formatMesCurto(m)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td className="financeiro-td-mudo">Total do mercado</td>
+                      {evolucao.totalMercadoPorMes.map((v, i) => (
+                        <td key={i} className="financeiro-th-numero">
+                          {formatCurrency(v)}
+                        </td>
+                      ))}
+                    </tr>
+                    {evolucao.series.map((serie) => (
+                      <tr key={serie.vendedor}>
+                        <td>{serie.vendedor}</td>
+                        {serie.valores.map((v, i) => (
+                          <td key={i} className="financeiro-th-numero">
+                            {v === null ? "—" : formatCurrency(v)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

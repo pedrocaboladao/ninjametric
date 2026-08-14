@@ -20,6 +20,7 @@ import { dreRouter } from "./routes/dre";
 import { correcoesRouter } from "./routes/correcoes";
 import { fabricacaoRouter } from "./routes/fabricacao";
 import { promocoesRouter } from "./routes/promocoes";
+import { pesquisaRouter } from "./routes/pesquisa";
 import { agentesRouter } from "./routes/agentes";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
@@ -65,6 +66,7 @@ app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);
 app.use("/api/correcoes", requireAuth, requirePermissao("correcoes"), correcoesRouter);
 app.use("/api/fabricacao", requireAuth, requirePermissao("fabricacao"), fabricacaoRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
+app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRouter);
 // Admin-only (mesmo padrão de /api/usuarios) — não é módulo comum, não
 // aparece como checkbox liberável pra equipe.
 app.use("/api/agentes", requireAuth, requireAdmin, agentesRouter);

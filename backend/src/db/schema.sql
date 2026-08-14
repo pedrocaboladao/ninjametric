@@ -702,3 +702,23 @@ CREATE TABLE IF NOT EXISTS growth_hacker_mensagens (
   texto TEXT NOT NULL,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS pesquisa_categorias (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL UNIQUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS pesquisa_mercado (
+  id SERIAL PRIMARY KEY,
+  categoria_id INTEGER NOT NULL REFERENCES pesquisa_categorias(id) ON DELETE CASCADE,
+  mes DATE NOT NULL,
+  vendedor TEXT NOT NULL,
+  qtde INTEGER NOT NULL,
+  total_reais NUMERIC(14, 2) NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (categoria_id, mes, vendedor)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pesquisa_mercado_categoria_mes ON pesquisa_mercado (categoria_id, mes DESC);

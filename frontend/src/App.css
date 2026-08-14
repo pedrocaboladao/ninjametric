@@ -5261,6 +5261,73 @@
   border-radius: 50%;
 }
 
+.pesquisa-categorias-barra {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+
+.pesquisa-input-categoria {
+  width: 220px;
+}
+
+.pesquisa-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
+.pesquisa-card h2 {
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+
+.pesquisa-card-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.pesquisa-card-topo h2 {
+  margin: 0;
+}
+
+.pesquisa-input-mes {
+  width: 160px;
+}
+
+.pesquisa-input-numero {
+  width: 100px;
+}
+
+.pesquisa-card-acoes {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pesquisa-remover-linha {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.pesquisa-remover-linha:hover {
+  color: var(--critical-text);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .agente-perfil-chip button:hover {
   color: var(--critical-text);
   background: rgba(255, 255, 255, 0.06);
