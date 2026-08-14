@@ -14,11 +14,27 @@ import {
 } from "../api/pesquisa";
 import type { PesquisaCategoria, PesquisaEvolucao, ResumoImportacaoPlanilha, PesquisaAnuncio } from "../types/pesquisa";
 import { formatCurrency } from "../utils/format";
+import { IconChevron, IconMoney, IconChart, IconTag } from "./icons";
 
 interface LinhaEditavel {
   vendedor: string;
   qtde: string;
   totalReais: string;
+}
+
+function useSecaoAberta(chave: string, padrao: boolean): [boolean, () => void] {
+  const [aberta, setAberta] = useState(() => {
+    const salvo = localStorage.getItem(chave);
+    return salvo === null ? padrao : salvo === "true";
+  });
+  function alternar() {
+    setAberta((atual) => {
+      const novo = !atual;
+      localStorage.setItem(chave, String(novo));
+      return novo;
+    });
+  }
+  return [aberta, alternar];
 }
 
 function mesAtualPadrao(): string {
@@ -49,6 +65,9 @@ export function PesquisaMercado() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [evolucao, setEvolucao] = useState<PesquisaEvolucao | null>(null);
+
+  const [lancamentoAberto, alternarLancamento] = useSecaoAberta("pesquisa-lancamento-aberta", true);
+  const [evolucaoAberta, alternarEvolucao] = useSecaoAberta("pesquisa-evolucao-aberta", true);
 
   const [importando, setImportando] = useState(false);
   const [resumoImportacao, setResumoImportacao] = useState<ResumoImportacaoPlanilha[] | null>(null);
@@ -314,9 +333,17 @@ export function PesquisaMercado() {
 
       {categoriaId !== null && (
         <>
-          <div className="pesquisa-card">
-            <div className="pesquisa-card-topo">
+          <div className="fabricacao-secao">
+            <button type="button" className="fabricacao-secao-toggle" onClick={alternarLancamento}>
+              <IconChevron open={lancamentoAberto} />
+              <IconMoney size={17} />
               <h2>Lançamento do mês</h2>
+              <span className="financeiro-td-mudo">({linhas.length})</span>
+            </button>
+
+            {lancamentoAberto && (
+              <>
+            <div className="pesquisa-card-topo">
               <input
                 type="month"
                 className="clonar-input pesquisa-input-mes"
@@ -395,11 +422,20 @@ export function PesquisaMercado() {
                 {salvando ? "Salvando..." : "Salvar mês"}
               </button>
             </div>
+              </>
+            )}
           </div>
 
           {evolucao && evolucao.meses.length > 0 && (
-            <div className="pesquisa-card">
-              <h2>Evolução por mês</h2>
+            <div className="fabricacao-secao">
+              <button type="button" className="fabricacao-secao-toggle" onClick={alternarEvolucao}>
+                <IconChevron open={evolucaoAberta} />
+                <IconChart size={17} />
+                <h2>Evolução por mês</h2>
+                <span className="financeiro-td-mudo">({evolucao.meses.length} meses)</span>
+              </button>
+
+              {evolucaoAberta && (
               <div className="financeiro-tabela-wrap">
                 <table className="financeiro-tabela">
                   <thead>
@@ -434,6 +470,7 @@ export function PesquisaMercado() {
                   </tbody>
                 </table>
               </div>
+              )}
             </div>
           )}
 
@@ -463,6 +500,7 @@ function AnunciosSecao({ categoriaId }: { categoriaId: number }) {
   const [importando, setImportando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const inputArquivoRef = useRef<HTMLInputElement>(null);
+  const [aberta, alternarAberta] = useSecaoAberta("pesquisa-anuncios-aberta", true);
 
   useEffect(() => {
     fetchSnapshotsAnuncios(categoriaId)
@@ -506,9 +544,17 @@ function AnunciosSecao({ categoriaId }: { categoriaId: number }) {
   }
 
   return (
-    <div className="pesquisa-card">
-      <div className="pesquisa-card-topo">
+    <div className="fabricacao-secao">
+      <button type="button" className="fabricacao-secao-toggle" onClick={alternarAberta}>
+        <IconChevron open={aberta} />
+        <IconTag size={17} />
         <h2>Anúncios</h2>
+        <span className="financeiro-td-mudo">({anuncios.length})</span>
+      </button>
+
+      {aberta && (
+      <>
+      <div className="pesquisa-card-topo">
         <div className="pesquisa-anuncios-acoes">
           {snapshots.length > 0 && (
             <select
@@ -607,6 +653,8 @@ function AnunciosSecao({ categoriaId }: { categoriaId: number }) {
             </div>
           )}
         </>
+      )}
+      </>
       )}
     </div>
   );
