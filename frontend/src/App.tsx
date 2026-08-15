@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Sidebar, type View } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
 import { Perguntas } from "./components/Perguntas";
@@ -77,13 +78,33 @@ function primeiraViewPermitida(usuario: Usuario): View {
   return "dashboard";
 }
 
+// Cada view agora tem sua própria URL ("/financeiro", "/agentes", etc.) —
+// o mecanismo de clicar no menu continua idêntico (troca instantânea, sem
+// recarregar a página), só que agora o link muda junto, dá pra favoritar
+// uma página específica e o F5 mantém onde você estava. "/" e qualquer
+// caminho inválido caem em RotaInicial, que resolve pra última view salva
+// (ou a primeira permitida) e redireciona.
+function RotaInicial({ usuario }: { usuario: Usuario }) {
+  return <Navigate to={`/${viewInicial(usuario)}`} replace />;
+}
+
 function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => void }) {
-  const [view, setView] = useState<View>(() => viewInicial(usuario));
+  const { view: viewNaUrl } = useParams<{ view: string }>();
+  const navigate = useNavigate();
   const perguntas = usePerguntas(temPermissao(usuario, "perguntas"));
 
+  // Se o link não é uma view conhecida (digitada errada, ou salva de uma
+  // versão antiga do sistema), cai na view inicial em vez de tela em branco.
+  const viewValidaNaUrl = VIEWS_VALIDAS.includes(viewNaUrl as View);
+  const view: View = viewValidaNaUrl ? (viewNaUrl as View) : viewInicial(usuario);
+
   useEffect(() => {
+    if (!viewValidaNaUrl) {
+      navigate(`/${view}`, { replace: true });
+      return;
+    }
     localStorage.setItem(CHAVE_ULTIMA_VIEW, view);
-  }, [view]);
+  }, [viewValidaNaUrl, view, navigate]);
 
   async function handleSair() {
     await logout();
@@ -96,7 +117,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
     <div className="app-shell">
       <Sidebar
         view={view}
-        onChangeView={setView}
+        onChangeView={(v) => navigate(`/${v}`)}
         perguntasPendentes={perguntas.perguntas?.length ?? 0}
         usuario={usuario}
         onSair={handleSair}
@@ -154,7 +175,12 @@ function App() {
     return <Login onEntrar={atualizarSessao} />;
   }
 
-  return <AppAutenticado usuario={usuario} onSair={() => setUsuario(null)} />;
+  return (
+    <Routes>
+      <Route path="/:view" element={<AppAutenticado usuario={usuario} onSair={() => setUsuario(null)} />} />
+      <Route path="*" element={<RotaInicial usuario={usuario} />} />
+    </Routes>
+  );
 }
 
 export default App;
