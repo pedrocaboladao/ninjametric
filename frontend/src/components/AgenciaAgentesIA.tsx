@@ -1919,8 +1919,10 @@ type ItemFeedTV =
 // min e sai com Esc.
 function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
   const [feed, setFeed] = useState<ItemFeedTV[] | null>(null);
+  const [atualizandoFeed, setAtualizandoFeed] = useState(false);
 
-  const carregar = useCallback(async () => {
+  const carregar = useCallback(async (forcar = false) => {
+    if (forcar) setAtualizandoFeed(true);
     try {
       const [pensamentosAds, briefingsGrowth, pensamentosConversao, pensamentosCatalogo, oportunidades, vendas] =
         await Promise.all([
@@ -2004,12 +2006,14 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
       // feed parar de atualizar de novo (senão falha silenciosa demais
       // pra notar de longe).
       console.error("Modo TV: falha ao atualizar feed", err);
+    } finally {
+      if (forcar) setAtualizandoFeed(false);
     }
   }, []);
 
   useEffect(() => {
     carregar();
-    const intervalo = setInterval(carregar, 60000);
+    const intervalo = setInterval(() => carregar(false), 60000);
     const aoTeclar = (e: KeyboardEvent) => {
       if (e.key === "Escape") onSair();
     };
@@ -2027,7 +2031,17 @@ function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
       </button>
 
       <div className="agente-tv-feed-painel">
-        <span className="painel-eyebrow">Feed dos agentes</span>
+        <div className="agente-tv-feed-cabecalho">
+          <span className="painel-eyebrow">Feed dos agentes</span>
+          <button
+            type="button"
+            className="agente-tv-feed-atualizar"
+            onClick={() => carregar(true)}
+            disabled={atualizandoFeed}
+          >
+            {atualizandoFeed ? "Atualizando..." : "Atualizar"}
+          </button>
+        </div>
         {(!feed || feed.length === 0) && (
           <span className="financeiro-td-mudo">Ainda sem nenhuma atividade registrada.</span>
         )}
