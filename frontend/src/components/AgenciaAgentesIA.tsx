@@ -15,6 +15,7 @@ import {
   perguntarGrowthHacker,
   fetchMensagensGrowthHacker,
   perguntarDiretorAds,
+  perguntarConsultorPreco,
   fetchBriefingsGrowthHacker,
   verificarBriefingGrowthHackerAgora,
   tratarFotoProduto,
@@ -1119,6 +1120,37 @@ function DiretorAdsGrupo() {
             ? `Análise focada só na ${nomeLojaSelecionada} — mesma profundidade, sem o resto do grupo disputando espaço na resposta.`
             : "Pergunte sobre o Ads de qualquer loja do grupo — competição saudável entre as outras contas, mas nenhuma pode ultrapassar as suas 4 num produto disputado. Quer focar numa loja só? Selecione ela ali em cima."
         }
+      />
+    </>
+  );
+}
+
+// Consultor de precificação por produto — pergunta pontual do tipo "devo
+// aumentar o preço do X pra ganhar margem, ou vou perder volume?". Agente
+// independente (não estende Growth Hacker/Diretor de Ads): identifica o
+// produto pela pergunta livre (busca por SKU, não tem seletor de loja) e
+// cruza preço/margem/volume reconstruído das vendas reais das últimas
+// semanas, já que não existe histórico de preço do anúncio guardado no
+// sistema. Sem briefing automático e sem histórico persistido — só chat
+// sob demanda, mesmo padrão do Diretor de Ads.
+function ConsultorPreco() {
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Consultor de Precificação</h1>
+          <p className="painel-sub">
+            Pergunte sobre um produto específico das suas 4 lojas — ele cruza preço, margem e volume vendido
+            (reconstruído das vendas reais, já que não existe um histórico de preço do anúncio) pra recomendar se vale
+            subir, manter ou baixar o preço.
+          </p>
+        </div>
+      </div>
+
+      <ChatAgente
+        perguntar={perguntarConsultorPreco}
+        placeholder="Ex: devo aumentar o preço do RESIFLEX pra ganhar margem?"
+        mensagemVazia="Pergunte sobre qualquer produto das suas 4 lojas — cite o nome ou o SKU pra eu identificar certo."
       />
     </>
   );
@@ -2684,7 +2716,15 @@ function PlanoDoDia() {
 
 export function AgenciaAgentesIA() {
   const [agente, setAgente] = useState<
-    "plano" | "ads" | "growth" | "diretorAds" | "imagens" | "oportunidades" | "catalogo" | "conversao"
+    | "plano"
+    | "ads"
+    | "growth"
+    | "diretorAds"
+    | "consultorPreco"
+    | "imagens"
+    | "oportunidades"
+    | "catalogo"
+    | "conversao"
   >("plano");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
@@ -2735,6 +2775,13 @@ export function AgenciaAgentesIA() {
         </button>
         <button
           type="button"
+          className={`agente-tab ${agente === "consultorPreco" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("consultorPreco")}
+        >
+          Consultor de Precificação
+        </button>
+        <button
+          type="button"
           className={`agente-tab ${agente === "imagens" ? "agente-tab-ativa" : ""}`}
           onClick={() => setAgente("imagens")}
         >
@@ -2767,6 +2814,7 @@ export function AgenciaAgentesIA() {
       {agente === "ads" && <AnalistaAds />}
       {agente === "growth" && <GrowthHacker />}
       {agente === "diretorAds" && <DiretorAdsGrupo />}
+      {agente === "consultorPreco" && <ConsultorPreco />}
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}
       {agente === "catalogo" && <AgenteCatalogo />}

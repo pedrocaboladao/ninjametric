@@ -23,6 +23,7 @@ import { listarPensamentosConversao } from "../services/agenteConversaoService";
 import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from "../services/agentePlanoDiarioService";
 import { buscarResumoEscritorio } from "../services/resumoEscritorioService";
 import { perguntarDiretorAds } from "../services/diretorAdsService";
+import { perguntarConsultorPreco } from "../services/consultorPrecoService";
 
 export const agentesRouter = Router();
 
@@ -126,6 +127,25 @@ agentesRouter.post("/diretor-ads/perguntar", async (req, res) => {
     res.json({ resposta, pensamento });
   } catch (err) {
     erro(res, err, "Falha ao perguntar pro Diretor de Ads.");
+  }
+});
+
+agentesRouter.post("/consultor-preco/perguntar", async (req, res) => {
+  const { pergunta, historico } = req.body ?? {};
+  if (typeof pergunta !== "string" || !pergunta.trim()) {
+    res.status(400).json({ error: "Pergunta inválida." });
+    return;
+  }
+  const historicoValido: MensagemChat[] = Array.isArray(historico)
+    ? historico.filter(
+        (m): m is MensagemChat => !!m && (m.papel === "usuario" || m.papel === "agente") && typeof m.texto === "string"
+      )
+    : [];
+  try {
+    const { resposta, pensamento } = await perguntarConsultorPreco(pergunta.trim(), historicoValido);
+    res.json({ resposta, pensamento });
+  } catch (err) {
+    erro(res, err, "Falha ao perguntar pro Consultor de Precificação.");
   }
 });
 

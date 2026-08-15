@@ -122,6 +122,16 @@ export async function perguntarDiretorAds(
   return tratarResposta<RespostaChatAgente>(res);
 }
 
+export async function perguntarConsultorPreco(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
+  const res = await fetch(`${API_BASE}/api/agentes/consultor-preco/perguntar`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pergunta, historico }),
+  });
+  return tratarResposta<RespostaChatAgente>(res);
+}
+
 export async function fetchBriefingsGrowthHacker(): Promise<BriefingGrowthHacker[]> {
   const res = await fetch(`${API_BASE}/api/agentes/growth-hacker/feed`, { credentials: "include" });
   const data = await tratarResposta<{ pensamentos: BriefingGrowthHacker[] }>(res);

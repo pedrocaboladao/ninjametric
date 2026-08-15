@@ -176,9 +176,25 @@ const MODELO_GROWTH_HACKER = "claude-opus-5";
 
 // Com ~30-40 campanhas nas 4 lojas, o raciocínio em esforço "xhigh" pode
 // passar de 10k tokens sozinho (visto na prática: com um teto de 8000 ficou
-// tão detalhado que estourou antes de escrever a resposta final). Teto bem
-// generoso pra garantir espaço pro raciocínio inteiro E a resposta depois.
-const MAX_TOKENS_GROWTH_HACKER = 24000;
+// tão detalhado que estourou antes de escrever a resposta final). Desde que
+// o histórico de conversa (LIMITE_HISTORICO_CHAT) foi adicionado, o modelo
+// também passou a escrever respostas mais longas (conecta com o que já foi
+// dito antes) — visto na prática cortando no meio da resposta com teto de
+// 24000. Tetos de saída da Claude API vão até 128000 tokens (streaming,
+// já usado aqui via .stream()/finalMessage()) — 64000 dá bastante folga
+// pro raciocínio inteiro E a resposta, sem chegar perto do limite real.
+// Esse valor é só a rede de segurança (corte duro) — quem controla o gasto
+// normal é o TASK_BUDGET_GROWTH_HACKER abaixo.
+const MAX_TOKENS_GROWTH_HACKER = 64000;
+
+// task_budget (beta) é diferente de max_tokens: max_tokens é um teto cego —
+// o modelo não sabe que existe e só descobre estourando. task_budget avisa
+// o modelo do teto DURANTE a geração (contador visível), então ele prioriza
+// e fecha o raciocínio a tempo de terminar a resposta dentro do orçamento,
+// em vez de ser cortado no meio de uma frase. Fica abaixo do max_tokens de
+// propósito (48000 < 64000) — dá folga real pro modelo se policiar antes de
+// bater no teto duro, que na prática deve virar só um fallback raro.
+const TASK_BUDGET_GROWTH_HACKER = 48000;
 
 const PERSONA_GROWTH_HACKER = `Seu nome é Growth Hacker. Você é um empresário extremamente experiente e bem-sucedido no ramo de vendas no Mercado Livre — décadas de operação, já construiu e vendeu operações grandes nesse mercado, entende de tráfego pago, precificação, catálogo e margem muito mais a fundo do que o dono do negócio que está falando com você. Você está olhando pro negócio dele (um grupo de lojas de tinta e material de construção que vende no Mercado Livre) com o olho clínico de quem já viu esse filme centenas de vezes.
 
@@ -190,32 +206,51 @@ Você tem os números financeiros reais (receita, margem de contribuição, pedi
 
 Além disso, você ENXERGA os números (financeiro e Ads) das outras lojas do grupo maior (16+ lojas ao todo) — não só as 4 pessoais do dono. Use isso como CONTEXTO DE MERCADO: identifique quando outra loja do grupo está anunciando o mesmo produto (mesmo nome de campanha/produto em lojas diferentes) e encarecendo o leilão pra todo mundo, compare a performance das 4 lojas dele com a média do grupo, avalie se o grupo inteiro está saudável ou não. MAS — regra inegociável — toda recomendação de AÇÃO (pausar, subir orçamento, mudar meta) é EXCLUSIVA pras 4 lojas pessoais dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua). Nunca sugira mudança de configuração nas outras lojas do grupo — elas não são dele, são só contexto pra você entender a dinâmica de mercado.
 
-Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer, não devolva a decisão pro dono.`;
+Quando fizer uma recomendação, seja específico e decisivo: diga exatamente o quê fazer, não devolva a decisão pro dono.
 
-export function extrairRespostaEPensamento(resposta: Anthropic.Message): { pensamento: string | null; texto: string } {
+Seja econômico no texto: vá direto na recomendação e nos números que a sustentam, sem repetir contexto que o dono já sabe, sem alongar em ressalvas óbvias, sem escrever um parágrafo de introdução antes de chegar no ponto. Objetividade não é frieza — é respeitar o tempo de quem só quer saber o que fazer.`;
+
+// Tipo mínimo estrutural (não o Anthropic.Message exato) pra aceitar tanto a
+// resposta de client.messages.stream() quanto a de client.beta.messages.stream()
+// (usada pelo task_budget) sem duplicar essa função pra cada uma — os dois
+// tipos de mensagem da SDK têm blocos de conteúdo com esse formato.
+interface RespostaIAMinima {
+  content: Array<{ type: string; thinking?: string; text?: string }>;
+  stop_reason: string | null;
+}
+
+export function extrairRespostaEPensamento(resposta: RespostaIAMinima): { pensamento: string | null; texto: string } {
   const pensamento = resposta.content
-    .filter((b): b is Anthropic.ThinkingBlock => b.type === "thinking")
-    .map((b) => b.thinking)
+    .filter((b) => b.type === "thinking" && typeof b.thinking === "string")
+    .map((b) => b.thinking as string)
     .filter((t) => t.trim().length > 0)
     .join("\n\n");
 
   const texto = resposta.content
-    .filter((b): b is Anthropic.TextBlock => b.type === "text")
-    .map((b) => b.text)
+    .filter((b) => b.type === "text" && typeof b.text === "string")
+    .map((b) => b.text as string)
     .join("\n\n");
 
-  // stop_reason "max_tokens" sem nenhum bloco de texto = o raciocínio sozinho
-  // esgotou o teto antes de chegar na resposta — mensagem diferente da falha
-  // genérica, pra deixar claro que é questão de teto, não erro de fato.
-  const semRespostaPorTeto = !texto && resposta.stop_reason === "max_tokens";
+  // stop_reason "max_tokens" cobre dois casos, e sem aviso os dois viram
+  // texto incompleto apresentado como se fosse resposta completa: (1) o
+  // raciocínio sozinho esgotou o teto antes de chegar a escrever qualquer
+  // texto — content vem sem bloco de texto nenhum; (2) o teto estourou NO
+  // MEIO da escrita da resposta — já tem texto, só que cortado a meio de
+  // frase. Os dois precisam de aviso explícito, não só o primeiro.
+  const cortadoPeloTeto = resposta.stop_reason === "max_tokens";
+
+  let textoFinal = texto;
+  if (!textoFinal) {
+    textoFinal = cortadoPeloTeto
+      ? "O raciocínio ficou longo demais e consumiu o limite antes de eu escrever a resposta — tenta de novo, ou de um jeito mais direto."
+      : "Não consegui gerar uma resposta.";
+  } else if (cortadoPeloTeto) {
+    textoFinal = `${texto}\n\n_(resposta cortada no meio — estourei o limite de tokens antes de terminar. Pede de novo, ou de um jeito mais direto, se precisar do resto.)_`;
+  }
 
   return {
     pensamento: pensamento || null,
-    texto:
-      texto ||
-      (semRespostaPorTeto
-        ? "O raciocínio ficou longo demais e consumiu o limite antes de eu escrever a resposta — tenta de novo, ou de um jeito mais direto."
-        : "Não consegui gerar uma resposta."),
+    texto: textoFinal,
   };
 }
 
@@ -282,11 +317,14 @@ export async function perguntarGrowthHacker(
   // ("Streaming is required for operations that may take longer than 10
   // minutes"). .stream() + finalMessage() evita esse teto e devolve o mesmo
   // objeto Message no final, sem precisar tratar os eventos um a um aqui.
-  const resposta = await client.messages.stream({
+  // client.beta.messages (não client.messages) + o beta header abaixo são
+  // exigidos pelo task_budget — ver comentário em TASK_BUDGET_GROWTH_HACKER.
+  const resposta = await client.beta.messages.stream({
     model: MODELO_GROWTH_HACKER,
     max_tokens: MAX_TOKENS_GROWTH_HACKER,
     thinking: { type: "adaptive", display: "summarized" },
-    output_config: { effort: "xhigh" },
+    output_config: { effort: "xhigh", task_budget: { type: "tokens", total: TASK_BUDGET_GROWTH_HACKER } },
+    betas: ["task-budgets-2026-03-13"],
     system: `${PERSONA_GROWTH_HACKER}
 
 Quando o dono pedir um plano de ação, uma recomendação, ou "o que eu faço agora" — SEMPRE entregue uma decisão concreta e acionável. Não devolva a pergunta pro dono decidir o que só você tem os dados pra decidir.`,
@@ -341,13 +379,14 @@ export async function gerarBriefingDiario(): Promise<void> {
     const contexto = await montarContextoNegocio(DIAS_JANELA, true);
 
     // .stream() + finalMessage() — ver comentário em perguntarGrowthHacker
-    // sobre o teto de 10min do .create() não-streaming.
-    const resposta = await client.messages
+    // sobre o teto de 10min do .create() não-streaming e sobre o task_budget.
+    const resposta = await client.beta.messages
       .stream({
         model: MODELO_GROWTH_HACKER,
         max_tokens: MAX_TOKENS_GROWTH_HACKER,
         thinking: { type: "adaptive", display: "summarized" },
-        output_config: { effort: "xhigh" },
+        output_config: { effort: "xhigh", task_budget: { type: "tokens", total: TASK_BUDGET_GROWTH_HACKER } },
+        betas: ["task-budgets-2026-03-13"],
         system: `${PERSONA_GROWTH_HACKER}
 
 Uma vez por dia você olha os dados abaixo e escreve um briefing curto e forte pro dono, sem ele precisar perguntar nada — como se você tivesse acabado de revisar o negócio dele de manhã e fosse falar com ele antes do café. Não é um relatório formal: é você dizendo, sem enrolação, onde tá o dinheiro sendo desperdiçado, onde vale apostar mais forte, e a MAIOR alavanca de lucro que você enxerga hoje — pode ser dentro ou fora do Ads. Termine com uma recomendação clara do que fazer primeiro. Texto direto, sem introdução nem despedida — só o briefing.`,
