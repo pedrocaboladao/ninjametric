@@ -13,6 +13,7 @@ import {
   atributosObrigatoriosFaltando,
   atributoRejeitado,
   atributosComValorInvalido,
+  getAtributosDaCategoria,
   definirSkuDoItem,
   definirSkusDasVariacoes,
   extrairSkuDoItem,
@@ -128,6 +129,56 @@ function sanearAtributos(atributos: MlAttribute[]): MlAttribute[] {
   return limpos;
 }
 
+function normalizarTexto(texto: string): string {
+  return texto
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function escaparRegex(texto: string): string {
+  return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Quando a categoria exige um atributo que o anúncio original nunca teve
+// (anúncio antigo, exigência nova — ex.: "Tipo de tinta" numa categoria de
+// tintas), tenta deduzir o valor pelo título do anúncio usando o
+// vocabulário da PRÓPRIA categoria: só aceita quando um dos valores
+// oficiais aparece por extenso no título (ex.: título "Tinta Acrílica
+// Fosca..." + valor "Acrílica" da categoria). Nunca chuta — sem
+// correspondência clara, devolve só o nome de exibição do campo pra
+// mensagem de erro ficar legível.
+async function deduzirAtributoPeloTitulo(
+  categoryId: string,
+  attributeId: string,
+  textoBase: string
+): Promise<{ atributo?: MlAttribute; nomeCampo: string }> {
+  let definicoes;
+  try {
+    definicoes = await getAtributosDaCategoria(categoryId);
+  } catch {
+    return { nomeCampo: attributeId };
+  }
+  const definicao = definicoes.find((d) => d.id === attributeId);
+  if (!definicao) return { nomeCampo: attributeId };
+
+  const texto = normalizarTexto(textoBase);
+  let melhor: { id: string; name: string } | null = null;
+  for (const valor of definicao.values ?? []) {
+    if (!valor.name) continue;
+    // Palavra inteira, não pedaço de outra (ex.: valor "PU" não pode casar
+    // dentro de "PUra") — por isso a checagem com fronteiras, não includes.
+    const padrao = new RegExp(`(^|[^a-z0-9])${escaparRegex(normalizarTexto(valor.name))}($|[^a-z0-9])`);
+    if (!padrao.test(texto)) continue;
+    if (!melhor || valor.name.length > melhor.name.length) melhor = valor;
+  }
+
+  return {
+    nomeCampo: definicao.name || attributeId,
+    atributo: melhor ? { id: attributeId, value_id: melhor.id, value_name: melhor.name } : undefined,
+  };
+}
+
 // Junta listas de atributos com as últimas ganhando das primeiras quando o
 // mesmo id aparece mais de uma vez (ex.: atributo da variação sobrepõe o do
 // anúncio-pai) — o Mercado Livre exige um único valor por atributo.
@@ -171,13 +222,13 @@ function gerarGtinInterno(chave: string): string {
 // corrigir automaticamente. "valoresJaSimplificados" guarda quais atributos
 // já tiveram o value_id removido, pra não ficar tentando a mesma correção
 // em círculo (ver o caso de valor inválido lá embaixo).
-function corrigirPayload(
+async function corrigirPayload(
   err: unknown,
   payloadEntrada: NovoItemPayload,
   atributosOriginaisCompletos: MlAttribute[],
   lojaId: number,
   valoresJaSimplificados: Set<string>
-): NovoItemPayload | null {
+): Promise<NovoItemPayload | null> {
   let payload = payloadEntrada;
   let ajustou = false;
 
@@ -248,17 +299,40 @@ function corrigirPayload(
     }
 
     // Qualquer OUTRO atributo obrigatório citado no erro (fora os casos
-    // específicos acima): se o anúncio original tinha um valor pra ele,
-    // reaproveita — cobre categoria que passou a exigir um atributo que o
-    // payload perdeu no caminho (ex.: PAINT_TYPE numa categoria de tintas).
+    // específicos acima): primeiro reaproveita o valor do anúncio original;
+    // se o original nunca teve (anúncio antigo, exigência nova da
+    // categoria), tenta deduzir pelo título usando os valores oficiais da
+    // categoria (ex.: "Tipo de tinta" = "Acrílica" num título "Tinta
+    // Acrílica Fosca..."). Sem dedução segura, erro legível dizendo qual
+    // campo preencher — em vez do JSON cru do Mercado Livre.
     const jaTratados = new Set(["GTIN", "UNITS_PER_PACK", ...Object.keys(VALOR_PADRAO_CONFIRMADO), ...ATRIBUTOS_CUBAGEM]);
     for (const attributeId of atributosObrigatoriosFaltando(err)) {
       if (jaTratados.has(attributeId)) continue;
       if (payload.attributes.some((a) => a.id === attributeId)) continue;
+
       const valorOriginal = atributosOriginaisCompletos.find((a) => a.id === attributeId);
-      if (!valorOriginal) continue;
-      payload = { ...payload, attributes: [...payload.attributes, valorOriginal] };
-      ajustou = true;
+      if (valorOriginal) {
+        payload = { ...payload, attributes: [...payload.attributes, valorOriginal] };
+        ajustou = true;
+        continue;
+      }
+
+      const { atributo, nomeCampo } = await deduzirAtributoPeloTitulo(
+        payload.category_id,
+        attributeId,
+        payload.title ?? payload.family_name ?? ""
+      );
+      if (atributo) {
+        payload = { ...payload, attributes: [...payload.attributes, atributo] };
+        ajustou = true;
+        continue;
+      }
+
+      throw new Error(
+        `A categoria de destino passou a exigir o campo "${nomeCampo}" e o anúncio original não tem esse valor ` +
+          `(nem deu pra deduzir com segurança pelo título). Preencha "${nomeCampo}" no anúncio original no ` +
+          `Mercado Livre e clone de novo — o clone lê o original na hora, então o valor novo já vem junto.`
+      );
     }
 
     // A categoria/produto de destino aceita o atributo, mas não o VALOR que
@@ -320,7 +394,7 @@ async function criarItemComFallbacks(
     try {
       return await createItem(lojaId, payload);
     } catch (err) {
-      const corrigido = corrigirPayload(err, payload, atributosOriginaisCompletos, lojaId, valoresJaSimplificados);
+      const corrigido = await corrigirPayload(err, payload, atributosOriginaisCompletos, lojaId, valoresJaSimplificados);
       // Nada reconhecível pra corrigir: o erro real é mais útil pro dono do
       // que uma mensagem genérica nossa.
       if (!corrigido) throw err;

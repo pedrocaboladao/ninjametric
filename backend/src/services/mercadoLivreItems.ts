@@ -328,6 +328,25 @@ export async function getCategoryName(categoryId: string): Promise<string> {
   }
 }
 
+export interface MlCategoryAttribute {
+  id: string;
+  name: string;
+  values?: Array<{ id: string; name: string }>;
+}
+
+const cacheAtributosCategoria = new Map<string, MlCategoryAttribute[]>();
+
+// Definição dos atributos de uma categoria (nome de exibição e valores
+// aceitos de cada campo) — endpoint público. Cacheado em memória: um clone
+// em lote consulta a mesma categoria várias vezes seguidas.
+export async function getAtributosDaCategoria(categoryId: string): Promise<MlCategoryAttribute[]> {
+  const emCache = cacheAtributosCategoria.get(categoryId);
+  if (emCache) return emCache;
+  const { data } = await axios.get<MlCategoryAttribute[]>(`${ML_API_BASE}/categories/${categoryId}/attributes`);
+  cacheAtributosCategoria.set(categoryId, data);
+  return data;
+}
+
 export interface NovoItemPayload {
   // No modelo User Product (quando family_name é usado), o título é gerado
   // automaticamente pelo Mercado Livre a partir do family_name + atributos —
