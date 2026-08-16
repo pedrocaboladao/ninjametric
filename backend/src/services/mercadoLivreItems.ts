@@ -7,6 +7,10 @@ interface MlErrorCause {
   cause_id?: number;
   code?: string;
   message?: string;
+  // "error" derruba a criação; "warning" vem junto só como aviso (ex.: um
+  // atributo que o Mercado Livre ignorou por não ser editável) e não deve
+  // disparar nenhuma correção automática.
+  type?: string;
 }
 
 // Erro estruturado do Mercado Livre — guarda as "causas" originais (cause_id,
@@ -91,6 +95,26 @@ export function atributoRejeitado(err: unknown, attributeId: string): boolean {
   return err.causas.some(
     (c) => c.message?.includes(`[${attributeId}]`) && !(c.code && CODES_ATRIBUTO_FALTANDO.has(c.code))
   );
+}
+
+// A categoria de destino aceita o atributo, mas não aceita o VALOR que
+// mandamos (ex.: "Attribute [BASE_TYPE] is not valid, item values
+// [(45947933:Manta Liquida)]"). Acontece porque o value_id é da tabela de
+// valores da categoria do anúncio original — outra categoria/produto pode
+// ter o mesmo valor com outro id, ou não ter esse valor. Devolve os ids
+// dos atributos citados, pra quem chamar decidir o que fazer.
+const CODE_VALOR_INVALIDO = "invalid.item.attribute.values";
+
+export function atributosComValorInvalido(err: unknown): string[] {
+  if (!(err instanceof ErroMercadoLivre)) return [];
+  const ids: string[] = [];
+  for (const causa of err.causas) {
+    if (causa.type === "warning") continue;
+    if (causa.code !== CODE_VALOR_INVALIDO) continue;
+    const encontrado = causa.message?.match(/Attribute \[([A-Za-z0-9_]+)\]/);
+    if (encontrado) ids.push(encontrado[1]);
+  }
+  return ids;
 }
 
 export interface MlAttribute {

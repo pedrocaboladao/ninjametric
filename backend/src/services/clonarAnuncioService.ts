@@ -11,6 +11,7 @@ import {
   requerRemoverGtin,
   atributoObrigatorioFaltando,
   atributoRejeitado,
+  atributosComValorInvalido,
   definirSkuDoItem,
   definirSkusDasVariacoes,
   extrairSkuDoItem,
@@ -135,33 +136,20 @@ function gerarGtinInterno(chave: string): string {
   return doze + calcularDigitoVerificadorEan13(doze);
 }
 
-// Anúncios antigos/categorias diferentes têm exigências diferentes: algumas
-// recusam reaproveitar o GTIN do original (já usado em outro anúncio),
-// outras exigem atributos que o anúncio antigo nunca teve (ex.: declaração
-// de inflamabilidade), outras exigem cubagem que preferimos omitir por
-// padrão. Tenta criar normal (sem cubagem) e só ajusta o payload
-// reativamente pros erros conhecidos, usando os valores reais do anúncio
-// original quando existem — nunca inventando peso/dimensão.
-async function criarItemComFallbacks(
+// Uma rodada de correção: olha o erro que o Mercado Livre devolveu e
+// devolve o payload ajustado, ou null quando não reconhece nada que dê pra
+// corrigir automaticamente. "valoresJaSimplificados" guarda quais atributos
+// já tiveram o value_id removido, pra não ficar tentando a mesma correção
+// em círculo (ver o caso de valor inválido lá embaixo).
+function corrigirPayload(
+  err: unknown,
+  payloadEntrada: NovoItemPayload,
+  atributosOriginaisCompletos: MlAttribute[],
   lojaId: number,
-  payloadOriginal: NovoItemPayload,
-  atributosOriginaisCompletosBrutos: MlAttribute[]
-): Promise<MlItemFull> {
-  const atributosOriginaisCompletos = sanearAtributos(atributosOriginaisCompletosBrutos);
-  const payloadInicial: NovoItemPayload = {
-    ...payloadOriginal,
-    attributes: sanearAtributos(payloadOriginal.attributes),
-    variations: payloadOriginal.variations?.map((v) => ({
-      ...v,
-      attribute_combinations: sanearAtributos(v.attribute_combinations),
-    })),
-  };
-
-  try {
-    return await createItem(lojaId, payloadInicial);
-  } catch (err) {
-    let payload = payloadInicial;
-    let ajustou = false;
+  valoresJaSimplificados: Set<string>
+): NovoItemPayload | null {
+  let payload = payloadEntrada;
+  let ajustou = false;
 
     if (requerRemoverGtin(err)) {
       payload = { ...payload, attributes: payload.attributes.filter((a) => a.id !== "GTIN") };
@@ -229,9 +217,74 @@ async function criarItemComFallbacks(
       ajustou = true;
     }
 
-    if (!ajustou) throw err;
-    return createItem(lojaId, payload);
+    // A categoria/produto de destino aceita o atributo, mas não o VALOR que
+    // veio do anúncio original (ex.: BASE_TYPE "Manta Liquida" com um
+    // value_id que só existe na categoria de origem). Primeiro tenta manter
+    // o valor só pelo nome, deixando o Mercado Livre resolver o id certo;
+    // se mesmo assim ele reclamar do mesmo atributo, remove o atributo.
+    for (const attributeId of atributosComValorInvalido(err)) {
+      const atual = payload.attributes.find((a) => a.id === attributeId);
+      if (!atual) continue;
+
+      if (!valoresJaSimplificados.has(attributeId) && atual.value_id && atual.value_name) {
+        valoresJaSimplificados.add(attributeId);
+        payload = {
+          ...payload,
+          attributes: payload.attributes.map((a) =>
+            a.id === attributeId ? { id: a.id, value_name: a.value_name } : a
+          ),
+        };
+      } else {
+        payload = { ...payload, attributes: payload.attributes.filter((a) => a.id !== attributeId) };
+      }
+      ajustou = true;
+    }
+
+  return ajustou ? payload : null;
+}
+
+// Anúncios antigos/categorias diferentes têm exigências diferentes: algumas
+// recusam reaproveitar o GTIN do original (já usado em outro anúncio),
+// outras exigem atributos que o anúncio antigo nunca teve (ex.: declaração
+// de inflamabilidade), outras rejeitam a cubagem ou o valor de um atributo
+// que veio da categoria de origem. Tenta criar normal e só ajusta o payload
+// reativamente pros erros conhecidos (ver corrigirPayload), usando os
+// valores reais do anúncio original — nunca inventando peso/dimensão.
+//
+// Cada rodada de validação do Mercado Livre costuma revelar um problema por
+// vez (corrige o GTIN, aí reclama da cubagem, aí do valor de um atributo...)
+// — por isso tenta algumas vezes, em vez de corrigir uma vez só e desistir.
+const MAX_TENTATIVAS_CRIACAO = 5;
+
+async function criarItemComFallbacks(
+  lojaId: number,
+  payloadOriginal: NovoItemPayload,
+  atributosOriginaisCompletosBrutos: MlAttribute[]
+): Promise<MlItemFull> {
+  const atributosOriginaisCompletos = sanearAtributos(atributosOriginaisCompletosBrutos);
+  let payload: NovoItemPayload = {
+    ...payloadOriginal,
+    attributes: sanearAtributos(payloadOriginal.attributes),
+    variations: payloadOriginal.variations?.map((v) => ({
+      ...v,
+      attribute_combinations: sanearAtributos(v.attribute_combinations),
+    })),
+  };
+  const valoresJaSimplificados = new Set<string>();
+
+  for (let tentativa = 1; tentativa <= MAX_TENTATIVAS_CRIACAO; tentativa++) {
+    try {
+      return await createItem(lojaId, payload);
+    } catch (err) {
+      const corrigido = corrigirPayload(err, payload, atributosOriginaisCompletos, lojaId, valoresJaSimplificados);
+      // Nada reconhecível pra corrigir: o erro real é mais útil pro dono do
+      // que uma mensagem genérica nossa.
+      if (!corrigido) throw err;
+      payload = corrigido;
+    }
   }
+
+  return createItem(lojaId, payload);
 }
 
 // Confere se o SKU do anúncio original realmente colou no clone e, se não
