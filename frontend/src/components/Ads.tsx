@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { fetchCampanhasAds, fetchReceitaRealPorCampanha } from "../api/ads";
+import { fetchCampanhasAds, fetchReceitaRealPorCampanha, fetchDiagnosticoOrcamento } from "../api/ads";
 import { fetchLojas, type Loja } from "../api/lojas";
-import type { CampanhaAds, ReceitaRealCampanha } from "../types/ads";
+import type { CampanhaAds, ReceitaRealCampanha, DiagnosticoOrcamento } from "../types/ads";
 import { formatCurrency, formatRoas } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
@@ -263,6 +263,31 @@ const PRIORIDADE_INSIGHT: Record<TipoInsight, number> = {
   organico: 4,
 };
 
+// Leitura pronta do diagnóstico de esgotamento: cruza "quantos dias esgotou"
+// com "rende dentro da meta?" — é essa combinação que diz a ação. Campanha
+// boa esgotando cedo perde venda à tarde por falta de verba; campanha ruim
+// esgotando cedo é a que fica segurando o leilão quando as boas param.
+function leituraDiagnostico(d: DiagnosticoOrcamento): { texto: string; classe: string } {
+  const pct = d.diasAnalisados > 0 ? d.diasEsgotados / d.diasAnalisados : 0;
+  const rendeBem = d.acosPeriodo !== null && d.acosPeriodo <= d.acosMeta;
+  if (pct >= 0.5 && rendeBem) {
+    return {
+      texto: "Esgota cedo rendendo bem — a tarde fica sem essa campanha; considerar subir o orçamento",
+      classe: "financeiro-margem-positiva",
+    };
+  }
+  if (pct >= 0.5) {
+    return {
+      texto: "Esgota cedo rendendo abaixo da meta — revisar antes de dar mais verba",
+      classe: "financeiro-margem-negativa",
+    };
+  }
+  if (pct >= 0.2) {
+    return { texto: "Esgota em alguns dias — de olho", classe: "financeiro-margem-alerta" };
+  }
+  return { texto: "Roda o dia todo", classe: "financeiro-td-mudo" };
+}
+
 export function Ads() {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -297,6 +322,16 @@ export function Ads() {
     [lojaFiltro, dataInicio, dataFim]
   );
   const { dados: receitasReais } = useBuscaComCancelamento<ReceitaRealCampanha[]>(buscarReceitaReal, periodoValido);
+
+  // Diagnóstico de esgotamento carrega só quando o dono abre a seção — a
+  // primeira análise varre 14 dias campanha por campanha na API do Mercado
+  // Livre (~10-20s), não faz sentido pagar isso a cada visita à tela.
+  const [diagnosticoAberto, setDiagnosticoAberto] = useState(false);
+  const buscarDiagnostico = useCallback(() => fetchDiagnosticoOrcamento(lojaFiltro), [lojaFiltro]);
+  const { dados: diagnostico, erro: erroDiagnostico } = useBuscaComCancelamento<DiagnosticoOrcamento[]>(
+    buscarDiagnostico,
+    diagnosticoAberto
+  );
 
   const receitaRealPorCampanha = useMemo(() => {
     const mapa = new Map<string, DadosReceitaCampanha>();
@@ -563,6 +598,85 @@ export function Ads() {
                 Gasto: {formatCurrency(buckets.dentroMeta.gasto)} · Vendas: {formatCurrency(buckets.dentroMeta.vendas)}
               </span>
             </button>
+          </div>
+
+          <div className="ads-insights-secao">
+            <span className="ads-insights-titulo">⏱️ Quais campanhas param de rodar à tarde?</span>
+            <p className="painel-sub">
+              Campanha com orçamento diário esgotado some do leilão pelo resto do dia — é isso que faz o Ads
+              &quot;render menos à tarde&quot;. Aqui, dia esgotado = gasto chegou a 90% do orçamento. Análise dos
+              últimos 14 dias completos, contra o orçamento configurado hoje.
+            </p>
+            {!diagnosticoAberto && (
+              <button
+                type="button"
+                className="btn-responder financeiro-btn-hoje"
+                onClick={() => setDiagnosticoAberto(true)}
+              >
+                Analisar campanhas
+              </button>
+            )}
+            {diagnosticoAberto && erroDiagnostico && <div className="state-message state-error">{erroDiagnostico}</div>}
+            {diagnosticoAberto && !erroDiagnostico && diagnostico === null && (
+              <div className="state-message">
+                Analisando 14 dias de gasto, campanha por campanha — a primeira vez pode levar uns 20 segundos...
+              </div>
+            )}
+            {diagnosticoAberto && diagnostico !== null && (
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>Conta</th>
+                      <th>Campanha</th>
+                      <th className="financeiro-th-numero">Orçamento/dia</th>
+                      <th className="financeiro-th-numero" title="Dias em que o gasto chegou a 90% do orçamento diário — a campanha quase certamente parou antes da meia-noite nesses dias.">
+                        Dias que esgotou
+                      </th>
+                      <th className="financeiro-th-numero" title="Média de quanto do orçamento diário foi usado nos dias com gasto.">
+                        Uso médio do orçamento
+                      </th>
+                      <th className="financeiro-th-numero">ROAS 14d</th>
+                      <th>Leitura</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diagnostico.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="financeiro-td-mudo">
+                          Nenhuma campanha ativa com dados suficientes (mínimo 3 dias com gasto nos últimos 14).
+                        </td>
+                      </tr>
+                    )}
+                    {diagnostico.map((d) => {
+                      const leitura = leituraDiagnostico(d);
+                      return (
+                        <tr key={`${d.lojaId}-${d.campanhaId}`}>
+                          <td>{d.lojaNome}</td>
+                          <td className="financeiro-td-titulo">{d.nome}</td>
+                          <td className="financeiro-th-numero">{formatCurrency(d.orcamento)}</td>
+                          <td className="financeiro-th-numero">
+                            <b>{d.diasEsgotados}</b> de {d.diasAnalisados}
+                          </td>
+                          <td className="financeiro-th-numero">{d.utilizacaoMedia.toFixed(0)}%</td>
+                          <td className="financeiro-th-numero">
+                            {d.acosPeriodo !== null ? (
+                              <>
+                                {formatRoas(d.acosPeriodo)}{" "}
+                                <span className="financeiro-td-mudo">({d.acosPeriodo.toFixed(1)}%)</span>
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className={leitura.classe}>{leitura.texto}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {insights.length > 0 && (

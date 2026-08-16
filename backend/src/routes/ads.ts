@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { listarCampanhasAds } from "../services/adsService";
+import { listarCampanhasAds, diagnosticarEsgotamentoOrcamento } from "../services/adsService";
 import { listarReceitaRealPorCampanha } from "../services/tacosService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
@@ -49,6 +49,24 @@ adsRouter.get("/", async (req, res) => {
   } catch (err) {
     console.error("Erro ao listar campanhas de Ads:", err);
     res.status(500).json({ error: "Falha ao carregar campanhas de Ads." });
+  }
+});
+
+// Diagnóstico de esgotamento de orçamento — sem parâmetro de data: a janela
+// é fixa (últimos 14 dias completos) porque o objetivo é padrão de
+// comportamento, não análise de período. Primeira chamada do dia pode levar
+// ~10-20s (14 buscas por loja na API do Mercado Livre); depois fica 6h em
+// cache.
+adsRouter.get("/diagnostico-orcamento", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  try {
+    const campanhas = await diagnosticarEsgotamentoOrcamento(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ campanhas });
+  } catch (err) {
+    console.error("Erro no diagnóstico de orçamento de Ads:", err);
+    res.status(500).json({ error: "Falha ao montar o diagnóstico de orçamento." });
   }
 });
 

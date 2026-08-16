@@ -1,7 +1,7 @@
 import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
 import { getAdvertiserId, getCampanhasAds, MlCampanhaAds } from "./mercadoLivreApi";
-import { janelaHoje, chaveJanelaDoDia } from "./dateUtils";
+import { janelaHoje, chaveJanelaDoDia, dataISOBR } from "./dateUtils";
 
 export interface CampanhaAds {
   lojaId: number;
@@ -135,6 +135,168 @@ export async function listarCampanhasAds(
 
   const resultado = porLoja.flat();
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
+  return resultado;
+}
+
+// ===== Diagnóstico de esgotamento de orçamento =====
+//
+// A API de Ads só dá métricas POR DIA (não existe granularidade por hora),
+// mas dá pra detectar o efeito prático que o dono sente ("o Ads rende menos
+// à tarde"): campanha com orçamento DIÁRIO que esgota cedo some do leilão
+// pelo resto do dia. Comparando o gasto de cada dia com o orçamento diário
+// da campanha, dia em que o gasto encosta no orçamento (>= 90%) = dia em
+// que a campanha quase certamente parou antes da meia-noite.
+//
+// Busca as métricas dia a dia AO VIVO (uma chamada por dia por loja) em vez
+// de usar o retrato salvo (ads_gasto_diario), porque o retrato tem uma
+// imprecisão sistemática de ~9% (documentada em obterGastoAdsHistorico) que
+// bagunçaria exatamente a comparação com o teto do orçamento. Dias passados
+// não mudam, então o resultado fica em cache por 6h.
+
+export interface DiagnosticoOrcamento {
+  lojaId: number;
+  lojaNome: string;
+  campanhaId: number;
+  nome: string;
+  orcamento: number;
+  acosMeta: number;
+  // ACOS agregado dos dias analisados (custo/vendas) — null sem venda.
+  acosPeriodo: number | null;
+  diasAnalisados: number;
+  diasEsgotados: number;
+  utilizacaoMedia: number;
+  custoTotal: number;
+  vendasTotais: number;
+}
+
+const LIMIAR_DIA_ESGOTADO = 0.9;
+const DIAS_DIAGNOSTICO = 14;
+const CACHE_DIAGNOSTICO_TTL_MS = 6 * 60 * 60 * 1000;
+const cacheDiagnostico = new Map<string, { data: DiagnosticoOrcamento[]; expiraEm: number }>();
+
+async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const resultados: R[] = new Array(itens.length);
+  let indice = 0;
+  async function worker() {
+    while (indice < itens.length) {
+      const i = indice++;
+      resultados[i] = await fn(itens[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limite, itens.length) }, worker));
+  return resultados;
+}
+
+export async function diagnosticarEsgotamentoOrcamento(
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<DiagnosticoOrcamento[]> {
+  const lojas = (await listLojas()).filter(
+    (l) =>
+      l.ml_user_id !== null &&
+      (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
+      (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+
+  const hoje = dataISOBR(new Date());
+  const chaveCache = `${lojas
+    .map((l) => l.id)
+    .sort((a, b) => a - b)
+    .join(",")}|${hoje}`;
+  const emCache = cacheDiagnostico.get(chaveCache);
+  if (emCache && emCache.expiraEm > Date.now()) {
+    return emCache.data;
+  }
+
+  // Últimos 14 dias COMPLETOS (ontem pra trás) — hoje fica de fora porque o
+  // dia ainda não acabou: gasto parcial baixo pareceria "não esgotou".
+  const dias: string[] = [];
+  for (let i = DIAS_DIAGNOSTICO; i >= 1; i--) {
+    dias.push(dataISOBR(new Date(Date.now() - i * 24 * 60 * 60 * 1000)));
+  }
+
+  interface Acumulado {
+    lojaId: number;
+    lojaNome: string;
+    campanhaId: number;
+    nome: string;
+    orcamento: number;
+    acosMeta: number;
+    status: string;
+    custosPorDia: number[];
+    vendasTotais: number;
+  }
+  const porCampanha = new Map<string, Acumulado>();
+
+  for (const loja of lojas) {
+    const advertiserId = await getAdvertiserId(loja.id).catch(() => null);
+    if (advertiserId === null) continue;
+
+    const porDia = await comConcorrenciaLimitada(dias, 4, (dia) =>
+      getCampanhasAds(loja.id, advertiserId, dia, dia).catch((): MlCampanhaAds[] => [])
+    );
+
+    porDia.forEach((campanhasDoDia) => {
+      for (const c of campanhasDoDia) {
+        if (c.metrics.cost <= 0) continue;
+        const chave = `${loja.id}-${c.id}`;
+        const atual = porCampanha.get(chave) ?? {
+          lojaId: loja.id,
+          lojaNome: loja.nome,
+          campanhaId: c.id,
+          nome: c.name,
+          orcamento: c.budget,
+          acosMeta: c.acos_target,
+          status: c.status,
+          custosPorDia: [],
+          vendasTotais: 0,
+        };
+        atual.custosPorDia.push(c.metrics.cost);
+        atual.vendasTotais += c.metrics.total_amount;
+        // budget/status/nome são a configuração ATUAL (a API devolve sempre
+        // "de agora", igual em qualquer dia consultado) — sobrescreve tanto
+        // faz, fica o mais recente.
+        atual.orcamento = c.budget;
+        atual.acosMeta = c.acos_target;
+        atual.status = c.status;
+        atual.nome = c.name;
+        porCampanha.set(chave, atual);
+      }
+    });
+  }
+
+  const resultado: DiagnosticoOrcamento[] = [];
+  for (const a of porCampanha.values()) {
+    // Só campanha ativa com orçamento e amostra mínima — 3 dias com gasto já
+    // separam "esgota sempre" de ruído de um dia atípico.
+    if (a.status !== "active" || a.orcamento <= 0 || a.custosPorDia.length < 3) continue;
+
+    const diasEsgotados = a.custosPorDia.filter((c) => c >= a.orcamento * LIMIAR_DIA_ESGOTADO).length;
+    const utilizacaoMedia =
+      (a.custosPorDia.reduce((s, c) => s + c / a.orcamento, 0) / a.custosPorDia.length) * 100;
+    const custoTotal = a.custosPorDia.reduce((s, c) => s + c, 0);
+
+    resultado.push({
+      lojaId: a.lojaId,
+      lojaNome: a.lojaNome,
+      campanhaId: a.campanhaId,
+      nome: a.nome,
+      orcamento: a.orcamento,
+      acosMeta: a.acosMeta,
+      acosPeriodo: a.vendasTotais > 0 ? (custoTotal / a.vendasTotais) * 100 : null,
+      diasAnalisados: a.custosPorDia.length,
+      diasEsgotados,
+      utilizacaoMedia,
+      custoTotal,
+      vendasTotais: a.vendasTotais,
+    });
+  }
+
+  resultado.sort(
+    (x, y) => y.diasEsgotados / y.diasAnalisados - x.diasEsgotados / x.diasAnalisados || y.utilizacaoMedia - x.utilizacaoMedia
+  );
+
+  cacheDiagnostico.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_DIAGNOSTICO_TTL_MS });
   return resultado;
 }
 
