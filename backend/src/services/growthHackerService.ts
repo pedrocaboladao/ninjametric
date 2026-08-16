@@ -267,12 +267,12 @@ export interface RespostaChatAgente {
 // Histórico do chat persistido no banco (ver growth_hacker_mensagens em
 // schema.sql) — pedido do dono pra continuar a conversa entre sessões e
 // entre computadores diferentes, não só durante a aba aberta. Sempre
-// mantido com no máximo LIMITE_HISTORICO_CHAT linhas (10 perguntas + 10
-// respostas): cabe folgado no custo — o histórico entra como tokens de
-// ENTRADA (US$5/milhão), muito mais barato que o "pensar" do Opus em
-// esforço xhigh (US$25/milhão de saída), que já domina o custo de cada
-// pergunta de qualquer forma.
-const LIMITE_HISTORICO_CHAT = 20;
+// mantido com no máximo LIMITE_HISTORICO_CHAT linhas (5 perguntas + 5
+// respostas) — reduzido pela metade (era 20) por decisão do dono: a
+// memória de longo prazo baseada no histórico passou a viver numa
+// conversa separada (fora do sistema), então aqui só precisa do fio da
+// conversa recente, não de reter tudo.
+const LIMITE_HISTORICO_CHAT = 10;
 
 export async function listarMensagensChat(): Promise<MensagemChat[]> {
   const { rows } = await pool.query<{ papel: string; texto: string }>(
