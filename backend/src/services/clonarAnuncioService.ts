@@ -168,9 +168,18 @@ const VOCABULARIO_POR_ATRIBUTO: Record<string, string[]> = {
     "Automotiva",
     "Spray",
     "Selador",
+    "Seladora",
     "Textura",
     "Grafiato",
     "Zarcão",
+    // Linhas por superfície/uso — também são "tipo de tinta" no vocabulário
+    // do mercado (ex.: "Tinta Piso", linha clássica de Suvinil/Coral).
+    "Piso",
+    "Cimento queimado",
+    "Primer",
+    "Fundo preparador",
+    "Massa corrida",
+    "Massa acrílica",
   ],
 };
 
@@ -366,11 +375,8 @@ async function corrigirPayload(
       // Título novo do clone + título do anúncio original, juntos — o dono
       // troca o título de propósito ao clonar, então a pista ("Acrílica",
       // "Esmalte"...) pode estar só no original.
-      const { atributo, nomeCampo } = await deduzirAtributoPeloTitulo(
-        payload.category_id,
-        attributeId,
-        [payload.title, payload.family_name, tituloOriginal].filter(Boolean).join(" ")
-      );
+      const textoAnalisado = [payload.title, payload.family_name, tituloOriginal].filter(Boolean).join(" ");
+      const { atributo, nomeCampo } = await deduzirAtributoPeloTitulo(payload.category_id, attributeId, textoAnalisado);
       if (atributo) {
         payload = { ...payload, attributes: [...payload.attributes, atributo] };
         ajustou = true;
@@ -379,8 +385,9 @@ async function corrigirPayload(
 
       throw new Error(
         `A categoria de destino passou a exigir o campo "${nomeCampo}" e o anúncio original não tem esse valor ` +
-          `(nem deu pra deduzir com segurança pelo título). Preencha "${nomeCampo}" no anúncio original no ` +
-          `Mercado Livre e clone de novo — o clone lê o original na hora, então o valor novo já vem junto.`
+          `(nem deu pra deduzir com segurança pelo título — analisei: "${textoAnalisado}"). Preencha ` +
+          `"${nomeCampo}" no anúncio original no Mercado Livre e clone de novo — o clone lê o original na ` +
+          `hora, então o valor novo já vem junto.`
       );
     }
 
