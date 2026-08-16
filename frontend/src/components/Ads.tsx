@@ -600,85 +600,6 @@ export function Ads() {
             </button>
           </div>
 
-          <div className="ads-insights-secao">
-            <span className="ads-insights-titulo">⏱️ Quais campanhas param de rodar à tarde?</span>
-            <p className="painel-sub">
-              Campanha com orçamento diário esgotado some do leilão pelo resto do dia — é isso que faz o Ads
-              &quot;render menos à tarde&quot;. Aqui, dia esgotado = gasto chegou a 90% do orçamento. Análise dos
-              últimos 14 dias completos, contra o orçamento configurado hoje.
-            </p>
-            {!diagnosticoAberto && (
-              <button
-                type="button"
-                className="btn-responder financeiro-btn-hoje"
-                onClick={() => setDiagnosticoAberto(true)}
-              >
-                Analisar campanhas
-              </button>
-            )}
-            {diagnosticoAberto && erroDiagnostico && <div className="state-message state-error">{erroDiagnostico}</div>}
-            {diagnosticoAberto && !erroDiagnostico && diagnostico === null && (
-              <div className="state-message">
-                Analisando 14 dias de gasto, campanha por campanha — a primeira vez pode levar uns 20 segundos...
-              </div>
-            )}
-            {diagnosticoAberto && diagnostico !== null && (
-              <div className="financeiro-tabela-wrap">
-                <table className="financeiro-tabela">
-                  <thead>
-                    <tr>
-                      <th>Conta</th>
-                      <th>Campanha</th>
-                      <th className="financeiro-th-numero">Orçamento/dia</th>
-                      <th className="financeiro-th-numero" title="Dias em que o gasto chegou a 90% do orçamento diário — a campanha quase certamente parou antes da meia-noite nesses dias.">
-                        Dias que esgotou
-                      </th>
-                      <th className="financeiro-th-numero" title="Média de quanto do orçamento diário foi usado nos dias com gasto.">
-                        Uso médio do orçamento
-                      </th>
-                      <th className="financeiro-th-numero">ROAS 14d</th>
-                      <th>Leitura</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {diagnostico.length === 0 && (
-                      <tr>
-                        <td colSpan={7} className="financeiro-td-mudo">
-                          Nenhuma campanha ativa com dados suficientes (mínimo 3 dias com gasto nos últimos 14).
-                        </td>
-                      </tr>
-                    )}
-                    {diagnostico.map((d) => {
-                      const leitura = leituraDiagnostico(d);
-                      return (
-                        <tr key={`${d.lojaId}-${d.campanhaId}`}>
-                          <td>{d.lojaNome}</td>
-                          <td className="financeiro-td-titulo">{d.nome}</td>
-                          <td className="financeiro-th-numero">{formatCurrency(d.orcamento)}</td>
-                          <td className="financeiro-th-numero">
-                            <b>{d.diasEsgotados}</b> de {d.diasAnalisados}
-                          </td>
-                          <td className="financeiro-th-numero">{d.utilizacaoMedia.toFixed(0)}%</td>
-                          <td className="financeiro-th-numero">
-                            {d.acosPeriodo !== null ? (
-                              <>
-                                {formatRoas(d.acosPeriodo)}{" "}
-                                <span className="financeiro-td-mudo">({d.acosPeriodo.toFixed(1)}%)</span>
-                              </>
-                            ) : (
-                              "—"
-                            )}
-                          </td>
-                          <td className={leitura.classe}>{leitura.texto}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
           {insights.length > 0 && (
             <div className="ads-insights-secao">
               <span className="ads-insights-titulo">💡 Insights</span>
@@ -788,6 +709,85 @@ export function Ads() {
                 })}
               </tbody>
             </table>
+          </div>
+
+          <div className="ads-insights-secao">
+            <span className="ads-insights-titulo">⏱️ Quais campanhas param de rodar à tarde?</span>
+            <p className="painel-sub">
+              Campanha com orçamento diário esgotado some do leilão pelo resto do dia — é isso que faz o Ads
+              &quot;render menos à tarde&quot;. Aqui, dia esgotado = gasto chegou a 90% do orçamento. Análise dos
+              últimos 14 dias completos, contra o orçamento configurado hoje.
+            </p>
+            {!diagnosticoAberto && (
+              <button
+                type="button"
+                className="btn-responder financeiro-btn-hoje"
+                onClick={() => setDiagnosticoAberto(true)}
+              >
+                Analisar campanhas
+              </button>
+            )}
+            {diagnosticoAberto && erroDiagnostico && <div className="state-message state-error">{erroDiagnostico}</div>}
+            {diagnosticoAberto && !erroDiagnostico && diagnostico === null && (
+              <div className="state-message">
+                Analisando 14 dias de gasto, campanha por campanha — a primeira vez pode levar uns 20 segundos...
+              </div>
+            )}
+            {diagnosticoAberto && diagnostico !== null && (
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>Conta</th>
+                      <th>Campanha</th>
+                      <th className="financeiro-th-numero">Orçamento/dia</th>
+                      <th className="financeiro-th-numero" title="Dias em que o gasto chegou a 90% do orçamento diário — a campanha quase certamente parou antes da meia-noite nesses dias.">
+                        Dias que esgotou
+                      </th>
+                      <th className="financeiro-th-numero" title="Média de quanto do orçamento diário foi usado nos dias com gasto.">
+                        Uso médio do orçamento
+                      </th>
+                      <th className="financeiro-th-numero">ROAS 14d</th>
+                      <th>Leitura</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {diagnostico.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="financeiro-td-mudo">
+                          Nenhuma campanha ativa com dados suficientes (mínimo 3 dias com gasto nos últimos 14).
+                        </td>
+                      </tr>
+                    )}
+                    {diagnostico.map((d) => {
+                      const leitura = leituraDiagnostico(d);
+                      return (
+                        <tr key={`${d.lojaId}-${d.campanhaId}`}>
+                          <td>{d.lojaNome}</td>
+                          <td className="financeiro-td-titulo">{d.nome}</td>
+                          <td className="financeiro-th-numero">{formatCurrency(d.orcamento)}</td>
+                          <td className="financeiro-th-numero">
+                            <b>{d.diasEsgotados}</b> de {d.diasAnalisados}
+                          </td>
+                          <td className="financeiro-th-numero">{d.utilizacaoMedia.toFixed(0)}%</td>
+                          <td className="financeiro-th-numero">
+                            {d.acosPeriodo !== null ? (
+                              <>
+                                {formatRoas(d.acosPeriodo)}{" "}
+                                <span className="financeiro-td-mudo">({d.acosPeriodo.toFixed(1)}%)</span>
+                              </>
+                            ) : (
+                              "—"
+                            )}
+                          </td>
+                          <td className={leitura.classe}>{leitura.texto}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         </>
       )}
