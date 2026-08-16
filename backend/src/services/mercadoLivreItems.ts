@@ -32,8 +32,19 @@ export class ErroMercadoLivre extends Error {
 // etc.). Essa função extrai esse detalhe pra virar uma mensagem útil.
 function mensagemErroMl(err: unknown, contexto: string): Error {
   if (axios.isAxiosError(err)) {
-    const corpo = err.response?.data as { cause?: MlErrorCause[] } | undefined;
-    if (corpo) {
+    const corpo = err.response?.data as { cause?: MlErrorCause[] } | string | undefined;
+
+    // Corpo em HTML = página de erro do servidor/proxy do Mercado Livre
+    // ("tengine"), não a API respondendo. Despejar esse HTML inteiro na tela
+    // não ajuda ninguém — vira uma frase que diz o que de fato aconteceu.
+    if (typeof corpo === "string" && corpo.toLowerCase().includes("<html")) {
+      return new Error(
+        `${contexto}: o servidor do Mercado Livre recusou a chamada (HTTP ${err.response?.status ?? "?"}) ` +
+          `sem detalhe de API — costuma ser bloqueio temporário do lado deles, não um problema do anúncio.`
+      );
+    }
+
+    if (corpo && typeof corpo === "object") {
       return new ErroMercadoLivre(`${contexto}: ${JSON.stringify(corpo)}`, corpo.cause ?? []);
     }
   }
@@ -363,8 +374,14 @@ export function flexEstaAtivo(item: MlItemFull): boolean {
 // — daí as tentativas com espera crescente. Mantido curto de propósito:
 // lotes grandes (até 20 cópias em sequência) já competem com o timeout de
 // 300s do Nginx.
-const TENTATIVAS_FLEX = 3;
+const TENTATIVAS_FLEX = 4;
 const ESPERA_BASE_FLEX_MS = 1500;
+// O Mercado Livre processa a ativação de forma assíncrona: já vimos anúncio
+// aparecer com o flex ligado só alguns segundos DEPOIS da chamada (inclusive
+// depois de responder 403 do proxy). Essa espera extra antes da checagem
+// final existe pra não acusar falha num flex que estava só demorando. Só
+// pesa nos anúncios que falharam — quem ativou de primeira nem chega aqui.
+const ESPERA_FINAL_FLEX_MS = 5000;
 
 async function lerItemSeguro(lojaId: number, itemId: string): Promise<MlItemFull | null> {
   try {
@@ -411,8 +428,9 @@ export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: s
     if (tentativa < TENTATIVAS_FLEX) await esperar(ESPERA_BASE_FLEX_MS * tentativa);
   }
 
-  // Última checagem antes de desistir: a ativação pode ter sido processada
-  // com atraso do lado do Mercado Livre, depois da última tentativa.
+  // Última checagem antes de desistir, depois de uma espera maior: a
+  // ativação pode ter sido processada com atraso do lado do Mercado Livre.
+  await esperar(ESPERA_FINAL_FLEX_MS);
   const final = await lerItemSeguro(lojaId, itemId);
   if (final && flexEstaAtivo(final)) return;
 
