@@ -272,7 +272,8 @@ async function corrigirPayload(
   payloadEntrada: NovoItemPayload,
   atributosOriginaisCompletos: MlAttribute[],
   lojaId: number,
-  valoresJaSimplificados: Set<string>
+  valoresJaSimplificados: Set<string>,
+  tituloOriginal?: string
 ): Promise<NovoItemPayload | null> {
   let payload = payloadEntrada;
   let ajustou = false;
@@ -362,10 +363,13 @@ async function corrigirPayload(
         continue;
       }
 
+      // Título novo do clone + título do anúncio original, juntos — o dono
+      // troca o título de propósito ao clonar, então a pista ("Acrílica",
+      // "Esmalte"...) pode estar só no original.
       const { atributo, nomeCampo } = await deduzirAtributoPeloTitulo(
         payload.category_id,
         attributeId,
-        payload.title ?? payload.family_name ?? ""
+        [payload.title, payload.family_name, tituloOriginal].filter(Boolean).join(" ")
       );
       if (atributo) {
         payload = { ...payload, attributes: [...payload.attributes, atributo] };
@@ -422,7 +426,12 @@ const MAX_TENTATIVAS_CRIACAO = 5;
 async function criarItemComFallbacks(
   lojaId: number,
   payloadOriginal: NovoItemPayload,
-  atributosOriginaisCompletosBrutos: MlAttribute[]
+  atributosOriginaisCompletosBrutos: MlAttribute[],
+  // Título do ANÚNCIO ORIGINAL — a dedução de atributo pelo título não pode
+  // depender só do título novo do clone (o dono muda o título de propósito,
+  // é o objetivo do clone), então o original entra como fonte também: é
+  // dele que o produto vem, e é nele que "Tinta Acrílica..." está escrito.
+  tituloOriginal?: string
 ): Promise<MlItemFull> {
   const atributosOriginaisCompletos = sanearAtributos(atributosOriginaisCompletosBrutos);
   let payload: NovoItemPayload = {
@@ -439,7 +448,14 @@ async function criarItemComFallbacks(
     try {
       return await createItem(lojaId, payload);
     } catch (err) {
-      const corrigido = await corrigirPayload(err, payload, atributosOriginaisCompletos, lojaId, valoresJaSimplificados);
+      const corrigido = await corrigirPayload(
+        err,
+        payload,
+        atributosOriginaisCompletos,
+        lojaId,
+        valoresJaSimplificados,
+        tituloOriginal
+      );
       // Nada reconhecível pra corrigir: o erro real é mais útil pro dono do
       // que uma mensagem genérica nossa.
       if (!corrigido) throw err;
@@ -656,7 +672,7 @@ async function publicarUmaCopia(
 
   let novoItem: MlItemFull;
   try {
-    novoItem = await criarItemComFallbacks(lojaDestinoId, payload, original.attributes);
+    novoItem = await criarItemComFallbacks(lojaDestinoId, payload, original.attributes, original.title);
   } catch (err) {
     if (!requerModeloUserProduct(err)) {
       throw err;
@@ -689,6 +705,7 @@ async function publicarUmaCopia(
         siteId: original.site_id,
         shipping: original.shipping,
         sellerCustomField: extrairSkuDoItem(v),
+        tituloOriginal: original.title,
       }));
       return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
@@ -696,7 +713,8 @@ async function publicarUmaCopia(
     novoItem = await criarItemComFallbacks(
       lojaDestinoId,
       { ...payloadSemTitulo, family_name: titulo.slice(0, 120) },
-      original.attributes
+      original.attributes,
+      original.title
     );
   }
 
@@ -748,6 +766,9 @@ interface FonteFamiliaItem {
   siteId: string;
   shipping: { mode: string; local_pick_up: boolean; free_shipping: boolean };
   sellerCustomField?: string | null;
+  // Título do anúncio original — fonte extra pra dedução de atributo
+  // obrigatório pelo título (ver criarItemComFallbacks).
+  tituloOriginal?: string;
 }
 
 type ResultadoTarefa<R> = { sucesso: true; valor: R } | { sucesso: false; erro: unknown };
@@ -830,7 +851,7 @@ async function publicarFamiliaDeItens(
       shipping: fonte.shipping,
     };
 
-    const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem, fonte.attributes);
+    const novoItem = await criarItemComFallbacks(lojaDestinoId, payloadItem, fonte.attributes, fonte.tituloOriginal);
 
     if (descricao) {
       await setItemDescription(lojaDestinoId, novoItem.id, descricao);
@@ -908,6 +929,7 @@ export async function publicarClone(
         siteId: it.site_id,
         shipping: it.shipping,
         sellerCustomField: extrairSkuDoItem(it),
+        tituloOriginal: it.title,
       }));
       resultados.push(await publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes));
     } else {
