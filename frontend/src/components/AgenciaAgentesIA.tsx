@@ -36,6 +36,7 @@ import {
   marcarItemPlano,
   fetchResumoEscritorio,
   fetchVendasRecentes,
+  fetchRelatorioGeral,
   type SugestaoOriginalKit,
   type RespostaChatAgente,
 } from "../api/agentes";
@@ -1152,6 +1153,83 @@ function ConsultorPreco() {
         placeholder="Ex: devo aumentar o preço do RESIFLEX pra ganhar margem?"
         mensagemVazia="Pergunte sobre qualquer produto das suas 4 lojas — cite o nome ou o SKU pra eu identificar certo."
       />
+    </>
+  );
+}
+
+const OPCOES_DIAS_RELATORIO = [1, 7, 15, 30] as const;
+
+// Texto único (Financeiro + Ads das 16 lojas), gerado ao vivo, pra copiar e
+// colar numa análise externa (ex.: outra conversa de IA que o dono usa como
+// "memória histórica" do grupo) — pedido explícito do dono, que já usa o
+// Growth Hacker/Diretor de Ads aqui dentro mas queria os mesmos números
+// "crus" pra levar pra outro lugar. Não é um chat — só gera sob demanda
+// (evita bater na API do Mercado Livre à toa) e mostra o texto pronto.
+function RelatorioGeral() {
+  const [dias, setDias] = useState<(typeof OPCOES_DIAS_RELATORIO)[number]>(7);
+  const [texto, setTexto] = useState<string | null>(null);
+  const [gerando, setGerando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const [copiado, setCopiado] = useState(false);
+
+  async function gerar() {
+    setGerando(true);
+    setErro(null);
+    setCopiado(false);
+    try {
+      setTexto(await fetchRelatorioGeral(dias));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao gerar o relatório.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  async function copiar() {
+    if (!texto) return;
+    await navigator.clipboard.writeText(texto);
+    setCopiado(true);
+    setTimeout(() => setCopiado(false), 2000);
+  }
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Relatório Geral</h1>
+          <p className="painel-sub">
+            Financeiro e Ads das 16 lojas num texto só, pronto pra copiar e colar em outra conversa. Busca os dados
+            ao vivo (não é histórico salvo) — pode levar alguns segundos pra montar.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={dias}
+            onChange={(e) => setDias(Number(e.target.value) as (typeof OPCOES_DIAS_RELATORIO)[number])}
+          >
+            {OPCOES_DIAS_RELATORIO.map((d) => (
+              <option key={d} value={d}>
+                Últimos {d} dia{d > 1 ? "s" : ""}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn-responder" onClick={gerar} disabled={gerando}>
+            {gerando ? "Gerando..." : "Gerar relatório"}
+          </button>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      {texto && (
+        <>
+          <button type="button" className="btn-secundario" onClick={copiar} style={{ marginBottom: 8 }}>
+            {copiado ? "Copiado!" : "Copiar texto"}
+          </button>
+          <textarea readOnly value={texto} className="ads-relatorio-textarea" />
+        </>
+      )}
     </>
   );
 }
@@ -2735,6 +2813,7 @@ export function AgenciaAgentesIA() {
     | "growth"
     | "diretorAds"
     | "consultorPreco"
+    | "relatorioGeral"
     | "imagens"
     | "oportunidades"
     | "catalogo"
@@ -2796,6 +2875,13 @@ export function AgenciaAgentesIA() {
         </button>
         <button
           type="button"
+          className={`agente-tab ${agente === "relatorioGeral" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("relatorioGeral")}
+        >
+          Relatório Geral
+        </button>
+        <button
+          type="button"
           className={`agente-tab ${agente === "imagens" ? "agente-tab-ativa" : ""}`}
           onClick={() => setAgente("imagens")}
         >
@@ -2829,6 +2915,7 @@ export function AgenciaAgentesIA() {
       {agente === "growth" && <GrowthHacker />}
       {agente === "diretorAds" && <DiretorAdsGrupo />}
       {agente === "consultorPreco" && <ConsultorPreco />}
+      {agente === "relatorioGeral" && <RelatorioGeral />}
       {agente === "imagens" && <AgenteImagens />}
       {agente === "oportunidades" && <AgenteOportunidades />}
       {agente === "catalogo" && <AgenteCatalogo />}

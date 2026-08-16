@@ -24,6 +24,7 @@ import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from ".
 import { buscarResumoEscritorio } from "../services/resumoEscritorioService";
 import { perguntarDiretorAds } from "../services/diretorAdsService";
 import { perguntarConsultorPreco } from "../services/consultorPrecoService";
+import { gerarRelatorioGeral, DIAS_PADRAO_RELATORIO } from "../services/relatorioGeralService";
 
 export const agentesRouter = Router();
 
@@ -48,6 +49,22 @@ agentesRouter.get("/resumo-escritorio", async (req, res) => {
     res.json(await buscarResumoEscritorio(req.query.forcar === "1"));
   } catch (err) {
     erro(res, err, "Falha ao carregar o resumo do escritório.");
+  }
+});
+
+// Texto único (Financeiro + Ads das 16 lojas) pronto pra copiar e colar numa
+// análise externa — ver relatorioGeralService.ts. "dias" opcional (padrão 7);
+// aceita só 1, 7, 15 ou 30 pra não deixar alguém pedir uma janela absurda
+// que demoraria demais varrendo campanha por campanha.
+const DIAS_RELATORIO_VALIDOS = new Set([1, 7, 15, 30]);
+
+agentesRouter.get("/relatorio-geral", async (req, res) => {
+  const diasParam = Number(req.query.dias);
+  const dias = DIAS_RELATORIO_VALIDOS.has(diasParam) ? diasParam : DIAS_PADRAO_RELATORIO;
+  try {
+    res.json({ texto: await gerarRelatorioGeral(dias) });
+  } catch (err) {
+    erro(res, err, "Falha ao gerar o relatório geral.");
   }
 });
 

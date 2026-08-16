@@ -22,7 +22,7 @@ async function idsOutrasLojas(): Promise<number[]> {
 // Growth Hacker falar de lucro geral do negócio, não só do que passa pelo
 // Ads. Uma chamada por loja pra reaproveitar o mesmo cache de 15min de
 // listarVendasFinanceiras (mesma janela usada pela tela de Financeiro).
-async function construirLinhasFinanceiroPorLojas(diasPeriodo: number, lojaIds: number[]): Promise<string> {
+export async function construirLinhasFinanceiroPorLojas(diasPeriodo: number, lojaIds: number[]): Promise<string> {
   if (lojaIds.length === 0) return "Nenhuma loja nesse grupo.";
 
   const hoje = new Date();

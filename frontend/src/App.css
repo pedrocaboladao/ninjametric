@@ -3068,6 +3068,21 @@
   font-size: 13px;
 }
 
+.ads-relatorio-textarea {
+  width: 100%;
+  min-height: 480px;
+  padding: 16px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  resize: vertical;
+}
+
 .financeiro-stats,
 .financeiro-cards-secundarios {
   display: grid;

@@ -89,6 +89,15 @@ export interface RespostaChatAgente {
   pensamento: string | null;
 }
 
+// Texto único (Financeiro + Ads das 16 lojas) pronto pra copiar e colar numa
+// análise externa. "dias" aceita 1, 7, 15 ou 30 — qualquer outro valor cai
+// no padrão de 7 dias do backend.
+export async function fetchRelatorioGeral(dias: number): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/agentes/relatorio-geral?dias=${dias}`, { credentials: "include" });
+  const data = await tratarResposta<{ texto: string }>(res);
+  return data.texto;
+}
+
 // O histórico agora fica salvo no servidor (ver growth_hacker_mensagens),
 // não precisa mais mandar do navegador — por isso não recebe "historico"
 // como os outros agentes de chat.

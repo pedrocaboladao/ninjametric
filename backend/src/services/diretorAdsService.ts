@@ -39,7 +39,7 @@ function calcularLucroReal(c: { custo: number; margemReal: number | null }): num
 // dentro (usada pelo Analista de Ads/Growth Hacker, que são deliberadamente
 // travados nas 4 — não dá pra generalizar sem arriscar mudar o
 // comportamento deles).
-async function buscarCampanhasComTacosParaLojas(diasPeriodo: number, lojaIds: number[]): Promise<CampanhaComTacos[]> {
+export async function buscarCampanhasComTacosParaLojas(diasPeriodo: number, lojaIds: number[]): Promise<CampanhaComTacos[]> {
   if (lojaIds.length === 0) return [];
 
   const hoje = new Date();
