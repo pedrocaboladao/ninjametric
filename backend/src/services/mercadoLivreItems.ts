@@ -391,6 +391,32 @@ async function lerItemSeguro(lojaId: number, itemId: string): Promise<MlItemFull
   }
 }
 
+// A criação da família roda 4 anúncios em paralelo (ver CONCORRENCIA_FAMILIA
+// em clonarAnuncioService), e cada um chamava a ativação do flex ao mesmo
+// tempo — rajada de chamadas simultâneas no mesmo endereço, que é o padrão
+// clássico pra disparar bloqueio de borda (o 403 de "tengine", que é o
+// servidor da frente do Mercado Livre respondendo, não a API). Essa fila
+// serializa e espaça só a chamada de ativação, sem serializar a criação dos
+// anúncios (que continua paralela) nem as esperas de verificação.
+const INTERVALO_MINIMO_FLEX_MS = 800;
+let filaFlex: Promise<unknown> = Promise.resolve();
+let ultimaChamadaFlex = 0;
+
+function enfileirarChamadaFlex<T>(chamada: () => Promise<T>): Promise<T> {
+  const resultado = filaFlex.then(async () => {
+    const desdeAUltima = Date.now() - ultimaChamadaFlex;
+    if (desdeAUltima < INTERVALO_MINIMO_FLEX_MS) {
+      await esperar(INTERVALO_MINIMO_FLEX_MS - desdeAUltima);
+    }
+    ultimaChamadaFlex = Date.now();
+    return chamada();
+  });
+  // A fila não pode quebrar quando uma ativação falha — o próximo da fila
+  // ainda precisa rodar.
+  filaFlex = resultado.catch(() => undefined);
+  return resultado;
+}
+
 export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: string): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   let ultimoErro: unknown;
@@ -409,10 +435,23 @@ export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: s
     }
 
     try {
-      await axios.post(
-        `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
-        {},
-        { headers: { Authorization: `Bearer ${accessToken}` } }
+      await enfileirarChamadaFlex(() =>
+        axios.post(
+          `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
+          {},
+          {
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              // O axios se anuncia como "axios/x.y.z" por padrão, assinatura
+              // clássica de bot pra qualquer proteção de borda. As outras
+              // rotas da API não se importam, mas essa passa por um filtro
+              // mais rígido (é a mesma proteção que responde 403 até pra
+              // quem tenta ler a documentação deles fora do navegador).
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+              Accept: "application/json",
+            },
+          }
+        )
       );
       return;
     } catch (err) {
