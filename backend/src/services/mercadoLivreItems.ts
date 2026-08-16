@@ -107,6 +107,10 @@ export interface MlVariation {
   sold_quantity?: number;
   attribute_combinations: MlAttribute[];
   picture_ids?: string[];
+  // SKU específico da variação (ex.: cada tamanho/cor com seu próprio
+  // código) — separado do SKU do item pai, que fica em
+  // MlItemFull.seller_custom_field.
+  seller_custom_field?: string | null;
 }
 
 export interface MlPicture {
@@ -128,6 +132,11 @@ export interface MlItemFull {
   pictures: MlPicture[];
   attributes: MlAttribute[];
   variations: MlVariation[];
+  // SKU do item — código que o resto do sistema usa como referência real de
+  // produto (Financeiro/Produtos/Precificação). Separado dos atributos
+  // (existe também um atributo SELLER_SKU em algumas categorias, mas esse
+  // campo dedicado é o canônico).
+  seller_custom_field?: string | null;
   family_name?: string;
   // Presentes quando o anúncio já é do modelo User Product — cada "cor" é um
   // item/anúncio separado, todos com o mesmo family_id.
@@ -263,11 +272,13 @@ export interface NovoItemPayload {
   listing_type_id: string;
   pictures: Array<{ source: string }>;
   attributes: MlAttribute[];
+  seller_custom_field?: string | null;
   family_name?: string;
   variations?: Array<{
     attribute_combinations: MlAttribute[];
     price: number;
     available_quantity: number;
+    seller_custom_field?: string | null;
   }>;
   shipping: {
     mode: string;

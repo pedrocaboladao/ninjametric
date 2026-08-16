@@ -357,6 +357,7 @@ async function publicarUmaCopia(
     listing_type_id: opcoes.listingType,
     pictures: fotosGerais.map((source) => ({ source })),
     attributes: original.attributes,
+    seller_custom_field: original.seller_custom_field || undefined,
     shipping: {
       mode: original.shipping.mode,
       local_pick_up: original.shipping.local_pick_up,
@@ -369,6 +370,7 @@ async function publicarUmaCopia(
       attribute_combinations: v.attribute_combinations,
       price: v.price,
       available_quantity: v.available_quantity,
+      seller_custom_field: v.seller_custom_field || undefined,
     }));
   }
 
@@ -402,6 +404,7 @@ async function publicarUmaCopia(
         ).slice(0, MAX_FOTOS),
         siteId: original.site_id,
         shipping: original.shipping,
+        sellerCustomField: v.seller_custom_field || undefined,
       }));
       return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
@@ -454,6 +457,7 @@ interface FonteFamiliaItem {
   pictures: string[];
   siteId: string;
   shipping: { mode: string; local_pick_up: boolean; free_shipping: boolean };
+  sellerCustomField?: string | null;
 }
 
 type ResultadoTarefa<R> = { sucesso: true; valor: R } | { sucesso: false; erro: unknown };
@@ -520,6 +524,7 @@ async function publicarFamiliaDeItens(
       listing_type_id: opcoes.listingType,
       pictures: fotos.map((source) => ({ source })),
       attributes: fonte.attributes,
+      seller_custom_field: fonte.sellerCustomField,
       family_name: familyName,
       shipping: fonte.shipping,
     };
@@ -595,6 +600,7 @@ export async function publicarClone(
         ).slice(0, MAX_FOTOS),
         siteId: it.site_id,
         shipping: it.shipping,
+        sellerCustomField: it.seller_custom_field || undefined,
       }));
       resultados.push(await publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes));
     } else {
