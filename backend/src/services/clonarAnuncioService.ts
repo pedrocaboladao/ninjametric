@@ -10,6 +10,7 @@ import {
   requerModeloUserProduct,
   requerRemoverGtin,
   atributoObrigatorioFaltando,
+  atributosObrigatoriosFaltando,
   atributoRejeitado,
   atributosComValorInvalido,
   definirSkuDoItem,
@@ -97,18 +98,47 @@ const VALOR_PADRAO_CONFIRMADO: Record<string, { value_id: string; value_name: st
 const ATRIBUTOS_CUBAGEM = ["SELLER_PACKAGE_WEIGHT", "SELLER_PACKAGE_HEIGHT", "SELLER_PACKAGE_WIDTH", "SELLER_PACKAGE_LENGTH"];
 
 // O GET /items/{id} traz nos atributos campos extras que só existem em
-// resposta de leitura (values, struct, value_type, attribute_group_id...).
-// Reenviar isso na criação (POST /items) pode fazer a API do Mercado Livre
-// travar num erro interno genérico (500 "internal_error", cause vazio, sem
-// pista nenhuma) em vez de uma validação normal — por isso sempre reduz pro
-// formato mínimo que a criação espera antes de mandar.
+// resposta de leitura (struct, value_type, attribute_group_id...). Reenviar
+// isso na criação (POST /items) pode fazer a API do Mercado Livre travar
+// num erro interno genérico (500 "internal_error", cause vazio, sem pista
+// nenhuma) em vez de uma validação normal — por isso sempre reduz pro
+// formato mínimo que a criação espera antes de mandar. Duas regras extras:
+// - Atributo multivalorado guarda o valor em "values" (plural), não em
+//   value_id/value_name — preserva a lista (limpa) nesses casos, senão o
+//   valor se perde na cópia.
+// - Atributo SEM valor nenhum é descartado: a leitura (principalmente com
+//   include_attributes=all) devolve também atributos vazios da categoria, e
+//   reenviar só o id "declara" o atributo como vazio — pra um obrigatório
+//   (ex.: PAINT_TYPE), isso derruba a criação com missing_required.
 function sanearAtributos(atributos: MlAttribute[]): MlAttribute[] {
-  return atributos.map((a) => {
+  const limpos: MlAttribute[] = [];
+  for (const a of atributos) {
     const limpo: MlAttribute = { id: a.id };
     if (a.value_id !== undefined && a.value_id !== null) limpo.value_id = a.value_id;
     if (a.value_name !== undefined && a.value_name !== null) limpo.value_name = a.value_name;
-    return limpo;
-  });
+    if (limpo.value_id === undefined && limpo.value_name === undefined) {
+      const values = (a.values ?? [])
+        .filter((v) => v.id || v.name)
+        .map((v) => ({ id: v.id ?? undefined, name: v.name ?? undefined }));
+      if (values.length > 0) limpo.values = values;
+    }
+    if (limpo.value_id === undefined && limpo.value_name === undefined && limpo.values === undefined) continue;
+    limpos.push(limpo);
+  }
+  return limpos;
+}
+
+// Junta listas de atributos com as últimas ganhando das primeiras quando o
+// mesmo id aparece mais de uma vez (ex.: atributo da variação sobrepõe o do
+// anúncio-pai) — o Mercado Livre exige um único valor por atributo.
+function mesclarAtributosPorId(...listas: MlAttribute[][]): MlAttribute[] {
+  const porId = new Map<string, MlAttribute>();
+  for (const lista of listas) {
+    for (const a of lista) {
+      porId.set(a.id, a);
+    }
+  }
+  return [...porId.values()];
 }
 
 // Dígito verificador padrão EAN-13/GTIN-13 (GS1 General Specifications).
@@ -214,6 +244,20 @@ function corrigirPayload(
           attributes: [...payload.attributes.filter((a) => a.id !== "GTIN"), { id: "GTIN", value_name: gtinGerado }],
         };
       }
+      ajustou = true;
+    }
+
+    // Qualquer OUTRO atributo obrigatório citado no erro (fora os casos
+    // específicos acima): se o anúncio original tinha um valor pra ele,
+    // reaproveita — cobre categoria que passou a exigir um atributo que o
+    // payload perdeu no caminho (ex.: PAINT_TYPE numa categoria de tintas).
+    const jaTratados = new Set(["GTIN", "UNITS_PER_PACK", ...Object.keys(VALOR_PADRAO_CONFIRMADO), ...ATRIBUTOS_CUBAGEM]);
+    for (const attributeId of atributosObrigatoriosFaltando(err)) {
+      if (jaTratados.has(attributeId)) continue;
+      if (payload.attributes.some((a) => a.id === attributeId)) continue;
+      const valorOriginal = atributosOriginaisCompletos.find((a) => a.id === attributeId);
+      if (!valorOriginal) continue;
+      payload = { ...payload, attributes: [...payload.attributes, valorOriginal] };
       ajustou = true;
     }
 
@@ -512,7 +556,11 @@ async function publicarUmaCopia(
         currency_id: original.currency_id,
         buying_mode: original.buying_mode,
         condition: original.condition,
-        attributes: [...original.attributes, ...v.attribute_combinations],
+        // Junta o anúncio-pai com os atributos DA variação (onde moram
+        // SELLER_SKU e afins — só vêm com include_attributes=all) e as
+        // combinações (cor etc.), variação ganhando do pai em caso de
+        // duplicidade.
+        attributes: mesclarAtributosPorId(original.attributes, v.attributes ?? [], v.attribute_combinations),
         pictures: (opcoes.imagensPorVariacao?.[index]?.length
           ? opcoes.imagensPorVariacao[index]
           : opcoes.imagensPersonalizadas?.length

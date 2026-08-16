@@ -98,6 +98,26 @@ export function atributoObrigatorioFaltando(err: unknown, attributeId: string): 
   return err.causas.some((c) => c.code && CODES_ATRIBUTO_FALTANDO.has(c.code) && c.message?.includes(`[${attributeId}]`));
 }
 
+// Ids de TODOS os atributos que o erro aponta como obrigatórios e faltando
+// (ex.: "The attributes [PAINT_TYPE] are required for category..." — pode
+// vir mais de um id dentro dos colchetes, separados por vírgula). Ignora
+// causas type=warning, que não derrubam a criação.
+export function atributosObrigatoriosFaltando(err: unknown): string[] {
+  if (!(err instanceof ErroMercadoLivre)) return [];
+  const ids = new Set<string>();
+  for (const causa of err.causas) {
+    if (causa.type === "warning") continue;
+    if (!causa.code || !CODES_ATRIBUTO_FALTANDO.has(causa.code)) continue;
+    const colchetes = causa.message?.match(/\[([^\]]+)\]/);
+    if (!colchetes) continue;
+    for (const bruto of colchetes[1].split(",")) {
+      const id = bruto.trim();
+      if (/^[A-Z0-9_]+$/.test(id)) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
 // Erro citando o atributo mas com um code diferente de "está faltando" —
 // ou seja, a categoria de destino não aceita esse atributo (ex.: cubagem
 // que enviamos por padrão, mas essa categoria específica rejeita).
@@ -133,6 +153,10 @@ export interface MlAttribute {
   name?: string;
   value_id?: string | null;
   value_name?: string | null;
+  // Atributo multivalorado (ex.: PRODUCT_FEATURES) guarda o valor aqui, em
+  // vez de value_id/value_name — na criação o formato aceito é a lista de
+  // {id, name}.
+  values?: Array<{ id?: string | null; name?: string | null }>;
 }
 
 export interface MlVariation {
