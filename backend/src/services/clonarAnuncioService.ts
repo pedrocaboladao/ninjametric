@@ -300,7 +300,7 @@ async function garantirSku(
   avisos: string[]
 ): Promise<void> {
   const sku = extrairSkuDoItem(origem);
-  if (sku && novoItem.seller_custom_field !== sku) {
+  if (sku && extrairSkuDoItem(novoItem) !== sku) {
     try {
       await definirSkuDoItem(lojaDestinoId, novoItem.id, sku);
     } catch (err) {
@@ -319,13 +319,20 @@ async function garantirSku(
   const variacoesNovas = novoItem.variations ?? [];
   if (variacoesOrigem.length === 0 || variacoesNovas.length !== variacoesOrigem.length) return;
 
-  const skusDasVariacoes = variacoesNovas
-    .map((nova, indice) => ({ id: nova.id, seller_custom_field: variacoesOrigem[indice].seller_custom_field ?? "" }))
-    .filter((v) => v.seller_custom_field !== "");
-  if (skusDasVariacoes.length === 0) return;
+  // TODAS as variações entram na lista (o PUT de variations apaga as que
+  // não forem enviadas — as sem SKU vão só com o id, pra sobreviverem).
+  const paraGravar = variacoesNovas.map((nova, indice) => ({
+    id: nova.id,
+    sku: extrairSkuDoItem(variacoesOrigem[indice]),
+  }));
+
+  const precisaGravar = paraGravar.some(
+    (v, indice) => v.sku && extrairSkuDoItem(variacoesNovas[indice]) !== v.sku
+  );
+  if (!precisaGravar) return;
 
   try {
-    await definirSkusDasVariacoes(lojaDestinoId, novoItem.id, skusDasVariacoes);
+    await definirSkusDasVariacoes(lojaDestinoId, novoItem.id, paraGravar);
   } catch (err) {
     avisos.push(
       `Não conseguiu gravar o SKU das variações em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
@@ -469,12 +476,19 @@ async function publicarUmaCopia(
   };
 
   if (temVariacoes) {
-    payload.variations = original.variations.map((v) => ({
-      attribute_combinations: v.attribute_combinations,
-      price: v.price,
-      available_quantity: v.available_quantity,
-      seller_custom_field: v.seller_custom_field || undefined,
-    }));
+    payload.variations = original.variations.map((v) => {
+      const skuVariacao = extrairSkuDoItem(v);
+      return {
+        attribute_combinations: v.attribute_combinations,
+        price: v.price,
+        available_quantity: v.available_quantity,
+        // O SKU que vale é o atributo SELLER_SKU da variação (o "Código de
+        // identificação" da tela) — o seller_custom_field vai junto só por
+        // compatibilidade.
+        attributes: skuVariacao ? [{ id: "SELLER_SKU", value_name: skuVariacao }] : undefined,
+        seller_custom_field: skuVariacao,
+      };
+    });
   }
 
   let novoItem: MlItemFull;
@@ -507,7 +521,7 @@ async function publicarUmaCopia(
         ).slice(0, MAX_FOTOS),
         siteId: original.site_id,
         shipping: original.shipping,
-        sellerCustomField: v.seller_custom_field || undefined,
+        sellerCustomField: extrairSkuDoItem(v),
       }));
       return publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes);
     }
@@ -621,6 +635,17 @@ async function publicarFamiliaDeItens(
       MAX_FOTOS
     );
 
+    // O SKU da fonte vai como atributo SELLER_SKU do item (no modelo User
+    // Product cada "cor" é um item, então o SKU é por item mesmo). Remove
+    // antes um eventual SELLER_SKU herdado dos atributos do anúncio-pai —
+    // seria o SKU de OUTRA cor, e o Mercado Livre exige um único valor.
+    const atributosComSku = fonte.sellerCustomField
+      ? [
+          ...fonte.attributes.filter((a) => a.id !== "SELLER_SKU"),
+          { id: "SELLER_SKU", value_name: fonte.sellerCustomField },
+        ]
+      : fonte.attributes;
+
     const payloadItem: NovoItemPayload = {
       // Sem "title": no modelo User Product ele é gerado automaticamente
       // a partir do family_name + atributos.
@@ -632,7 +657,7 @@ async function publicarFamiliaDeItens(
       condition: fonte.condition,
       listing_type_id: opcoes.listingType,
       pictures: fotos.map((source) => ({ source })),
-      attributes: fonte.attributes,
+      attributes: atributosComSku,
       seller_custom_field: fonte.sellerCustomField,
       family_name: familyName,
       shipping: fonte.shipping,
@@ -644,12 +669,10 @@ async function publicarFamiliaDeItens(
       await setItemDescription(lojaDestinoId, novoItem.id, descricao);
     }
 
-    await garantirSku(
-      lojaDestinoId,
-      { seller_custom_field: fonte.sellerCustomField, attributes: fonte.attributes },
-      novoItem,
-      avisos
-    );
+    // Só o SKU da própria fonte — os atributos herdados do anúncio-pai
+    // podem carregar o SELLER_SKU de outra cor, e extrairSkuDoItem
+    // priorizaria esse valor errado.
+    await garantirSku(lojaDestinoId, { seller_custom_field: fonte.sellerCustomField }, novoItem, avisos);
 
     if (opcoes.ativarFlex) {
       // Melhor esforço: um bloqueio pontual do Mercado Livre nesse endpoint
@@ -717,7 +740,7 @@ export async function publicarClone(
         ).slice(0, MAX_FOTOS),
         siteId: it.site_id,
         shipping: it.shipping,
-        sellerCustomField: it.seller_custom_field || undefined,
+        sellerCustomField: extrairSkuDoItem(it),
       }));
       resultados.push(await publicarFamiliaDeItens(fontes, descricao, lojaDestinoId, titulo, opcoes));
     } else {

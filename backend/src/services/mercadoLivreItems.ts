@@ -142,9 +142,12 @@ export interface MlVariation {
   sold_quantity?: number;
   attribute_combinations: MlAttribute[];
   picture_ids?: string[];
-  // SKU específico da variação (ex.: cada tamanho/cor com seu próprio
-  // código) — separado do SKU do item pai, que fica em
-  // MlItemFull.seller_custom_field.
+  // O SKU que aparece na tela do Mercado Livre ("Código de identificação")
+  // é o atributo SELLER_SKU DESSA variação, dentro de "attributes" — que a
+  // leitura só devolve com o parâmetro include_attributes=all (ver
+  // getItemFullComToken). O seller_custom_field é um campo interno legado,
+  // sem relação com o SKU da tela (confirmado na documentação).
+  attributes?: MlAttribute[];
   seller_custom_field?: string | null;
 }
 
@@ -269,8 +272,12 @@ export async function listarFamiliaUserProducts(
 
 export async function getItemFullComToken(lojaId: number, itemId: string): Promise<MlItemFull> {
   const accessToken = await getValidAccessToken(lojaId);
+  // include_attributes=all: sem ele, a leitura NÃO devolve os atributos das
+  // variações (onde mora o SELLER_SKU de cada cor/tamanho — o "Código de
+  // identificação" da tela). Só acrescenta dados; não muda o resto.
   const { data } = await axios.get<MlItemFull>(`${ML_API_BASE}/items/${itemId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
+    params: { include_attributes: "all" },
   });
   return data;
 }
@@ -317,6 +324,9 @@ export interface NovoItemPayload {
     attribute_combinations: MlAttribute[];
     price: number;
     available_quantity: number;
+    // SELLER_SKU da variação vai aqui dentro (é o SKU real da tela);
+    // seller_custom_field é só o campo interno legado.
+    attributes?: MlAttribute[];
     seller_custom_field?: string | null;
   }>;
   shipping: {
@@ -556,17 +566,17 @@ export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: s
   throw erroFinalFlex(elegivelVisto, ultimoErro);
 }
 
-// O POST /items nem sempre persiste o seller_custom_field (o SKU do
-// anúncio) — dependendo da categoria/modelo o campo só "cola" num PUT
-// depois da criação. Como é esse campo que o resto do sistema usa como SKU
-// de verdade (Financeiro/Produtos/Precificação), vale gravar de novo
-// explicitamente quando o anúncio criado não veio com ele.
+// Grava o SKU do item. O que vale pra tela e pras buscas é o ATRIBUTO
+// SELLER_SKU ("só a informação carregada no atributo SELLER_SKU é levada em
+// conta", segundo a documentação) — o seller_custom_field vai junto só por
+// compatibilidade com integrações antigas. O PUT de "attributes" atualiza
+// por id (não apaga os demais atributos).
 export async function definirSkuDoItem(lojaId: number, itemId: string, sku: string): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   try {
     await axios.put(
       `${ML_API_BASE}/items/${itemId}`,
-      { seller_custom_field: sku },
+      { seller_custom_field: sku, attributes: [{ id: "SELLER_SKU", value_name: sku }] },
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
   } catch (err) {
@@ -574,20 +584,27 @@ export async function definirSkuDoItem(lojaId: number, itemId: string, sku: stri
   }
 }
 
-// Em anúncio com variações, o SKU não fica no anúncio: fica em CADA
-// variação (é o campo "Código de identificação (SKU)" que aparece junto do
-// estoque de cada cor/tamanho no Mercado Livre). Esse valor não cola na
-// criação — precisa desse PUT depois, com o id da variação já criada.
+// Em anúncio com variações, o SKU da tela ("Código de identificação") é o
+// atributo SELLER_SKU de CADA variação. ATENÇÃO: o PUT de "variations"
+// APAGA as variações que não forem enviadas — por isso essa função recebe
+// TODAS as variações do anúncio, mesmo as sem SKU (que vão só com o id,
+// pra sobreviverem intactas).
 export async function definirSkusDasVariacoes(
   lojaId: number,
   itemId: string,
-  variacoes: Array<{ id: number; seller_custom_field: string }>
+  variacoes: Array<{ id: number; sku?: string }>
 ): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   try {
     await axios.put(
       `${ML_API_BASE}/items/${itemId}`,
-      { variations: variacoes },
+      {
+        variations: variacoes.map((v) =>
+          v.sku
+            ? { id: v.id, seller_custom_field: v.sku, attributes: [{ id: "SELLER_SKU", value_name: v.sku }] }
+            : { id: v.id }
+        ),
+      },
       { headers: { Authorization: `Bearer ${accessToken}` } }
     );
   } catch (err) {
@@ -595,17 +612,16 @@ export async function definirSkusDasVariacoes(
   }
 }
 
-// O SKU pode estar em dois lugares dependendo da categoria: no campo
-// dedicado do anúncio (seller_custom_field, o canônico pro resto do
-// sistema) ou no atributo SELLER_SKU. Pra clonar, serve qualquer um dos
-// dois — o que importa é não perder o código do produto.
+// Lê o SKU de um item OU de uma variação (as duas formas têm o mesmo
+// formato: atributos + campo legado). O atributo SELLER_SKU é o que vale
+// (é o que aparece na tela e nas buscas); o seller_custom_field entra só
+// como reserva pra anúncio antigo que ainda usa o campo legado.
 export function extrairSkuDoItem(item: {
   seller_custom_field?: string | null;
   attributes?: MlAttribute[];
 }): string | undefined {
-  if (item.seller_custom_field) return item.seller_custom_field;
   const atributo = item.attributes?.find((a) => a.id === "SELLER_SKU");
-  return atributo?.value_name || undefined;
+  return atributo?.value_name || item.seller_custom_field || undefined;
 }
 
 export async function atualizarFotosDasVariacoes(
