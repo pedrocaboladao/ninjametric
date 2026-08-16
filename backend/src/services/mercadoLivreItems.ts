@@ -417,63 +417,143 @@ function enfileirarChamadaFlex<T>(chamada: () => Promise<T>): Promise<T> {
   return resultado;
 }
 
+// O Mercado Livre marca nas tags de envio do anúncio se ele É ELEGÍVEL pro
+// flex ("self_service_available") — sem essa tag, a ativação nunca vai
+// funcionar (fora da área de cobertura, categoria não suportada, etc.), e
+// insistir na chamada é inútil. Com ela presente mas a ativação falhando, o
+// problema é do canal (bloqueio de borda), não do anúncio.
+const TAG_FLEX_DISPONIVEL = "self_service_available";
+
+// 403 com corpo HTML = o servidor da frente do Mercado Livre ("tengine")
+// barrou a chamada antes de chegar na API — bloqueio de borda/anti-bot, não
+// uma resposta de negócio. É o mesmo filtro que responde 403 até pra quem
+// tenta ler a documentação deles fora de um navegador.
+function ehBloqueioDeBorda(err: unknown): boolean {
+  if (!axios.isAxiosError(err)) return false;
+  const corpo = err.response?.data;
+  return typeof corpo === "string" && corpo.toLowerCase().includes("<html");
+}
+
+// Quando a borda bloqueia uma chamada, continuar chamando só realimenta o
+// bloqueio (e atrasa o lote inteiro em retries inúteis). Ao detectar o
+// bloqueio, os próximos anúncios do lote param de tentar o POST por um
+// tempo e só conferem o estado — a ativação automática da conta costuma
+// ligar o flex sozinha nos anúncios elegíveis.
+const JANELA_BLOQUEIO_BORDA_MS = 60_000;
+let bordaBloqueadaAte = 0;
+
+function postAtivacaoFlex(accessToken: string, siteId: string, itemId: string): Promise<unknown> {
+  return enfileirarChamadaFlex(() =>
+    axios.post(
+      `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
+      {},
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          // O axios se anuncia como "axios/x.y.z" por padrão, assinatura
+          // clássica de bot pro filtro de borda — as outras rotas da API não
+          // se importam, mas essa é mais rígida.
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+          Accept: "application/json",
+        },
+      }
+    )
+  );
+}
+
+function erroFinalFlex(elegivelVisto: boolean, ultimoErro: unknown): Error {
+  if (!elegivelVisto) {
+    return new Error(
+      "Anúncio criado, mas o Mercado Livre não marcou ele como elegível pro flex (sem a tag de disponibilidade) " +
+        "— costuma ser área de cobertura ou categoria. Confira no painel: se o flex aparecer disponível lá, ative manualmente."
+    );
+  }
+  if (ultimoErro === undefined || ehBloqueioDeBorda(ultimoErro)) {
+    return new Error(
+      "Anúncio criado e elegível pro flex, mas o servidor do Mercado Livre está recusando a ativação via API " +
+        "(bloqueio temporário do lado deles). A ativação automática da conta costuma ligar o flex sozinha em " +
+        "alguns minutos — confira no painel antes de ativar manualmente."
+    );
+  }
+  return mensagemErroMl(ultimoErro, "Anúncio criado, mas falhou ao ativar envios flex");
+}
+
 export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: string): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   let ultimoErro: unknown;
+  let elegivelVisto = false;
+
+  // Lê o estado real do anúncio: flex já ativo encerra na hora (não é caso
+  // de aviso), e de quebra registra se o ML o marcou como elegível.
+  const conferir = async (): Promise<boolean> => {
+    const item = await lerItemSeguro(lojaId, itemId);
+    const tags = item?.shipping?.tags ?? [];
+    if (tags.includes(TAG_FLEX_DISPONIVEL)) elegivelVisto = true;
+    return item !== null && flexEstaAtivo(item);
+  };
+
+  if (await conferir()) return;
+
+  // Bloqueio de borda detectado há pouco em outra chamada deste lote: não
+  // adianta insistir agora. Dá uma chance pra ativação automática aparecer
+  // e reporta com a mensagem certa.
+  if (Date.now() < bordaBloqueadaAte) {
+    await esperar(ESPERA_FINAL_FLEX_MS);
+    if (await conferir()) return;
+    throw erroFinalFlex(elegivelVisto, undefined);
+  }
 
   for (let tentativa = 1; tentativa <= TENTATIVAS_FLEX; tentativa++) {
     const item = await lerItemSeguro(lojaId, itemId);
-
-    // Já está ativo (conta com flex ligado costuma criar o anúncio assim) —
-    // não precisa chamar nada, e principalmente não é caso de aviso.
     if (item && flexEstaAtivo(item)) return;
+    if (item?.shipping?.tags?.includes(TAG_FLEX_DISPONIVEL)) elegivelVisto = true;
 
-    // Ainda em revisão: chamar agora seria rejeitado de qualquer forma.
+    // Ainda em revisão: o ML só aceita ativar flex em anúncio "active".
     if (item?.status !== undefined && item.status !== "active") {
       if (tentativa < TENTATIVAS_FLEX) await esperar(ESPERA_BASE_FLEX_MS * tentativa);
       continue;
     }
 
     try {
-      await enfileirarChamadaFlex(() =>
-        axios.post(
-          `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
-          {},
-          {
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              // O axios se anuncia como "axios/x.y.z" por padrão, assinatura
-              // clássica de bot pra qualquer proteção de borda. As outras
-              // rotas da API não se importam, mas essa passa por um filtro
-              // mais rígido (é a mesma proteção que responde 403 até pra
-              // quem tenta ler a documentação deles fora do navegador).
-              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-              Accept: "application/json",
-            },
-          }
-        )
-      );
+      await postAtivacaoFlex(accessToken, siteId, itemId);
       return;
     } catch (err) {
       ultimoErro = err;
     }
 
     // O POST falhou, mas isso não quer dizer que o flex não ligou — confere
-    // o estado real antes de tratar como erro (esse é exatamente o caso do
-    // 403 do proxy em anúncio que acaba com flex ativo).
-    const depois = await lerItemSeguro(lojaId, itemId);
-    if (depois && flexEstaAtivo(depois)) return;
+    // o estado real antes de tratar como erro.
+    if (await conferir()) return;
+
+    if (ehBloqueioDeBorda(ultimoErro)) {
+      // Borda bloqueando: abre o "disjuntor" pros próximos anúncios do lote
+      // e para de martelar por este também.
+      bordaBloqueadaAte = Date.now() + JANELA_BLOQUEIO_BORDA_MS;
+      break;
+    }
 
     if (tentativa < TENTATIVAS_FLEX) await esperar(ESPERA_BASE_FLEX_MS * tentativa);
   }
 
-  // Última checagem antes de desistir, depois de uma espera maior: a
-  // ativação pode ter sido processada com atraso do lado do Mercado Livre.
-  await esperar(ESPERA_FINAL_FLEX_MS);
-  const final = await lerItemSeguro(lojaId, itemId);
-  if (final && flexEstaAtivo(final)) return;
+  // Janela estendida: conta com flex habilitado costuma ativar sozinha os
+  // anúncios novos elegíveis alguns segundos depois da criação — espera um
+  // pouco mais antes de decidir que falhou.
+  for (const esperaMs of [5_000, 10_000]) {
+    await esperar(esperaMs);
+    if (await conferir()) return;
+  }
 
-  throw mensagemErroMl(ultimoErro, "Anúncio criado, mas falhou ao ativar envios flex");
+  // Última cartada: o bloqueio pode ter passado nesse meio tempo.
+  try {
+    await postAtivacaoFlex(accessToken, siteId, itemId);
+    return;
+  } catch (err) {
+    ultimoErro = err;
+    if (ehBloqueioDeBorda(err)) bordaBloqueadaAte = Date.now() + JANELA_BLOQUEIO_BORDA_MS;
+  }
+  if (await conferir()) return;
+
+  throw erroFinalFlex(elegivelVisto, ultimoErro);
 }
 
 // O POST /items nem sempre persiste o seller_custom_field (o SKU do
