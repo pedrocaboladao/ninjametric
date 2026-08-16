@@ -331,6 +331,9 @@ export async function getCategoryName(categoryId: string): Promise<string> {
 export interface MlCategoryAttribute {
   id: string;
   name: string;
+  // "string" = texto livre (a lista "values" é só sugestão; qualquer
+  // value_name é aceito). "list"/"boolean" etc. = valor fechado da lista.
+  value_type?: string;
   values?: Array<{ id: string; name: string }>;
 }
 

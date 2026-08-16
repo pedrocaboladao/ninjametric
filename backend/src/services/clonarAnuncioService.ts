@@ -140,14 +140,47 @@ function escaparRegex(texto: string): string {
   return texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// Vocabulário do ramo (lojas de tinta/impermeabilizante) pra deduzir pelo
+// título um atributo de TEXTO LIVRE que a categoria passou a exigir — usado
+// só quando a lista oficial de valores da categoria não casa com o título
+// (visto na prática: a categoria de tintas exige "Tipo de tinta" mas a
+// lista oficial dela só sugere 3 valores, sem "Acrílica"; como o campo é
+// value_type=string, qualquer texto é aceito). A regra continua a mesma:
+// o valor precisa aparecer por extenso no título — nunca é inventado.
+const VOCABULARIO_POR_ATRIBUTO: Record<string, string[]> = {
+  PAINT_TYPE: [
+    "Acrílica",
+    "Látex",
+    "PVA",
+    "Esmalte sintético",
+    "Esmalte",
+    "Epóxi",
+    "Verniz",
+    "Manta líquida",
+    "Borracha líquida",
+    "Emborrachada",
+    "Antioxidante",
+    "Antimofo",
+    "Antimofos",
+    "Antiferrugem",
+    "Impermeabilizante",
+    "Térmica",
+    "Automotiva",
+    "Spray",
+    "Selador",
+    "Textura",
+    "Grafiato",
+    "Zarcão",
+  ],
+};
+
 // Quando a categoria exige um atributo que o anúncio original nunca teve
 // (anúncio antigo, exigência nova — ex.: "Tipo de tinta" numa categoria de
-// tintas), tenta deduzir o valor pelo título do anúncio usando o
-// vocabulário da PRÓPRIA categoria: só aceita quando um dos valores
-// oficiais aparece por extenso no título (ex.: título "Tinta Acrílica
-// Fosca..." + valor "Acrílica" da categoria). Nunca chuta — sem
-// correspondência clara, devolve só o nome de exibição do campo pra
-// mensagem de erro ficar legível.
+// tintas), tenta deduzir o valor pelo título do anúncio: primeiro contra a
+// lista de valores oficiais da categoria; se ela não casar e o campo for
+// de texto livre (value_type=string), contra o vocabulário do ramo acima.
+// Nunca chuta — sem correspondência por extenso no título, devolve só o
+// nome de exibição do campo pra mensagem de erro ficar legível.
 async function deduzirAtributoPeloTitulo(
   categoryId: string,
   attributeId: string,
@@ -163,19 +196,31 @@ async function deduzirAtributoPeloTitulo(
   if (!definicao) return { nomeCampo: attributeId };
 
   const texto = normalizarTexto(textoBase);
-  let melhor: { id: string; name: string } | null = null;
+  // Palavra inteira, não pedaço de outra (ex.: valor "PU" não pode casar
+  // dentro de "PUra") — por isso a checagem com fronteiras, não includes.
+  const apareceNoTitulo = (nome: string): boolean =>
+    new RegExp(`(^|[^a-z0-9])${escaparRegex(normalizarTexto(nome))}($|[^a-z0-9])`).test(texto);
+
+  let melhor: { id?: string; name: string } | null = null;
   for (const valor of definicao.values ?? []) {
-    if (!valor.name) continue;
-    // Palavra inteira, não pedaço de outra (ex.: valor "PU" não pode casar
-    // dentro de "PUra") — por isso a checagem com fronteiras, não includes.
-    const padrao = new RegExp(`(^|[^a-z0-9])${escaparRegex(normalizarTexto(valor.name))}($|[^a-z0-9])`);
-    if (!padrao.test(texto)) continue;
+    if (!valor.name || !apareceNoTitulo(valor.name)) continue;
     if (!melhor || valor.name.length > melhor.name.length) melhor = valor;
+  }
+
+  // Lista oficial não casou, mas o campo é texto livre: o vocabulário do
+  // ramo pode achar o valor que o título já declara.
+  if (!melhor && definicao.value_type === "string") {
+    for (const nome of VOCABULARIO_POR_ATRIBUTO[attributeId] ?? []) {
+      if (!apareceNoTitulo(nome)) continue;
+      if (!melhor || nome.length > melhor.name.length) melhor = { name: nome };
+    }
   }
 
   return {
     nomeCampo: definicao.name || attributeId,
-    atributo: melhor ? { id: attributeId, value_id: melhor.id, value_name: melhor.name } : undefined,
+    atributo: melhor
+      ? { id: attributeId, ...(melhor.id ? { value_id: melhor.id } : {}), value_name: melhor.name }
+      : undefined,
   };
 }
 
