@@ -313,17 +313,45 @@ export async function setItemDescription(lojaId: number, itemId: string, plainTe
   }
 }
 
+function esperar(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Esse endpoint específico já foi visto retornando 403 "cru" do servidor do
+// Mercado Livre (página padrão de erro do proxy deles — não é um erro de
+// negócio de verdade, e nem um JSON com "cause" como o resto da API) em
+// lotes com vários anúncios criados em sequência — parece um bloqueio
+// pontual (rate limit no proxy deles), não uma rejeição real do pedido.
+// Como o anúncio em si já foi criado com sucesso nesse ponto, vale tentar
+// de novo algumas vezes com espera crescente antes de desistir e reportar
+// como aviso (ver "melhor esforço" nos pontos que chamam essa função).
+// Mantido baixo de propósito: lotes grandes (até 20 cópias, cada uma
+// esperando a anterior terminar) já competem com o timeout de 300s do
+// Nginx — 3 tentativas com essa espera soma no máximo ~3,6s extras por
+// item, o suficiente pra um bloqueio pontual passar sem arriscar estourar
+// o timeout do lote inteiro.
+const TENTATIVAS_FLEX = 3;
+const ESPERA_BASE_FLEX_MS = 1200;
+
 export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: string): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
-  try {
-    await axios.post(
-      `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
-      {},
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-  } catch (err) {
-    throw mensagemErroMl(err, "Anúncio criado, mas falhou ao ativar envios flex");
+  let ultimoErro: unknown;
+  for (let tentativa = 1; tentativa <= TENTATIVAS_FLEX; tentativa++) {
+    try {
+      await axios.post(
+        `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
+        {},
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      return;
+    } catch (err) {
+      ultimoErro = err;
+      if (tentativa < TENTATIVAS_FLEX) {
+        await esperar(ESPERA_BASE_FLEX_MS * tentativa);
+      }
+    }
   }
+  throw mensagemErroMl(ultimoErro, "Anúncio criado, mas falhou ao ativar envios flex");
 }
 
 export async function atualizarFotosDasVariacoes(
