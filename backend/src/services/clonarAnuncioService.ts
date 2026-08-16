@@ -11,6 +11,8 @@ import {
   requerRemoverGtin,
   atributoObrigatorioFaltando,
   atributoRejeitado,
+  definirSkuDoItem,
+  extrairSkuDoItem,
   resolverItemIdPorUserProduct,
   listarFamiliaUserProducts,
   MlItemFull,
@@ -230,6 +232,30 @@ async function criarItemComFallbacks(
   }
 }
 
+// Confere se o SKU do anúncio original realmente colou no clone e, se não
+// colou, grava explicitamente. O POST /items aceita seller_custom_field mas
+// nem sempre persiste (varia por categoria/modelo de anúncio) — e é esse
+// campo que o resto do sistema usa como SKU de verdade (Financeiro,
+// Produtos, Precificação, agentes). Melhor esforço: se nem o PUT gravar, o
+// anúncio continua publicado, só avisa.
+async function garantirSku(
+  lojaDestinoId: number,
+  origem: { seller_custom_field?: string | null; attributes?: MlAttribute[] },
+  novoItem: MlItemFull,
+  avisos: string[]
+): Promise<void> {
+  const sku = extrairSkuDoItem(origem);
+  if (!sku || novoItem.seller_custom_field === sku) return;
+
+  try {
+    await definirSkuDoItem(lojaDestinoId, novoItem.id, sku);
+  } catch (err) {
+    avisos.push(
+      `Não conseguiu gravar o SKU "${sku}" em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
+    );
+  }
+}
+
 function resumoVariacao(atributos: MlAttribute[]): string {
   return atributos.map((a) => `${a.name ?? a.id}: ${a.value_name ?? a.value_id ?? "-"}`).join(" · ");
 }
@@ -357,7 +383,7 @@ async function publicarUmaCopia(
     listing_type_id: opcoes.listingType,
     pictures: fotosGerais.map((source) => ({ source })),
     attributes: original.attributes,
-    seller_custom_field: original.seller_custom_field || undefined,
+    seller_custom_field: extrairSkuDoItem(original),
     shipping: {
       mode: original.shipping.mode,
       local_pick_up: original.shipping.local_pick_up,
@@ -421,6 +447,9 @@ async function publicarUmaCopia(
   }
 
   const avisos: string[] = [];
+
+  await garantirSku(lojaDestinoId, original, novoItem, avisos);
+
   if (opcoes.ativarFlex) {
     // Melhor esforço: se o flex não ativar (já vimos bloqueios pontuais do
     // próprio Mercado Livre nesse endpoint), o anúncio continua válido e
@@ -534,6 +563,14 @@ async function publicarFamiliaDeItens(
     if (descricao) {
       await setItemDescription(lojaDestinoId, novoItem.id, descricao);
     }
+
+    await garantirSku(
+      lojaDestinoId,
+      { seller_custom_field: fonte.sellerCustomField, attributes: fonte.attributes },
+      novoItem,
+      avisos
+    );
+
     if (opcoes.ativarFlex) {
       // Melhor esforço: um bloqueio pontual do Mercado Livre nesse endpoint
       // não deve travar a criação do restante da família.

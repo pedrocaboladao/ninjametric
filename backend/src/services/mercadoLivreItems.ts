@@ -138,6 +138,10 @@ export interface MlItemFull {
   // campo dedicado é o canônico).
   seller_custom_field?: string | null;
   family_name?: string;
+  // "active", "under_review", "paused"... — o Mercado Livre só aceita ativar
+  // envios flex num anúncio já "active", e recém-criado ele pode levar alguns
+  // segundos pra chegar nesse estado (ver ativarEnviosFlex).
+  status?: string;
   // Presentes quando o anúncio já é do modelo User Product — cada "cor" é um
   // item/anúncio separado, todos com o mesmo family_id.
   family_id?: number;
@@ -317,26 +321,52 @@ function esperar(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Esse endpoint específico já foi visto retornando 403 "cru" do servidor do
-// Mercado Livre (página padrão de erro do proxy deles — não é um erro de
-// negócio de verdade, e nem um JSON com "cause" como o resto da API) em
-// lotes com vários anúncios criados em sequência — parece um bloqueio
-// pontual (rate limit no proxy deles), não uma rejeição real do pedido.
-// Como o anúncio em si já foi criado com sucesso nesse ponto, vale tentar
-// de novo algumas vezes com espera crescente antes de desistir e reportar
-// como aviso (ver "melhor esforço" nos pontos que chamam essa função).
-// Mantido baixo de propósito: lotes grandes (até 20 cópias, cada uma
-// esperando a anterior terminar) já competem com o timeout de 300s do
-// Nginx — 3 tentativas com essa espera soma no máximo ~3,6s extras por
-// item, o suficiente pra um bloqueio pontual passar sem arriscar estourar
-// o timeout do lote inteiro.
+// A própria API do Mercado Livre expõe o estado real do flex nas tags de
+// envio do anúncio: "self_service_in" = flex ativo, "self_service_out" =
+// desligado. É por aqui que dá pra saber se o flex está ligado de verdade,
+// em vez de confiar na resposta do POST de ativação — que já foi visto
+// devolvendo 403 do proxy deles (página HTML genérica do "tengine", não o
+// JSON de erro normal da API) mesmo em anúncios que acabaram com o flex
+// ativo.
+const TAG_FLEX_ATIVO = "self_service_in";
+
+export function flexEstaAtivo(item: MlItemFull): boolean {
+  return item.shipping?.tags?.includes(TAG_FLEX_ATIVO) ?? false;
+}
+
+// O Mercado Livre só aceita ativar flex num anúncio que já esteja "active",
+// e um anúncio recém-criado leva alguns segundos pra sair de "under_review"
+// — daí as tentativas com espera crescente. Mantido curto de propósito:
+// lotes grandes (até 20 cópias em sequência) já competem com o timeout de
+// 300s do Nginx.
 const TENTATIVAS_FLEX = 3;
-const ESPERA_BASE_FLEX_MS = 1200;
+const ESPERA_BASE_FLEX_MS = 1500;
+
+async function lerItemSeguro(lojaId: number, itemId: string): Promise<MlItemFull | null> {
+  try {
+    return await getItemFullComToken(lojaId, itemId);
+  } catch {
+    return null;
+  }
+}
 
 export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: string): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   let ultimoErro: unknown;
+
   for (let tentativa = 1; tentativa <= TENTATIVAS_FLEX; tentativa++) {
+    const item = await lerItemSeguro(lojaId, itemId);
+
+    // Já está ativo (conta com flex ligado costuma criar o anúncio assim) —
+    // não precisa chamar nada, e principalmente não é caso de aviso.
+    if (item && flexEstaAtivo(item)) return;
+
+    // Ainda em revisão: chamar agora seria rejeitado de qualquer forma.
+    if (item?.status !== undefined && item.status !== "active") {
+      if (tentativa < TENTATIVAS_FLEX) await esperar(ESPERA_BASE_FLEX_MS * tentativa);
+      continue;
+    }
+
     try {
       await axios.post(
         `${ML_API_BASE}/sites/${siteId}/shipping/selfservice/items/${itemId}`,
@@ -346,12 +376,54 @@ export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: s
       return;
     } catch (err) {
       ultimoErro = err;
-      if (tentativa < TENTATIVAS_FLEX) {
-        await esperar(ESPERA_BASE_FLEX_MS * tentativa);
-      }
     }
+
+    // O POST falhou, mas isso não quer dizer que o flex não ligou — confere
+    // o estado real antes de tratar como erro (esse é exatamente o caso do
+    // 403 do proxy em anúncio que acaba com flex ativo).
+    const depois = await lerItemSeguro(lojaId, itemId);
+    if (depois && flexEstaAtivo(depois)) return;
+
+    if (tentativa < TENTATIVAS_FLEX) await esperar(ESPERA_BASE_FLEX_MS * tentativa);
   }
+
+  // Última checagem antes de desistir: a ativação pode ter sido processada
+  // com atraso do lado do Mercado Livre, depois da última tentativa.
+  const final = await lerItemSeguro(lojaId, itemId);
+  if (final && flexEstaAtivo(final)) return;
+
   throw mensagemErroMl(ultimoErro, "Anúncio criado, mas falhou ao ativar envios flex");
+}
+
+// O POST /items nem sempre persiste o seller_custom_field (o SKU do
+// anúncio) — dependendo da categoria/modelo o campo só "cola" num PUT
+// depois da criação. Como é esse campo que o resto do sistema usa como SKU
+// de verdade (Financeiro/Produtos/Precificação), vale gravar de novo
+// explicitamente quando o anúncio criado não veio com ele.
+export async function definirSkuDoItem(lojaId: number, itemId: string, sku: string): Promise<void> {
+  const accessToken = await getValidAccessToken(lojaId);
+  try {
+    await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      { seller_custom_field: sku },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    throw mensagemErroMl(err, "Anúncio criado, mas falhou ao gravar o SKU");
+  }
+}
+
+// O SKU pode estar em dois lugares dependendo da categoria: no campo
+// dedicado do anúncio (seller_custom_field, o canônico pro resto do
+// sistema) ou no atributo SELLER_SKU. Pra clonar, serve qualquer um dos
+// dois — o que importa é não perder o código do produto.
+export function extrairSkuDoItem(item: {
+  seller_custom_field?: string | null;
+  attributes?: MlAttribute[];
+}): string | undefined {
+  if (item.seller_custom_field) return item.seller_custom_field;
+  const atributo = item.attributes?.find((a) => a.id === "SELLER_SKU");
+  return atributo?.value_name || undefined;
 }
 
 export async function atualizarFotosDasVariacoes(
