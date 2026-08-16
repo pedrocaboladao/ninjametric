@@ -12,11 +12,13 @@ import {
   atributoObrigatorioFaltando,
   atributoRejeitado,
   definirSkuDoItem,
+  definirSkusDasVariacoes,
   extrairSkuDoItem,
   resolverItemIdPorUserProduct,
   listarFamiliaUserProducts,
   MlItemFull,
   MlAttribute,
+  MlVariation,
   NovoItemPayload,
   IdentificadorAnuncio,
 } from "./mercadoLivreItems";
@@ -240,18 +242,40 @@ async function criarItemComFallbacks(
 // anúncio continua publicado, só avisa.
 async function garantirSku(
   lojaDestinoId: number,
-  origem: { seller_custom_field?: string | null; attributes?: MlAttribute[] },
+  origem: { seller_custom_field?: string | null; attributes?: MlAttribute[]; variations?: MlVariation[] },
   novoItem: MlItemFull,
   avisos: string[]
 ): Promise<void> {
   const sku = extrairSkuDoItem(origem);
-  if (!sku || novoItem.seller_custom_field === sku) return;
+  if (sku && novoItem.seller_custom_field !== sku) {
+    try {
+      await definirSkuDoItem(lojaDestinoId, novoItem.id, sku);
+    } catch (err) {
+      avisos.push(
+        `Não conseguiu gravar o SKU "${sku}" em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
+      );
+    }
+  }
+
+  // Em anúncio com variações o SKU que aparece na tela do Mercado Livre é o
+  // de CADA variação, não o do anúncio. Os ids das variações do clone são
+  // novos (diferentes dos do original), mas a ordem é a mesma em que foram
+  // enviadas na criação — por isso casa por posição, mesmo critério já usado
+  // pra vincular as fotos das variações.
+  const variacoesOrigem = origem.variations ?? [];
+  const variacoesNovas = novoItem.variations ?? [];
+  if (variacoesOrigem.length === 0 || variacoesNovas.length !== variacoesOrigem.length) return;
+
+  const skusDasVariacoes = variacoesNovas
+    .map((nova, indice) => ({ id: nova.id, seller_custom_field: variacoesOrigem[indice].seller_custom_field ?? "" }))
+    .filter((v) => v.seller_custom_field !== "");
+  if (skusDasVariacoes.length === 0) return;
 
   try {
-    await definirSkuDoItem(lojaDestinoId, novoItem.id, sku);
+    await definirSkusDasVariacoes(lojaDestinoId, novoItem.id, skusDasVariacoes);
   } catch (err) {
     avisos.push(
-      `Não conseguiu gravar o SKU "${sku}" em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
+      `Não conseguiu gravar o SKU das variações em ${novoItem.id}: ${err instanceof Error ? err.message : "erro desconhecido"}`
     );
   }
 }
@@ -448,8 +472,6 @@ async function publicarUmaCopia(
 
   const avisos: string[] = [];
 
-  await garantirSku(lojaDestinoId, original, novoItem, avisos);
-
   if (opcoes.ativarFlex) {
     // Melhor esforço: se o flex não ativar (já vimos bloqueios pontuais do
     // próprio Mercado Livre nesse endpoint), o anúncio continua válido e
@@ -471,6 +493,11 @@ async function publicarUmaCopia(
     }));
     await atualizarFotosDasVariacoes(lojaDestinoId, novoItem.id, variacoesComFotos);
   }
+
+  // Por último de propósito: gravar o SKU das variações é um PUT no mesmo
+  // campo "variations" que a vinculação de fotos acima — se rodasse antes,
+  // o PUT das fotos poderia sobrescrever o SKU recém-gravado.
+  await garantirSku(lojaDestinoId, original, novoItem, avisos);
 
   return { novoItemId: novoItem.id, permalink: novoItem.permalink, avisos: avisos.length ? avisos : undefined };
 }

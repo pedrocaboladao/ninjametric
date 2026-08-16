@@ -413,6 +413,27 @@ export async function definirSkuDoItem(lojaId: number, itemId: string, sku: stri
   }
 }
 
+// Em anúncio com variações, o SKU não fica no anúncio: fica em CADA
+// variação (é o campo "Código de identificação (SKU)" que aparece junto do
+// estoque de cada cor/tamanho no Mercado Livre). Esse valor não cola na
+// criação — precisa desse PUT depois, com o id da variação já criada.
+export async function definirSkusDasVariacoes(
+  lojaId: number,
+  itemId: string,
+  variacoes: Array<{ id: number; seller_custom_field: string }>
+): Promise<void> {
+  const accessToken = await getValidAccessToken(lojaId);
+  try {
+    await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      { variations: variacoes },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    throw mensagemErroMl(err, "Anúncio criado, mas falhou ao gravar o SKU das variações");
+  }
+}
+
 // O SKU pode estar em dois lugares dependendo da categoria: no campo
 // dedicado do anúncio (seller_custom_field, o canônico pro resto do
 // sistema) ou no atributo SELLER_SKU. Pra clonar, serve qualquer um dos
