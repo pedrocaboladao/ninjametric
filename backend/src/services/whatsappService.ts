@@ -91,5 +91,9 @@ async function processarMensagem(sock: WASocket, m: WAMessage): Promise<void> {
 }
 
 export function iniciarWhatsApp(): void {
+  if (!env.whatsappOwnerNumber) {
+    console.log("WhatsApp: WHATSAPP_OWNER_NUMBER não configurado — bot desligado.");
+    return;
+  }
   iniciarSocket().catch((err) => console.error("WhatsApp: falha ao iniciar conexão:", err));
 }

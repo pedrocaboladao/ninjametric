@@ -44,8 +44,9 @@ export const env = {
   // Opcional — sem ela, o Agente de Imagens (tratar foto / criar arte) fica
   // indisponível, mas o resto do painel funciona normal.
   openaiApiKey: process.env.OPENAI_API_KEY ?? "",
-  // Número autorizado a falar com o bot de WhatsApp (Growth Hacker), só
-  // dígitos em E.164 sem "+" (ex: "5511999999999") — qualquer outro remetente
-  // é ignorado. Ver whatsappService.ts.
-  whatsappOwnerNumber: required("WHATSAPP_OWNER_NUMBER"),
+  // Opcional — sem ela, o bot de WhatsApp fica desligado (Growth Hacker
+  // continua acessível normalmente pelo painel). Número autorizado a falar
+  // com o bot, só dígitos em E.164 sem "+" (ex: "5511999999999") — qualquer
+  // outro remetente é ignorado. Ver whatsappService.ts.
+  whatsappOwnerNumber: process.env.WHATSAPP_OWNER_NUMBER ?? "",
 };

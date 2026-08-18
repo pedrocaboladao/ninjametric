@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { env } from "../config/env";
 import { obterStatusWhatsApp } from "../services/whatsappService";
 
 // Tela de setup manual (não é módulo do frontend React) — o dono abre essa
@@ -7,6 +8,18 @@ import { obterStatusWhatsApp } from "../services/whatsappService";
 export const whatsappRouter = Router();
 
 whatsappRouter.get("/", async (_req, res) => {
+  if (!env.whatsappOwnerNumber) {
+    res.setHeader("Content-Type", "text/html; charset=utf-8");
+    res.send(`<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="utf-8" /><title>WhatsApp - Growth Hacker</title>
+<style>body { font-family: sans-serif; background: #111; color: #eee; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }</style>
+</head>
+<body><p>WHATSAPP_OWNER_NUMBER ainda não configurado no servidor.</p></body>
+</html>`);
+    return;
+  }
+
   const { status, qrDataUrl } = await obterStatusWhatsApp();
 
   const corpo =
