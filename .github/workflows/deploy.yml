@@ -5,6 +5,13 @@ on:
     branches: [master]
   workflow_dispatch: {}
 
+# Evita dois deploys rodando ao mesmo tempo no VPS (ex: dois pushes seguidos
+# rápido) — o segundo espera o primeiro terminar em vez de cancelar (um
+# deploy cancelado no meio pode deixar o VPS com o build pela metade).
+concurrency:
+  group: deploy-vps
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
