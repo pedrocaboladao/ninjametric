@@ -22,6 +22,7 @@ import { fabricacaoRouter } from "./routes/fabricacao";
 import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
 import { agentesRouter } from "./routes/agentes";
+import { whatsappRouter } from "./routes/whatsapp";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
@@ -35,6 +36,7 @@ import { iniciarSnapshotCatalogo } from "./services/agenteCatalogoService";
 import { iniciarVerificacaoAgenteConversao } from "./services/agenteConversaoService";
 import { iniciarVerificacaoPlanoDiario } from "./services/agentePlanoDiarioService";
 import { iniciarSnapshotAnunciosNegativos } from "./services/anunciosNegativosService";
+import { iniciarWhatsApp } from "./services/whatsappService";
 
 const app = express();
 
@@ -70,6 +72,8 @@ app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRout
 // Admin-only (mesmo padrão de /api/usuarios) — não é módulo comum, não
 // aparece como checkbox liberável pra equipe.
 app.use("/api/agentes", requireAuth, requireAdmin, agentesRouter);
+// Tela de setup do QR do bot de WhatsApp — admin-only, mesmo padrão de /api/agentes.
+app.use("/api/whatsapp", requireAuth, requireAdmin, whatsappRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
@@ -100,3 +104,4 @@ iniciarSnapshotCatalogo();
 iniciarVerificacaoAgenteConversao();
 iniciarVerificacaoPlanoDiario();
 iniciarSnapshotAnunciosNegativos();
+iniciarWhatsApp();

@@ -31,9 +31,12 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
+      WHATSAPP_OWNER_NUMBER: ${WHATSAPP_OWNER_NUMBER}
       NODE_ENV: production
     ports:
       - "127.0.0.1:4000:4000"
+    volumes:
+      - whatsapp_auth:/app/whatsapp_auth
 
   frontend:
     build:
@@ -46,3 +49,4 @@ services:
 
 volumes:
   db_data:
+  whatsapp_auth:
