@@ -165,7 +165,7 @@ function MateriasPrimasSecao({
                         setEditandoId(mp.id);
                         setCustoEditado(String(mp.custoPorKg));
                       }}
-                      title="Clique pra editar"
+                      title="Clique pra editar o custo"
                     >
                       {formatCurrency(mp.custoPorKg)}/kg
                     </button>
