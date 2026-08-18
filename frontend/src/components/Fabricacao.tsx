@@ -1916,7 +1916,7 @@ export function Fabricacao() {
                 return (
                   <div key={f.id}>
                     <div className="fabricacao-formula-linha">
-                      {temFilhos && (
+                      {temFilhos ? (
                         <button
                           type="button"
                           className="fabricacao-formula-expandir"
@@ -1925,6 +1925,8 @@ export function Fabricacao() {
                         >
                           <IconChevron open={expandida} />
                         </button>
+                      ) : (
+                        <span className="fabricacao-formula-expandir-vazio" aria-hidden="true" />
                       )}
                       <button type="button" className="fabricacao-formula-card" onClick={() => abrirFormula(f.id)}>
                         <span className="fabricacao-formula-nome">
