@@ -3450,6 +3450,7 @@
 .fabricacao-formula-nome {
   font-weight: 700;
   flex: 1;
+  text-transform: uppercase;
 }
 
 .fabricacao-formula-custo {
