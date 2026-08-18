@@ -31,6 +31,17 @@ function extrairTexto(msg: proto.IMessage | undefined | null): string | null {
   return msg.conversation ?? msg.extendedTextMessage?.text ?? null;
 }
 
+// O bot conecta usando o próprio número do dono (não um número dedicado à
+// parte) — então a única forma de "falar com o bot" é mandando mensagem pro
+// chat "Mensagem para você" do próprio WhatsApp. Nesse chat toda mensagem
+// enviada do celular chega aqui com fromMe=true (é literalmente você
+// mandando pra si mesmo), então NÃO dá pra usar fromMe como filtro de
+// autorização — quem autoriza é o remoteJid ser o do próprio dono (só ele
+// consegue escrever nesse chat). Pra não entrar em loop respondendo à
+// própria resposta, guarda o id de toda mensagem que o bot manda e ignora
+// se ela reaparecer num upsert.
+const idsEnviadosPeloBot = new Set<string>();
+
 async function iniciarSocket(): Promise<void> {
   const { state, saveCreds } = await useMultiFileAuthState(PASTA_AUTH);
 
@@ -72,8 +83,12 @@ async function iniciarSocket(): Promise<void> {
 }
 
 async function processarMensagem(sock: WASocket, m: WAMessage): Promise<void> {
-  if (m.key.fromMe) return;
   if (m.key.remoteJid !== JID_DONO) return;
+
+  if (m.key.id && idsEnviadosPeloBot.has(m.key.id)) {
+    idsEnviadosPeloBot.delete(m.key.id);
+    return;
+  }
 
   const texto = extrairTexto(m.message);
   if (!texto) return;
@@ -83,10 +98,14 @@ async function processarMensagem(sock: WASocket, m: WAMessage): Promise<void> {
   try {
     await sock.sendPresenceUpdate("composing", jid);
     const { resposta } = await perguntarGrowthHacker(texto);
-    await sock.sendMessage(jid, { text: resposta });
+    const enviada = await sock.sendMessage(jid, { text: resposta });
+    if (enviada?.key.id) idsEnviadosPeloBot.add(enviada.key.id);
   } catch (err) {
     console.error("WhatsApp: falha ao responder mensagem:", err);
-    await sock.sendMessage(jid, { text: "Deu erro aqui do meu lado tentando responder — tenta de novo em instantes." }).catch(() => {});
+    const erroEnviado = await sock
+      .sendMessage(jid, { text: "Deu erro aqui do meu lado tentando responder — tenta de novo em instantes." })
+      .catch(() => null);
+    if (erroEnviado?.key.id) idsEnviadosPeloBot.add(erroEnviado.key.id);
   }
 }
 
