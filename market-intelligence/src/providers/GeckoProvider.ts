@@ -3,20 +3,20 @@ import type { MarketProvider, ProductResult } from "./MarketProvider";
 
 const ENDPOINT = "https://api.geckoapi.com.br/v1/extract";
 
-// IMPORTANTE — contrato ainda não confirmado contra a documentação real da
-// GeckoAPI (fica atrás de login em dashboard.geckoapi.com.br). O formato
-// abaixo (endpoint, header Bearer, "target"/"type") é o que aparece nos
-// exemplos públicos do blog deles para páginas de produto (type: "pdp") —
-// para busca, estou assumindo type: "search" + "query" por analogia. Ajustar
-// `montarRequisicao` e `normalizarResposta` assim que houver uma conta real
-// pra testar uma chamada de verdade.
+// Confirmado com uma chamada real (erro 400 da própria API expôs o
+// contrato): pra mercadolivre.com.br só existe type=pdp / type=plp /
+// type=review, e é preciso mandar uma "url" de verdade — não um parâmetro
+// solto de busca. "plp" (product list page) é a página de resultados de
+// busca do Mercado Livre, então construímos a URL de busca do próprio site
+// e pedimos pra GeckoAPI extrair aquela página.
 function montarRequisicao(keyword: string) {
+  const slug = encodeURIComponent(keyword.trim().toLowerCase().replace(/\s+/g, "-"));
   return {
     url: ENDPOINT,
     body: {
+      url: `https://lista.mercadolivre.com.br/${slug}`,
       target: "mercadolivre.com.br",
-      type: "search",
-      query: keyword,
+      type: "plp",
     },
   };
 }
@@ -99,6 +99,14 @@ export class GeckoProvider implements MarketProvider {
     }
 
     const json = await res.json();
-    return normalizarResposta(json);
+    try {
+      return normalizarResposta(json);
+    } catch (err) {
+      // Contrato de resposta ainda não 100% confirmado — loga uma amostra
+      // bruta pra facilitar o ajuste de normalizarResposta() sem precisar
+      // de mais uma rodada de tentativa e erro.
+      console.error("GeckoAPI: falha ao normalizar resposta. Amostra bruta:", JSON.stringify(json).slice(0, 1500));
+      throw err;
+    }
   }
 }
