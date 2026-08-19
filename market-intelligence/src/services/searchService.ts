@@ -19,6 +19,10 @@ async function buscarItensProprios(): Promise<ItemProprio[]> {
   try {
     const res = await fetch(`${env.mlCoreInternalUrl}/internal/public-ml-items`, {
       headers: { "X-Internal-Key": env.internalServiceKey },
+      // Defesa extra — mesmo com o ml-core protegido contra travar essa
+      // chamada, nunca deixar a busca de mercado esperar indefinidamente
+      // por causa de um "bônus" (marcação de anúncio próprio).
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) {
       console.error(`ml-core /internal/public-ml-items respondeu ${res.status}`);

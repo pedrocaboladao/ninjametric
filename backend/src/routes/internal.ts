@@ -19,26 +19,39 @@ internalRouter.get("/public-ml-items", async (req, res) => {
     return;
   }
 
-  const lojas = await listLojas();
-  const lojasProprias = new Map(lojas.filter((l) => LOJAS_AGENTE.includes(l.id)).map((l) => [l.id, l]));
-  const { inicioDia, agora } = janelaUltimosDias(90);
-
   const itens = new Map<string, { item_id: string; seller_id: string; store_name: string }>();
 
-  for (const lojaId of LOJAS_AGENTE) {
-    const loja = lojasProprias.get(lojaId);
-    if (!loja || loja.ml_user_id === null) continue;
+  // Best-effort — isso é só um "bônus" (marcar "sua loja" no resultado da
+  // busca de mercado), nunca pode travar/derrubar a chamada. Se der erro em
+  // qualquer parte (token expirado numa loja, instabilidade da API do ML),
+  // loga e devolve o que já tiver coletado até ali, em vez de deixar a
+  // conexão pendurada sem resposta.
+  try {
+    const lojas = await listLojas();
+    const lojasProprias = new Map(lojas.filter((l) => LOJAS_AGENTE.includes(l.id)).map((l) => [l.id, l]));
+    const { inicioDia, agora } = janelaUltimosDias(90);
 
-    const { vendas } = await listarVendasFinanceiras(lojaId, LOJAS_AGENTE, inicioDia, agora);
-    for (const venda of vendas) {
-      if (!itens.has(venda.itemId)) {
-        itens.set(venda.itemId, {
-          item_id: venda.itemId,
-          seller_id: String(loja.ml_user_id),
-          store_name: loja.nome,
-        });
+    for (const lojaId of LOJAS_AGENTE) {
+      const loja = lojasProprias.get(lojaId);
+      if (!loja || loja.ml_user_id === null) continue;
+
+      try {
+        const { vendas } = await listarVendasFinanceiras(lojaId, LOJAS_AGENTE, inicioDia, agora);
+        for (const venda of vendas) {
+          if (!itens.has(venda.itemId)) {
+            itens.set(venda.itemId, {
+              item_id: venda.itemId,
+              seller_id: String(loja.ml_user_id),
+              store_name: loja.nome,
+            });
+          }
+        }
+      } catch (err) {
+        console.error(`/internal/public-ml-items: falha ao buscar vendas da loja ${lojaId}:`, err);
       }
     }
+  } catch (err) {
+    console.error("/internal/public-ml-items: falha inesperada:", err);
   }
 
   res.json([...itens.values()]);
