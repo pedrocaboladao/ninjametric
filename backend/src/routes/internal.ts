@@ -1,16 +1,27 @@
 import { Router } from "express";
 import { env } from "../config/env";
 import { listarVendasFinanceiras } from "../services/financeiroService";
-import { LOJAS_AGENTE } from "../services/agenteAdsService";
-import { listLojas } from "../services/tokenStore";
+import { listLojas, type Loja } from "../services/tokenStore";
 import { janelaUltimosDias } from "../services/dateUtils";
 
 // Rota serviço-a-serviço, sem requireAuth (não é chamada pelo navegador) —
 // protegida só pela chave de serviço interna. Só devolve item_id/seller_id
-// (= ml_user_id, público)/nome da loja das LOJAS_AGENTE — nunca token,
-// nunca dado de outras lojas do grupo. Ver backend/src/routes/internal.ts
-// no plano de isolamento do Market Intelligence.
+// (= ml_user_id, público)/nome da loja de TODAS as lojas do grupo com
+// integração ML ativa (pra dar market share do grupo inteiro, não só das 4
+// lojas pessoais) — nunca token, nunca sessão. Ver
+// backend/src/routes/internal.ts no plano de isolamento do Market
+// Intelligence.
 export const internalRouter = Router();
+
+const TAMANHO_LOTE = 5;
+
+function emLotes<T>(itens: T[], tamanho: number): T[][] {
+  const lotes: T[][] = [];
+  for (let i = 0; i < itens.length; i += tamanho) {
+    lotes.push(itens.slice(i, i + tamanho));
+  }
+  return lotes;
+}
 
 internalRouter.get("/public-ml-items", async (req, res) => {
   const chave = req.header("X-Internal-Key");
@@ -28,15 +39,12 @@ internalRouter.get("/public-ml-items", async (req, res) => {
   // conexão pendurada sem resposta.
   try {
     const lojas = await listLojas();
-    const lojasProprias = new Map(lojas.filter((l) => LOJAS_AGENTE.includes(l.id)).map((l) => [l.id, l]));
+    const lojasComMl = lojas.filter((l) => l.ml_user_id !== null);
     const { inicioDia, agora } = janelaUltimosDias(90);
 
-    for (const lojaId of LOJAS_AGENTE) {
-      const loja = lojasProprias.get(lojaId);
-      if (!loja || loja.ml_user_id === null) continue;
-
+    async function coletarLoja(loja: Loja): Promise<void> {
       try {
-        const { vendas } = await listarVendasFinanceiras(lojaId, LOJAS_AGENTE, inicioDia, agora);
+        const { vendas } = await listarVendasFinanceiras(loja.id, undefined, inicioDia, agora);
         for (const venda of vendas) {
           if (!itens.has(venda.itemId)) {
             itens.set(venda.itemId, {
@@ -47,8 +55,15 @@ internalRouter.get("/public-ml-items", async (req, res) => {
           }
         }
       } catch (err) {
-        console.error(`/internal/public-ml-items: falha ao buscar vendas da loja ${lojaId}:`, err);
+        console.error(`/internal/public-ml-items: falha ao buscar vendas da loja ${loja.id}:`, err);
       }
+    }
+
+    // Em lotes paralelos (não uma loja de cada vez) — com ~20 lojas,
+    // sequencial ficaria lento demais; listarVendasFinanceiras já tem cache
+    // de 15min, então lotes concorrentes não sobrecarregam a API do ML à toa.
+    for (const lote of emLotes(lojasComMl, TAMANHO_LOTE)) {
+      await Promise.all(lote.map(coletarLoja));
     }
   } catch (err) {
     console.error("/internal/public-ml-items: falha inesperada:", err);

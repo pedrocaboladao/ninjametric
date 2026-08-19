@@ -79,3 +79,32 @@ export async function historicoKeyword(id: number): Promise<HistoricoKeyword> {
   });
   return tratarResposta<HistoricoKeyword>(res);
 }
+
+export interface CategoriaDisponivel {
+  categoryId: string;
+  nome: string | null;
+  total: number;
+}
+
+export interface ShareMercado {
+  categoriaId: string | null;
+  categoriaNome: string | null;
+  totalResultados: number;
+  resultadosProprios: number;
+  shareSimples: number;
+  sharePonderado: number;
+  lojasContribuintes: string[];
+}
+
+export interface ShareKeyword {
+  share: ShareMercado | null;
+  categoriasDisponiveis: CategoriaDisponivel[];
+}
+
+export async function buscarShareMercado(id: number, categoryId?: string): Promise<ShareKeyword> {
+  const params = categoryId ? `?categoryId=${encodeURIComponent(categoryId)}` : "";
+  const res = await fetch(`${API_BASE}/api/market-intelligence/keywords/${id}/share${params}`, {
+    credentials: "include",
+  });
+  return tratarResposta<ShareKeyword>(res);
+}

@@ -5,8 +5,10 @@ import {
   definirKeywordAtiva,
   buscarKeywordAgora,
   historicoKeyword,
+  buscarShareMercado,
   type Keyword,
   type HistoricoKeyword,
+  type ShareKeyword,
 } from "../api/marketIntelligence";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 import { formatCurrency } from "../utils/format";
@@ -21,6 +23,8 @@ export function MarketIntelligence() {
   const [resultado, setResultado] = useState<HistoricoKeyword | null>(null);
   const [buscandoAgora, setBuscandoAgora] = useState(false);
   const [erroBusca, setErroBusca] = useState<string | null>(null);
+  const [shareInfo, setShareInfo] = useState<ShareKeyword | null>(null);
+  const [categoriaFiltro, setCategoriaFiltro] = useState<string>("");
 
   async function adicionar() {
     if (!novaKeyword.trim()) return;
@@ -36,9 +40,20 @@ export function MarketIntelligence() {
     }
   }
 
+  async function carregarShare(keywordId: number, categoryId?: string) {
+    try {
+      const dados = await buscarShareMercado(keywordId, categoryId);
+      setShareInfo(dados);
+    } catch (err) {
+      setErroBusca(err instanceof Error ? err.message : "Falha ao carregar market share.");
+    }
+  }
+
   async function abrir(kw: Keyword) {
     setSelecionada(kw);
     setResultado(null);
+    setShareInfo(null);
+    setCategoriaFiltro("");
     setErroBusca(null);
     try {
       const dados = await historicoKeyword(kw.id);
@@ -46,6 +61,7 @@ export function MarketIntelligence() {
     } catch (err) {
       setErroBusca(err instanceof Error ? err.message : "Falha ao carregar histórico.");
     }
+    carregarShare(kw.id);
   }
 
   async function buscarAgora(kw: Keyword) {
@@ -54,12 +70,19 @@ export function MarketIntelligence() {
     try {
       const dados = await buscarKeywordAgora(kw.id);
       setResultado(dados);
+      setCategoriaFiltro("");
+      await carregarShare(kw.id);
       atualizarAgora();
     } catch (err) {
       setErroBusca(err instanceof Error ? err.message : "Falha ao buscar agora.");
     } finally {
       setBuscandoAgora(false);
     }
+  }
+
+  async function mudarCategoriaFiltro(categoryId: string) {
+    setCategoriaFiltro(categoryId);
+    if (selecionada) await carregarShare(selecionada.id, categoryId || undefined);
   }
 
   async function alternarAtiva(kw: Keyword) {
@@ -142,6 +165,49 @@ export function MarketIntelligence() {
             </div>
 
             {erroBusca && <p style={{ color: "#e55" }}>{erroBusca}</p>}
+
+            {shareInfo && (
+              <div
+                style={{
+                  border: "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: 8,
+                  padding: 12,
+                  marginBottom: 16,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+                  <strong>Market share (grupo)</strong>
+                  <select
+                    value={categoriaFiltro}
+                    onChange={(e) => mudarCategoriaFiltro(e.target.value)}
+                    style={{ padding: "4px 8px" }}
+                  >
+                    <option value="">Todas as categorias</option>
+                    {shareInfo.categoriasDisponiveis.map((c) => (
+                      <option key={c.categoryId} value={c.categoryId}>
+                        {c.nome ?? c.categoryId} ({c.total})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {shareInfo.share && shareInfo.share.totalResultados > 0 ? (
+                  <div style={{ display: "flex", gap: 24, flexWrap: "wrap", opacity: 0.9 }}>
+                    <span>
+                      Share simples: <strong>{(shareInfo.share.shareSimples * 100).toFixed(1)}%</strong> (
+                      {shareInfo.share.resultadosProprios}/{shareInfo.share.totalResultados})
+                    </span>
+                    <span>
+                      Share ponderado por posição: <strong>{(shareInfo.share.sharePonderado * 100).toFixed(1)}%</strong>
+                    </span>
+                    {shareInfo.share.lojasContribuintes.length > 0 && (
+                      <span>Lojas: {shareInfo.share.lojasContribuintes.join(", ")}</span>
+                    )}
+                  </div>
+                ) : (
+                  <p style={{ opacity: 0.7, margin: 0 }}>Sem dado de share ainda pra essa coleta.</p>
+                )}
+              </div>
+            )}
 
             {resultado && (
               <>

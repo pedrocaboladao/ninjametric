@@ -48,6 +48,8 @@ function normalizarResposta(json: unknown): ProductResult[] {
     sponsored: booleanoOuNulo(item.sponsored),
     brand: textoOuNulo(item.brand),
     url: textoOuNulo(item.url ?? item.source_url),
+    categoryId: textoOuNulo(item.categoryId ?? item.category_id),
+    domainId: textoOuNulo(item.domainId ?? item.domain_id),
   }));
 }
 

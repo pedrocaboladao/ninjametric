@@ -33,9 +33,18 @@ CREATE TABLE IF NOT EXISTS search_snapshots (
   url TEXT,
   provider TEXT NOT NULL,
   is_own_listing BOOLEAN NOT NULL DEFAULT false,
-  own_store_name TEXT
+  own_store_name TEXT,
+  category_id TEXT,
+  domain_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_search_snapshots_keyword ON search_snapshots(keyword_id, collected_at DESC);
+
+-- Tabela já existia em produção antes desses dois campos — coleta anterior
+-- fica com NULL neles (dado que a GeckoAPI de fato não retornava antes de
+-- eu passar a capturar, não é lacuna nossa).
+ALTER TABLE search_snapshots ADD COLUMN IF NOT EXISTS category_id TEXT;
+ALTER TABLE search_snapshots ADD COLUMN IF NOT EXISTS domain_id TEXT;
+CREATE INDEX IF NOT EXISTS idx_search_snapshots_category ON search_snapshots(keyword_id, collected_at DESC, category_id);
 
 -- Log de toda chamada paga ao provider — base do controle de custo
 -- (MARKET_MAX_REQUESTS_DAY em searchService.ts).

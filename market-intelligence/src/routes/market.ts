@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { criarKeyword, definirAtiva, listarKeywords } from "../services/keywordsService";
-import { buscarAgora, calcularMetricas, listarHistorico } from "../services/searchService";
+import {
+  buscarAgora,
+  calcularMetricas,
+  calcularShareMercado,
+  listarCategoriasDisponiveis,
+  listarHistorico,
+} from "../services/searchService";
 
 export const marketRouter = Router();
 
@@ -41,4 +47,14 @@ marketRouter.get("/keywords/:id/history", async (req, res) => {
   const id = Number(req.params.id);
   const [historico, metricas] = await Promise.all([listarHistorico(id), calcularMetricas(id)]);
   res.json({ historico, metricas });
+});
+
+marketRouter.get("/keywords/:id/share", async (req, res) => {
+  const id = Number(req.params.id);
+  const categoryId = typeof req.query.categoryId === "string" ? req.query.categoryId : undefined;
+  const [share, categoriasDisponiveis] = await Promise.all([
+    calcularShareMercado(id, categoryId),
+    listarCategoriasDisponiveis(id),
+  ]);
+  res.json({ share, categoriasDisponiveis });
 });

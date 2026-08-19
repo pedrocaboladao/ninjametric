@@ -19,6 +19,8 @@ export interface ProductResult {
   sponsored: boolean | null;
   brand: string | null;
   url: string | null;
+  categoryId: string | null;
+  domainId: string | null;
 }
 
 // Abstração de fornecedor de dados de mercado — permite trocar de provider
