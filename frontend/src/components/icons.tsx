@@ -20,6 +20,14 @@ export function IconSearch({ size = 18 }: IconProps) {
   );
 }
 
+export function IconMenu({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M3 6h18M3 12h18M3 18h18" />
+    </svg>
+  );
+}
+
 export function IconQuestion({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

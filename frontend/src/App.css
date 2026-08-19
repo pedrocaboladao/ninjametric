@@ -5419,3 +5419,77 @@
   color: var(--critical-text);
   background: rgba(255, 255, 255, 0.06);
 }
+
+/* ---------- Menu mobile (celular) ---------- */
+/* Some pra fora da tela em telas grandes — só existe em mobile, onde a
+   barra lateral fixa de 250px não cabe junto com o conteúdo. */
+.sidebar-mobile-toggle {
+  display: none;
+}
+
+.sidebar-mobile-backdrop {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .sidebar-mobile-toggle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 60;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-primary);
+  }
+
+  .sidebar-mobile-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 40;
+  }
+
+  .app-shell {
+    display: block;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(280px, 84vw);
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+    overflow-y: auto;
+  }
+
+  .sidebar.sidebar-mobile-aberta {
+    transform: translateX(0);
+  }
+
+  .app-main {
+    padding: 72px 14px 24px;
+    overflow-x: hidden;
+  }
+
+  .financeiro-filtro-datas {
+    flex-wrap: wrap;
+  }
+
+  .financeiro-busca {
+    grid-template-columns: 1fr;
+  }
+
+  .financeiro-tabela-wrap {
+    /* a tabela do feed de vendas tem 14 colunas — em vez de espremer tudo,
+       deixa rolar de lado (padrão comum em apps de finanças no celular) */
+    -webkit-overflow-scrolling: touch;
+  }
+}

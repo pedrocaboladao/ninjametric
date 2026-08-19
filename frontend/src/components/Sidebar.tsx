@@ -21,6 +21,8 @@ import {
   IconTag,
   IconRobot,
   IconSearch,
+  IconMenu,
+  IconX,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -58,6 +60,12 @@ const INERTES = [{ label: "Criação", Icon: IconWand }];
 export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
   const [equipeAberta, setEquipeAberta] = useState(true);
+  const [menuMobileAberto, setMenuMobileAberto] = useState(false);
+
+  function trocarView(v: View) {
+    onChangeView(v);
+    setMenuMobileAberto(false);
+  }
 
   const podeDashboard = temPermissao(usuario, "dashboard");
   const podePerguntas = temPermissao(usuario, "perguntas");
@@ -86,7 +94,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
       .toUpperCase() || "?";
 
   return (
-    <aside className="sidebar">
+    <>
+      <button
+        type="button"
+        className="sidebar-mobile-toggle"
+        onClick={() => setMenuMobileAberto((v) => !v)}
+        aria-label={menuMobileAberto ? "Fechar menu" : "Abrir menu"}
+      >
+        {menuMobileAberto ? <IconX size={20} /> : <IconMenu size={20} />}
+      </button>
+
+      {menuMobileAberto && <div className="sidebar-mobile-backdrop" onClick={() => setMenuMobileAberto(false)} />}
+
+      <aside className={`sidebar ${menuMobileAberto ? "sidebar-mobile-aberta" : ""}`}>
       <div className="sidebar-brand">
         <img src="/logo-horizontal.png" alt="Impetrus Vision" className="sidebar-logo" />
         <div className="sidebar-brand-sub">4 lojas · Mercado Livre</div>
@@ -97,7 +117,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "tarefas" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("tarefas")}
+              onClick={() => trocarView("tarefas")}
             >
               <IconTasks size={16} />
               <span>Tarefas</span>
@@ -110,7 +130,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "financeiro" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("financeiro")}
+              onClick={() => trocarView("financeiro")}
             >
               <IconMoney size={16} />
               <span>Financeiro</span>
@@ -123,7 +143,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "contas" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("contas")}
+              onClick={() => trocarView("contas")}
             >
               <IconWallet size={16} />
               <span>Contas a pagar e receber</span>
@@ -136,7 +156,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "dre" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("dre")}
+              onClick={() => trocarView("dre")}
             >
               <IconReport size={16} />
               <span>DRE</span>
@@ -149,7 +169,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "ads" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("ads")}
+              onClick={() => trocarView("ads")}
             >
               <IconMegaphone size={16} />
               <span>Gestão de Ads</span>
@@ -162,7 +182,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "fabricacao" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("fabricacao")}
+              onClick={() => trocarView("fabricacao")}
             >
               <IconFlask size={16} />
               <span>Custo de Fabricação</span>
@@ -175,7 +195,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "promocoes" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("promocoes")}
+              onClick={() => trocarView("promocoes")}
             >
               <IconTag size={16} />
               <span>Promoções</span>
@@ -188,7 +208,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "pesquisa" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("pesquisa")}
+              onClick={() => trocarView("pesquisa")}
             >
               <IconSearch size={16} />
               <span>Pesquisa de Mercado</span>
@@ -210,7 +230,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                 {podeDashboard && (
                   <button
                     className={`sidebar-item ${view === "dashboard" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => onChangeView("dashboard")}
+                    onClick={() => trocarView("dashboard")}
                   >
                     <IconChart size={16} />
                     <span>Painel ao vivo</span>
@@ -219,7 +239,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                 {podePerguntas && (
                   <button
                     className={`sidebar-item ${view === "perguntas" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => onChangeView("perguntas")}
+                    onClick={() => trocarView("perguntas")}
                   >
                     <IconQuestion size={16} />
                     <span>Perguntas</span>
@@ -229,7 +249,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                 {podeClonar && (
                   <button
                     className={`sidebar-item ${view === "clonar" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => onChangeView("clonar")}
+                    onClick={() => trocarView("clonar")}
                   >
                     <IconCopy size={16} />
                     <span>Clonar Anúncio</span>
@@ -238,7 +258,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                 {podeProdutos && (
                   <button
                     className={`sidebar-item ${view === "produtos" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => onChangeView("produtos")}
+                    onClick={() => trocarView("produtos")}
                   >
                     <IconBox size={16} />
                     <span>Produtos</span>
@@ -247,7 +267,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                 {podeCorrecoes && (
                   <button
                     className={`sidebar-item ${view === "correcoes" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => onChangeView("correcoes")}
+                    onClick={() => trocarView("correcoes")}
                   >
                     <IconWrench size={16} />
                     <span>Correções</span>
@@ -256,7 +276,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                 {podeEan && (
                   <button
                     className={`sidebar-item ${view === "ean" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => onChangeView("ean")}
+                    onClick={() => trocarView("ean")}
                   >
                     <IconBarcode size={16} />
                     <span>Gerador de EAN</span>
@@ -281,7 +301,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
               <div className="sidebar-subitems">
                 <button
                   className={`sidebar-item ${view === "funcionarios" ? "sidebar-item-ativo" : ""}`}
-                  onClick={() => onChangeView("funcionarios")}
+                  onClick={() => trocarView("funcionarios")}
                 >
                   <IconUsers size={16} />
                   <span>Funcionários</span>
@@ -297,21 +317,21 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <>
             <button
               className={`sidebar-item ${view === "agentes" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("agentes")}
+              onClick={() => trocarView("agentes")}
             >
               <IconRobot size={16} />
               <span>Agentes IA</span>
             </button>
             <button
               className={`sidebar-item ${view === "market_intelligence" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("market_intelligence")}
+              onClick={() => trocarView("market_intelligence")}
             >
               <IconChart size={16} />
               <span>Inteligência de Mercado</span>
             </button>
             <button
               className={`sidebar-item ${view === "usuarios" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => onChangeView("usuarios")}
+              onClick={() => trocarView("usuarios")}
             >
               <IconGear size={16} />
               <span>Usuários</span>
@@ -340,6 +360,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           <IconLogout size={15} />
         </button>
       </div>
-    </aside>
+      </aside>
+    </>
   );
 }

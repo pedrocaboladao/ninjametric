@@ -41,5 +41,10 @@
     "@types/qrcode": "^1.5.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
+  },
+  "allowScripts": {
+    "baileys@7.0.0-rc14": true,
+    "esbuild@0.28.1": true,
+    "protobufjs@7.6.5": true
   }
 }
