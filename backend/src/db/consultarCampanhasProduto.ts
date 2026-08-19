@@ -2,11 +2,11 @@ import { pool } from "./pool";
 import { listLojas } from "../services/tokenStore";
 import { getAdvertiserId, getAnunciosAds } from "../services/mercadoLivreApi";
 
-const TERMOS = ["resiflex", "18"];
+const TERMOS = ["resiflex", "18kg"];
 const DIAS = 30;
 
 function contemTermos(titulo: string): boolean {
-  const t = titulo.toLowerCase();
+  const t = titulo.toLowerCase().replace(/\s+/g, "");
   return TERMOS.every((termo) => t.includes(termo));
 }
 
@@ -37,20 +37,20 @@ async function main() {
       }
       const anuncios = await getAnunciosAds(loja.id, advertiserId, dataInicio, dataFim);
       const filtrados = anuncios.filter((a) => contemTermos(a.title));
-      if (filtrados.length === 0) {
-        console.log(`${loja.nome}: nenhum anúncio de RESIFLEX 18KG em Ads no período.`);
-        continue;
-      }
-      console.log(`${loja.nome}:`);
-      for (const a of filtrados) {
-        encontrados++;
-        totalCliques += a.metrics.clicks;
-        totalCusto += a.metrics.cost;
-        totalVendas += a.metrics.total_amount;
-        console.log(
-          `  - ${a.title} | status=${a.status} | cliques=${a.metrics.clicks} | custo=R$${a.metrics.cost.toFixed(2)} | ACOS=${a.metrics.acos.toFixed(1)}% | vendas=R$${a.metrics.total_amount.toFixed(2)}`
-        );
-      }
+      if (filtrados.length === 0) continue;
+
+      const cliques = filtrados.reduce((s, a) => s + a.metrics.clicks, 0);
+      const custo = filtrados.reduce((s, a) => s + a.metrics.cost, 0);
+      const vendas = filtrados.reduce((s, a) => s + a.metrics.total_amount, 0);
+      const acos = vendas > 0 ? (custo / vendas) * 100 : 0;
+      encontrados += filtrados.length;
+      totalCliques += cliques;
+      totalCusto += custo;
+      totalVendas += vendas;
+
+      console.log(
+        `${loja.nome} (${filtrados.length} anúncio${filtrados.length > 1 ? "s" : ""}): cliques=${cliques} | custo=R$${custo.toFixed(2)} | ACOS=${acos.toFixed(1)}% | vendas=R$${vendas.toFixed(2)}`
+      );
     } catch (err) {
       console.log(`${loja.nome}: erro ao consultar (${err instanceof Error ? err.message : err})`);
     }
