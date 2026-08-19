@@ -35,8 +35,8 @@ jobs:
             docker compose up -d --build
             docker compose exec -T backend node dist/db/migrate.js
             docker compose exec -T backend node dist/db/seed.js
-            docker compose exec -T market-intelligence node dist/db/migrate.js
-            docker compose exec -T market-intelligence node dist/db/seed.js
+            # market-intelligence está pausado (removido do compose em
+            # 2026-08-19) — não roda migrate/seed dele enquanto isso.
 
             # O Growth Hacker (Opus + raciocinio "xhigh" + dados de 16 lojas) pode
             # passar de poucos minutos, e o arquivo real (sites-available/
