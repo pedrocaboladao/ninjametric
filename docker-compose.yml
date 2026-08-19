@@ -32,11 +32,59 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       WHATSAPP_OWNER_NUMBER: ${WHATSAPP_OWNER_NUMBER}
+      MARKET_INTELLIGENCE_URL: http://market-intelligence:4100
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
       NODE_ENV: production
     ports:
       - "127.0.0.1:4000:4000"
     volumes:
       - whatsapp_auth:/app/whatsapp_auth
+
+  # Banco totalmente separado do Postgres principal (instância própria,
+  # volume próprio, usuário/senha próprios) — não é "tabela a mais", é
+  # isolamento de verdade. Ver market-intelligence/ e o proxy em
+  # backend/src/routes/marketIntelligence.ts.
+  market-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${MARKET_POSTGRES_USER:-market}
+      POSTGRES_PASSWORD: ${MARKET_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${MARKET_POSTGRES_DB:-market_intelligence}
+    volumes:
+      - market_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${MARKET_POSTGRES_USER:-market}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+
+  # Sem "ports:" de propósito — só alcançável dentro da rede interna do
+  # compose (pelo backend, via http://market-intelligence:4100), nunca
+  # exposto ao host nem à internet.
+  market-intelligence:
+    build: ./market-intelligence
+    restart: unless-stopped
+    depends_on:
+      market-db:
+        condition: service_healthy
+    environment:
+      PORT: 4100
+      MARKET_DATABASE_URL: postgresql://${MARKET_POSTGRES_USER:-market}:${MARKET_POSTGRES_PASSWORD}@market-db:5432/${MARKET_POSTGRES_DB:-market_intelligence}
+      GECKO_API_KEY: ${GECKO_API_KEY}
+      INTERNAL_SERVICE_KEY: ${INTERNAL_SERVICE_KEY}
+      ML_CORE_INTERNAL_URL: http://backend:4000
+      NODE_ENV: production
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
 
   frontend:
     build:
@@ -50,3 +98,4 @@ services:
 volumes:
   db_data:
   whatsapp_auth:
+  market_db_data:

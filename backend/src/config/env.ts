@@ -49,4 +49,11 @@ export const env = {
   // com o bot, só dígitos em E.164 sem "+" (ex: "5511999999999") — qualquer
   // outro remetente é ignorado. Ver whatsappService.ts.
   whatsappOwnerNumber: process.env.WHATSAPP_OWNER_NUMBER ?? "",
+  // Opcional — sem ela (ou sem internalServiceKey), a aba Inteligência de
+  // Mercado responde erro claro em vez do backend inteiro falhar ao subir.
+  marketIntelligenceUrl: process.env.MARKET_INTELLIGENCE_URL ?? "",
+  // Chave de serviço interna compartilhada só com o market-intelligence —
+  // não é segredo do ML nem do painel, existe só pra autenticar chamada
+  // serviço-a-serviço nos dois sentidos (proxy e /internal/public-ml-items).
+  internalServiceKey: process.env.INTERNAL_SERVICE_KEY ?? "",
 };

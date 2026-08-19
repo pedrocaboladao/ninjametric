@@ -18,6 +18,7 @@ import { Tarefas } from "./components/Tarefas";
 import { Funcionarios } from "./components/Funcionarios";
 import { Usuarios } from "./components/Usuarios";
 import { AgenciaAgentesIA } from "./components/AgenciaAgentesIA";
+import { MarketIntelligence } from "./components/MarketIntelligence";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { checarSessao, logout } from "./api/session";
@@ -44,6 +45,7 @@ const VIEWS_VALIDAS: View[] = [
   "funcionarios",
   "usuarios",
   "agentes",
+  "market_intelligence",
 ];
 
 function viewInicial(usuario: Usuario): View {
@@ -51,7 +53,9 @@ function viewInicial(usuario: Usuario): View {
   if (
     salva &&
     VIEWS_VALIDAS.includes(salva) &&
-    (salva === "usuarios" || salva === "agentes" ? usuario.admin : temPermissao(usuario, salva))
+    (salva === "usuarios" || salva === "agentes" || salva === "market_intelligence"
+      ? usuario.admin
+      : temPermissao(usuario, salva))
   ) {
     return salva;
   }
@@ -151,6 +155,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
         {view === "usuarios" && usuario.admin && <Usuarios />}
         {view === "agentes" && usuario.admin && <AgenciaAgentesIA />}
+        {view === "market_intelligence" && usuario.admin && <MarketIntelligence />}
       </main>
     </div>
   );

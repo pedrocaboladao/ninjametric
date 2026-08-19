@@ -42,7 +42,8 @@ export type View =
   | "ean"
   | "promocoes"
   | "pesquisa"
-  | "agentes";
+  | "agentes"
+  | "market_intelligence";
 
 interface Props {
   view: View;
@@ -300,6 +301,13 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconRobot size={16} />
               <span>Agentes IA</span>
+            </button>
+            <button
+              className={`sidebar-item ${view === "market_intelligence" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => onChangeView("market_intelligence")}
+            >
+              <IconChart size={16} />
+              <span>Inteligência de Mercado</span>
             </button>
             <button
               className={`sidebar-item ${view === "usuarios" ? "sidebar-item-ativo" : ""}`}
