@@ -1,13 +1,15 @@
 import { pool } from "./pool";
 import { listLojas } from "../services/tokenStore";
-import { getAdvertiserId, getAnunciosAds } from "../services/mercadoLivreApi";
+import { getAdvertiserId, getAnunciosAds, getItemsBasicInfo } from "../services/mercadoLivreApi";
+import { normalizarSku } from "../services/financeiroService";
 
-const TERMOS = ["resiflex", "18kg"];
+const TERMOS_SKU = ["resiflex", "18kg"];
 const DIAS = 30;
 
-function contemTermos(titulo: string): boolean {
-  const t = titulo.toLowerCase().replace(/\s+/g, "");
-  return TERMOS.every((termo) => t.includes(termo));
+function skuBate(sku: string | null): boolean {
+  if (!sku) return false;
+  const s = normalizarSku(sku);
+  return TERMOS_SKU.every((termo) => s.includes(termo));
 }
 
 function isoDeNDiasAtras(dias: number): string {
@@ -21,7 +23,7 @@ async function main() {
   const dataFim = isoDeNDiasAtras(0);
   const dataInicio = isoDeNDiasAtras(DIAS);
 
-  console.log(`Buscando anúncios de "${TERMOS.join(" + ")}" em Ads, últimos ${DIAS} dias (${dataInicio} a ${dataFim})\n`);
+  console.log(`Buscando anúncios com SKU "${TERMOS_SKU.join(" + ")}" em Ads, últimos ${DIAS} dias (${dataInicio} a ${dataFim})\n`);
 
   let totalCliques = 0;
   let totalCusto = 0;
@@ -31,12 +33,13 @@ async function main() {
   for (const loja of lojas) {
     try {
       const advertiserId = await getAdvertiserId(loja.id);
-      if (!advertiserId) {
-        console.log(`${loja.nome}: sem advertiser Ads configurado, pulando.`);
-        continue;
-      }
+      if (!advertiserId) continue;
+
       const anuncios = await getAnunciosAds(loja.id, advertiserId, dataInicio, dataFim);
-      const filtrados = anuncios.filter((a) => contemTermos(a.title));
+      if (anuncios.length === 0) continue;
+
+      const itensInfo = await getItemsBasicInfo(loja.id, anuncios.map((a) => a.item_id));
+      const filtrados = anuncios.filter((a) => skuBate(itensInfo.get(a.item_id)?.seller_custom_field ?? null));
       if (filtrados.length === 0) continue;
 
       const cliques = filtrados.reduce((s, a) => s + a.metrics.clicks, 0);
@@ -48,8 +51,9 @@ async function main() {
       totalCusto += custo;
       totalVendas += vendas;
 
+      const skusEncontrados = filtrados.map((a) => itensInfo.get(a.item_id)?.seller_custom_field).join(", ");
       console.log(
-        `${loja.nome} (${filtrados.length} anúncio${filtrados.length > 1 ? "s" : ""}): cliques=${cliques} | custo=R$${custo.toFixed(2)} | ACOS=${acos.toFixed(1)}% | vendas=R$${vendas.toFixed(2)}`
+        `${loja.nome} (${filtrados.length} anúncio${filtrados.length > 1 ? "s" : ""} — SKU: ${skusEncontrados}): cliques=${cliques} | custo=R$${custo.toFixed(2)} | ACOS=${acos.toFixed(1)}% | vendas=R$${vendas.toFixed(2)}`
       );
     } catch (err) {
       console.log(`${loja.nome}: erro ao consultar (${err instanceof Error ? err.message : err})`);
