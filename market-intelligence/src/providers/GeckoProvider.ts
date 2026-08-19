@@ -21,40 +21,45 @@ function montarRequisicao(keyword: string) {
   };
 }
 
-// Isolado numa função só pra ser fácil de ajustar sem mexer no resto do
-// provider quando confirmarmos o formato real da resposta.
+// Confirmado com uma resposta real de type=plp: os itens ficam em
+// "data.items" (não "data" direto), e os nomes de campo são os do próprio
+// Mercado Livre (name/sku/aggregateRating), não um formato genérico. Vários
+// campos que a GeckoAPI não devolve pra esse tipo de página (frete,
+// catálogo, patrocinado, marca, preço original) ficam null de propósito —
+// não inventa o que a API não manda.
 function normalizarResposta(json: unknown): ProductResult[] {
   const resultados = extrairListaResultados(json);
 
   return resultados.map((item, indice) => ({
     position: numeroOuNulo(item.position ?? item.rank) ?? indice + 1,
-    itemId: String(item.item_id ?? item.itemId ?? item.id ?? ""),
-    title: textoOuNulo(item.title ?? item.name),
-    sellerId: textoOuNulo(item.seller_id ?? item.seller?.id),
-    sellerName: textoOuNulo(item.seller_name ?? item.seller?.name),
+    itemId: String(item.sku ?? item.item_id ?? item.itemId ?? item.id ?? ""),
+    title: textoOuNulo(item.name ?? item.title),
+    sellerId: textoOuNulo(item.sellerId ?? item.seller_id ?? item.seller?.id),
+    sellerName: textoOuNulo(item.sellerName ?? item.seller_name ?? item.seller?.name),
     price: numeroOuNulo(item.price),
-    originalPrice: numeroOuNulo(item.original_price ?? item.originalPrice),
-    rating: numeroOuNulo(item.rating),
-    reviewCount: numeroOuNulo(item.review_count ?? item.reviewCount),
-    soldQuantity: textoOuNulo(item.sold_quantity ?? item.soldQuantity),
-    shippingType: textoOuNulo(item.shipping_type ?? item.shipping?.type ?? item.shipping),
-    isFull: booleanoOuNulo(item.full ?? item.is_full),
-    officialStore: booleanoOuNulo(item.official_store ?? item.officialStore),
-    isCatalog: booleanoOuNulo(item.catalog ?? item.is_catalog),
+    originalPrice: numeroOuNulo(item.originalPrice ?? item.original_price),
+    rating: numeroOuNulo(item.aggregateRating?.rating ?? item.rating),
+    reviewCount: numeroOuNulo(item.aggregateRating?.reviewCount ?? item.review_count),
+    soldQuantity: textoOuNulo(item.soldQuantity ?? item.sold_quantity),
+    shippingType: textoOuNulo(item.shippingType ?? item.shipping_type ?? item.shipping?.type),
+    isFull: booleanoOuNulo(item.isFull ?? item.full),
+    officialStore: booleanoOuNulo(item.officialStore ?? item.official_store),
+    isCatalog: booleanoOuNulo(item.isCatalog ?? item.catalog),
     sponsored: booleanoOuNulo(item.sponsored),
     brand: textoOuNulo(item.brand),
     url: textoOuNulo(item.url ?? item.source_url),
   }));
 }
 
-// A resposta pode vir em "data", "results" ou "items" dependendo do
-// endpoint/versão — tenta as variações conhecidas antes de desistir.
 function extrairListaResultados(json: unknown): Record<string, any>[] {
   if (!json || typeof json !== "object") {
     throw new Error("GeckoAPI: resposta em formato inesperado (não é objeto).");
   }
   const obj = json as Record<string, any>;
-  const candidatos = [obj.data, obj.results, obj.items];
+  // Formato real confirmado: obj.data.items. Mantém "data"/"results"/"items"
+  // soltos como fallback pra outros tipos de resposta (pdp, review) que
+  // ainda não testamos.
+  const candidatos = [obj.data?.items, obj.data, obj.results, obj.items];
   const lista = candidatos.find((c) => Array.isArray(c));
   if (!lista) {
     throw new Error("GeckoAPI: não encontrei uma lista de resultados na resposta (checar contrato real da API).");
