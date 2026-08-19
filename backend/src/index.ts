@@ -23,6 +23,8 @@ import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
 import { agentesRouter } from "./routes/agentes";
 import { whatsappRouter } from "./routes/whatsapp";
+import { marketIntelligenceRouter } from "./routes/marketIntelligence";
+import { internalRouter } from "./routes/internal";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
@@ -74,6 +76,13 @@ app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRout
 app.use("/api/agentes", requireAuth, requireAdmin, agentesRouter);
 // Tela de setup do QR do bot de WhatsApp — admin-only, mesmo padrão de /api/agentes.
 app.use("/api/whatsapp", requireAuth, requireAdmin, whatsappRouter);
+// Proxy pro serviço isolado market-intelligence — admin-only no Fase 1
+// (API paga por request, controle de custo fica só com o dono por enquanto).
+app.use("/api/market-intelligence", requireAuth, requireAdmin, marketIntelligenceRouter);
+// Serviço-a-serviço (market-intelligence -> ml-core) — sem requireAuth de
+// propósito, não é chamado pelo navegador, só protegido pela chave interna
+// dentro do próprio router. Ver routes/internal.ts.
+app.use("/internal", internalRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });

@@ -3450,6 +3450,7 @@
 .fabricacao-formula-nome {
   font-weight: 700;
   flex: 1;
+  text-transform: uppercase;
 }
 
 .fabricacao-formula-custo {
@@ -3471,6 +3472,14 @@
   padding: 4px;
   flex-shrink: 0;
   display: flex;
+}
+
+.fabricacao-formula-expandir-vazio {
+  /* Bases sem cores filhas nao renderizam a seta de expandir. Este espacador
+     ocupa a largura exata do botao (14px do icone + 4px de padding dos dois
+     lados) pro card ficar alinhado com o das bases que tem seta. */
+  width: 22px;
+  flex-shrink: 0;
 }
 
 .fabricacao-formula-filhos {

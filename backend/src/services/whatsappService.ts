@@ -1,7 +1,7 @@
 import path from "node:path";
 import { Boom } from "@hapi/boom";
 import QRCode from "qrcode";
-import makeWASocket, { DisconnectReason, proto, S_WHATSAPP_NET, useMultiFileAuthState, WASocket, WAMessage } from "baileys";
+import makeWASocket, { DisconnectReason, jidNormalizedUser, proto, useMultiFileAuthState, WASocket, WAMessage } from "baileys";
 import { env } from "../config/env";
 import { perguntarGrowthHacker } from "./growthHackerService";
 
@@ -11,12 +11,20 @@ import { perguntarGrowthHacker } from "./growthHackerService";
 // pra sessão sobreviver a "docker compose up -d --build" sem novo QR.
 const PASTA_AUTH = path.join(__dirname, "../../whatsapp_auth");
 
-const JID_DONO = `${env.whatsappOwnerNumber}${S_WHATSAPP_NET}`;
-
 export type StatusWhatsApp = "aguardando_qr" | "conectado" | "desconectado";
 
 let qrAtual: string | null = null;
 let status: StatusWhatsApp = "desconectado";
+
+// JID(s) da própria conta conectada, descobertos com o WhatsApp já
+// autenticado (connection "open") em vez de montados a partir de
+// WHATSAPP_OWNER_NUMBER na mão — número brasileiro de celular pode ter o 9º
+// dígito omitido no JID que o WhatsApp usa internamente (visto ao vivo: dono
+// digitou "5544997120256", mas o WhatsApp identifica a conta como
+// "554497120256"), e contas também podem responder tanto no formato de
+// telefone (@s.whatsapp.net) quanto no formato LID (@lid) — por isso guarda
+// todas as variações que o próprio socket relatar, normalizadas.
+let jidsProprios = new Set<string>();
 
 export async function obterStatusWhatsApp(): Promise<{ status: StatusWhatsApp; qrDataUrl: string | null }> {
   if (status === "aguardando_qr" && qrAtual) {
@@ -60,7 +68,12 @@ async function iniciarSocket(): Promise<void> {
     if (connection === "open") {
       qrAtual = null;
       status = "conectado";
-      console.log("WhatsApp: conectado.");
+      jidsProprios = new Set(
+        [sock.user?.id, sock.user?.phoneNumber, sock.user?.lid]
+          .filter((v): v is string => !!v)
+          .map((v) => jidNormalizedUser(v))
+      );
+      console.log(`WhatsApp: conectado. JID(s) próprio(s): ${[...jidsProprios].join(", ")}`);
     }
 
     if (connection === "close") {
@@ -83,7 +96,8 @@ async function iniciarSocket(): Promise<void> {
 }
 
 async function processarMensagem(sock: WASocket, m: WAMessage): Promise<void> {
-  if (m.key.remoteJid !== JID_DONO) return;
+  const remetente = m.key.remoteJid ? jidNormalizedUser(m.key.remoteJid) : null;
+  if (!remetente || !jidsProprios.has(remetente)) return;
 
   if (m.key.id && idsEnviadosPeloBot.has(m.key.id)) {
     idsEnviadosPeloBot.delete(m.key.id);
@@ -93,7 +107,8 @@ async function processarMensagem(sock: WASocket, m: WAMessage): Promise<void> {
   const texto = extrairTexto(m.message);
   if (!texto) return;
 
-  const jid = m.key.remoteJid;
+  const jid = m.key.remoteJid!;
+  console.log(`WhatsApp: pergunta recebida de ${remetente}, consultando o Growth Hacker...`);
 
   try {
     await sock.sendPresenceUpdate("composing", jid);

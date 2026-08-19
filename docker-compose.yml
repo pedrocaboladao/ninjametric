@@ -38,6 +38,12 @@ services:
     volumes:
       - whatsapp_auth:/app/whatsapp_auth
 
+  # market-db / market-intelligence (Inteligência de Mercado) — pausados a
+  # pedido do dono em 2026-08-19. Código intacto em market-intelligence/ e
+  # nas rotas backend/src/routes/{marketIntelligence,internal}.ts, só não
+  # sobem mais em deploy nenhum até serem religados aqui. Dado histórico
+  # continua salvo no volume market_db_data no VPS (não foi apagado).
+
   frontend:
     build:
       context: ./frontend
@@ -50,3 +56,6 @@ services:
 volumes:
   db_data:
   whatsapp_auth:
+  # market_db_data intencionalmente fora daqui — o volume continua existindo
+  # no VPS com o histórico salvo, só não é mais referenciado por nenhum
+  # serviço enquanto o módulo estiver pausado.
