@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
 import { Sidebar, type View } from "./components/Sidebar";
 import { Dashboard } from "./components/Dashboard";
@@ -17,7 +17,8 @@ import { Ads } from "./components/Ads";
 import { Tarefas } from "./components/Tarefas";
 import { Funcionarios } from "./components/Funcionarios";
 import { Usuarios } from "./components/Usuarios";
-import { AgenciaAgentesIA } from "./components/AgenciaAgentesIA";
+import { AgenciaAgentesIA, ModoTVEscritorio } from "./components/AgenciaAgentesIA";
+import { IconExpand } from "./components/icons";
 import { MarketIntelligence } from "./components/MarketIntelligence";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
@@ -117,6 +118,16 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
 
   const semAcesso = !temPermissao(usuario, view);
 
+  // Botão flutuante do Modo TV só no celular (ver .modo-tv-fab em App.css)
+  // e só pra conta do dono — não é um recurso pra equipe em geral, é um
+  // atalho pessoal pra abrir o painel do escritório sem precisar navegar
+  // até Agentes IA. Estável de propósito, mesmo motivo do sairDoModoTV em
+  // AgenciaAgentesIA.tsx: identidade nova a cada render reiniciaria o
+  // polling do feed.
+  const [modoTV, setModoTV] = useState(false);
+  const sairDoModoTV = useCallback(() => setModoTV(false), []);
+  const podeModoTVMobile = usuario.username === "pedroca";
+
   return (
     <div className="app-shell">
       <Sidebar
@@ -157,6 +168,18 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "agentes" && usuario.admin && <AgenciaAgentesIA />}
         {view === "market_intelligence" && usuario.admin && <MarketIntelligence />}
       </main>
+
+      {podeModoTVMobile && (
+        <button
+          type="button"
+          className="modo-tv-fab"
+          onClick={() => setModoTV(true)}
+          aria-label="Abrir Modo TV"
+        >
+          <IconExpand size={22} />
+        </button>
+      )}
+      {modoTV && <ModoTVEscritorio onSair={sairDoModoTV} />}
     </div>
   );
 }

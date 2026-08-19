@@ -5431,6 +5431,12 @@
   display: none;
 }
 
+/* Atalho pessoal pro Modo TV — só no celular (gate de conta fica no React,
+   em App.tsx), fixo por cima de qualquer tela do app. */
+.modo-tv-fab {
+  display: none;
+}
+
 @media (max-width: 768px) {
   .sidebar-mobile-toggle {
     display: flex;
@@ -5491,5 +5497,22 @@
     /* a tabela do feed de vendas tem 14 colunas — em vez de espremer tudo,
        deixa rolar de lado (padrão comum em apps de finanças no celular) */
     -webkit-overflow-scrolling: touch;
+  }
+
+  .modo-tv-fab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    bottom: 20px;
+    right: 16px;
+    z-index: 55;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
 }

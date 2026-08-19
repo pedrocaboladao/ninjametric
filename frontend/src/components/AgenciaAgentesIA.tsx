@@ -1995,7 +1995,7 @@ type ItemFeedTV =
 // Modo TV do escritório compartilhado — busca o feed dos agentes por conta
 // própria (não depende de qual aba está ativa), atualiza sozinho a cada 1
 // min e sai com Esc.
-function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
+export function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
   const [feed, setFeed] = useState<ItemFeedTV[] | null>(null);
   const [atualizandoFeed, setAtualizandoFeed] = useState(false);
 
