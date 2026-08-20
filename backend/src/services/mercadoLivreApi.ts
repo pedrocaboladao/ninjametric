@@ -169,114 +169,16 @@ export interface MlItemCampanha {
   originalPrice: number;
 }
 
-export interface DiagnosticoPagina {
-  pagina: number;
-  offset: number;
-  recebidos: number;
-  novos: number;
-  totalDoMl: number;
-  amostraIds: string[];
-}
-
-export interface ResultadoItensCampanha {
-  itens: MlItemCampanha[];
-  // Diagnóstico temporário: quantos itens distintos vistos por status (ex.:
-  // started/candidate/pending) e quantas páginas foram lidas — pra decidir
-  // com dado real, não suposição, se "started" é mesmo o único status que
-  // conta como item de fato participando da campanha. Remover depois de
-  // resolvido (ver amostraErro em promocoesService.descobrirCampanhasNaLoja).
-  contagemPorStatus: Record<string, number>;
-  paginasLidas: number;
-  // Diagnóstico ainda mais detalhado, pra descobrir se a paginação por
-  // offset desse endpoint devolve item genuinamente novo em cada página ou
-  // repete os mesmos (achado real: campanha com 229 itens no próprio
-  // Mercado Livre, mas essa função só via 50 — exatamente 1 página — antes
-  // de "página sem novidade" bater o limite). Mostra IDs de amostra por
-  // página pra dar pra comparar visualmente. Remover junto do diagnóstico
-  // acima quando resolvido.
-  diagnosticoPaginas: DiagnosticoPagina[];
-}
-
-export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<ResultadoItensCampanha> {
-  const accessToken = await getValidAccessToken(lojaId);
-  const itensPorId = new Map<string, MlItemCampanha>();
-  const idsVistos = new Set<string>();
-  const contagemPorStatus: Record<string, number> = {};
-  const diagnosticoPaginas: DiagnosticoPagina[] = [];
-  let paginasLidas = 0;
-  let offset = 0;
-  const limit = 50;
-  let paginasSemNovidade = 0;
-  const LIMITE_PAGINAS_SEM_NOVIDADE = 5;
-  // Trava de segurança (5000 itens) — visto na prática que data.paging.total
-  // pode não refletir o total real de itens distintos dessa campanha.
-  const MAX_PAGINAS = 100;
-  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
-    const { data } = await axios.get<{
-      results: Array<{
-        id: string;
-        status: string;
-        price?: number;
-        deal_price?: number;
-        original_price: number;
-      }>;
-      paging: { total: number };
-    }>(`${ML_API_BASE}/seller-promotions/promotions/${promotionId}/items`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2", offset, limit },
-    });
-
-    paginasLidas++;
-    let paginaTemNovidade = false;
-    let novosNaPagina = 0;
-    for (const r of data.results) {
-      if (!idsVistos.has(r.id)) {
-        idsVistos.add(r.id);
-        paginaTemNovidade = true;
-        novosNaPagina++;
-        contagemPorStatus[r.status] = (contagemPorStatus[r.status] ?? 0) + 1;
-      }
-      // Confirmado numa resposta real: item "candidate" não tem price, só
-      // min/max/suggested_discounted_price (é só uma SUGESTÃO do ML de item
-      // elegível, não um item de fato incluído na campanha) — e não vem com
-      // o mesmo nome de campo "price" que a gente assumia, é "deal_price"
-      // (mesmo nome usado pra ENVIAR o preço em adicionarItemCampanha). Só
-      // item started conta como "na campanha" de verdade.
-      const preco = r.deal_price ?? r.price;
-      if (r.status === "started" && typeof preco === "number" && !itensPorId.has(r.id)) {
-        itensPorId.set(r.id, { itemId: r.id, status: r.status, price: preco, originalPrice: r.original_price });
-      }
-    }
-
-    diagnosticoPaginas.push({
-      pagina: pagina + 1,
-      offset,
-      recebidos: data.results.length,
-      novos: novosNaPagina,
-      totalDoMl: data.paging?.total ?? -1,
-      amostraIds: data.results.slice(0, 3).map((r) => r.id),
-    });
-
-    if (paginaTemNovidade) {
-      paginasSemNovidade = 0;
-    } else {
-      paginasSemNovidade++;
-    }
-
-    offset += limit;
-    // Não confia em data.paging.total pra decidir quando parar — visto na
-    // prática que esse número não reflete de forma confiável o total real
-    // de itens distintos da campanha (campanha real ficou faltando itens
-    // parando nele). Só para com página vazia de verdade (fim real da
-    // paginação) ou várias páginas seguidas sem nada novo (o padrão do bug
-    // original: item único repetido em dezenas de páginas), o que vier
-    // primeiro — MAX_PAGINAS é a trava final de segurança.
-    if (data.results.length === 0 || paginasSemNovidade >= LIMITE_PAGINAS_SEM_NOVIDADE) {
-      break;
-    }
-  }
-  return { itens: Array.from(itensPorId.values()), contagemPorStatus, paginasLidas, diagnosticoPaginas };
-}
+// Existiu aqui uma obterItensDaCampanha() que listava os itens de uma
+// campanha pelo endpoint /seller-promotions/promotions/{id}/items — removida
+// porque a paginação por offset dele é pouco confiável em campanha grande:
+// pedir offset diferente devolvia essencialmente os mesmos ~50 itens
+// embaralhados, travando a descoberta bem abaixo do total real (achado ao
+// vivo: campanha com 229 itens no Mercado Livre, função só via 50). A lista
+// de itens de uma campanha agora é montada em
+// promocoesService.descobrirCampanhasNaLoja a partir do scan item-a-item
+// (consultarPromocoesDoItem, que já roda pra achar a campanha) — mais
+// confiável, e sem chamada extra por item.
 
 // Lista o item_id de todos os anúncios ATIVOS de uma loja — usada só pra
 // descoberta automática de campanhas já existentes (ver
@@ -332,6 +234,13 @@ export interface MlPromocaoDoItem {
   promotionId: string;
   type: string;
   status: string;
+  // Mesmo campo que getPromocaoAtivaDoItem já lê dessa resposta (deal_price
+  // com fallback pra price) — capturado aqui também porque a descoberta
+  // automática de campanhas (promocoesService.descobrirCampanhasNaLoja)
+  // passou a montar a lista de itens da campanha a partir desse scan
+  // item-a-item em vez do endpoint de listagem por campanha (paginação por
+  // offset pouco confiável em campanha grande — ver obterItensDaCampanha).
+  dealPrice: number | null;
 }
 
 // Versão mais rica de getPromocaoStatus (que só devolve um enum
@@ -340,15 +249,22 @@ export interface MlPromocaoDoItem {
 // um item pertence, não só se está "em promoção" ou não.
 export async function consultarPromocoesDoItem(lojaId: number, itemId: string): Promise<MlPromocaoDoItem[]> {
   const accessToken = await getValidAccessToken(lojaId);
-  const { data } = await axios.get<Array<{ id?: string; promotion_id?: string; type: string; status: string }>>(
-    `${ML_API_BASE}/seller-promotions/items/${itemId}`,
-    { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
-  );
+  const { data } = await axios.get<
+    Array<{ id?: string; promotion_id?: string; type: string; status: string; deal_price?: number; price?: number }>
+  >(`${ML_API_BASE}/seller-promotions/items/${itemId}`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { app_version: "v2" },
+  });
   // MlCampanhaVendedor (resposta de criar/consultar uma promoção) usa "id",
   // não "promotion_id" — essa rota provavelmente segue o mesmo padrão. Não
   // temos uma resposta real confirmada pra essa rota especificamente, então
   // aceitamos os dois nomes em vez de arriscar quebrar de novo.
-  return data.map((d) => ({ promotionId: d.id ?? d.promotion_id ?? "", type: d.type, status: d.status }));
+  return data.map((d) => ({
+    promotionId: d.id ?? d.promotion_id ?? "",
+    type: d.type,
+    status: d.status,
+    dealPrice: d.deal_price ?? d.price ?? null,
+  }));
 }
 
 export type AdsStatus = "ads_ativo" | "sem_ads" | "nao_verificado";

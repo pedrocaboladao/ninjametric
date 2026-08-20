@@ -417,13 +417,7 @@ function DiagnosticosLista({ diagnosticos }: { diagnosticos: string[] }) {
     <div className="financeiro-td-mudo">
       Diagnóstico ({diagnosticos.length} campanha{diagnosticos.length !== 1 ? "s" : ""}):
       {diagnosticos.map((d, i) => (
-        <div key={i}>
-          {d.split("\n").map((linha, j) => (
-            <div key={j} style={{ fontFamily: j > 0 ? "monospace" : undefined, fontSize: j > 0 ? 12 : undefined }}>
-              {linha}
-            </div>
-          ))}
-        </div>
+        <div key={i}>{d}</div>
       ))}
     </div>
   );

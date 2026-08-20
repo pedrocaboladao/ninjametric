@@ -8,7 +8,7 @@ import {
   getItemsBasicInfo,
   listarItensAtivos,
   consultarPromocoesDoItem,
-  obterItensDaCampanha,
+  type MlItemCampanha,
 } from "./mercadoLivreApi";
 
 export interface ResultadoItemCampanha {
@@ -465,7 +465,11 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
   const itemIds = await listarItensAtivos(lojaId, mlUserId);
   progressoDescoberta.totalItens += itemIds.length;
 
-  const promotionIdsEncontrados = new Set<string>();
+  // Itens de cada campanha, montados a partir do scan item-a-item abaixo
+  // (que já roda pra achar a campanha) em vez do endpoint de listagem por
+  // campanha — ver comentário em mercadoLivreApi.ts sobre por que esse
+  // endpoint foi abandonado (paginação por offset pouco confiável).
+  const itensPorPromotion = new Map<string, { itemId: string; dealPrice: number }[]>();
   await comConcorrenciaLimitada(itemIds, CONCORRENCIA_DESCOBERTA, async (itemId) => {
     try {
       const promocoes = await consultarPromocoesDoItem(lojaId, itemId);
@@ -477,8 +481,10 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
         // mesmo endpoint. Falsos positivos (outro tipo de promoção) não
         // registram: obterDetalhesCampanha pede promotion_type=SELLER_CAMPAIGN
         // e falha/pula silenciosamente (catch abaixo) se não bater.
-        if (p.status === "started" && p.promotionId) {
-          promotionIdsEncontrados.add(p.promotionId);
+        if (p.status === "started" && p.promotionId && p.dealPrice !== null) {
+          const lista = itensPorPromotion.get(p.promotionId) ?? [];
+          lista.push({ itemId, dealPrice: p.dealPrice });
+          itensPorPromotion.set(p.promotionId, lista);
         }
       }
     } catch (err) {
@@ -501,7 +507,7 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
     }
   });
 
-  for (const promotionId of promotionIdsEncontrados) {
+  for (const [promotionId, itensDaCampanha] of itensPorPromotion) {
     const jaRastreada = await pool.query<{ id: number; qtd_itens: string }>(
       `SELECT c.id, COUNT(i.id) AS qtd_itens
        FROM promocoes_campanhas c LEFT JOIN promocoes_itens i ON i.campanha_id = c.id
@@ -515,26 +521,22 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
     if (campanhaExistenteId !== null && Number(jaRastreada.rows[0].qtd_itens) > 0) continue;
 
     try {
-      const [detalhes, resultadoItens] = await Promise.all([
+      // Preço original vem de getItemsBasicInfo (1 chamada em lote pra até
+      // itensDaCampanha.length itens, não 1 por item) — o preço promocional
+      // (dealPrice) já foi capturado no scan item-a-item acima.
+      const [detalhes, infoItens] = await Promise.all([
         obterDetalhesCampanha(lojaId, promotionId),
-        obterItensDaCampanha(lojaId, promotionId),
+        getItemsBasicInfo(lojaId, itensDaCampanha.map((i) => i.itemId)),
       ]);
-      const itensCampanha = resultadoItens.itens;
 
-      // Diagnóstico temporário: mostra sempre a contagem por status (ex.:
-      // started/candidate) e quantas páginas foram lidas — visto que o
-      // painel do ML mostra "muito mais" itens do que só os status
-      // (achado numa depuração ao vivo, precisa de dado real pra decidir
-      // se "started" é mesmo o único status que conta). Some com esse
-      // bloco assim que resolvido.
-      const linhasPaginas = resultadoItens.diagnosticoPaginas
-        .map(
-          (d) =>
-            `  pág.${d.pagina} offset=${d.offset} recebidos=${d.recebidos} novos=${d.novos} total_ml=${d.totalDoMl} amostra=[${d.amostraIds.join(", ")}]`
-        )
-        .join("\n");
+      const itensCampanha: MlItemCampanha[] = itensDaCampanha.flatMap((i) => {
+        const info = infoItens.get(i.itemId);
+        if (!info) return [];
+        return [{ itemId: i.itemId, status: "started", price: i.dealPrice, originalPrice: info.price }];
+      });
+
       progressoDescoberta.diagnosticos.push(
-        `[${promotionId} / ${detalhes.name}] paginas=${resultadoItens.paginasLidas} status=${JSON.stringify(resultadoItens.contagemPorStatus)} usados(started)=${itensCampanha.length}\n${linhasPaginas}`
+        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length}`
       );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
