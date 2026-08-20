@@ -46,6 +46,7 @@ export type View =
   | "fabrica_produtos"
   | "fabrica_clientes"
   | "fabrica_embalagens"
+  | "fabrica_estoque"
   | "ean"
   | "promocoes"
   | "pesquisa"
@@ -88,13 +89,14 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFabricaProdutos = temPermissao(usuario, "fabrica_produtos");
   const podeFabricaClientes = temPermissao(usuario, "fabrica_clientes");
   const podeFabricaEmbalagens = temPermissao(usuario, "fabrica_embalagens");
+  const podeFabricaEstoque = temPermissao(usuario, "fabrica_estoque");
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
   // Fabrica Distribuidora: operacao propria, separada das 20 lojas.
   // Esta lista cresce a cada modulo novo da fabrica (produtos, pedidos, financeiro...).
-  const mostrarFabrica = podeFabricacao || podeFabricaProdutos || podeFabricaClientes || podeFabricaEmbalagens;
+  const mostrarFabrica = podeFabricacao || podeFabricaProdutos || podeFabricaClientes || podeFabricaEmbalagens || podeFabricaEstoque;
 
   const iniciais =
     usuario.nome
@@ -234,6 +236,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconArchiveBox size={16} />
                     <span>Embalagens</span>
+                  </button>
+                )}
+                {podeFabricaEstoque && (
+                  <button
+                    className={`sidebar-item ${view === "fabrica_estoque" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabrica_estoque")}
+                  >
+                    <IconReport size={16} />
+                    <span>Estoque</span>
                   </button>
                 )}
               </div>

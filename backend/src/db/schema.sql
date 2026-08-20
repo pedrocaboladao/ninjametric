@@ -813,3 +813,25 @@ ALTER TABLE formula_embalagens
   REFERENCES fabrica_embalagens(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_formula_embalagens_fabrica
   ON formula_embalagens (fabrica_embalagem_id);
+
+-- Estoque mínimo por matéria-prima. Zero significa "não controlo essa",
+-- não "está sempre em falta" — o alerta só dispara com mínimo definido.
+ALTER TABLE materias_primas
+  ADD COLUMN IF NOT EXISTS estoque_minimo NUMERIC(12, 3) NOT NULL DEFAULT 0;
+
+-- Ajuste de estoque de matéria-prima: inventário, perda, quebra, correção.
+-- Positivo entra, negativo sai. O saldo nunca é guardado — sai sempre de
+-- comprado (materia_prima_compras) menos consumido (explodindo a receita de
+-- cada lote até a MP crua) mais estes ajustes. Guardar saldo daria
+-- divergência silenciosa: um lote lançado com atraso deixaria o número
+-- parado sem ninguém perceber.
+CREATE TABLE IF NOT EXISTS fabrica_estoque_ajustes (
+  id SERIAL PRIMARY KEY,
+  materia_prima_id INTEGER NOT NULL REFERENCES materias_primas(id) ON DELETE CASCADE,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  quantidade_kg NUMERIC(12, 3) NOT NULL,
+  motivo TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_estoque_ajustes_mp
+  ON fabrica_estoque_ajustes (materia_prima_id, data DESC);
