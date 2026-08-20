@@ -18,6 +18,7 @@ export const MODULOS_VALIDOS = [
   "promocoes",
   "pesquisa",
   "market_intelligence",
+  "fabrica_produtos",
 ] as const;
 
 export interface Usuario {
