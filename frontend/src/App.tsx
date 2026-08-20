@@ -10,6 +10,7 @@ import { Fabricacao } from "./components/Fabricacao";
 import { FabricaProdutos } from "./components/FabricaProdutos";
 import { FabricaClientes } from "./components/FabricaClientes";
 import { FabricaEmbalagens } from "./components/FabricaEmbalagens";
+import { FabricaEstoque } from "./components/FabricaEstoque";
 import { GeradorEan } from "./components/GeradorEan";
 import { Promocoes } from "./components/Promocoes";
 import { PesquisaMercado } from "./components/PesquisaMercado";
@@ -46,6 +47,7 @@ const VIEWS_VALIDAS: View[] = [
   "fabrica_produtos",
   "fabrica_clientes",
   "fabrica_embalagens",
+  "fabrica_estoque",
   "promocoes",
   "pesquisa",
   "tarefas",
@@ -84,6 +86,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "fabrica_produtos")) return "fabrica_produtos";
   if (temPermissao(usuario, "fabrica_clientes")) return "fabrica_clientes";
   if (temPermissao(usuario, "fabrica_embalagens")) return "fabrica_embalagens";
+  if (temPermissao(usuario, "fabrica_estoque")) return "fabrica_estoque";
   if (temPermissao(usuario, "promocoes")) return "promocoes";
   if (temPermissao(usuario, "pesquisa")) return "pesquisa";
   if (temPermissao(usuario, "tarefas")) return "tarefas";
@@ -172,6 +175,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "fabrica_produtos" && temPermissao(usuario, "fabrica_produtos") && <FabricaProdutos />}
         {view === "fabrica_clientes" && temPermissao(usuario, "fabrica_clientes") && <FabricaClientes />}
         {view === "fabrica_embalagens" && temPermissao(usuario, "fabrica_embalagens") && <FabricaEmbalagens />}
+        {view === "fabrica_estoque" && temPermissao(usuario, "fabrica_estoque") && <FabricaEstoque />}
         {view === "promocoes" && temPermissao(usuario, "promocoes") && <Promocoes />}
         {view === "pesquisa" && temPermissao(usuario, "pesquisa") && <PesquisaMercado />}
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
