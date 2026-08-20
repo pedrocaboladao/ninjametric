@@ -48,6 +48,7 @@ Adding a new permission-gated module touches **all** of these (none of it is aut
 3. `frontend/src/constants/modulos.ts` — add `{ chave, label }` to `MODULOS` (this is what makes it show up as a checkbox in the Usuários admin screen — separate list from the backend one, must be kept in sync manually)
 4. `frontend/src/components/Sidebar.tsx` — add to the `View` union, a `temPermissao(usuario, "chave")` check, and a nav button
 5. `frontend/src/App.tsx` — import the page, add to `primeiraViewPermitida()`, add the conditional render line
+6. `frontend/src/App.tsx` — **also** add the key to `VIEWS_VALIDAS`. Easy to miss, and the failure is silent: the sidebar button renders and clicks, but `viewValidaNaUrl` comes back false and the router bounces you straight back to the initial view. No error anywhere — the menu item just does nothing.
 
 ### Loja (store) scoping
 
