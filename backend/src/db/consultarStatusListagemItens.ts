@@ -1,6 +1,6 @@
 import { pool } from "./pool";
 import { listLojas } from "../services/tokenStore";
-import { getItemsBasicInfo } from "../services/mercadoLivreApi";
+import { getItemsBasicInfo, listarItensAtivos } from "../services/mercadoLivreApi";
 
 const ITENS_FALTANDO = [
   "MLB4735734111", "MLB4746535399", "MLB4795062805", "MLB4801514301",
@@ -18,12 +18,30 @@ async function main() {
     return;
   }
 
-  const infos = await getItemsBasicInfo(loja.id, ITENS_FALTANDO);
+  if (!loja.ml_user_id) {
+    console.log("Loja sem ml_user_id.");
+    await pool.end();
+    return;
+  }
+
+  function linha(itemId: string, info: ReturnType<Map<string, any>["get"]>): string {
+    return info
+      ? `${itemId}: status=${info.status} catalog_listing=${info.catalog_listing} listing_type_id=${info.listing_type_id} category_id=${info.category_id} title=${info.title}`
+      : `${itemId}: não retornado pela API (talvez 404/closed)`;
+  }
+
+  console.log("--- Itens que FALTAM (ausentes da varredura) ---");
+  const infosFaltando = await getItemsBasicInfo(loja.id, ITENS_FALTANDO);
   for (const itemId of ITENS_FALTANDO) {
-    const info = infos.get(itemId);
-    console.log(
-      `${itemId}: ${info ? `status=${info.status} title=${info.title}` : "não retornado pela API (talvez 404/closed)"}`
-    );
+    console.log(linha(itemId, infosFaltando.get(itemId)));
+  }
+
+  console.log("\n--- Amostra de itens que APARECEM na varredura (pra comparar) ---");
+  const itensAtivos = await listarItensAtivos(loja.id, loja.ml_user_id);
+  const amostra = itensAtivos.slice(0, 8);
+  const infosAmostra = await getItemsBasicInfo(loja.id, amostra);
+  for (const itemId of amostra) {
+    console.log(linha(itemId, infosAmostra.get(itemId)));
   }
 
   await pool.end();
