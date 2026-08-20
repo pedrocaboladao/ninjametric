@@ -835,3 +835,36 @@ CREATE TABLE IF NOT EXISTS fabrica_estoque_ajustes (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_estoque_ajustes_mp
   ON fabrica_estoque_ajustes (materia_prima_id, data DESC);
+
+-- Estoque de embalagem: mesmo princípio do estoque de matéria-prima — o saldo
+-- não é digitado, sai de comprado − consumido + ajustes. A coluna "estoque"
+-- que existia guardava um número solto que ninguém atualizava depois da
+-- primeira digitação; sai daqui.
+ALTER TABLE fabrica_embalagens DROP COLUMN IF EXISTS estoque;
+
+-- Balde de 18, 16 e 15 kg são o MESMO balde físico — muda só quanto se põe
+-- dentro. Sem isso o sistema acharia que tem três estoques separados e nunca
+-- avisaria pra comprar. Nulo significa "sou o balde raiz".
+ALTER TABLE fabrica_embalagens
+  ADD COLUMN IF NOT EXISTS equivale_a_id INTEGER REFERENCES fabrica_embalagens(id) ON DELETE SET NULL;
+
+CREATE TABLE IF NOT EXISTS fabrica_embalagem_compras (
+  id SERIAL PRIMARY KEY,
+  embalagem_id INTEGER NOT NULL REFERENCES fabrica_embalagens(id) ON DELETE CASCADE,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  quantidade INTEGER NOT NULL,
+  custo_unitario NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_embalagem_compras_emb ON fabrica_embalagem_compras (embalagem_id);
+
+CREATE TABLE IF NOT EXISTS fabrica_embalagem_ajustes (
+  id SERIAL PRIMARY KEY,
+  embalagem_id INTEGER NOT NULL REFERENCES fabrica_embalagens(id) ON DELETE CASCADE,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  quantidade INTEGER NOT NULL,
+  motivo TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_embalagem_ajustes_emb ON fabrica_embalagem_ajustes (embalagem_id);

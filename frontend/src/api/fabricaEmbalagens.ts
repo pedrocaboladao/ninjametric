@@ -2,6 +2,7 @@ import type {
   FabricaEmbalagem,
   FabricaEmbalagemEntrada,
   VinculoEmbalagem,
+  MovimentoEmbalagem,
 } from "../types/fabricaEmbalagens";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -79,4 +80,64 @@ export async function vincularPorPeso(): Promise<{ ligadas: number; ambiguas: nu
     credentials: "include",
   });
   return tratarResposta<{ ligadas: number; ambiguas: number }>(res);
+}
+
+// --- compras e ajustes -------------------------------------------------------
+
+export async function fetchComprasEmbalagem(): Promise<MovimentoEmbalagem[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-embalagens/compras`, { credentials: "include" });
+  return (await tratarResposta<{ compras: MovimentoEmbalagem[] }>(res)).compras;
+}
+
+export async function registrarCompraEmbalagem(entrada: {
+  embalagemId: number;
+  quantidade: number;
+  custoUnitario: number;
+  data?: string | null;
+  observacao?: string | null;
+}): Promise<{ id: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-embalagens/compras`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number }>(res);
+}
+
+export async function excluirCompraEmbalagem(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-embalagens/compras/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await semConteudo(res);
+}
+
+export async function fetchAjustesEmbalagem(): Promise<MovimentoEmbalagem[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-embalagens/ajustes`, { credentials: "include" });
+  return (await tratarResposta<{ ajustes: MovimentoEmbalagem[] }>(res)).ajustes;
+}
+
+export async function registrarAjusteEmbalagem(entrada: {
+  embalagemId: number;
+  tipo: "ajuste" | "inventario";
+  quantidade?: number;
+  contado?: number;
+  motivo?: string | null;
+}): Promise<{ id: number; diferenca?: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-embalagens/ajustes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number; diferenca?: number }>(res);
+}
+
+export async function excluirAjusteEmbalagem(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-embalagens/ajustes/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await semConteudo(res);
 }

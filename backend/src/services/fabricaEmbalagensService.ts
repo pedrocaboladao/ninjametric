@@ -1,10 +1,11 @@
 import { pool } from "../db/pool";
+import { listarEstoqueEmbalagens } from "./fabricaEmbalagemEstoqueService";
 
 // Cadastro de embalagem da Fábrica Distribuidora — o balde, a bombona, o galão.
 //
 // Por que existe: hoje o custo da embalagem é um número digitado dentro de cada
 // fórmula (formula_embalagens.custo_embalagem). O mesmo balde de 18 kg tem o
-// preço repetido em 23 fórmulas, e não existe entidade "balde" pra ter saldo,
+// preço repetido em 23 fórmulas, e não existia entidade "balde" pra ter saldo,
 // mínimo ou alerta de compra. Este cadastro é o lugar único.
 //
 // A ligação com as fórmulas é opcional (formula_embalagens.fabrica_embalagem_id):
@@ -15,10 +16,15 @@ export interface FabricaEmbalagem {
   nome: string;
   pesoKg: number;
   custoUnitario: number;
-  estoque: number;
   estoqueMinimo: number;
   ativo: boolean;
-  // derivados
+  // quando este cadastro divide o balde físico com outro (18/16/15 kg)
+  equivaleAId: number | null;
+  // derivados — nenhum destes é guardado no banco
+  comprado: number;
+  consumido: number;
+  ajustes: number;
+  estoque: number;
   abaixoDoMinimo: boolean;
   formulasLigadas: number;
 }
@@ -27,9 +33,9 @@ export interface EmbalagemEntrada {
   nome: string;
   pesoKg: number;
   custoUnitario: number;
-  estoque: number;
   estoqueMinimo: number;
   ativo: boolean;
+  equivaleAId: number | null;
 }
 
 interface Linha {
@@ -37,48 +43,63 @@ interface Linha {
   nome: string;
   peso_kg: string;
   custo_unitario: string;
-  estoque: string;
   estoque_minimo: string;
   ativo: boolean;
+  equivale_a_id: number | null;
   formulas_ligadas: string;
 }
 
-function montar(r: Linha): FabricaEmbalagem {
-  const estoque = Number(r.estoque);
-  const estoqueMinimo = Number(r.estoque_minimo);
+interface SaldoDerivado {
+  comprado: number;
+  consumido: number;
+  ajustes: number;
+  saldo: number;
+  abaixoDoMinimo: boolean;
+}
+
+// O cadastro sozinho não sabe o saldo: ele vem de comprado − consumido +
+// ajustes, calculado em fabricaEmbalagemEstoqueService. Aqui só junta os dois
+// pra tela mostrar cadastro e saldo na mesma linha.
+function montar(r: Linha, saldo?: SaldoDerivado): FabricaEmbalagem {
   return {
     id: r.id,
     nome: r.nome,
     pesoKg: Number(r.peso_kg),
     custoUnitario: Number(r.custo_unitario),
-    estoque,
-    estoqueMinimo,
+    estoqueMinimo: Number(r.estoque_minimo),
     ativo: r.ativo,
-    // só alerta quando existe mínimo definido — mínimo zero significa
-    // "não controlo essa", não "está sempre em falta"
-    abaixoDoMinimo: estoqueMinimo > 0 && estoque < estoqueMinimo,
+    equivaleAId: r.equivale_a_id,
+    comprado: saldo?.comprado ?? 0,
+    consumido: saldo?.consumido ?? 0,
+    ajustes: saldo?.ajustes ?? 0,
+    estoque: saldo?.saldo ?? 0,
+    abaixoDoMinimo: saldo?.abaixoDoMinimo ?? false,
     formulasLigadas: Number(r.formulas_ligadas),
   };
 }
 
 const SELECT_BASE = `
-  SELECT e.id, e.nome, e.peso_kg, e.custo_unitario, e.estoque, e.estoque_minimo, e.ativo,
+  SELECT e.id, e.nome, e.peso_kg, e.custo_unitario, e.estoque_minimo, e.ativo, e.equivale_a_id,
          (SELECT COUNT(*) FROM formula_embalagens fe WHERE fe.fabrica_embalagem_id = e.id) AS formulas_ligadas
   FROM fabrica_embalagens e
 `;
 
 export async function listarEmbalagens(): Promise<FabricaEmbalagem[]> {
-  const { rows } = await pool.query<Linha>(`${SELECT_BASE} ORDER BY e.peso_kg DESC, e.nome`);
-  return rows.map(montar);
+  const [cad, estoque] = await Promise.all([
+    pool.query<Linha>(`${SELECT_BASE} ORDER BY e.peso_kg DESC, e.nome`),
+    listarEstoqueEmbalagens(),
+  ]);
+  const saldoPor = new Map(estoque.map((e) => [e.embalagemId, e]));
+  return cad.rows.map((r) => montar(r, saldoPor.get(r.id)));
 }
 
 function valores(e: EmbalagemEntrada) {
-  return [e.nome, e.pesoKg, e.custoUnitario, e.estoque, e.estoqueMinimo, e.ativo];
+  return [e.nome, e.pesoKg, e.custoUnitario, e.estoqueMinimo, e.ativo, e.equivaleAId];
 }
 
 export async function criarEmbalagem(e: EmbalagemEntrada): Promise<{ id: number }> {
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO fabrica_embalagens (nome, peso_kg, custo_unitario, estoque, estoque_minimo, ativo)
+    `INSERT INTO fabrica_embalagens (nome, peso_kg, custo_unitario, estoque_minimo, ativo, equivale_a_id)
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
     valores(e)
   );
@@ -86,11 +107,13 @@ export async function criarEmbalagem(e: EmbalagemEntrada): Promise<{ id: number 
 }
 
 export async function atualizarEmbalagem(id: number, e: EmbalagemEntrada): Promise<void> {
+  // uma embalagem não pode equivaler a si mesma — o saldo ficaria órfão
+  const equivaleAId = e.equivaleAId === id ? null : e.equivaleAId;
   await pool.query(
     `UPDATE fabrica_embalagens
-     SET nome = $2, peso_kg = $3, custo_unitario = $4, estoque = $5, estoque_minimo = $6, ativo = $7
+     SET nome = $2, peso_kg = $3, custo_unitario = $4, estoque_minimo = $5, ativo = $6, equivale_a_id = $7
      WHERE id = $1`,
-    [id, ...valores(e)]
+    [id, e.nome, e.pesoKg, e.custoUnitario, e.estoqueMinimo, e.ativo, equivaleAId]
   );
 }
 
