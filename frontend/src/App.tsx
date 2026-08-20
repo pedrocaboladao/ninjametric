@@ -41,6 +41,7 @@ const VIEWS_VALIDAS: View[] = [
   "dre",
   "ads",
   "fabricacao",
+  "fabrica_produtos",
   "promocoes",
   "pesquisa",
   "tarefas",
