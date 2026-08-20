@@ -382,6 +382,11 @@ export interface MlItemBasicInfo {
   category_id?: string;
   listing_type_id?: string;
   seller_custom_field?: string | null;
+  // Status real do anúncio (active/paused/closed/...) — capturado pra
+  // investigar por que alguns itens com promoção "started" confirmada não
+  // aparecem na varredura de descoberta (hipótese: não estão com
+  // status=active, então nem entram na lista de itens ativos escaneada).
+  status?: string;
   // Também já vem no objeto completo — capturado pra investigar se a
   // contagem de "anúncios" numa campanha do painel do Mercado Livre conta
   // cada variação (cor/tamanho) separadamente, enquanto a descoberta
