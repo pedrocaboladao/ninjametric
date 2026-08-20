@@ -476,10 +476,22 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
   // campanha — ver comentário em mercadoLivreApi.ts sobre por que esse
   // endpoint foi abandonado (paginação por offset pouco confiável).
   const itensPorPromotion = new Map<string, { itemId: string; dealPrice: number }[]>();
+  // Diagnóstico temporário: todo status visto por promotion_id, não só
+  // "started" — pra descobrir o texto exato que o Mercado Livre usa pro
+  // item "PROGRAMADA" (já entrou na campanha, mas só assume quando a
+  // promoção melhor que está rodando agora nesse item terminar). Dono
+  // confirmou que isso deve contar como "da campanha" também, não só
+  // "started" — falta só o nome certo do status pra somar direito.
+  const statusPorPromotion = new Map<string, Record<string, number>>();
   await comConcorrenciaLimitada(itemIds, CONCORRENCIA_DESCOBERTA, async (itemId) => {
     try {
       const promocoes = await consultarPromocoesDoItem(lojaId, itemId);
       for (const p of promocoes) {
+        if (!p.promotionId) continue;
+        const contagem = statusPorPromotion.get(p.promotionId) ?? {};
+        contagem[p.status] = (contagem[p.status] ?? 0) + 1;
+        statusPorPromotion.set(p.promotionId, contagem);
+
         // Não filtramos por p.type aqui: o valor exato que o ML devolve pra
         // SELLER_CAMPAIGN não foi confirmado contra uma resposta real (só
         // documentação), e getPromocaoStatus (já em produção há tempos, ver
@@ -487,7 +499,7 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
         // mesmo endpoint. Falsos positivos (outro tipo de promoção) não
         // registram: obterDetalhesCampanha pede promotion_type=SELLER_CAMPAIGN
         // e falha/pula silenciosamente (catch abaixo) se não bater.
-        if (p.status === "started" && p.promotionId && p.dealPrice !== null) {
+        if (p.status === "started" && p.dealPrice !== null) {
           const lista = itensPorPromotion.get(p.promotionId) ?? [];
           lista.push({ itemId, dealPrice: p.dealPrice });
           itensPorPromotion.set(p.promotionId, lista);
@@ -541,18 +553,10 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
         return [{ itemId: i.itemId, status: "started", price: i.dealPrice, originalPrice: info.price }];
       });
 
-      // Diagnóstico: testa a hipótese de "anúncio família" — o painel do
-      // Mercado Livre pode contar cada variação (cor/tamanho) como um
-      // anúncio separado, enquanto aqui conta por item pai só. Some as
-      // variações de cada item pra comparar com o total do ML.
-      const totalVariacoes = itensDaCampanha.reduce((soma, i) => {
-        const vars = infoItens.get(i.itemId)?.variations;
-        return soma + (vars && vars.length > 0 ? vars.length : 1);
-      }, 0);
-      const itensComVariacao = itensDaCampanha.filter((i) => (infoItens.get(i.itemId)?.variations?.length ?? 0) > 1).length;
+      const statusDaCampanha = statusPorPromotion.get(promotionId) ?? {};
 
       progressoDescoberta.diagnosticos.push(
-        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} itens_com_variacao=${itensComVariacao} total_contando_variacoes=${totalVariacoes} itens_ativos_na_loja=${itemIds.length}${bateuTetoDeItensAtivos ? " (BATEU O TETO DE 1000 — pode ter anúncio ativo que nem foi verificado)" : ""}`
+        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} status_vistos=${JSON.stringify(statusDaCampanha)} itens_ativos_na_loja=${itemIds.length}${bateuTetoDeItensAtivos ? " (BATEU O TETO DE 1000)" : ""}`
       );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
