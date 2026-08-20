@@ -9,7 +9,11 @@ export interface FabricaProduto {
   embalagemId: number | null;
   embalagemNome: string | null;
   pesoKg: number;
-  custoPorKg: number;
+  custoPorKgTeorico: number;
+  custoPorKgReal: number;
+  rendimento: number;
+  lotes: number;
+  custoTeorico: number;
   custoProduto: number;
   custoEmbalagem: number;
   custo: number;

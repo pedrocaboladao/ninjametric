@@ -5,10 +5,8 @@ import { listarFormulas } from "./fabricacaoService";
 // do grupo. Fica separado de `produtos` (que é catálogo de anúncio do Mercado
 // Livre, das 20 lojas) de propósito: são operações diferentes.
 //
-// O custo NÃO é guardado: vem sempre da fórmula ligada ao produto, pelo mesmo
-// cálculo recursivo que o Custo de Fabricação já usa. Assim, quando o preço de
-// uma matéria-prima muda, o custo de todo produto que a usa acompanha sozinho.
-// O único número digitado aqui é o preço de venda.
+// O custo NÃO é guardado: vem sempre da fórmula ligada ao produto. O único
+// número digitado aqui é o preço de venda.
 export interface FabricaProduto {
   id: number;
   sku: string;
@@ -18,7 +16,11 @@ export interface FabricaProduto {
   embalagemId: number | null;
   embalagemNome: string | null;
   pesoKg: number;
-  custoPorKg: number;
+  custoPorKgTeorico: number;
+  custoPorKgReal: number;
+  rendimento: number;
+  lotes: number;
+  custoTeorico: number;
   custoProduto: number;
   custoEmbalagem: number;
   custo: number;
@@ -52,8 +54,42 @@ interface LinhaBruta {
   ativo: boolean;
 }
 
-// margem/markup/%lucro sempre derivados — nunca guardados, pra não existir a
-// chance de ficarem defasados em relação ao custo.
+interface Rendimento {
+  previsto: number;
+  real: number;
+  lotes: number;
+}
+
+// Rendimento acumulado de cada fórmula, somando TODOS os lotes já lançados.
+//
+// A matéria-prima é pesada exatamente pela receita, então o dinheiro gasto num
+// lote é fixo (custo teórico × peso previsto). O que varia é quanto sai do
+// tanque: mais água ou menos espessante rende mais, e o mesmo dinheiro se
+// dilui em mais quilos. Somar previsto e real de todos os lotes antes de
+// dividir dá a média ponderada natural — lote grande pesa mais que lote
+// pequeno, sem precisar ponderar à mão.
+async function rendimentoPorFormula(): Promise<Map<number, Rendimento>> {
+  const { rows } = await pool.query<{
+    formula_id: number;
+    previsto: string;
+    real: string;
+    lotes: string;
+  }>(
+    `SELECT formula_id,
+            SUM(peso_previsto_kg) AS previsto,
+            SUM(peso_real_kg)     AS real,
+            COUNT(*)              AS lotes
+     FROM formula_lotes
+     GROUP BY formula_id`
+  );
+  return new Map(
+    rows.map((r) => [
+      r.formula_id,
+      { previsto: Number(r.previsto), real: Number(r.real), lotes: Number(r.lotes) },
+    ])
+  );
+}
+
 function calcularIndicadores(custo: number, precoVenda: number) {
   const margemContribuicao = precoVenda - custo;
   return {
@@ -63,13 +99,27 @@ function calcularIndicadores(custo: number, precoVenda: number) {
   };
 }
 
-function montar(r: LinhaBruta, custoPorKgPorFormula: Map<number, number>): FabricaProduto {
-  const custoPorKg = r.formula_id !== null ? custoPorKgPorFormula.get(r.formula_id) ?? 0 : 0;
+function montar(
+  r: LinhaBruta,
+  custoTeoricoPorFormula: Map<number, number>,
+  rendimentos: Map<number, Rendimento>
+): FabricaProduto {
+  const custoPorKgTeorico = r.formula_id !== null ? custoTeoricoPorFormula.get(r.formula_id) ?? 0 : 0;
+  const rend = r.formula_id !== null ? rendimentos.get(r.formula_id) : undefined;
+
+  // Sem lote lançado ainda, o teórico é a única referência que existe.
+  const temRendimento = !!rend && rend.real > 0 && rend.previsto > 0;
+  const custoPorKgReal = temRendimento
+    ? (custoPorKgTeorico * rend!.previsto) / rend!.real
+    : custoPorKgTeorico;
+  const rendimento = temRendimento ? rend!.real / rend!.previsto - 1 : 0;
+
   const pesoKg = r.peso_kg !== null ? Number(r.peso_kg) : 0;
   const custoEmbalagem = r.custo_embalagem !== null ? Number(r.custo_embalagem) : 0;
-  const custoProduto = custoPorKg * pesoKg;
+  const custoProduto = custoPorKgReal * pesoKg;
   const custo = custoProduto + custoEmbalagem;
   const precoVenda = Number(r.preco_venda);
+
   return {
     id: r.id,
     sku: r.sku,
@@ -79,7 +129,11 @@ function montar(r: LinhaBruta, custoPorKgPorFormula: Map<number, number>): Fabri
     embalagemId: r.embalagem_id,
     embalagemNome: r.embalagem_nome,
     pesoKg,
-    custoPorKg,
+    custoPorKgTeorico,
+    custoPorKgReal,
+    rendimento,
+    lotes: rend?.lotes ?? 0,
+    custoTeorico: custoPorKgTeorico * pesoKg + custoEmbalagem,
     custoProduto,
     custoEmbalagem,
     custo,
@@ -98,19 +152,24 @@ const SELECT_BASE = `
   LEFT JOIN formula_embalagens e ON e.id = p.embalagem_id
 `;
 
+async function contexto() {
+  const [formulas, rendimentos] = await Promise.all([listarFormulas(), rendimentoPorFormula()]);
+  return {
+    custoTeorico: new Map(formulas.map((f) => [f.id, f.custoPorKg])),
+    rendimentos,
+  };
+}
+
 export async function listarProdutos(): Promise<FabricaProduto[]> {
-  // uma chamada só pra ter o custo/kg de todas as fórmulas — evita N+1
-  const formulas = await listarFormulas();
-  const custoPorKg = new Map(formulas.map((f) => [f.id, f.custoPorKg]));
+  const { custoTeorico, rendimentos } = await contexto();
   const { rows } = await pool.query<LinhaBruta>(`${SELECT_BASE} ORDER BY p.nome`);
-  return rows.map((r) => montar(r, custoPorKg));
+  return rows.map((r) => montar(r, custoTeorico, rendimentos));
 }
 
 export async function obterProduto(id: number): Promise<FabricaProduto | null> {
-  const formulas = await listarFormulas();
-  const custoPorKg = new Map(formulas.map((f) => [f.id, f.custoPorKg]));
+  const { custoTeorico, rendimentos } = await contexto();
   const { rows } = await pool.query<LinhaBruta>(`${SELECT_BASE} WHERE p.id = $1`, [id]);
-  return rows[0] ? montar(rows[0], custoPorKg) : null;
+  return rows[0] ? montar(rows[0], custoTeorico, rendimentos) : null;
 }
 
 // A embalagem tem de pertencer à fórmula escolhida — senão o custo sairia de
