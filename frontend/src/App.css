@@ -5515,4 +5515,16 @@
     color: var(--text-primary);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
+
+  /* O Modo TV foi feito pra tela grande (rótulos dos personagens ficam
+     sobrepostos se o painel de cena espreme demais). Em vez de redesenhar
+     pra caber, mantém a largura de sempre e deixa rolar de lado/dar zoom —
+     igual "ver versão desktop" de um site no celular. */
+  .agente-tv-overlay {
+    right: auto;
+    width: 1200px;
+    max-width: none;
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
