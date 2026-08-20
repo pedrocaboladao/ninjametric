@@ -211,12 +211,30 @@ export async function listarItensAtivos(lojaId: number, mlUserId: number): Promi
     if (data.results.length === 0 || !data.scroll_id) break;
     scrollId = data.scroll_id;
   }
+  // search_type=scan NÃO devolve anúncios de catálogo (achado real:
+  // comparando o export do Mercado Livre com o nosso, os 16 itens que
+  // faltavam tinham TODOS catalog_listing=true, enquanto uma amostra dos
+  // que aparecem normalmente tinha TODOS catalog_listing=false — padrão
+  // 100% consistente). Busca suplementar sem scan, filtrando só catálogo,
+  // pra cobrir esse buraco — paginação por offset de novo aqui é segura
+  // porque catálogo costuma ser um subconjunto pequeno da loja inteira,
+  // bem longe do teto de 1000 que motivou trocar pro scan em primeiro lugar.
+  const itensCatalogo: string[] = [];
+  for (let offset = 0; offset < 1000; offset += 50) {
+    const { data } = await axios.get<{ results: string[] }>(`${ML_API_BASE}/users/${mlUserId}/items/search`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { status: "active", catalog_listing: "true", offset, limit: 50 },
+    });
+    itensCatalogo.push(...data.results);
+    if (data.results.length < 50) break;
+  }
+
   // Paginação por scroll pode repetir item entre páginas (comportamento
   // conhecido desse tipo de paginação, se o catálogo muda durante a
   // varredura) — sem isso, um item "started" repetido vira contagem dobrada
   // de itens na campanha (achado real: 493 itens encontrados numa campanha
   // que o próprio Mercado Livre mostra ~229).
-  return Array.from(new Set(itemIds));
+  return Array.from(new Set([...itemIds, ...itensCatalogo]));
 }
 
 export interface MlPromocaoAtiva {
