@@ -15,6 +15,13 @@ function formatPercent(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
 }
 
+// rendimento vem como fracao (+0.12 = rendeu 12% a mais que a receita previa)
+function formatRendimento(v: number, lotes: number): string {
+  if (!lotes) return "—";
+  const sinal = v > 0 ? "+" : "";
+  return `${sinal}${(v * 100).toFixed(1)}%`;
+}
+
 const VAZIO = { sku: "", nome: "", formulaId: "", embalagemId: "", precoVenda: "", ativo: true };
 type Rascunho = typeof VAZIO;
 
@@ -229,7 +236,9 @@ export function FabricaProdutos() {
               <th>PRODUTO</th>
               <th>FÓRMULA</th>
               <th>EMBALAGEM</th>
-              <th className="financeiro-th-numero">CUSTO</th>
+              <th className="financeiro-th-numero">CUSTO TEÓRICO</th>
+              <th className="financeiro-th-numero">RENDIMENTO</th>
+              <th className="financeiro-th-numero">CUSTO REAL</th>
               <th className="financeiro-th-numero">PREÇO VENDA</th>
               <th className="financeiro-th-numero">MARGEM CONTRIB.</th>
               <th className="financeiro-th-numero">MARKUP</th>
@@ -240,12 +249,12 @@ export function FabricaProdutos() {
           <tbody>
             {produtos === null && (
               <tr>
-                <td colSpan={10}>Carregando…</td>
+                <td colSpan={12}>Carregando…</td>
               </tr>
             )}
             {produtos !== null && !filtrados.length && (
               <tr>
-                <td colSpan={10}>Nenhum produto cadastrado ainda.</td>
+                <td colSpan={12}>Nenhum produto cadastrado ainda.</td>
               </tr>
             )}
             {filtrados.map((p) => (
@@ -259,6 +268,10 @@ export function FabricaProdutos() {
                 <td className="financeiro-td-mudo">{p.formulaNome ?? "—"}</td>
                 <td className="financeiro-td-mudo">
                   {p.embalagemNome ? `${p.embalagemNome} (${p.pesoKg}kg)` : "—"}
+                </td>
+                <td className="financeiro-th-numero financeiro-td-mudo">{formatCurrency(p.custoTeorico)}</td>
+                <td className="financeiro-th-numero financeiro-td-mudo" title={p.lotes ? `${p.lotes} lote(s) lançado(s)` : "sem lote lançado"}>
+                  {formatRendimento(p.rendimento, p.lotes)}
                 </td>
                 <td className="financeiro-th-numero">{formatCurrency(p.custo)}</td>
                 <td className="financeiro-th-numero">{formatCurrency(p.precoVenda)}</td>
