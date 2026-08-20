@@ -368,6 +368,12 @@ export interface MlItemBasicInfo {
   category_id?: string;
   listing_type_id?: string;
   seller_custom_field?: string | null;
+  // Também já vem no objeto completo — capturado pra investigar se a
+  // contagem de "anúncios" numa campanha do painel do Mercado Livre conta
+  // cada variação (cor/tamanho) separadamente, enquanto a descoberta
+  // automática de promoções conta por item pai só (ver diagnóstico em
+  // promocoesService.descobrirCampanhasNaLoja).
+  variations?: Array<{ id: number }>;
 }
 
 export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Promise<Map<string, MlItemBasicInfo>> {

@@ -535,8 +535,18 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
         return [{ itemId: i.itemId, status: "started", price: i.dealPrice, originalPrice: info.price }];
       });
 
+      // Diagnóstico: testa a hipótese de "anúncio família" — o painel do
+      // Mercado Livre pode contar cada variação (cor/tamanho) como um
+      // anúncio separado, enquanto aqui conta por item pai só. Some as
+      // variações de cada item pra comparar com o total do ML.
+      const totalVariacoes = itensDaCampanha.reduce((soma, i) => {
+        const vars = infoItens.get(i.itemId)?.variations;
+        return soma + (vars && vars.length > 0 ? vars.length : 1);
+      }, 0);
+      const itensComVariacao = itensDaCampanha.filter((i) => (infoItens.get(i.itemId)?.variations?.length ?? 0) > 1).length;
+
       progressoDescoberta.diagnosticos.push(
-        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length}`
+        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} itens_com_variacao=${itensComVariacao} total_contando_variacoes=${totalVariacoes}`
       );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
