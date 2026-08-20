@@ -7,6 +7,14 @@ import {
   excluirProduto,
   type ProdutoEntrada,
 } from "../services/fabricaProdutosService";
+import {
+  listarEstoqueProdutos,
+  definirEstoqueMinimoProduto,
+  listarAjustesProduto,
+  registrarAjusteProduto,
+  registrarInventarioProduto,
+  excluirAjusteProduto,
+} from "../services/fabricaProdutoEstoqueService";
 
 export const fabricaProdutosRouter = Router();
 
@@ -42,6 +50,85 @@ fabricaProdutosRouter.get("/", async (_req, res) => {
     res.json({ produtos: await listarProdutos() });
   } catch (err) {
     erro(res, err, "Falha ao carregar produtos.");
+  }
+});
+
+// --- estoque de produto acabado ---------------------------------------------
+//
+// Mesma tela, mesma permissão: quem cadastra o produto é quem conta o que tem
+// na prateleira. O custo unitário vem do cálculo de produto que já existe, pra
+// não repetir aqui a recursão de fórmula e rendimento.
+
+async function custoPorProduto(): Promise<Map<number, number>> {
+  const produtos = await listarProdutos();
+  return new Map(produtos.map((p) => [p.id, p.custo]));
+}
+
+fabricaProdutosRouter.get("/estoque", async (_req, res) => {
+  try {
+    res.json({ estoque: await listarEstoqueProdutos(await custoPorProduto()) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar estoque de produtos.");
+  }
+});
+
+fabricaProdutosRouter.put("/estoque/:id/minimo", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  const minimo = Number(req.body?.estoqueMinimo);
+  if (!Number.isFinite(minimo) || minimo < 0) {
+    return res.status(400).json({ error: "Estoque mínimo inválido." });
+  }
+  try {
+    await definirEstoqueMinimoProduto(id, minimo);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao definir estoque mínimo.");
+  }
+});
+
+fabricaProdutosRouter.get("/estoque/ajustes", async (_req, res) => {
+  try {
+    res.json({ ajustes: await listarAjustesProduto() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar ajustes.");
+  }
+});
+
+fabricaProdutosRouter.post("/estoque/ajustes", async (req, res) => {
+  const b = req.body ?? {};
+  const produtoId = Number(b.produtoId);
+  if (!Number.isInteger(produtoId)) return res.status(400).json({ error: "Escolha o produto." });
+  const motivo = typeof b.motivo === "string" && b.motivo.trim() ? b.motivo.trim() : null;
+  try {
+    // inventário: o operador diz quanto TEM; ajuste: quanto entra ou sai
+    if (b.tipo === "inventario") {
+      const contado = Number(b.contado);
+      if (!Number.isFinite(contado) || contado < 0) {
+        return res.status(400).json({ error: "Quantidade contada inválida." });
+      }
+      return res
+        .status(201)
+        .json(await registrarInventarioProduto(produtoId, contado, motivo, await custoPorProduto()));
+    }
+    const quantidade = Number(b.quantidade);
+    if (!Number.isFinite(quantidade) || quantidade === 0) {
+      return res.status(400).json({ error: "Informe a quantidade (positiva entra, negativa sai)." });
+    }
+    res.status(201).json(await registrarAjusteProduto(produtoId, quantidade, motivo));
+  } catch (err) {
+    erro(res, err, "Falha ao registrar ajuste.");
+  }
+});
+
+fabricaProdutosRouter.delete("/estoque/ajustes/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  try {
+    await excluirAjusteProduto(id);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao excluir ajuste.");
   }
 });
 
