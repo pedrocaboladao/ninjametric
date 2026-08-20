@@ -464,12 +464,6 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
   progressoDescoberta.lojaAtual = lojaNome;
   const itemIds = await listarItensAtivos(lojaId, mlUserId);
   progressoDescoberta.totalItens += itemIds.length;
-  // listarItensAtivos para em 1000 itens (teto real da busca do Mercado
-  // Livre nessa rota) — se a loja tiver mais anúncios ativos que isso, a
-  // varredura nem chega a checar o resto, o que pode explicar uma campanha
-  // "faltando itens" sem nenhuma relação com variação/paginação de
-  // promoção. Fica registrado aqui pra não precisar adivinhar de novo.
-  const bateuTetoDeItensAtivos = itemIds.length >= 1000;
 
   // Itens de cada campanha, montados a partir do scan item-a-item abaixo
   // (que já roda pra achar a campanha) em vez do endpoint de listagem por
@@ -556,7 +550,7 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
       const statusDaCampanha = statusPorPromotion.get(promotionId) ?? {};
 
       progressoDescoberta.diagnosticos.push(
-        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} status_vistos=${JSON.stringify(statusDaCampanha)} itens_ativos_na_loja=${itemIds.length}${bateuTetoDeItensAtivos ? " (BATEU O TETO DE 1000)" : ""}`
+        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} status_vistos=${JSON.stringify(statusDaCampanha)} itens_ativos_na_loja=${itemIds.length}`
       );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {

@@ -188,19 +188,28 @@ export interface MlItemCampanha {
 export async function listarItensAtivos(lojaId: number, mlUserId: number): Promise<string[]> {
   const accessToken = await getValidAccessToken(lojaId);
   const itemIds: string[] = [];
-  let offset = 0;
-  const limit = 100;
-  while (true) {
-    const { data } = await axios.get<{ results: string[]; paging: { total: number } }>(
+  let scrollId: string | undefined;
+  // A busca de itens do ML não pagina por offset além de 1000 resultados —
+  // achado real: a Catedral tem mais de 1000 anúncios ativos, e a
+  // descoberta automática de promoções batia esse teto e nem chegava a
+  // checar o resto (campanha real ficando com bem menos itens do que
+  // deveria). search_type=scan + scroll_id é o mecanismo do próprio ML pra
+  // ir além de 1000 (documentação oficial: "release the offset", usa o
+  // scroll_id devolvido a cada resposta pra pedir a próxima leva). Trava de
+  // segurança de 50 páginas (até ~50 mil itens) pra nunca ficar em loop
+  // infinito se o scroll_id parar de vir por algum motivo.
+  const MAX_PAGINAS = 50;
+  for (let pagina = 0; pagina < MAX_PAGINAS; pagina++) {
+    const { data } = await axios.get<{ results: string[]; scroll_id?: string }>(
       `${ML_API_BASE}/users/${mlUserId}/items/search`,
-      { headers: { Authorization: `Bearer ${accessToken}` }, params: { status: "active", offset, limit } }
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { status: "active", search_type: "scan", ...(scrollId ? { scroll_id: scrollId } : {}) },
+      }
     );
     itemIds.push(...data.results);
-    offset += limit;
-    // A busca de itens do ML não pagina além de 1000 por essa rota — se a
-    // loja tiver mais que isso ativo, para aqui em vez de tentar offset
-    // inválido (evita erro, aceita a limitação em vez de quebrar o scan).
-    if (offset >= data.paging.total || data.results.length === 0 || offset >= 1000) break;
+    if (data.results.length === 0 || !data.scroll_id) break;
+    scrollId = data.scroll_id;
   }
   return itemIds;
 }
