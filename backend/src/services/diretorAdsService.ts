@@ -73,6 +73,13 @@ interface EntradaRankingSku {
   vendas: number;
 }
 
+interface AnuncioSemSku {
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string;
+}
+
 // Anúncios ATIVOS com gasto de uma loja, agrupados por SKU normalizado
 // (mesma função de financeiroService.ts, garante bater grafias diferentes
 // do mesmo SKU) — soma gasto E vendas atribuídas ao anúncio (o número que
@@ -83,25 +90,34 @@ async function coletarAnunciosAtivosPorSku(
   loja: Loja,
   dataInicio: string,
   dataFim: string
-): Promise<Map<string, EntradaRankingSku>> {
+): Promise<{ porSku: Map<string, EntradaRankingSku>; semSku: AnuncioSemSku[] }> {
   const porSku = new Map<string, EntradaRankingSku>();
+  const semSku: AnuncioSemSku[] = [];
   const advertiserId = await getAdvertiserId(loja.id);
-  if (advertiserId === null) return porSku;
+  if (advertiserId === null) return { porSku, semSku };
 
   let anuncios;
   try {
     anuncios = await getAnunciosAds(loja.id, advertiserId, dataInicio, dataFim);
   } catch {
-    return porSku;
+    return { porSku, semSku };
   }
   const ativos = anuncios.filter((a) => a.status === "active" && a.metrics.cost > 0);
-  if (ativos.length === 0) return porSku;
+  if (ativos.length === 0) return { porSku, semSku };
 
   const itens = await getItemsBasicInfo(loja.id, ativos.map((a) => a.item_id));
 
   for (const a of ativos) {
-    const sku = itens.get(a.item_id)?.seller_custom_field;
-    if (!sku) continue;
+    const item = itens.get(a.item_id);
+    const sku = item?.seller_custom_field;
+    // Anúncio sem SKU cadastrado não entra na checagem de disputa — em vez
+    // de sumir silenciosamente (bug real que motivou essa mudança: SKU
+    // ausente ou mal formatado fazia o agente liberar escala achando que
+    // não tinha sobreposição), fica registrado pra avisar o dono.
+    if (!sku) {
+      semSku.push({ lojaId: loja.id, lojaNome: loja.nome, itemId: a.item_id, titulo: item?.title ?? a.item_id });
+      continue;
+    }
     const skuNorm = normalizarSku(sku);
     const atual = porSku.get(skuNorm) ?? {
       lojaId: loja.id,
@@ -114,7 +130,7 @@ async function coletarAnunciosAtivosPorSku(
     atual.vendas += a.metrics.total_amount;
     porSku.set(skuNorm, atual);
   }
-  return porSku;
+  return { porSku, semSku };
 }
 
 // Cruza os anúncios ativos das 16 lojas por SKU — só interessa pra "soberania"
@@ -123,7 +139,12 @@ async function coletarAnunciosAtivosPorSku(
 // RANKING (ordenado por vendas atribuídas ao Ads, desc) de quem está
 // ganhando essa disputa — é o dado que sustenta a regra de "pode ajudar a
 // melhorar, nunca a ultrapassar uma das suas 4" no prompt do agente.
-async function calcularCanibalismo(diasPeriodo: number): Promise<Map<string, EntradaRankingSku[]>> {
+interface ResultadoCanibalismo {
+  conflitos: Map<string, EntradaRankingSku[]>;
+  semSku: AnuncioSemSku[];
+}
+
+async function calcularCanibalismo(diasPeriodo: number): Promise<ResultadoCanibalismo> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - (diasPeriodo - 1) * 24 * 60 * 60 * 1000);
   const dataInicio = dataISOBR(inicio);
@@ -135,18 +156,20 @@ async function calcularCanibalismo(diasPeriodo: number): Promise<Map<string, Ent
     lojas.map((loja) =>
       coletarAnunciosAtivosPorSku(loja, dataInicio, dataFim).catch((err) => {
         console.error(`Diretor de Ads: falha ao coletar anúncios da loja ${loja.id}, pulando essa loja:`, err);
-        return new Map<string, EntradaRankingSku>();
+        return { porSku: new Map<string, EntradaRankingSku>(), semSku: [] as AnuncioSemSku[] };
       })
     )
   );
 
   const porSkuGeral = new Map<string, EntradaRankingSku[]>();
-  porLoja.forEach((mapa) => {
-    for (const [sku, entrada] of mapa) {
+  const semSkuGeral: AnuncioSemSku[] = [];
+  porLoja.forEach(({ porSku, semSku }) => {
+    for (const [sku, entrada] of porSku) {
       const lista = porSkuGeral.get(sku) ?? [];
       lista.push(entrada);
       porSkuGeral.set(sku, lista);
     }
+    semSkuGeral.push(...semSku);
   });
 
   const conflitos = new Map<string, EntradaRankingSku[]>();
@@ -160,7 +183,7 @@ async function calcularCanibalismo(diasPeriodo: number): Promise<Map<string, Ent
       );
     }
   }
-  return conflitos;
+  return { conflitos, semSku: semSkuGeral };
 }
 
 // Varrer anúncios ativos das 16 lojas (com getItemsBasicInfo por loja) é
@@ -168,9 +191,9 @@ async function calcularCanibalismo(diasPeriodo: number): Promise<Map<string, Ent
 // listarCampanhasAds/cacheFreteEnvio). Não precisa sobreviver a restart:
 // só existe pra não recalcular a cada pergunta do chat.
 const TTL_CANIBALISMO_MS = 4 * 60 * 60 * 1000;
-let cacheCanibalismo: { data: Map<string, EntradaRankingSku[]>; expiraEm: number } | null = null;
+let cacheCanibalismo: { data: ResultadoCanibalismo; expiraEm: number } | null = null;
 
-async function obterMapaCanibalismo(diasPeriodo: number): Promise<Map<string, EntradaRankingSku[]>> {
+async function obterMapaCanibalismo(diasPeriodo: number): Promise<ResultadoCanibalismo> {
   if (cacheCanibalismo && cacheCanibalismo.expiraEm > Date.now()) {
     return cacheCanibalismo.data;
   }
@@ -196,6 +219,20 @@ function construirLinhasCanibalismo(mapa: Map<string, EntradaRankingSku[]>): str
   return linhas.join("\n");
 }
 
+// Anúncio ativo com gasto mas sem SKU cadastrado não entra na checagem de
+// disputa acima (não tem como saber se é o mesmo produto de outra loja) —
+// isso é sinalizado explicitamente em vez de só sumir, pra não passar a
+// falsa impressão de "sem disputa" quando na real é "não deu pra checar".
+function construirAvisoSemSku(lista: AnuncioSemSku[]): string {
+  if (lista.length === 0) return "";
+  const amostra = lista
+    .slice(0, 20)
+    .map((a) => `${a.lojaNome}: "${a.titulo}" (item ${a.itemId})`)
+    .join("\n");
+  const resto = lista.length > 20 ? `\n(+ ${lista.length - 20} outros anúncios sem SKU)` : "";
+  return `\n\n=== ATENÇÃO — anúncios ativos com gasto em Ads SEM SKU cadastrado (não entraram na checagem de disputa acima, cadastrar o SKU pra cobrir esse ponto cego) ===\n${amostra}${resto}`;
+}
+
 // Contexto focado numa loja só — pedido explícito do dono pra poder
 // "marcar a loja" e ganhar precisão numa conta específica em vez de
 // sempre analisar as 16 juntas. Não recalcula o mapa de canibalismo (usa
@@ -204,7 +241,7 @@ function construirLinhasCanibalismo(mapa: Map<string, EntradaRankingSku[]>): str
 async function montarContextoLojaUnica(
   diasPeriodo: number,
   lojaId: number,
-  canibalismoCompleto: Map<string, EntradaRankingSku[]>
+  canibalismoCompleto: ResultadoCanibalismo
 ): Promise<string> {
   const ehSua = LOJAS_AGENTE.includes(lojaId);
   const campanhas = await (ehSua
@@ -218,9 +255,10 @@ async function montarContextoLojaUnica(
   const linhas = construirLinhasCampanhas(campanhas.filter((c) => c.status === "active" && c.custo > 0));
 
   const disputasDaLoja = new Map<string, EntradaRankingSku[]>();
-  for (const [sku, ranking] of canibalismoCompleto) {
+  for (const [sku, ranking] of canibalismoCompleto.conflitos) {
     if (ranking.some((e) => e.lojaId === lojaId)) disputasDaLoja.set(sku, ranking);
   }
+  const semSkuDaLoja = canibalismoCompleto.semSku.filter((a) => a.lojaId === lojaId);
 
   const lojas = await listLojas();
   const nomeLoja = lojas.find((l) => l.id === lojaId)?.nome ?? `Loja ${lojaId}`;
@@ -229,13 +267,13 @@ async function montarContextoLojaUnica(
 ${linhas || "Nenhuma campanha ativa com gasto no período."}
 
 === DISPUTA PELO MESMO PRODUTO envolvendo essa loja especificamente ===
-${construirLinhasCanibalismo(disputasDaLoja)}`;
+${construirLinhasCanibalismo(disputasDaLoja)}${construirAvisoSemSku(semSkuDaLoja)}`;
 }
 
 async function montarContextoDiretorAds(diasPeriodo: number, lojaIdFiltro?: number): Promise<string> {
   const canibalismo = await obterMapaCanibalismo(diasPeriodo).catch((err) => {
     console.error("Diretor de Ads: falha ao calcular canibalismo interno:", err);
-    return new Map<string, EntradaRankingSku[]>();
+    return { conflitos: new Map<string, EntradaRankingSku[]>(), semSku: [] as AnuncioSemSku[] };
   });
 
   if (lojaIdFiltro !== undefined) {
@@ -265,7 +303,7 @@ ${linhasSuas || "Nenhuma campanha ativa com gasto no período."}
 ${linhasOutras || "Nenhuma campanha ativa com gasto no período."}
 
 === DISPUTA PELO MESMO PRODUTO — quando uma das suas 4 lojas e outra loja do grupo anunciam o mesmo SKU ao mesmo tempo ===
-${construirLinhasCanibalismo(canibalismo)}`;
+${construirLinhasCanibalismo(canibalismo.conflitos)}${construirAvisoSemSku(canibalismo.semSku)}`;
 }
 
 let clienteAnthropic: Anthropic | null | undefined;

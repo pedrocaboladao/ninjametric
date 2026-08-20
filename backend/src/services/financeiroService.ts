@@ -41,7 +41,13 @@ export function normalizarSku(sku: string): string {
     .replace(/ç/g, "c")
     .replace(/ñ/g, "n")
     .trim()
-    .toUpperCase();
+    .toUpperCase()
+    // Ignora hífen, espaço, ponto etc — SKU é padronizado entre as lojas,
+    // então essas variações de formatação ("BRILHACOR-16LTS" vs "BRILHACOR
+    // 16LTS") são o mesmo código, não produtos diferentes. Achado real: a
+    // checagem de disputa em Ads (diretorAdsService.ts) estava perdendo
+    // sobreposição de SKU por causa exatamente disso.
+    .replace(/[^A-Z0-9]/g, "");
 }
 
 // Arredonda pra cima no meio-a-meio (ex.: 42,995 -> 43,00), igual à
