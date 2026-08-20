@@ -764,3 +764,28 @@ CREATE TABLE IF NOT EXISTS fabrica_produtos (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_formula ON fabrica_produtos (formula_id);
+
+-- Cliente da Fábrica Distribuidora: as lojas do grupo e clientes de fora.
+-- Só nome e tipo são obrigatórios — os campos fiscais e de endereço já
+-- existem porque a fábrica pretende emitir NFe, e é mais barato ter a
+-- coluna vazia agora do que migrar depois com os cadastros em uso.
+CREATE TABLE IF NOT EXISTS fabrica_clientes (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'LOJA',   -- LOJA | EXTERNO
+  cnpj TEXT,
+  inscricao_estadual TEXT,
+  email TEXT,
+  telefone TEXT,
+  cep TEXT,
+  logradouro TEXT,
+  numero TEXT,
+  complemento TEXT,
+  bairro TEXT,
+  cidade TEXT,
+  uf TEXT,
+  observacao TEXT,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_tipo ON fabrica_clientes (tipo, nome);

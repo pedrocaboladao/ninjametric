@@ -20,6 +20,7 @@ import { dreRouter } from "./routes/dre";
 import { correcoesRouter } from "./routes/correcoes";
 import { fabricacaoRouter } from "./routes/fabricacao";
 import { fabricaProdutosRouter } from "./routes/fabricaProdutos";
+import { fabricaClientesRouter } from "./routes/fabricaClientes";
 import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
 import { agentesRouter } from "./routes/agentes";
@@ -71,6 +72,7 @@ app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);
 app.use("/api/correcoes", requireAuth, requirePermissao("correcoes"), correcoesRouter);
 app.use("/api/fabricacao", requireAuth, requirePermissao("fabricacao"), fabricacaoRouter);
 app.use("/api/fabrica-produtos", requireAuth, requirePermissao("fabrica_produtos"), fabricaProdutosRouter);
+app.use("/api/fabrica-clientes", requireAuth, requirePermissao("fabrica_clientes"), fabricaClientesRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
 app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRouter);
 // Admin-only (mesmo padrão de /api/usuarios) — não é módulo comum, não
