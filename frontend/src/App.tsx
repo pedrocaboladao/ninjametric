@@ -7,6 +7,7 @@ import { ClonarAnuncio } from "./components/ClonarAnuncio";
 import { Produtos } from "./components/Produtos";
 import { Correcoes } from "./components/Correcoes";
 import { Fabricacao } from "./components/Fabricacao";
+import { FabricaProdutos } from "./components/FabricaProdutos";
 import { GeradorEan } from "./components/GeradorEan";
 import { Promocoes } from "./components/Promocoes";
 import { PesquisaMercado } from "./components/PesquisaMercado";
@@ -75,6 +76,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "dre")) return "dre";
   if (temPermissao(usuario, "ads")) return "ads";
   if (temPermissao(usuario, "fabricacao")) return "fabricacao";
+  if (temPermissao(usuario, "fabrica_produtos")) return "fabrica_produtos";
   if (temPermissao(usuario, "promocoes")) return "promocoes";
   if (temPermissao(usuario, "pesquisa")) return "pesquisa";
   if (temPermissao(usuario, "tarefas")) return "tarefas";
@@ -160,6 +162,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "dre" && temPermissao(usuario, "dre") && <Dre />}
         {view === "ads" && temPermissao(usuario, "ads") && <Ads />}
         {view === "fabricacao" && temPermissao(usuario, "fabricacao") && <Fabricacao />}
+        {view === "fabrica_produtos" && temPermissao(usuario, "fabrica_produtos") && <FabricaProdutos />}
         {view === "promocoes" && temPermissao(usuario, "promocoes") && <Promocoes />}
         {view === "pesquisa" && temPermissao(usuario, "pesquisa") && <PesquisaMercado />}
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
