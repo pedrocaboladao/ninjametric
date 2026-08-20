@@ -42,12 +42,14 @@ export function normalizarSku(sku: string): string {
     .replace(/ñ/g, "n")
     .trim()
     .toUpperCase()
-    // Ignora hífen, espaço, ponto etc — SKU é padronizado entre as lojas,
-    // então essas variações de formatação ("BRILHACOR-16LTS" vs "BRILHACOR
-    // 16LTS") são o mesmo código, não produtos diferentes. Achado real: a
-    // checagem de disputa em Ads (diretorAdsService.ts) estava perdendo
-    // sobreposição de SKU por causa exatamente disso.
-    .replace(/[^A-Z0-9]/g, "");
+    // Ignora só hífen/espaço/barra — separadores cosméticos de verdade na
+    // convenção de SKU das lojas ("BRILHACOR-16LTS" = "BRILHACOR 16LTS").
+    // NÃO mexe no ponto: ele é decimal, muda o número — "INGAFLEX-3.6KG"
+    // (produto de 3,6kg) virava igual a "INGAFLEX-36KG" (produto de 36kg,
+    // custo 7x maior) quando o ponto também era removido. Bug real, achado
+    // comparando com a planilha de custos de verdade: 56 grupos de SKU
+    // colidindo com custo errado por causa disso.
+    .replace(/[\s\-/]+/g, "");
 }
 
 // Arredonda pra cima no meio-a-meio (ex.: 42,995 -> 43,00), igual à
