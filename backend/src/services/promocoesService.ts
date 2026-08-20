@@ -549,21 +549,8 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
 
       const statusDaCampanha = statusPorPromotion.get(promotionId) ?? {};
 
-      // Diagnóstico: retomando a hipótese de "anúncio família" (variação de
-      // cor/tamanho contada separadamente pelo painel do ML) que tinha sido
-      // abandonada no meio — achado real de hoje (493 itens "started" numa
-      // campanha que o próprio ML mostra ~229) não bate com a duplicação de
-      // paginação já corrigida (itens_ativos_na_loja já vem deduplicado
-      // nesse ponto), então precisamos desse dado de novo pra confirmar ou
-      // descartar a hipótese de variação com certeza.
-      const itensComVariacao = itensDaCampanha.filter((i) => (infoItens.get(i.itemId)?.variations?.length ?? 0) > 1).length;
-      const totalContandoVariacoes = itensDaCampanha.reduce((soma, i) => {
-        const vars = infoItens.get(i.itemId)?.variations;
-        return soma + (vars && vars.length > 0 ? vars.length : 1);
-      }, 0);
-
       progressoDescoberta.diagnosticos.push(
-        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} status_vistos=${JSON.stringify(statusDaCampanha)} itens_ativos_na_loja=${itemIds.length} itens_com_variacao=${itensComVariacao} total_contando_variacoes=${totalContandoVariacoes}`
+        `[${promotionId} / ${detalhes.name}] itens_com_started=${itensDaCampanha.length} com_preco_original=${itensCampanha.length} status_vistos=${JSON.stringify(statusDaCampanha)} itens_ativos_na_loja=${itemIds.length}`
       );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
