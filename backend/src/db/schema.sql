@@ -741,3 +741,26 @@ CREATE TABLE IF NOT EXISTS pesquisa_anuncios (
 
 CREATE INDEX IF NOT EXISTS idx_pesquisa_anuncios_categoria_data ON pesquisa_anuncios (categoria_id, data_snapshot DESC);
 CREATE INDEX IF NOT EXISTS idx_pesquisa_anuncios_vendedor ON pesquisa_anuncios (vendedor);
+
+-- ==========================================================================
+-- FÁBRICA DISTRIBUIDORA
+-- Operação própria: produz tinta e vende para as 20 lojas do grupo. Fica
+-- separada das tabelas das lojas de propósito — nada aqui é lido ou escrito
+-- pelos módulos do Mercado Livre. Prefixo fabrica_ em tudo.
+-- ==========================================================================
+
+-- Produto acabado da fábrica. O custo NÃO fica guardado aqui: sai da fórmula
+-- ligada (custo/kg × peso da embalagem + custo da embalagem), então acompanha
+-- sozinho qualquer mudança de preço de matéria-prima. O único valor digitado
+-- é preco_venda; markup, margem e % de lucro são derivados na leitura.
+CREATE TABLE IF NOT EXISTS fabrica_produtos (
+  id SERIAL PRIMARY KEY,
+  sku TEXT NOT NULL UNIQUE,
+  nome TEXT NOT NULL,
+  formula_id INTEGER REFERENCES formulas(id) ON DELETE SET NULL,
+  embalagem_id INTEGER REFERENCES formula_embalagens(id) ON DELETE SET NULL,
+  preco_venda NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_formula ON fabrica_produtos (formula_id);

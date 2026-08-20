@@ -17,6 +17,7 @@ import {
   IconReport,
   IconWrench,
   IconFlask,
+  IconChimney,
   IconBarcode,
   IconTag,
   IconRobot,
@@ -41,6 +42,7 @@ export type View =
   | "usuarios"
   | "correcoes"
   | "fabricacao"
+  | "fabrica_produtos"
   | "ean"
   | "promocoes"
   | "pesquisa"
@@ -60,6 +62,7 @@ const INERTES = [{ label: "Criação", Icon: IconWand }];
 export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
   const [equipeAberta, setEquipeAberta] = useState(true);
+  const [fabricaAberta, setFabricaAberta] = useState(true);
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
   function trocarView(v: View) {
@@ -79,10 +82,14 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const podeCorrecoes = temPermissao(usuario, "correcoes");
   const podeFabricacao = temPermissao(usuario, "fabricacao");
+  const podeFabricaProdutos = temPermissao(usuario, "fabrica_produtos");
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
+  // Fabrica Distribuidora: operacao propria, separada das 20 lojas.
+  // Esta lista cresce a cada modulo novo da fabrica (produtos, pedidos, financeiro...).
+  const mostrarFabrica = podeFabricacao || podeFabricaProdutos;
 
   const iniciais =
     usuario.nome
@@ -178,15 +185,37 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           </>
         )}
 
-        {podeFabricacao && (
+        {mostrarFabrica && (
           <>
-            <button
-              className={`sidebar-item ${view === "fabricacao" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => trocarView("fabricacao")}
-            >
-              <IconFlask size={16} />
-              <span>Custo de Fabricação</span>
+            <button className="sidebar-group-toggle" onClick={() => setFabricaAberta((v) => !v)}>
+              <IconChimney />
+              <span>Fábrica Distribuidora</span>
+              <IconChevron open={fabricaAberta} />
             </button>
+
+            {fabricaAberta && (
+              <div className="sidebar-subitems">
+                {podeFabricacao && (
+                  <button
+                    className={`sidebar-item ${view === "fabricacao" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabricacao")}
+                  >
+                    <IconFlask size={16} />
+                    <span>Custo de Fabricação</span>
+                  </button>
+                )}
+                {podeFabricaProdutos && (
+                  <button
+                    className={`sidebar-item ${view === "fabrica_produtos" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabrica_produtos")}
+                  >
+                    <IconBox size={16} />
+                    <span>Produtos</span>
+                  </button>
+                )}
+              </div>
+            )}
+
             <div className="sidebar-divider" />
           </>
         )}
