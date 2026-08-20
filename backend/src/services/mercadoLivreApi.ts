@@ -169,6 +169,15 @@ export interface MlItemCampanha {
   originalPrice: number;
 }
 
+export interface DiagnosticoPagina {
+  pagina: number;
+  offset: number;
+  recebidos: number;
+  novos: number;
+  totalDoMl: number;
+  amostraIds: string[];
+}
+
 export interface ResultadoItensCampanha {
   itens: MlItemCampanha[];
   // Diagnóstico temporário: quantos itens distintos vistos por status (ex.:
@@ -178,6 +187,14 @@ export interface ResultadoItensCampanha {
   // resolvido (ver amostraErro em promocoesService.descobrirCampanhasNaLoja).
   contagemPorStatus: Record<string, number>;
   paginasLidas: number;
+  // Diagnóstico ainda mais detalhado, pra descobrir se a paginação por
+  // offset desse endpoint devolve item genuinamente novo em cada página ou
+  // repete os mesmos (achado real: campanha com 229 itens no próprio
+  // Mercado Livre, mas essa função só via 50 — exatamente 1 página — antes
+  // de "página sem novidade" bater o limite). Mostra IDs de amostra por
+  // página pra dar pra comparar visualmente. Remover junto do diagnóstico
+  // acima quando resolvido.
+  diagnosticoPaginas: DiagnosticoPagina[];
 }
 
 export async function obterItensDaCampanha(lojaId: number, promotionId: string): Promise<ResultadoItensCampanha> {
@@ -185,6 +202,7 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
   const itensPorId = new Map<string, MlItemCampanha>();
   const idsVistos = new Set<string>();
   const contagemPorStatus: Record<string, number> = {};
+  const diagnosticoPaginas: DiagnosticoPagina[] = [];
   let paginasLidas = 0;
   let offset = 0;
   const limit = 50;
@@ -210,10 +228,12 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
 
     paginasLidas++;
     let paginaTemNovidade = false;
+    let novosNaPagina = 0;
     for (const r of data.results) {
       if (!idsVistos.has(r.id)) {
         idsVistos.add(r.id);
         paginaTemNovidade = true;
+        novosNaPagina++;
         contagemPorStatus[r.status] = (contagemPorStatus[r.status] ?? 0) + 1;
       }
       // Confirmado numa resposta real: item "candidate" não tem price, só
@@ -227,6 +247,15 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
         itensPorId.set(r.id, { itemId: r.id, status: r.status, price: preco, originalPrice: r.original_price });
       }
     }
+
+    diagnosticoPaginas.push({
+      pagina: pagina + 1,
+      offset,
+      recebidos: data.results.length,
+      novos: novosNaPagina,
+      totalDoMl: data.paging?.total ?? -1,
+      amostraIds: data.results.slice(0, 3).map((r) => r.id),
+    });
 
     if (paginaTemNovidade) {
       paginasSemNovidade = 0;
@@ -246,7 +275,7 @@ export async function obterItensDaCampanha(lojaId: number, promotionId: string):
       break;
     }
   }
-  return { itens: Array.from(itensPorId.values()), contagemPorStatus, paginasLidas };
+  return { itens: Array.from(itensPorId.values()), contagemPorStatus, paginasLidas, diagnosticoPaginas };
 }
 
 // Lista o item_id de todos os anúncios ATIVOS de uma loja — usada só pra

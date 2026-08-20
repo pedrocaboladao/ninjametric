@@ -527,8 +527,14 @@ async function descobrirCampanhasNaLoja(lojaId: number, lojaNome: string, mlUser
       // (achado numa depuração ao vivo, precisa de dado real pra decidir
       // se "started" é mesmo o único status que conta). Some com esse
       // bloco assim que resolvido.
+      const linhasPaginas = resultadoItens.diagnosticoPaginas
+        .map(
+          (d) =>
+            `  pág.${d.pagina} offset=${d.offset} recebidos=${d.recebidos} novos=${d.novos} total_ml=${d.totalDoMl} amostra=[${d.amostraIds.join(", ")}]`
+        )
+        .join("\n");
       progressoDescoberta.diagnosticos.push(
-        `[${promotionId} / ${detalhes.name}] paginas=${resultadoItens.paginasLidas} status=${JSON.stringify(resultadoItens.contagemPorStatus)} usados(started)=${itensCampanha.length}`
+        `[${promotionId} / ${detalhes.name}] paginas=${resultadoItens.paginasLidas} status=${JSON.stringify(resultadoItens.contagemPorStatus)} usados(started)=${itensCampanha.length}\n${linhasPaginas}`
       );
 
       if (itensCampanha.length === 0 && campanhaExistenteId !== null) {
