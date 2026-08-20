@@ -211,7 +211,12 @@ export async function listarItensAtivos(lojaId: number, mlUserId: number): Promi
     if (data.results.length === 0 || !data.scroll_id) break;
     scrollId = data.scroll_id;
   }
-  return itemIds;
+  // Paginação por scroll pode repetir item entre páginas (comportamento
+  // conhecido desse tipo de paginação, se o catálogo muda durante a
+  // varredura) — sem isso, um item "started" repetido vira contagem dobrada
+  // de itens na campanha (achado real: 493 itens encontrados numa campanha
+  // que o próprio Mercado Livre mostra ~229).
+  return Array.from(new Set(itemIds));
 }
 
 export interface MlPromocaoAtiva {
