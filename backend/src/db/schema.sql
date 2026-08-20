@@ -868,3 +868,49 @@ CREATE TABLE IF NOT EXISTS fabrica_embalagem_ajustes (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_embalagem_ajustes_emb ON fabrica_embalagem_ajustes (embalagem_id);
+
+-- Pedido de venda da Fábrica Distribuidora: a fábrica vendendo para as 20
+-- lojas do grupo e para clientes de fora. Nada a ver com as vendas do Mercado
+-- Livre que o Financeiro já acompanha — ali é a loja vendendo pro consumidor.
+CREATE TABLE IF NOT EXISTS fabrica_pedidos (
+  id SERIAL PRIMARY KEY,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE RESTRICT,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  -- ABERTO: separado, ainda não saiu. ENTREGUE: a loja levou.
+  -- CANCELADO: não aconteceu — é o único que não baixa estoque.
+  status TEXT NOT NULL DEFAULT 'ABERTO',
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_pedidos_cliente ON fabrica_pedidos (cliente_id, data DESC);
+CREATE INDEX IF NOT EXISTS idx_fabrica_pedidos_data ON fabrica_pedidos (data DESC);
+
+-- preco_unitario e custo_unitario são gravados no item, não calculados depois.
+-- É a exceção deliberada à regra de "nada derivável é guardado": uma venda que
+-- aconteceu é um fato. Recalcular a margem de um pedido de março com o preço
+-- da resina de hoje reescreveria a história.
+CREATE TABLE IF NOT EXISTS fabrica_pedido_itens (
+  id SERIAL PRIMARY KEY,
+  pedido_id INTEGER NOT NULL REFERENCES fabrica_pedidos(id) ON DELETE CASCADE,
+  produto_id INTEGER NOT NULL REFERENCES fabrica_produtos(id) ON DELETE RESTRICT,
+  quantidade NUMERIC(12, 3) NOT NULL,
+  preco_unitario NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  custo_unitario NUMERIC(12, 4) NOT NULL DEFAULT 0,
+  ordem INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_pedido_itens_pedido ON fabrica_pedido_itens (pedido_id);
+CREATE INDEX IF NOT EXISTS idx_fabrica_pedido_itens_produto ON fabrica_pedido_itens (produto_id);
+
+-- Estoque de produto acabado: entra pelo envase do lote, sai pelo pedido.
+-- Este ajuste cobre o resto — inventário, quebra, amostra, devolução.
+CREATE TABLE IF NOT EXISTS fabrica_produto_ajustes (
+  id SERIAL PRIMARY KEY,
+  produto_id INTEGER NOT NULL REFERENCES fabrica_produtos(id) ON DELETE CASCADE,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  quantidade NUMERIC(12, 3) NOT NULL,
+  motivo TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_produto_ajustes_produto ON fabrica_produto_ajustes (produto_id);
+
+ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS estoque_minimo NUMERIC(12, 3) NOT NULL DEFAULT 0;
