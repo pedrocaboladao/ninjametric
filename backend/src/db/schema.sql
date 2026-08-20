@@ -789,3 +789,27 @@ CREATE TABLE IF NOT EXISTS fabrica_clientes (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_tipo ON fabrica_clientes (tipo, nome);
+
+-- Cadastro de embalagem da Fábrica Distribuidora: o balde, a bombona, o galão.
+-- Antes disso o custo da embalagem era um número digitado dentro de cada
+-- fórmula — o mesmo balde de 18 kg tinha o preço repetido em 23 lugares, e
+-- não existia entidade "balde" pra ter saldo, mínimo ou alerta de compra.
+CREATE TABLE IF NOT EXISTS fabrica_embalagens (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  peso_kg NUMERIC(12, 3) NOT NULL,
+  custo_unitario NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  estoque NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  estoque_minimo NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Ligação opcional: enquanto a embalagem de uma fórmula não estiver ligada a
+-- um cadastro, ela segue usando o custo digitado nela. Assim a migração pode
+-- ser feita fórmula a fórmula, sem nada parar de funcionar no meio.
+ALTER TABLE formula_embalagens
+  ADD COLUMN IF NOT EXISTS fabrica_embalagem_id INTEGER
+  REFERENCES fabrica_embalagens(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_formula_embalagens_fabrica
+  ON formula_embalagens (fabrica_embalagem_id);

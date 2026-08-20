@@ -18,6 +18,7 @@ import {
   IconWrench,
   IconFlask,
   IconChimney,
+  IconArchiveBox,
   IconBarcode,
   IconTag,
   IconRobot,
@@ -44,6 +45,7 @@ export type View =
   | "fabricacao"
   | "fabrica_produtos"
   | "fabrica_clientes"
+  | "fabrica_embalagens"
   | "ean"
   | "promocoes"
   | "pesquisa"
@@ -85,13 +87,14 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFabricacao = temPermissao(usuario, "fabricacao");
   const podeFabricaProdutos = temPermissao(usuario, "fabrica_produtos");
   const podeFabricaClientes = temPermissao(usuario, "fabrica_clientes");
+  const podeFabricaEmbalagens = temPermissao(usuario, "fabrica_embalagens");
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
   // Fabrica Distribuidora: operacao propria, separada das 20 lojas.
   // Esta lista cresce a cada modulo novo da fabrica (produtos, pedidos, financeiro...).
-  const mostrarFabrica = podeFabricacao || podeFabricaProdutos || podeFabricaClientes;
+  const mostrarFabrica = podeFabricacao || podeFabricaProdutos || podeFabricaClientes || podeFabricaEmbalagens;
 
   const iniciais =
     usuario.nome
@@ -222,6 +225,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconStore size={16} />
                     <span>Clientes</span>
+                  </button>
+                )}
+                {podeFabricaEmbalagens && (
+                  <button
+                    className={`sidebar-item ${view === "fabrica_embalagens" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabrica_embalagens")}
+                  >
+                    <IconArchiveBox size={16} />
+                    <span>Embalagens</span>
                   </button>
                 )}
               </div>
