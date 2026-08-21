@@ -5528,3 +5528,89 @@
     -webkit-overflow-scrolling: touch;
   }
 }
+
+/* Busca de produto do pedido de venda: filtra enquanto digita, por SKU ou nome.
+   A lista flutua sobre a tabela, então precisa de z-index alto — a linha de
+   baixo tem o próprio input e passaria por cima. */
+.busca-produto {
+  position: relative;
+  min-width: 260px;
+}
+
+.busca-produto-limpar {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.busca-produto-limpar:hover {
+  color: var(--text-primary);
+}
+
+.busca-produto-lista {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+.busca-produto-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 12px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.busca-produto-item:last-child {
+  border-bottom: none;
+}
+
+.busca-produto-item-ativo {
+  background: var(--bg-hover);
+}
+
+.busca-produto-nome {
+  font-weight: 500;
+}
+
+.busca-produto-sku {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+
+.busca-produto-saldo {
+  grid-column: 1 / -1;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.busca-produto-vazio {
+  padding: 10px 12px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}

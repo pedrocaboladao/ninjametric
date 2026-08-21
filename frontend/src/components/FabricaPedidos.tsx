@@ -24,6 +24,7 @@ import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
+import { BuscaProduto } from "./BuscaProduto";
 
 // aceita "1.234,5" e "1234.5" — o operador digita como fala
 function num(v: string): number {
@@ -484,20 +485,12 @@ export function FabricaPedidos() {
                   return (
                     <tr key={idx}>
                       <td>
-                        <select
-                          className="clonar-input"
-                          value={l.produtoId}
-                          onChange={(e) => escolherProduto(idx, e.target.value)}
-                        >
-                          <option value="">Produto</option>
-                          {produtos
-                            .filter((pr) => pr.ativo || String(pr.id) === l.produtoId)
-                            .map((pr) => (
-                              <option key={pr.id} value={pr.id}>
-                                {pr.nome} — {pr.sku}
-                              </option>
-                            ))}
-                        </select>
+                        <BuscaProduto
+                          produtos={produtos}
+                          valor={l.produtoId ? Number(l.produtoId) : null}
+                          saldoDe={(id) => saldoPor.get(id)?.saldo}
+                          onEscolher={(id) => escolherProduto(idx, id ? String(id) : "")}
+                        />
                       </td>
                       <td className={faltando ? "financeiro-th-numero" : "financeiro-th-numero financeiro-td-mudo"}>
                         {saldo ? saldo.saldo : "—"}
