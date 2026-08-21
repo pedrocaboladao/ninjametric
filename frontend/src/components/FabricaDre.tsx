@@ -127,11 +127,25 @@ export function FabricaDre() {
         )}
       </div>
 
+      {dre.receitaDeDuasFontes && (
+        <p className="financeiro-td-mudo">
+          ⚠ Este mês tem faturamento vindo dos dois lados: {formatCurrency(dre.receitaPedidos)}{" "}
+          de pedidos de venda e {formatCurrency(dre.receitaLancada)} de contas a receber digitadas.
+          Se for a mesma venda contada duas vezes, a receita está dobrada — a partir da virada, o
+          pedido de venda passa a gerar o receber sozinho e não se lança mais à mão.
+        </p>
+      )}
+
       <div className="financeiro-tabela-wrap">
         <table className="financeiro-tabela">
           <tbody>
             <tr>
-              <td>RECEITA — o que as lojas compraram</td>
+              <td>
+                RECEITA — o que as lojas compraram
+                {dre.receitaLancada > 0 && dre.receitaPedidos === 0 && (
+                  <span className="financeiro-td-mudo"> · lançada à mão</span>
+                )}
+              </td>
               <td className="financeiro-th-numero">{formatCurrency(dre.receita)}</td>
               <td className="financeiro-th-numero financeiro-td-mudo">100%</td>
             </tr>
@@ -175,6 +189,17 @@ export function FabricaDre() {
                 {dre.receita > 0 ? pct(dre.receitaLiquida / dre.receita) : "—"}
               </td>
             </tr>
+            {dre.custoRevenda > 0 && (
+              <tr>
+                <td className="financeiro-td-mudo">(−) Mercadoria comprada pra revenda</td>
+                <td className="financeiro-th-numero financeiro-td-mudo">
+                  {formatCurrency(dre.custoRevenda)}
+                </td>
+                <td className="financeiro-th-numero financeiro-td-mudo">
+                  {dre.receita > 0 ? pct(dre.custoRevenda / dre.receita) : "—"}
+                </td>
+              </tr>
+            )}
             <tr>
               <td className="financeiro-td-mudo">(−) Custo dos produtos vendidos</td>
               <td className="financeiro-th-numero financeiro-td-mudo">
@@ -194,7 +219,15 @@ export function FabricaDre() {
               <td className="financeiro-th-numero">{pct(dre.percentualMargem)}</td>
             </tr>
             <tr>
-              <td className="financeiro-td-mudo">(−) Despesa fixa</td>
+              <td className="financeiro-td-mudo">
+                (−) Despesa fixa
+                {dre.depreciacao > 0 && (
+                  <span className="financeiro-td-mudo">
+                    {" "}
+                    · inclui {formatCurrency(dre.depreciacao)} de desgaste dos bens
+                  </span>
+                )}
+              </td>
               <td className="financeiro-th-numero financeiro-td-mudo">
                 {formatCurrency(dre.despesaFixa)}
               </td>

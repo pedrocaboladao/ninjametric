@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { depreciacaoDoMes } from "./fabricaBensService";
 import { dataIso } from "./fabricaData";
 import { totaisDoPeriodo } from "./fabricaDevolucoesService";
 
@@ -33,6 +34,14 @@ export interface Dre {
   ate: string;
 
   receita: number;
+  // Enquanto nao ha produto cadastrado, o faturamento e digitado como conta a
+  // receber. Fica separado da receita de pedido pra dar pra ver, na virada,
+  // qual das duas fontes esta alimentando o mes.
+  receitaPedidos: number;
+  receitaLancada: number;
+  // as duas fontes juntas no mesmo mes = risco de contar a mesma venda duas
+  // vezes. A tela mostra o aviso em vez de somar calado.
+  receitaDeDuasFontes: boolean;
   // credito das devolucoes: reduz a receita porque a venda foi desfeita
   devolucoes: number;
   // unidades que voltaram e unidades que viraram perda (estourado/quebrado)
@@ -49,11 +58,16 @@ export interface Dre {
   impostoLancado: number;
   receitaLiquida: number;
   custoProdutos: number;
+  // compra de mercadoria pra revender: CPV da distribuidora, nao despesa
+  custoRevenda: number;
   margemContribuicao: number;
   percentualMargem: number;
 
   despesaFixa: number;
   despesaVariavel: number;
+  // desgaste dos bens no mes: sai do cadastro de bens, nao do contas a pagar
+  depreciacao: number;
+  depreciacaoPorBem: { nome: string; valor: number }[];
   despesaTotal: number;
   resultado: number;
   percentualResultado: number;
@@ -80,6 +94,15 @@ export interface Dre {
 // Elas não somem: aparecem num bloco separado, porque o dinheiro saiu do caixa
 // e some do relatório seria pior que aparecer no lugar errado.
 const CATEGORIAS_DE_INSUMO = new Set(["MATÉRIA-PRIMA", "EMBALAGEM", "ÁGUA", "CONSUMO"]);
+
+// Produto pronto comprado pra revender. Sai da despesa e entra no custo da
+// mercadoria vendida — e o que a fabrica gasta hoje, 93% do contas a pagar.
+const CATEGORIA_REVENDA = "REVENDA";
+
+// Parcela de bem financiado. Fica fora do resultado: quem representa o bem no
+// DRE e a depreciacao, tirada do cadastro de bens. Contar os dois seria cobrar
+// o caminhao duas vezes — uma pelo cheque, outra pelo desgaste.
+const CATEGORIA_IMOBILIZADO = "IMOBILIZADO";
 
 // Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
 // digitar todo mês, mas o histórico fica preso ao que valia na época.
@@ -122,9 +145,13 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   const de = deEntrada || padrao.de;
   const ate = ateEntrada || padrao.ate;
 
-  const [aliquota, devolucao] = await Promise.all([aliquotaDoMes(de), totaisDoPeriodo(de, ate)]);
+  const [aliquota, devolucao, depreciacao] = await Promise.all([
+    aliquotaDoMes(de),
+    totaisDoPeriodo(de, ate),
+    depreciacaoDoMes(de),
+  ]);
 
-  const [vendas, contas, resumoPedidos] = await Promise.all([
+  const [vendas, contas, resumoPedidos, receber] = await Promise.all([
     // receita e custo saem do item do pedido, onde ficaram GRAVADOS no
     // lançamento. Recalcular com o custo de hoje mudaria o resultado de um mês
     // já fechado toda vez que a resina mudasse de preço.
@@ -161,6 +188,15 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
        WHERE status <> 'CANCELADO' AND data >= $1::date AND data <= $2::date`,
       [de, ate]
     ),
+    // faturamento digitado a mao, pela mesma regra de competencia das
+    // despesas: entra no mes do vencimento, nao no mes em que a loja pagou
+    pool.query<{ total: string }>(
+      `SELECT COALESCE(SUM(valor), 0) AS total
+       FROM fabrica_contas
+       WHERE tipo = 'receber' AND status <> 'cancelado'
+         AND vencimento >= $1::date AND vencimento <= $2::date`,
+      [de, ate]
+    ),
   ]);
 
   const porProduto: LinhaProduto[] = vendas.rows.map((r) => {
@@ -180,7 +216,9 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   });
   porProduto.sort((a, b) => b.receita - a.receita);
 
-  const receita = porProduto.reduce((s, p) => s + p.receita, 0);
+  const receitaPedidos = porProduto.reduce((s, p) => s + p.receita, 0);
+  const receitaLancada = Number(receber.rows[0]?.total ?? 0);
+  const receita = receitaPedidos + receitaLancada;
   // a venda devolvida foi desfeita: nao pode pagar imposto nem ficar na receita
   const receitaVendas = receita - devolucao.credito;
   const imposto = receitaVendas * (aliquota.percentual / 100);
@@ -188,12 +226,11 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   // o produto que voltou inteiro esta na prateleira de novo: o custo dele sai
   // do CPV, senao a fabrica pagaria duas vezes pelo mesmo balde. O avariado
   // continua no custo, porque virou perda de verdade.
-  const custoProdutos =
+  const custoFabricado =
     porProduto.reduce((s, p) => s + p.custo, 0) - devolucao.custoRetornado;
-  const margemContribuicao = receitaLiquida - custoProdutos;
-
   let despesaFixa = 0;
   let despesaVariavel = 0;
+  let custoRevenda = 0;
   let jaNoCustoTotal = 0;
   let impostoLancado = 0;
   const categorias = new Map<string, number>();
@@ -210,6 +247,17 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
       impostoLancado += total;
       continue;
     }
+    if (categoria === CATEGORIA_REVENDA) {
+      custoRevenda += total;
+      continue;
+    }
+    if (categoria === CATEGORIA_IMOBILIZADO) {
+      // aparece no bloco de fora do resultado: o dinheiro saiu do caixa e
+      // sumir do relatorio seria pior que aparecer no lugar errado
+      insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
+      jaNoCustoTotal += total;
+      continue;
+    }
     if (CATEGORIAS_DE_INSUMO.has(categoria)) {
       insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
       jaNoCustoTotal += total;
@@ -220,6 +268,10 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     else despesaVariavel += total;
   }
 
+  const custoProdutos = custoFabricado + custoRevenda;
+  const margemContribuicao = receitaLiquida - custoProdutos;
+  // depreciacao e despesa fixa: acontece com ou sem venda no mes
+  despesaFixa += depreciacao.total;
   const despesaTotal = despesaFixa + despesaVariavel;
   const resultado = margemContribuicao - despesaTotal;
   // margem sobre a receita LIQUIDA: e o dinheiro que a fabrica de fato recebe,
@@ -235,6 +287,9 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     de,
     ate,
     receita,
+    receitaPedidos,
+    receitaLancada,
+    receitaDeDuasFontes: receitaPedidos > 0 && receitaLancada > 0,
     devolucoes: devolucao.credito,
     unidadesDevolvidas: devolucao.unidades,
     unidadesPerdidas: devolucao.perdidas,
@@ -245,10 +300,13 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     impostoLancado,
     receitaLiquida,
     custoProdutos,
+    custoRevenda,
     margemContribuicao,
     percentualMargem,
     despesaFixa,
     despesaVariavel,
+    depreciacao: depreciacao.total,
+    depreciacaoPorBem: depreciacao.porBem,
     despesaTotal,
     resultado,
     percentualResultado: receita > 0 ? resultado / receita : 0,

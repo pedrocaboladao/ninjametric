@@ -20,6 +20,10 @@ export interface Conta {
   // o DRE precisa separar aluguel e salário do que varia com a produção
   custoFixo: boolean;
   observacao: string | null;
+  // Boleto, Cheque, Pix. Cheque tem compensação própria, e a conciliação
+  // bancária casa o movimento do extrato pelo nº do documento.
+  formaPagamento: string | null;
+  documento: string | null;
   atrasada: boolean;
   diasParaVencer: number;
 }

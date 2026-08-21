@@ -25,6 +25,7 @@ import { fabricaEmbalagensRouter } from "./routes/fabricaEmbalagens";
 import { fabricaEstoqueRouter } from "./routes/fabricaEstoque";
 import { fabricaPedidosRouter } from "./routes/fabricaPedidos";
 import { fabricaContasRouter } from "./routes/fabricaContas";
+import { fabricaBensRouter } from "./routes/fabricaBens";
 import { fabricaOrdemRouter } from "./routes/fabricaOrdem";
 import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
@@ -82,6 +83,9 @@ app.use("/api/fabrica-embalagens", requireAuth, requirePermissao("fabrica_embala
 app.use("/api/fabrica-estoque", requireAuth, requirePermissao("fabrica_estoque"), fabricaEstoqueRouter);
 app.use("/api/fabrica-pedidos", requireAuth, requirePermissao("fabrica_pedidos"), fabricaPedidosRouter);
 app.use("/api/fabrica-contas", requireAuth, requirePermissao("fabrica_financeiro"), fabricaContasRouter);
+// mesma permissao do financeiro da fabrica: o cadastro de bens existe pra
+// alimentar a depreciacao do DRE, nao e modulo separado
+app.use("/api/fabrica-bens", requireAuth, requirePermissao("fabrica_financeiro"), fabricaBensRouter);
 app.use("/api/fabrica-ordem", requireAuth, requirePermissao("fabricacao"), fabricaOrdemRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
 app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRouter);

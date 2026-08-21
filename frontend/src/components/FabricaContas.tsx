@@ -7,11 +7,18 @@ import {
   definirStatusConta,
   excluirConta,
 } from "../api/fabricaContas";
-import type { Conta, ContaEntrada, ResumoContas, StatusConta } from "../types/fabricaContas";
+import type {
+  Conta,
+  ContaEntrada,
+  ResumoContas,
+  StatusConta,
+  TipoConta,
+} from "../types/fabricaContas";
 import { formatCurrency } from "../utils/format";
 import { IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
 import { FabricaDre } from "./FabricaDre";
+import { FabricaBens } from "./FabricaBens";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
 function num(v: string): number {
@@ -33,6 +40,9 @@ const CATEGORIAS = [
   "LUZ",
   "SALÁRIO",
   "MATÉRIA-PRIMA",
+  // produto pronto comprado pra revender: é custo de mercadoria, não despesa.
+  // Enquanto a fábrica não fabrica, é aqui que entra quase todo o dinheiro.
+  "REVENDA",
   "EMBALAGEM",
   "MANUTENÇÃO",
   "IMPOSTO",
@@ -41,7 +51,12 @@ const CATEGORIAS = [
   "OUTROS",
 ];
 
+// O que a planilha do financeiro usa. Texto livre no banco: forma nova nao
+// pode derrubar o lancamento.
+const FORMAS = ["Boleto", "Cheque", "Pix", "Transferência", "Dinheiro"];
+
 const VAZIO = {
+  tipo: "pagar" as TipoConta,
   descricao: "",
   categoria: "",
   contraparte: "",
@@ -51,6 +66,8 @@ const VAZIO = {
   dataPagamento: "",
   custoFixo: true,
   observacao: "",
+  formaPagamento: "",
+  documento: "",
   repetirMeses: "0",
 };
 
@@ -63,14 +80,15 @@ export function FabricaContas() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...VAZIO });
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [aba, setAba] = useState<"contas" | "dre">("contas");
+  const [aba, setAba] = useState<"contas" | "dre" | "bens">("contas");
 
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
+  const [filtroTipo, setFiltroTipo] = useState<TipoConta>("pagar");
 
   const carregar = useCallback(async () => {
     try {
       const [cs, r] = await Promise.all([
-        fetchContas({ tipo: "pagar", status: filtroStatus || undefined }),
+        fetchContas({ tipo: filtroTipo, status: filtroStatus || undefined }),
         fetchResumoContas(),
       ]);
       setContas(cs);
@@ -80,7 +98,7 @@ export function FabricaContas() {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
       setContas([]);
     }
-  }, [filtroStatus]);
+  }, [filtroStatus, filtroTipo]);
 
   useEffect(() => {
     void carregar();
@@ -98,6 +116,7 @@ export function FabricaContas() {
   function editar(c: Conta) {
     setEditandoId(c.id);
     setForm({
+      tipo: c.tipo,
       descricao: c.descricao,
       categoria: c.categoria ?? "",
       contraparte: c.contraparte ?? "",
@@ -107,6 +126,8 @@ export function FabricaContas() {
       dataPagamento: c.dataPagamento ?? "",
       custoFixo: c.custoFixo,
       observacao: c.observacao ?? "",
+      formaPagamento: c.formaPagamento ?? "",
+      documento: c.documento ?? "",
       // repetir só faz sentido ao criar: editar uma conta não multiplica ela
       repetirMeses: "0",
     });
@@ -120,8 +141,9 @@ export function FabricaContas() {
     if (!form.vencimento) return setErro("Informe o vencimento.");
 
     const entrada: ContaEntrada = {
-      // a fábrica só lança a pagar aqui: o a receber vem dos pedidos de venda
-      tipo: "pagar",
+      // Enquanto a fábrica só revende, o a receber é digitado aqui. Quando os
+      // produtos estiverem cadastrados, ele passa a nascer do pedido de venda.
+      tipo: form.tipo,
       descricao: form.descricao.trim(),
       categoria: form.categoria || null,
       contraparte: form.contraparte.trim() || null,
@@ -131,6 +153,8 @@ export function FabricaContas() {
       dataPagamento: form.dataPagamento || null,
       custoFixo: form.custoFixo,
       observacao: form.observacao.trim() || null,
+      formaPagamento: form.formaPagamento || null,
+      documento: form.documento.trim() || null,
       repetirMeses: Number(form.repetirMeses) || 0,
     };
     setSalvando(true);
@@ -199,19 +223,20 @@ export function FabricaContas() {
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
-        {(["contas", "dre"] as const).map((a) => (
+        {(["contas", "dre", "bens"] as const).map((a) => (
           <button
             key={a}
             type="button"
             className={aba === a ? "btn-responder" : "btn-excluir"}
             onClick={() => setAba(a)}
           >
-            {a === "contas" ? "Contas a pagar" : "DRE"}
+            {a === "contas" ? "Contas a pagar" : a === "dre" ? "DRE" : "Bens"}
           </button>
         ))}
       </div>
 
       {aba === "dre" && <FabricaDre />}
+      {aba === "bens" && <FabricaBens />}
 
       {aba === "contas" && resumo && (
         <div className="financeiro-filtros">
@@ -238,6 +263,14 @@ export function FabricaContas() {
       <div className="financeiro-filtros">
         <select
           className="clonar-input fabricacao-input-pequeno"
+          value={filtroTipo}
+          onChange={(e) => setFiltroTipo(e.target.value as TipoConta)}
+        >
+          <option value="pagar">A pagar</option>
+          <option value="receber">A receber</option>
+        </select>
+        <select
+          className="clonar-input fabricacao-input-pequeno"
           value={filtroStatus}
           onChange={(e) => setFiltroStatus(e.target.value as "" | StatusConta)}
         >
@@ -255,6 +288,14 @@ export function FabricaContas() {
       {aba === "contas" && mostrarForm && (
         <>
           <div className="financeiro-filtros">
+            <select
+              className="clonar-input fabricacao-input-pequeno"
+              value={form.tipo}
+              onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoConta }))}
+            >
+              <option value="pagar">A pagar</option>
+              <option value="receber">A receber</option>
+            </select>
             <input
               className="clonar-input"
               placeholder="Descrição (ex: Aluguel do barracão)"
@@ -275,7 +316,7 @@ export function FabricaContas() {
             </select>
             <input
               className="clonar-input fabricacao-input-pequeno"
-              placeholder="Fornecedor"
+              placeholder={form.tipo === "receber" ? "Cliente" : "Fornecedor"}
               value={form.contraparte}
               onChange={(e) => setForm((f) => ({ ...f, contraparte: e.target.value }))}
             />
@@ -311,6 +352,25 @@ export function FabricaContas() {
               />{" "}
               custo fixo (aluguel, salário) — desmarque o que varia com a produção
             </label>
+            <select
+              className="clonar-input fabricacao-input-pequeno"
+              value={form.formaPagamento}
+              onChange={(e) => setForm((f) => ({ ...f, formaPagamento: e.target.value }))}
+            >
+              <option value="">Forma de pagamento</option>
+              {FORMAS.map((f) => (
+                <option key={f} value={f}>
+                  {f}
+                </option>
+              ))}
+            </select>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Nº do documento / cheque"
+              value={form.documento}
+              onChange={(e) => setForm((f) => ({ ...f, documento: e.target.value }))}
+              title="Nº da nota, do boleto ou do cheque — é por ele que a conciliação bancária acha a conta"
+            />
             {!editandoId && (
               <input
                 className="clonar-input fabricacao-input-pequeno"
@@ -355,7 +415,8 @@ export function FabricaContas() {
               <th>VENCIMENTO</th>
               <th>DESCRIÇÃO</th>
               <th>CATEGORIA</th>
-              <th>FORNECEDOR</th>
+              <th>{filtroTipo === "receber" ? "CLIENTE" : "FORNECEDOR"}</th>
+              <th>PAGAMENTO</th>
               <th className="financeiro-th-numero">VALOR</th>
               <th>CUSTO</th>
               <th>STATUS</th>
@@ -365,12 +426,12 @@ export function FabricaContas() {
           <tbody>
             {contas === null && (
               <tr>
-                <td colSpan={8}>Carregando…</td>
+                <td colSpan={9}>Carregando…</td>
               </tr>
             )}
             {contas !== null && !contas.length && (
               <tr>
-                <td colSpan={8}>Nenhuma conta lançada.</td>
+                <td colSpan={9}>Nenhuma conta lançada.</td>
               </tr>
             )}
             {(contas ?? []).map((c) => (
@@ -386,6 +447,10 @@ export function FabricaContas() {
                 </td>
                 <td className="financeiro-td-mudo">{c.categoria ?? "—"}</td>
                 <td className="financeiro-td-mudo">{c.contraparte ?? "—"}</td>
+                <td className="financeiro-td-mudo">
+                  {c.formaPagamento ?? "—"}
+                  {c.documento && ` · ${c.documento}`}
+                </td>
                 <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
                 <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
                 <td>
