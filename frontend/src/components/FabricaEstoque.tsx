@@ -10,6 +10,8 @@ import {
 import type { EstoqueMateriaPrima, AjusteEstoque, CapacidadeFormula } from "../types/fabricaEstoque";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
+import { BuscaSelecao } from "./BuscaSelecao";
+import type { ItemBusca } from "./BuscaSelecao";
 
 function kg(v: number): string {
   return `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg`;
@@ -51,6 +53,15 @@ export function FabricaEstoque() {
   }, [carregar]);
 
   const alertas = useMemo(() => (estoque ?? []).filter((e) => e.abaixoDoMinimo), [estoque]);
+  const itensMp: ItemBusca[] = useMemo(
+    () =>
+      (estoque ?? []).map((e) => ({
+        id: e.materiaPrimaId,
+        titulo: e.nome,
+        detalhe: `saldo ${kg(e.saldo)}`,
+      })),
+    [estoque]
+  );
   const valorTotal = useMemo(
     () => (estoque ?? []).reduce((s, e) => s + Math.max(0, e.valorEmEstoque), 0),
     [estoque]
@@ -219,14 +230,12 @@ export function FabricaEstoque() {
       {aba === "ajustes" && (
         <>
           <div className="financeiro-filtros">
-            <select className="clonar-input" value={mpId} onChange={(e) => setMpId(e.target.value)}>
-              <option value="">Matéria-prima</option>
-              {(estoque ?? []).map((e) => (
-                <option key={e.materiaPrimaId} value={e.materiaPrimaId}>
-                  {e.nome} — saldo {kg(e.saldo)}
-                </option>
-              ))}
-            </select>
+            <BuscaSelecao
+              itens={itensMp}
+              valor={mpId ? Number(mpId) : null}
+              placeholder="Buscar matéria-prima"
+              onEscolher={(id) => setMpId(id ? String(id) : "")}
+            />
             <select
               className="clonar-input fabricacao-input-pequeno"
               value={tipo}
