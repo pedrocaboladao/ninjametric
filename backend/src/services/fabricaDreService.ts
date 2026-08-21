@@ -31,6 +31,15 @@ export interface Dre {
   ate: string;
 
   receita: number;
+  // imposto sobre a venda: provisao pela aliquota do mes, nao pela guia paga
+  percentualImposto: number;
+  // de qual mes veio a aliquota, quando este mes nao tem uma propria
+  impostoHerdadoDe: string | null;
+  imposto: number;
+  // o que a guia de imposto lancada no contas a pagar deste mes cobra. Serve
+  // pra conferir se a % provisionada ficou por cima ou por baixo, e refazer.
+  impostoLancado: number;
+  receitaLiquida: number;
   custoProdutos: number;
   margemContribuicao: number;
   percentualMargem: number;
@@ -64,6 +73,34 @@ export interface Dre {
 // e some do relatório seria pior que aparecer no lugar errado.
 const CATEGORIAS_DE_INSUMO = new Set(["MATÉRIA-PRIMA", "EMBALAGEM", "ÁGUA", "CONSUMO"]);
 
+// Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
+// digitar todo mês, mas o histórico fica preso ao que valia na época.
+export async function aliquotaDoMes(
+  competencia: string
+): Promise<{ percentual: number; herdadoDe: string | null }> {
+  const { rows } = await pool.query<{ competencia: string; percentual: string }>(
+    `SELECT competencia, percentual FROM fabrica_impostos
+     WHERE competencia <= $1::date ORDER BY competencia DESC LIMIT 1`,
+    [competencia]
+  );
+  if (!rows.length) return { percentual: 0, herdadoDe: null };
+  const mes = String(rows[0].competencia).slice(0, 7);
+  return {
+    percentual: Number(rows[0].percentual),
+    herdadoDe: mes === competencia.slice(0, 7) ? null : mes,
+  };
+}
+
+export async function definirAliquota(competencia: string, percentual: number): Promise<void> {
+  const primeiro = `${competencia.slice(0, 7)}-01`;
+  await pool.query(
+    `INSERT INTO fabrica_impostos (competencia, percentual) VALUES ($1::date, $2)
+     ON CONFLICT (competencia) DO UPDATE
+       SET percentual = EXCLUDED.percentual, atualizado_em = now()`,
+    [primeiro, percentual]
+  );
+}
+
 function mesAtual(): { de: string; ate: string } {
   const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
   const [ano, mes] = hoje.split("-").map(Number);
@@ -76,6 +113,8 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   const padrao = mesAtual();
   const de = deEntrada || padrao.de;
   const ate = ateEntrada || padrao.ate;
+
+  const aliquota = await aliquotaDoMes(de);
 
   const [vendas, contas, resumoPedidos] = await Promise.all([
     // receita e custo saem do item do pedido, onde ficaram GRAVADOS no
@@ -134,18 +173,29 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   porProduto.sort((a, b) => b.receita - a.receita);
 
   const receita = porProduto.reduce((s, p) => s + p.receita, 0);
+  const imposto = receita * (aliquota.percentual / 100);
+  const receitaLiquida = receita - imposto;
   const custoProdutos = porProduto.reduce((s, p) => s + p.custo, 0);
-  const margemContribuicao = receita - custoProdutos;
+  const margemContribuicao = receitaLiquida - custoProdutos;
 
   let despesaFixa = 0;
   let despesaVariavel = 0;
   let jaNoCustoTotal = 0;
+  let impostoLancado = 0;
   const categorias = new Map<string, number>();
   const insumos = new Map<string, number>();
 
   for (const r of contas.rows) {
     const categoria = r.categoria ?? "SEM CATEGORIA";
     const total = Number(r.total);
+    // com alíquota definida, a guia de imposto já foi provisionada no mês da
+    // venda: contar de novo aqui mostraria o mesmo imposto em dois meses. Sem
+    // alíquota, ela é despesa normal — senão o imposto sumiria do resultado.
+    const impostoJaProvisionado = categoria === "IMPOSTO" && aliquota.percentual > 0;
+    if (impostoJaProvisionado) {
+      impostoLancado += total;
+      continue;
+    }
     if (CATEGORIAS_DE_INSUMO.has(categoria)) {
       insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
       jaNoCustoTotal += total;
@@ -158,7 +208,9 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
 
   const despesaTotal = despesaFixa + despesaVariavel;
   const resultado = margemContribuicao - despesaTotal;
-  const percentualMargem = receita > 0 ? margemContribuicao / receita : 0;
+  // margem sobre a receita LIQUIDA: e o dinheiro que a fabrica de fato recebe,
+  // e e ele que tem que pagar a despesa fixa
+  const percentualMargem = receitaLiquida > 0 ? margemContribuicao / receitaLiquida : 0;
 
   const ordenar = (m: Map<string, number>): LinhaCategoria[] =>
     [...m.entries()]
@@ -169,6 +221,11 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     de,
     ate,
     receita,
+    percentualImposto: aliquota.percentual,
+    impostoHerdadoDe: aliquota.herdadoDe,
+    imposto,
+    impostoLancado,
+    receitaLiquida,
     custoProdutos,
     margemContribuicao,
     percentualMargem,

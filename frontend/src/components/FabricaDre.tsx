@@ -16,6 +16,24 @@ async function fetchDre(de: string, ate: string): Promise<Dre> {
   return (await res.json()).dre as Dre;
 }
 
+async function salvarAliquota(competencia: string, percentual: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-contas/dre/imposto`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ competencia, percentual }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? `Erro ${res.status}`);
+  }
+}
+
+// aceita "7,3" e "7.3"
+function num(v: string): number {
+  return Number(String(v).replace(",", ".")) || 0;
+}
+
 function pct(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
 }
@@ -36,11 +54,15 @@ export function FabricaDre() {
   const [mes, setMes] = useState(mesAtual());
   const [dre, setDre] = useState<Dre | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [aliquota, setAliquota] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(async () => {
     const { de, ate } = limitesDoMes(mes);
     try {
-      setDre(await fetchDre(de, ate));
+      const r = await fetchDre(de, ate);
+      setDre(r);
+      setAliquota(String(r.percentualImposto));
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao montar o DRE.");
@@ -50,6 +72,20 @@ export function FabricaDre() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  async function reprocessar() {
+    setSalvando(true);
+    try {
+      await salvarAliquota(mes, num(aliquota));
+      // o DRE e calculado na leitura, entao recarregar ja refaz o mes inteiro
+      await carregar();
+      setErro(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar a aliquota.");
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   if (erro) return <p className="financeiro-td-mudo">{erro}</p>;
   if (!dre) return <p className="financeiro-td-mudo">Carregando…</p>;
@@ -69,6 +105,26 @@ export function FabricaDre() {
           {dre.pedidos} pedido{dre.pedidos === 1 ? "" : "s"} · {dre.clientes} loja
           {dre.clientes === 1 ? "" : "s"}
         </span>
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          placeholder="% imposto"
+          value={aliquota}
+          onChange={(e) => setAliquota(e.target.value)}
+          title="Alíquota estimada sobre a venda deste mês"
+        />
+        <button
+          type="button"
+          className="btn-responder"
+          onClick={() => void reprocessar()}
+          disabled={salvando}
+        >
+          Aplicar e reprocessar
+        </button>
+        {dre.impostoHerdadoDe && (
+          <span className="financeiro-td-mudo">
+            alíquota herdada de {dre.impostoHerdadoDe.split("-").reverse().join("/")}
+          </span>
+        )}
       </div>
 
       <div className="financeiro-tabela-wrap">
@@ -78,6 +134,24 @@ export function FabricaDre() {
               <td>RECEITA — o que as lojas compraram</td>
               <td className="financeiro-th-numero">{formatCurrency(dre.receita)}</td>
               <td className="financeiro-th-numero financeiro-td-mudo">100%</td>
+            </tr>
+            <tr>
+              <td className="financeiro-td-mudo">
+                (−) Imposto sobre a venda ({dre.percentualImposto}%)
+              </td>
+              <td className="financeiro-th-numero financeiro-td-mudo">
+                {formatCurrency(dre.imposto)}
+              </td>
+              <td className="financeiro-th-numero financeiro-td-mudo">
+                {dre.percentualImposto}%
+              </td>
+            </tr>
+            <tr>
+              <td>= RECEITA LÍQUIDA</td>
+              <td className="financeiro-th-numero">{formatCurrency(dre.receitaLiquida)}</td>
+              <td className="financeiro-th-numero financeiro-td-mudo">
+                {dre.receita > 0 ? pct(dre.receitaLiquida / dre.receita) : "—"}
+              </td>
             </tr>
             <tr>
               <td className="financeiro-td-mudo">(−) Custo dos produtos vendidos</td>
@@ -128,6 +202,26 @@ export function FabricaDre() {
         </table>
       </div>
 
+      <p className="financeiro-td-mudo">
+        O imposto é <strong>provisão</strong>, não guia paga: a fábrica vende agora e o imposto vem
+        depois, então o mês da venda já mostra a mordida. Coloque uma alíquota segura e, quando a
+        guia real chegar, corrija a % e clique em <strong>Aplicar e reprocessar</strong> — o mês
+        inteiro é recalculado na hora, sem refazer lançamento nenhum.
+        {dre.impostoLancado > 0 && (
+          <>
+            {" "}
+            A guia lançada no Contas a pagar deste mês é de {formatCurrency(dre.impostoLancado)} e a
+            provisão está em {formatCurrency(dre.imposto)} —{" "}
+            {Math.abs(dre.impostoLancado - dre.imposto) < 0.005
+              ? "bateu."
+              : dre.imposto > dre.impostoLancado
+                ? `provisionou ${formatCurrency(dre.imposto - dre.impostoLancado)} a mais.`
+                : `provisionou ${formatCurrency(dre.impostoLancado - dre.imposto)} a menos.`}{" "}
+            A guia fica fora do resultado pra não contar o mesmo imposto duas vezes.
+          </>
+        )}
+      </p>
+
       <div className="financeiro-filtros">
         <div>
           <div className="financeiro-stat-label">PONTO DE EQUILÍBRIO</div>
@@ -135,8 +229,8 @@ export function FabricaDre() {
         </div>
         <p className="financeiro-td-mudo">
           É quanto precisa vender no mês pra pagar a despesa fixa. Com margem de{" "}
-          {pct(dre.percentualMargem)}, cada real vendido deixa{" "}
-          {formatCurrency(dre.percentualMargem)} pra cobrir aluguel e salário.
+          {pct(dre.percentualMargem)} sobre a receita líquida, cada real que sobra depois do
+          imposto deixa {formatCurrency(dre.percentualMargem)} pra cobrir aluguel e salário.
         </p>
       </div>
 

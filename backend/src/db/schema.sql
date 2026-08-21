@@ -979,3 +979,20 @@ CREATE TABLE IF NOT EXISTS fabrica_pagamentos (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_pagamentos_cliente
   ON fabrica_pagamentos (cliente_id, data DESC);
+
+-- Aliquota de imposto sobre a venda da fabrica, por mes.
+--
+-- Por mes e nao um numero so porque a aliquota muda, e um valor global faria
+-- o resultado de marco mudar sozinho quando a de agosto fosse ajustada. Mes
+-- sem aliquota herda a do mes anterior mais recente — assim nao precisa
+-- digitar todo mes, mas o historico fica preso ao que valia na epoca.
+--
+-- E provisao, nao caixa: a fabrica vende e o imposto vem depois. O DRE do mes
+-- da venda ja mostra a mordida; quando a guia chegar, ela e lancada no contas
+-- a pagar e o DRE a joga no bloco "fora do resultado", senao o mesmo imposto
+-- apareceria duas vezes em dois meses diferentes.
+CREATE TABLE IF NOT EXISTS fabrica_impostos (
+  competencia DATE PRIMARY KEY,
+  percentual NUMERIC(6, 3) NOT NULL CHECK (percentual >= 0 AND percentual <= 100),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
