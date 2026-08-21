@@ -921,3 +921,27 @@ ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS estoque_minimo NUMERIC(12,
 -- controlado sai do calculo de gargalo, do alerta de minimo e do valor em
 -- estoque — mas continua no custo, porque custar ele custa.
 ALTER TABLE materias_primas ADD COLUMN IF NOT EXISTS controla_estoque BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Conta de consumo que vira preco por quilo de um insumo.
+--
+-- Agua e o caso: nao se compra em quilo, vem uma conta no fim do mes. Chutar
+-- R$ 0,01/kg era um numero inventado. Dividindo a conta pelos quilos de agua
+-- que os lotes do mes realmente usaram, o preco passa a ser medido.
+--
+-- percentual_producao existe porque a conta cobre a fabrica inteira — banheiro,
+-- limpeza, lavagem de tanque. So a parte que virou tinta pode entrar no custo
+-- do quilo.
+--
+-- UNIQUE por mes: relancar o mesmo mes corrige, nao duplica.
+CREATE TABLE IF NOT EXISTS fabrica_contas_insumo (
+  id SERIAL PRIMARY KEY,
+  materia_prima_id INTEGER NOT NULL REFERENCES materias_primas(id) ON DELETE CASCADE,
+  competencia DATE NOT NULL,
+  valor NUMERIC(12, 2) NOT NULL,
+  percentual_producao NUMERIC(5, 2) NOT NULL DEFAULT 100,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (materia_prima_id, competencia)
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_contas_insumo_mp
+  ON fabrica_contas_insumo (materia_prima_id, competencia DESC);
