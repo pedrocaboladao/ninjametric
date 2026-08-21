@@ -41,6 +41,23 @@ async function importar(
   return tratar<ResultadoImportacao>(res);
 }
 
+interface ResultadoLote {
+  formulaId: number | null;
+  titulo: string;
+  erro: string | null;
+  resultado: ResultadoImportacao | null;
+}
+
+async function importarLote(texto: string): Promise<ResultadoLote[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-ordem/importar-lote`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ texto }),
+  });
+  return (await tratar<{ formulas: ResultadoLote[] }>(res)).formulas;
+}
+
 async function fetchOrdem(formulaId: number, peso: number): Promise<OrdemFabricacao> {
   const res = await fetch(`${API_BASE}/api/fabrica-ordem/${formulaId}?peso=${peso}`, {
     credentials: "include",
@@ -72,6 +89,9 @@ export function FabricaOrdem() {
   const [colado, setColado] = useState("");
   const [coladoQc, setColadoQc] = useState("");
   const [aviso, setAviso] = useState<string | null>(null);
+  const [mostrarLote, setMostrarLote] = useState(false);
+  const [coladoLote, setColadoLote] = useState("");
+  const [resultadoLote, setResultadoLote] = useState<ResultadoLote[] | null>(null);
 
   useEffect(() => {
     fetchFormulas()
@@ -124,6 +144,18 @@ export function FabricaOrdem() {
       await gerar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao importar.");
+    }
+  }
+
+  async function importarLoteColado() {
+    try {
+      const r = await importarLote(coladoLote);
+      setResultadoLote(r);
+      setErro(null);
+      setFormulas(await fetchFormulas());
+      if (formulaId) await gerar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao importar o lote.");
     }
   }
 
@@ -188,6 +220,13 @@ export function FabricaOrdem() {
         >
           {mostrarImportar ? "Fechar" : "Colar roteiro da planilha"}
         </button>
+        <button
+          type="button"
+          className="btn-excluir"
+          onClick={() => setMostrarLote((v) => !v)}
+        >
+          {mostrarLote ? "Fechar" : "Colar várias fórmulas"}
+        </button>
       </div>
 
       {mostrarImportar && (
@@ -215,6 +254,45 @@ export function FabricaOrdem() {
           <button type="button" className="btn-responder" onClick={() => void importarColado()}>
             Importar roteiro
           </button>
+        </div>
+      )}
+
+      {mostrarLote && (
+        <div className="ordem-sem-impressao">
+          <p className="financeiro-td-mudo">
+            Para planilha que tem várias fórmulas numa aba só — a tabela de cores, por exemplo.
+            Selecione a aba inteira e cole aqui. Cada bloco precisa começar numa linha só com o
+            nome da fórmula, escrito igual ao cadastro; as linhas de ITEM, TOTAL e peso do lote são
+            ignoradas sozinhas.
+          </p>
+          <textarea
+            className="clonar-input clonar-textarea"
+            rows={12}
+            placeholder="Cole aqui a aba inteira, com várias fórmulas"
+            value={coladoLote}
+            onChange={(e) => setColadoLote(e.target.value)}
+          />
+          <button type="button" className="btn-responder" onClick={() => void importarLoteColado()}>
+            Importar todas
+          </button>
+        </div>
+      )}
+
+      {resultadoLote && (
+        <div className="ordem-sem-impressao">
+          {resultadoLote.map((l, i) => (
+            <p key={i} className="financeiro-td-mudo">
+              {l.erro
+                ? `✗ ${l.titulo}: ${l.erro}`
+                : `✓ ${l.titulo}: ${l.resultado?.passos} passos, ${l.resultado?.instrucoes} instruções, soma ${l.resultado?.somaPercentual.toFixed(2)}%` +
+                  (l.resultado?.naoEncontrados.length
+                    ? ` — não achei: ${l.resultado.naoEncontrados.join(", ")}`
+                    : "") +
+                  (l.resultado?.ambiguos.length
+                    ? ` — ambíguo: ${l.resultado.ambiguos.join(", ")}`
+                    : "")}
+            </p>
+          ))}
         </div>
       )}
 

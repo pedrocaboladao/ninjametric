@@ -6,6 +6,7 @@ import {
   type PassoEntrada,
   importarRoteiro,
   type LinhaQc,
+  importarLote,
 } from "../services/fabricaOrdemService";
 
 export const fabricaOrdemRouter = Router();
@@ -98,5 +99,18 @@ fabricaOrdemRouter.post("/:formulaId/importar", async (req, res) => {
     res.json(await importarRoteiro(formulaId, texto, textoQc));
   } catch (err) {
     erro(res, err, "Falha ao importar o roteiro.");
+  }
+});
+
+// Varias formulas de uma vez: a tabela de cores tem as 15 cores numa aba so,
+// cada bloco aberto pelo nome da cor. Cola a aba inteira e cada bloco cai na
+// sua formula — sem abrir a tela 15 vezes.
+fabricaOrdemRouter.post("/importar-lote", async (req, res) => {
+  const texto = typeof req.body?.texto === "string" ? req.body.texto : "";
+  if (!texto.trim()) return res.status(400).json({ error: "Cole as linhas da planilha." });
+  try {
+    res.json({ formulas: await importarLote(texto) });
+  } catch (err) {
+    erro(res, err, "Falha ao importar o lote.");
   }
 });
