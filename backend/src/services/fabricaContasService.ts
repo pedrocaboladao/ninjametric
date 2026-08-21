@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { totalAReceber } from "./fabricaPagamentosService";
 
 // Contas a pagar e receber da Fábrica Distribuidora — o barracão da
 // fabricação, que paga aluguel, água e luz próprios.
@@ -24,10 +25,6 @@ export interface Conta {
   dataPagamento: string | null;
   custoFixo: boolean;
   observacao: string | null;
-  // conta de insumo (água): o quilo sai desta conta
-  materiaPrimaId: number | null;
-  materiaPrimaNome: string | null;
-  percentualProducao: number;
   // derivados
   atrasada: boolean;
   diasParaVencer: number;
@@ -44,8 +41,6 @@ export interface ContaEntrada {
   dataPagamento: string | null;
   custoFixo: boolean;
   observacao: string | null;
-  materiaPrimaId: number | null;
-  percentualProducao: number;
 }
 
 // "hoje" pelo fuso de São Paulo, não pelo UTC. O resto do repo usa
@@ -73,9 +68,6 @@ interface Linha {
   data_pagamento: string | null;
   custo_fixo: boolean;
   observacao: string | null;
-  materia_prima_id: number | null;
-  materia_prima_nome: string | null;
-  percentual_producao: string;
 }
 
 function montar(r: Linha): Conta {
@@ -94,9 +86,6 @@ function montar(r: Linha): Conta {
     dataPagamento: r.data_pagamento ? String(r.data_pagamento).slice(0, 10) : null,
     custoFixo: r.custo_fixo,
     observacao: r.observacao,
-    materiaPrimaId: r.materia_prima_id,
-    materiaPrimaNome: r.materia_prima_nome,
-    percentualProducao: Number(r.percentual_producao),
     // conta paga ou cancelada não atrasa, por mais antiga que seja
     atrasada: status === "pendente" && diasParaVencer < 0,
     diasParaVencer,
@@ -105,10 +94,8 @@ function montar(r: Linha): Conta {
 
 const SELECT_BASE = `
   SELECT c.id, c.tipo, c.descricao, c.categoria, c.contraparte, c.valor, c.vencimento,
-         c.status, c.data_pagamento, c.custo_fixo, c.observacao,
-         c.materia_prima_id, mp.nome AS materia_prima_nome, c.percentual_producao
+         c.status, c.data_pagamento, c.custo_fixo, c.observacao
   FROM fabrica_contas c
-  LEFT JOIN materias_primas mp ON mp.id = c.materia_prima_id
 `;
 
 export interface FiltroContas {
@@ -160,8 +147,6 @@ function valores(e: ContaEntrada) {
     e.status === "pago" ? (e.dataPagamento ?? hoje()) : null,
     e.custoFixo,
     e.observacao,
-    e.materiaPrimaId,
-    e.percentualProducao,
   ];
 }
 
@@ -192,8 +177,8 @@ export async function criarConta(e: ContaEntrada, repetirMeses = 0): Promise<{ i
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO fabrica_contas
          (tipo, descricao, categoria, contraparte, valor, vencimento, status,
-          data_pagamento, custo_fixo, observacao, materia_prima_id, percentual_producao)
-       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11,$12) RETURNING id`,
+          data_pagamento, custo_fixo, observacao)
+       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10) RETURNING id`,
       valores(parcela)
     );
     ids.push(rows[0].id);
@@ -206,7 +191,7 @@ export async function atualizarConta(id: number, e: ContaEntrada): Promise<void>
     `UPDATE fabrica_contas
      SET tipo = $2, descricao = $3, categoria = $4, contraparte = $5, valor = $6,
          vencimento = $7::date, status = $8, data_pagamento = $9::date, custo_fixo = $10,
-         observacao = $11, materia_prima_id = $12, percentual_producao = $13
+         observacao = $11
      WHERE id = $1`,
     [id, ...valores(e)]
   );
@@ -240,11 +225,17 @@ export interface ResumoContas {
   custoVariavel: number;
 }
 
+// aReceber não é digitado: é o que as lojas devem, de pedidos menos pagamentos.
+// Lançar recebível à mão criaria dois lugares dizendo o mesmo e eles iam
+// divergir no primeiro pagamento parcial.
 export async function resumoContas(de?: string, ate?: string): Promise<ResumoContas> {
-  const contas = await listarContas({ de, ate, limite: 5000 });
+  const [contas, aReceber] = await Promise.all([
+    listarContas({ de, ate, limite: 5000 }),
+    totalAReceber(),
+  ]);
   const resumo: ResumoContas = {
     aPagar: 0,
-    aReceber: 0,
+    aReceber,
     pago: 0,
     recebido: 0,
     atrasado: 0,
@@ -262,9 +253,8 @@ export async function resumoContas(de?: string, ate?: string): Promise<ResumoCon
       // olha competência, não caixa
       if (c.custoFixo) resumo.custoFixo += c.valor;
       else resumo.custoVariavel += c.valor;
-    } else {
-      if (pendente) resumo.aReceber += c.valor;
-      else resumo.recebido += c.valor;
+    } else if (!pendente) {
+      resumo.recebido += c.valor;
     }
   }
   return resumo;

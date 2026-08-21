@@ -10,7 +10,6 @@ import {
   type TipoConta,
   type StatusConta,
 } from "../services/fabricaContasService";
-import { aplicarContaInsumo } from "../services/fabricaEstoqueService";
 
 export const fabricaContasRouter = Router();
 
@@ -32,13 +31,6 @@ function lerEntrada(req: Request): ContaEntrada | string {
   }
   const tipo: TipoConta = TIPOS.includes(b.tipo) ? b.tipo : "pagar";
   const status: StatusConta = STATUS.includes(b.status) ? b.status : "pendente";
-  const materiaPrimaId = Number.isInteger(Number(b.materiaPrimaId)) && Number(b.materiaPrimaId) > 0
-    ? Number(b.materiaPrimaId)
-    : null;
-  const percentual = b.percentualProducao === undefined ? 100 : Number(b.percentualProducao);
-  if (!Number.isFinite(percentual) || percentual <= 0 || percentual > 100) {
-    return "Percentual deve ficar entre 1 e 100.";
-  }
   const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
 
   return {
@@ -52,8 +44,6 @@ function lerEntrada(req: Request): ContaEntrada | string {
     dataPagamento: typeof b.dataPagamento === "string" && b.dataPagamento ? b.dataPagamento : null,
     custoFixo: b.custoFixo !== false,
     observacao: texto(b.observacao),
-    materiaPrimaId,
-    percentualProducao: percentual,
   };
 }
 
@@ -93,10 +83,6 @@ fabricaContasRouter.post("/", async (req, res) => {
   const repetir = Number(req.body?.repetirMeses);
   try {
     const { ids } = await criarConta(entrada, Number.isFinite(repetir) ? repetir : 0);
-    // conta ligada a insumo acerta o preço do quilo na hora
-    if (entrada.materiaPrimaId) {
-      for (const id of ids) await aplicarContaInsumo(id);
-    }
     res.status(201).json({ ids });
   } catch (err) {
     erro(res, err, "Falha ao criar a conta.");
@@ -110,7 +96,6 @@ fabricaContasRouter.put("/:id", async (req, res) => {
   if (typeof entrada === "string") return res.status(400).json({ error: entrada });
   try {
     await atualizarConta(id, entrada);
-    if (entrada.materiaPrimaId) await aplicarContaInsumo(id);
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao salvar a conta.");

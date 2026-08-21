@@ -8,10 +8,7 @@ import {
   registrarInventario,
   excluirAjuste,
   capacidadeDeProducao,
-  listarContasInsumo,
-  aplicarContaInsumo,
 } from "../services/fabricaEstoqueService";
-import { criarConta, excluirConta } from "../services/fabricaContasService";
 
 export const fabricaEstoqueRouter = Router();
 
@@ -48,75 +45,6 @@ fabricaEstoqueRouter.put("/:id/minimo", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao definir estoque mínimo.");
-  }
-});
-
-fabricaEstoqueRouter.get("/contas", async (_req, res) => {
-  try {
-    res.json({ contas: await listarContasInsumo() });
-  } catch (err) {
-    erro(res, err, "Falha ao carregar contas.");
-  }
-});
-
-// Lancar a conta de agua aqui cria uma linha no Contas a pagar da fabrica e ja
-// acerta o preco do quilo. Um lancamento so: o dinheiro aparece no financeiro,
-// o custo aparece na formula.
-fabricaEstoqueRouter.post("/contas", async (req, res) => {
-  const b = req.body ?? {};
-  const materiaPrimaId = Number(b.materiaPrimaId);
-  if (!Number.isInteger(materiaPrimaId)) {
-    return res.status(400).json({ error: "Escolha o insumo." });
-  }
-  if (typeof b.competencia !== "string" || !/^\d{4}-\d{2}/.test(b.competencia)) {
-    return res.status(400).json({ error: "Informe o mes da conta." });
-  }
-  const valor = Number(b.valor);
-  if (!Number.isFinite(valor) || valor <= 0) {
-    return res.status(400).json({ error: "Valor da conta invalido." });
-  }
-  const percentual = b.percentualProducao === undefined ? 100 : Number(b.percentualProducao);
-  if (!Number.isFinite(percentual) || percentual <= 0 || percentual > 100) {
-    return res.status(400).json({ error: "Percentual deve ficar entre 1 e 100." });
-  }
-  const descricao =
-    typeof b.descricao === "string" && b.descricao.trim() ? b.descricao.trim() : "Conta de consumo";
-  const observacao =
-    typeof b.observacao === "string" && b.observacao.trim() ? b.observacao.trim() : null;
-
-  try {
-    // vencimento no dia 1 do mes de consumo: o mes e o que importa pro rateio,
-    // e o dia exato do boleto pode ser ajustado depois no financeiro
-    const { ids } = await criarConta({
-      tipo: "pagar",
-      descricao,
-      categoria: "CONSUMO",
-      contraparte: null,
-      valor,
-      vencimento: `${b.competencia.slice(0, 7)}-01`,
-      status: "pendente",
-      dataPagamento: null,
-      // agua e insumo de producao, nao custo fixo: varia com o quanto se produz
-      custoFixo: false,
-      observacao,
-      materiaPrimaId,
-      percentualProducao: percentual,
-    });
-    const r = await aplicarContaInsumo(ids[0]);
-    res.status(201).json({ id: ids[0], ...r });
-  } catch (err) {
-    erro(res, err, "Falha ao lancar a conta.");
-  }
-});
-
-fabricaEstoqueRouter.delete("/contas/:id", async (req, res) => {
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
-  try {
-    await excluirConta(id);
-    res.status(204).end();
-  } catch (err) {
-    erro(res, err, "Falha ao excluir a conta.");
   }
 });
 

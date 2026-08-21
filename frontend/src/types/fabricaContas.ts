@@ -20,22 +20,16 @@ export interface Conta {
   // o DRE precisa separar aluguel e salário do que varia com a produção
   custoFixo: boolean;
   observacao: string | null;
-  // conta de insumo (água): o preço do quilo sai desta conta
-  materiaPrimaId: number | null;
-  materiaPrimaNome: string | null;
-  percentualProducao: number;
   atrasada: boolean;
   diasParaVencer: number;
 }
 
-export type ContaEntrada = Omit<
-  Conta,
-  "id" | "materiaPrimaNome" | "atrasada" | "diasParaVencer"
-> & {
+export type ContaEntrada = Omit<Conta, "id" | "atrasada" | "diasParaVencer"> & {
   // cria a mesma conta nos próximos N meses, mantendo o dia do vencimento
   repetirMeses?: number;
 };
 
+// aReceber não é digitado: é o que as lojas devem, de pedidos menos pagamentos
 export interface ResumoContas {
   aPagar: number;
   aReceber: number;
