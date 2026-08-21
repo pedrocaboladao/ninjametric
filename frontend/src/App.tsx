@@ -63,6 +63,23 @@ const VIEWS_VALIDAS: View[] = [
   "market_intelligence",
 ];
 
+// Quase toda view tem o mesmo nome da permissao que a protege, e o resto do
+// arquivo conta com isso. A excecao e a view que reaproveita permissao de
+// outra: "Ordem de fabricacao" e protegida por `fabricacao`, a mesma de quem
+// monta a formula — quem monta a receita e quem imprime a ordem, e um modulo
+// separado so pra isso obrigaria mais uma liberacao de admin.
+//
+// Sem este mapa, temPermissao(usuario, "fabrica_ordem") procura uma permissao
+// com esse nome, nao acha, e a tela abre com "Nenhum acesso liberado" por cima
+// do conteudo — que carregou normalmente, porque a API usa a chave certa.
+const PERMISSAO_DA_VIEW: Partial<Record<View, string>> = {
+  fabrica_ordem: "fabricacao",
+};
+
+function permissaoDaView(view: View): string {
+  return PERMISSAO_DA_VIEW[view] ?? view;
+}
+
 function viewInicial(usuario: Usuario): View {
   const salva = localStorage.getItem(CHAVE_ULTIMA_VIEW) as View | null;
   if (
@@ -70,7 +87,7 @@ function viewInicial(usuario: Usuario): View {
     VIEWS_VALIDAS.includes(salva) &&
     (salva === "usuarios" || salva === "agentes" || salva === "market_intelligence"
       ? usuario.admin
-      : temPermissao(usuario, salva))
+      : temPermissao(usuario, permissaoDaView(salva)))
   ) {
     return salva;
   }
@@ -137,7 +154,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
     onSair();
   }
 
-  const semAcesso = !temPermissao(usuario, view);
+  const semAcesso = !temPermissao(usuario, permissaoDaView(view));
 
   // Botão flutuante do Modo TV só no celular (ver .modo-tv-fab em App.css)
   // e só pra conta do dono — não é um recurso pra equipe em geral, é um
