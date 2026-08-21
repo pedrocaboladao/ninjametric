@@ -463,7 +463,7 @@ export function FabricaPedidos() {
             />
           </div>
 
-          <div className="financeiro-tabela-wrap">
+          <div className="financeiro-tabela-wrap financeiro-tabela-wrap-transbordo">
             <table className="financeiro-tabela">
               <thead>
                 <tr>

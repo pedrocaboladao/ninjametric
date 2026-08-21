@@ -5614,3 +5614,10 @@
   color: var(--text-muted);
   font-size: 13.5px;
 }
+
+/* A tabela de itens do pedido precisa deixar a lista da busca transbordar.
+   overflow-x: auto cria contexto de recorte, e o dropdown ficava cortado na
+   altura da linha. Aqui a tabela tem 6 colunas curtas e não precisa rolar. */
+.financeiro-tabela-wrap-transbordo {
+  overflow: visible;
+}
