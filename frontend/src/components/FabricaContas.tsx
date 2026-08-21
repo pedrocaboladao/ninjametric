@@ -10,6 +10,7 @@ import {
 import type { Conta, ContaEntrada, ResumoContas, StatusConta } from "../types/fabricaContas";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
+import { FabricaDre } from "./FabricaDre";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
 function num(v: string): number {
@@ -61,6 +62,7 @@ export function FabricaContas() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...VAZIO });
   const [mostrarForm, setMostrarForm] = useState(false);
+  const [aba, setAba] = useState<"contas" | "dre">("contas");
 
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
 
@@ -176,7 +178,7 @@ export function FabricaContas() {
       <div className="financeiro-topo">
         <div>
           <div className="financeiro-stat-label">FÁBRICA DISTRIBUIDORA</div>
-          <h1>Contas a pagar e receber</h1>
+          <h1>Financeiro da fábrica</h1>
           <p className="financeiro-td-mudo">
             O barracão da fabricação paga aluguel, água e luz próprios. Isto é outra empresa: nada
             aqui encosta no financeiro das lojas, e a loja chamada Fábrica de Tintas continua lá
@@ -196,7 +198,22 @@ export function FabricaContas() {
       {erro && <p className="financeiro-td-mudo">{erro}</p>}
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
-      {resumo && (
+      <div className="financeiro-filtros">
+        {(["contas", "dre"] as const).map((a) => (
+          <button
+            key={a}
+            type="button"
+            className={aba === a ? "btn-responder" : "btn-excluir"}
+            onClick={() => setAba(a)}
+          >
+            {a === "contas" ? "Contas a pagar" : "DRE"}
+          </button>
+        ))}
+      </div>
+
+      {aba === "dre" && <FabricaDre />}
+
+      {aba === "contas" && resumo && (
         <div className="financeiro-filtros">
           <div>
             <div className="financeiro-stat-label">CUSTO FIXO</div>
@@ -217,6 +234,7 @@ export function FabricaContas() {
         </div>
       )}
 
+      {aba === "contas" && (
       <div className="financeiro-filtros">
         <select
           className="clonar-input fabricacao-input-pequeno"
@@ -232,8 +250,9 @@ export function FabricaContas() {
           <IconPlus size={14} /> Nova conta
         </button>
       </div>
+      )}
 
-      {mostrarForm && (
+      {aba === "contas" && mostrarForm && (
         <>
           <div className="financeiro-filtros">
             <input
@@ -327,6 +346,8 @@ export function FabricaContas() {
         </>
       )}
 
+      {aba === "contas" && (
+      <>
       <div className="financeiro-tabela-wrap">
         <table className="financeiro-tabela">
           <thead>
@@ -392,6 +413,8 @@ export function FabricaContas() {
         Custo fixo e variável somam o período todo, pago ou não — o DRE olha competência, não caixa.
         Conta cancelada não entra em nada.
       </p>
+      </>
+      )}
     </div>
   );
 }
