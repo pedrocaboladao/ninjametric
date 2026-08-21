@@ -76,3 +76,36 @@ export interface AjusteProduto {
   quantidade: number;
   motivo: string | null;
 }
+
+// Conta corrente da loja com a fábrica. Não existe "conta a receber" guardada:
+// o que a loja deve sai de pedidos menos pagamentos, recalculado.
+export interface ContaCorrente {
+  clienteId: number;
+  clienteNome: string;
+  clienteTipo: string;
+  comprado: number;
+  pago: number;
+  saldo: number;
+  ultimoPedido: string | null;
+  ultimoPagamento: string | null;
+}
+
+export interface Pagamento {
+  id: number;
+  clienteId: number;
+  clienteNome: string;
+  data: string;
+  valor: number;
+  observacao: string | null;
+}
+
+// Extrato pra mandar pra loja na terça: pedidos e pagamentos na mesma linha do
+// tempo, com o saldo correndo.
+export interface LinhaExtrato {
+  data: string;
+  tipo: "pedido" | "pagamento";
+  referencia: number;
+  descricao: string;
+  valor: number;
+  saldo: number;
+}

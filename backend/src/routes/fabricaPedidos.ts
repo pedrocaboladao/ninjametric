@@ -11,6 +11,13 @@ import {
   type ItemEntrada,
   type StatusPedido,
 } from "../services/fabricaPedidosService";
+import {
+  listarContaCorrente,
+  extratoDoCliente,
+  listarPagamentos,
+  registrarPagamento,
+  excluirPagamento,
+} from "../services/fabricaPagamentosService";
 
 export const fabricaPedidosRouter = Router();
 
@@ -67,6 +74,63 @@ fabricaPedidosRouter.get("/", async (req, res) => {
     });
   } catch (err) {
     erro(res, err, "Falha ao carregar pedidos.");
+  }
+});
+
+// Conta corrente e pagamentos vivem aqui porque sao a mesma tela e a mesma
+// pessoa: quem lanca o pedido e quem fecha na terca e recebe o PIX.
+fabricaPedidosRouter.get("/conta-corrente", async (_req, res) => {
+  try {
+    res.json({ contas: await listarContaCorrente() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar a conta corrente.");
+  }
+});
+
+fabricaPedidosRouter.get("/conta-corrente/:clienteId", async (req, res) => {
+  const clienteId = Number(req.params.clienteId);
+  if (!Number.isInteger(clienteId)) return res.status(400).json({ error: "Id invalido." });
+  try {
+    res.json({ extrato: await extratoDoCliente(clienteId) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o extrato.");
+  }
+});
+
+fabricaPedidosRouter.get("/pagamentos", async (_req, res) => {
+  try {
+    res.json({ pagamentos: await listarPagamentos() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar pagamentos.");
+  }
+});
+
+fabricaPedidosRouter.post("/pagamentos", async (req, res) => {
+  const b = req.body ?? {};
+  const clienteId = Number(b.clienteId);
+  if (!Number.isInteger(clienteId)) return res.status(400).json({ error: "Escolha a loja." });
+  const valor = Number(b.valor);
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return res.status(400).json({ error: "Valor invalido." });
+  }
+  const data = typeof b.data === "string" && b.data ? b.data : null;
+  const observacao =
+    typeof b.observacao === "string" && b.observacao.trim() ? b.observacao.trim() : null;
+  try {
+    res.status(201).json(await registrarPagamento(clienteId, valor, data, observacao));
+  } catch (err) {
+    erro(res, err, "Falha ao registrar o pagamento.");
+  }
+});
+
+fabricaPedidosRouter.delete("/pagamentos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  try {
+    await excluirPagamento(id);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao excluir o pagamento.");
   }
 });
 

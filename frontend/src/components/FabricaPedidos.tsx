@@ -10,6 +10,11 @@ import {
   fetchAjustesProduto,
   registrarAjusteProduto,
   excluirAjusteProduto,
+  fetchContaCorrente,
+  fetchExtrato,
+  fetchPagamentos,
+  registrarPagamento,
+  excluirPagamento,
 } from "../api/fabricaPedidos";
 import { fetchFabricaClientes } from "../api/fabricaClientes";
 import { fetchFabricaProdutos } from "../api/fabricaProdutos";
@@ -19,6 +24,9 @@ import type {
   StatusPedido,
   EstoqueProduto,
   AjusteProduto,
+  ContaCorrente,
+  Pagamento,
+  LinhaExtrato,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -54,9 +62,19 @@ export function FabricaPedidos() {
   const [produtos, setProdutos] = useState<FabricaProduto[]>([]);
   const [estoque, setEstoque] = useState<EstoqueProduto[]>([]);
   const [ajustes, setAjustes] = useState<AjusteProduto[]>([]);
+  const [contaCorrente, setContaCorrente] = useState<ContaCorrente[]>([]);
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
+  const [extrato, setExtrato] = useState<LinhaExtrato[] | null>(null);
+  const [extratoDe, setExtratoDe] = useState<ContaCorrente | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [aba, setAba] = useState<"pedidos" | "novo" | "estoque">("pedidos");
+  const [aba, setAba] = useState<"pedidos" | "novo" | "estoque" | "fechamento">("pedidos");
+
+  // recebimento: PIX no fechamento de terca
+  const [pagCliente, setPagCliente] = useState("");
+  const [pagValor, setPagValor] = useState("");
+  const [pagData, setPagData] = useState("");
+  const [pagObs, setPagObs] = useState("");
   const [salvando, setSalvando] = useState(false);
 
   // filtro da lista
@@ -89,6 +107,9 @@ export function FabricaPedidos() {
         fetchEstoqueProdutos(),
         fetchAjustesProduto(),
       ]);
+      const [cc, pg] = await Promise.all([fetchContaCorrente(), fetchPagamentos()]);
+      setContaCorrente(cc);
+      setPagamentos(pg);
       setPedidos(ps);
       setClientes(cs);
       setProdutos(prs);
@@ -207,6 +228,73 @@ export function FabricaPedidos() {
           : l
       )
     );
+  }
+
+  // saldo negativo e loja que pagou adiantado; nao abate a divida das outras
+  const totalDevido = useMemo(
+    () => contaCorrente.reduce((s, c) => s + Math.max(0, c.saldo), 0),
+    [contaCorrente]
+  );
+
+  const itensClienteDevendo: ItemBusca[] = useMemo(
+    () =>
+      contaCorrente.map((c) => ({
+        id: c.clienteId,
+        titulo: c.clienteNome,
+        detalhe: c.saldo > 0 ? `deve ${formatCurrency(c.saldo)}` : "em dia",
+      })),
+    [contaCorrente]
+  );
+
+  async function abrirExtrato(c: ContaCorrente) {
+    if (extratoDe?.clienteId === c.clienteId) {
+      setExtratoDe(null);
+      setExtrato(null);
+      return;
+    }
+    setExtratoDe(c);
+    setExtrato(null);
+    try {
+      setExtrato(await fetchExtrato(c.clienteId));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao carregar o extrato.");
+    }
+  }
+
+  async function receber() {
+    const id = Number(pagCliente);
+    if (!Number.isInteger(id) || !id) return setErro("Escolha a loja.");
+    const valor = num(pagValor);
+    if (valor <= 0) return setErro("Informe o valor recebido.");
+    try {
+      const r = await registrarPagamento({
+        clienteId: id,
+        valor,
+        data: pagData || null,
+        observacao: pagObs.trim() || null,
+      });
+      setAviso(
+        r.saldo > 0.005
+          ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana.`
+          : "PIX registrado. A loja está zerada."
+      );
+      setPagValor("");
+      setPagObs("");
+      await carregar();
+      if (extratoDe?.clienteId === id) setExtrato(await fetchExtrato(id));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao registrar o recebimento.");
+    }
+  }
+
+  async function apagarPagamento(pg: Pagamento) {
+    if (!confirm(`Excluir o PIX de ${formatCurrency(pg.valor)} de ${pg.clienteNome}?`)) return;
+    try {
+      await excluirPagamento(pg.id);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao excluir.");
+    }
   }
 
   async function salvar() {
@@ -333,7 +421,7 @@ export function FabricaPedidos() {
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
-        {(["pedidos", "novo", "estoque"] as const).map((a) => (
+        {(["pedidos", "novo", "estoque", "fechamento"] as const).map((a) => (
           <button
             key={a}
             type="button"
@@ -346,7 +434,9 @@ export function FabricaPedidos() {
                 ? editandoId
                   ? `Editando ${editandoId}`
                   : "Novo pedido"
-                : `Estoque de produto${alertas.length ? ` (${alertas.length})` : ""}`}
+                : a === "estoque"
+                  ? `Estoque de produto${alertas.length ? ` (${alertas.length})` : ""}`
+                  : "Fechamento"}
           </button>
         ))}
       </div>
@@ -709,6 +799,193 @@ export function FabricaPedidos() {
                         type="button"
                         className="btn-excluir"
                         onClick={() => void apagarAjuste(a)}
+                        title="Excluir"
+                      >
+                        <IconTrash size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {aba === "fechamento" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Fechamento e recebimento</h2>
+              <p className="financeiro-td-mudo">
+                Não existe conta a receber digitada: o que a loja deve sai dos pedidos menos os
+                PIX recebidos. Pagou R$ 90.000 de R$ 100.000? Os R$ 10.000 continuam rolando pra
+                semana que vem sozinhos — sem escolher qual pedido foi quitado primeiro.
+              </p>
+            </div>
+            <div>
+              <div className="financeiro-stat-label">AS LOJAS DEVEM</div>
+              <div className="financeiro-stat-valor">{formatCurrency(totalDevido)}</div>
+            </div>
+          </div>
+
+          <div className="financeiro-filtros">
+            <BuscaSelecao
+              itens={itensClienteDevendo}
+              valor={pagCliente ? Number(pagCliente) : null}
+              placeholder="Buscar loja"
+              onEscolher={(id) => setPagCliente(id ? String(id) : "")}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Valor recebido"
+              value={pagValor}
+              onChange={(e) => setPagValor(e.target.value)}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              value={pagData}
+              onChange={(e) => setPagData(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Observação (opcional)"
+              value={pagObs}
+              onChange={(e) => setPagObs(e.target.value)}
+            />
+            <button type="button" className="btn-responder" onClick={() => void receber()}>
+              <IconPlus size={14} /> Receber PIX
+            </button>
+          </div>
+
+          <div className="financeiro-tabela-wrap">
+            <table className="financeiro-tabela">
+              <thead>
+                <tr>
+                  <th>LOJA</th>
+                  <th className="financeiro-th-numero">PEGOU</th>
+                  <th className="financeiro-th-numero">PAGOU</th>
+                  <th className="financeiro-th-numero">DEVE</th>
+                  <th>ÚLTIMO PEDIDO</th>
+                  <th>ÚLTIMO PIX</th>
+                </tr>
+              </thead>
+              <tbody>
+                {!contaCorrente.length && (
+                  <tr>
+                    <td colSpan={6}>Nenhum cliente cadastrado.</td>
+                  </tr>
+                )}
+                {contaCorrente
+                  .slice()
+                  // quem deve mais aparece primeiro: e a ordem em que se cobra
+                  .sort((a, b) => b.saldo - a.saldo)
+                  .map((c) => (
+                    <tr key={c.clienteId}>
+                      <td>
+                        <button
+                          type="button"
+                          className="fabricacao-envase-nome-editavel"
+                          onClick={() => void abrirExtrato(c)}
+                        >
+                          {c.clienteNome}
+                        </button>
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {c.comprado ? formatCurrency(c.comprado) : "—"}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {c.pago ? formatCurrency(c.pago) : "—"}
+                      </td>
+                      <td className={c.saldo > 0.005 ? "financeiro-th-numero" : "financeiro-th-numero financeiro-td-mudo"}>
+                        {Math.abs(c.saldo) < 0.005
+                          ? "em dia"
+                          : c.saldo > 0
+                            ? formatCurrency(c.saldo)
+                            : `${formatCurrency(-c.saldo)} adiantado`}
+                      </td>
+                      <td className="financeiro-td-mudo">
+                        {c.ultimoPedido ? data(c.ultimoPedido) : "—"}
+                      </td>
+                      <td className="financeiro-td-mudo">
+                        {c.ultimoPagamento ? data(c.ultimoPagamento) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+
+          {extratoDe && (
+            <>
+              <h2>Extrato — {extratoDe.clienteNome}</h2>
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>LANÇAMENTO</th>
+                      <th className="financeiro-th-numero">VALOR</th>
+                      <th className="financeiro-th-numero">SALDO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {extrato === null && (
+                      <tr>
+                        <td colSpan={4}>Carregando…</td>
+                      </tr>
+                    )}
+                    {extrato !== null && !extrato.length && (
+                      <tr>
+                        <td colSpan={4}>Nada lançado pra esta loja ainda.</td>
+                      </tr>
+                    )}
+                    {(extrato ?? []).map((l) => (
+                      <tr key={`${l.tipo}-${l.referencia}`}>
+                        <td className="financeiro-td-mudo">{data(l.data)}</td>
+                        <td>{l.descricao}</td>
+                        <td className="financeiro-th-numero">
+                          {l.valor > 0 ? "" : "−"}
+                          {formatCurrency(Math.abs(l.valor))}
+                        </td>
+                        <td className="financeiro-th-numero">{formatCurrency(l.saldo)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <h2>PIX recebidos</h2>
+          <div className="financeiro-tabela-wrap">
+            <table className="financeiro-tabela">
+              <thead>
+                <tr>
+                  <th>DATA</th>
+                  <th>LOJA</th>
+                  <th className="financeiro-th-numero">VALOR</th>
+                  <th>OBSERVAÇÃO</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {!pagamentos.length && (
+                  <tr>
+                    <td colSpan={5}>Nenhum recebimento registrado.</td>
+                  </tr>
+                )}
+                {pagamentos.map((pg) => (
+                  <tr key={pg.id}>
+                    <td className="financeiro-td-mudo">{data(pg.data)}</td>
+                    <td>{pg.clienteNome}</td>
+                    <td className="financeiro-th-numero">{formatCurrency(pg.valor)}</td>
+                    <td className="financeiro-td-mudo">{pg.observacao ?? "PIX"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-excluir"
+                        onClick={() => void apagarPagamento(pg)}
                         title="Excluir"
                       >
                         <IconTrash size={14} />

@@ -4,6 +4,9 @@ import type {
   StatusPedido,
   EstoqueProduto,
   AjusteProduto,
+  ContaCorrente,
+  Pagamento,
+  LinhaExtrato,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -116,6 +119,50 @@ export async function registrarAjusteProduto(entrada: {
 
 export async function excluirAjusteProduto(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/fabrica-produtos/estoque/ajustes/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await semConteudo(res);
+}
+
+// --- conta corrente e recebimento --------------------------------------------
+
+export async function fetchContaCorrente(): Promise<ContaCorrente[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/conta-corrente`, {
+    credentials: "include",
+  });
+  return (await tratarResposta<{ contas: ContaCorrente[] }>(res)).contas;
+}
+
+export async function fetchExtrato(clienteId: number): Promise<LinhaExtrato[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/conta-corrente/${clienteId}`, {
+    credentials: "include",
+  });
+  return (await tratarResposta<{ extrato: LinhaExtrato[] }>(res)).extrato;
+}
+
+export async function fetchPagamentos(): Promise<Pagamento[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos`, { credentials: "include" });
+  return (await tratarResposta<{ pagamentos: Pagamento[] }>(res)).pagamentos;
+}
+
+export async function registrarPagamento(entrada: {
+  clienteId: number;
+  valor: number;
+  data?: string | null;
+  observacao?: string | null;
+}): Promise<{ id: number; saldo: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number; saldo: number }>(res);
+}
+
+export async function excluirPagamento(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos/${id}`, {
     method: "DELETE",
     credentials: "include",
   });

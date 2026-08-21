@@ -5,9 +5,6 @@ import {
   fetchAjustes,
   definirEstoqueMinimo,
   definirControlaEstoque,
-  fetchContasInsumo,
-  registrarContaInsumo,
-  excluirContaInsumo,
   registrarAjuste,
   excluirAjuste,
 } from "../api/fabricaEstoque";
@@ -15,7 +12,6 @@ import type {
   EstoqueMateriaPrima,
   AjusteEstoque,
   CapacidadeFormula,
-  ContaInsumo,
 } from "../types/fabricaEstoque";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
@@ -35,17 +31,9 @@ export function FabricaEstoque() {
   const [estoque, setEstoque] = useState<EstoqueMateriaPrima[] | null>(null);
   const [capacidade, setCapacidade] = useState<CapacidadeFormula[]>([]);
   const [ajustes, setAjustes] = useState<AjusteEstoque[]>([]);
-  const [contas, setContas] = useState<ContaInsumo[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [aba, setAba] = useState<"estoque" | "capacidade" | "ajustes" | "contas">("estoque");
-
-  // conta de consumo (agua)
-  const [contaMpId, setContaMpId] = useState("");
-  const [contaMes, setContaMes] = useState("");
-  const [contaValor, setContaValor] = useState("");
-  const [contaPct, setContaPct] = useState("100");
-  const [contaObs, setContaObs] = useState("");
+  const [aba, setAba] = useState<"estoque" | "capacidade" | "ajustes">("estoque");
 
   const [mpId, setMpId] = useState("");
   const [tipo, setTipo] = useState<"inventario" | "ajuste">("inventario");
@@ -54,16 +42,10 @@ export function FabricaEstoque() {
 
   const carregar = useCallback(async () => {
     try {
-      const [e, c, a, ct] = await Promise.all([
-        fetchEstoque(),
-        fetchCapacidade(),
-        fetchAjustes(),
-        fetchContasInsumo(),
-      ]);
+      const [e, c, a] = await Promise.all([fetchEstoque(), fetchCapacidade(), fetchAjustes()]);
       setEstoque(e);
       setCapacidade(c);
       setAjustes(a);
-      setContas(ct);
       setErro(null);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao carregar.");
@@ -134,43 +116,6 @@ export function FabricaEstoque() {
     }
   }
 
-  async function lancarConta() {
-    const id = Number(contaMpId);
-    if (!Number.isInteger(id) || !id) return setErro("Escolha o insumo.");
-    if (!/^\d{4}-\d{2}/.test(contaMes)) return setErro("Informe o mes da conta.");
-    const valor = num(contaValor);
-    if (valor <= 0) return setErro("Informe o valor da conta.");
-    try {
-      const r = await registrarContaInsumo({
-        materiaPrimaId: id,
-        competencia: contaMes,
-        valor,
-        percentualProducao: num(contaPct) || 100,
-        observacao: contaObs.trim() || null,
-      });
-      setAviso(
-        r.aplicado
-          ? `Conta lancada. ${kg(r.kgConsumidos)} usados no mes, entao o quilo saiu a R$ ${r.custoPorKg.toFixed(4)} — ja aplicado na formula.`
-          : "Conta guardada, mas nao houve lote nesse mes: sem quilos pra dividir, o preco nao foi mexido."
-      );
-      setContaValor("");
-      setContaObs("");
-      await carregar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao lancar a conta.");
-    }
-  }
-
-  async function apagarConta(c: ContaInsumo) {
-    if (!confirm(`Excluir a conta de ${c.materiaPrimaNome} de ${c.competencia}?`)) return;
-    try {
-      await excluirContaInsumo(c.contaId);
-      await carregar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao excluir.");
-    }
-  }
-
   async function apagar(a: AjusteEstoque) {
     if (!confirm(`Excluir o ajuste de ${kg(a.quantidadeKg)} em ${a.materiaPrimaNome}?`)) return;
     try {
@@ -208,20 +153,14 @@ export function FabricaEstoque() {
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
-        {(["estoque", "capacidade", "ajustes", "contas"] as const).map((a) => (
+        {(["estoque", "capacidade", "ajustes"] as const).map((a) => (
           <button
             key={a}
             type="button"
             className={aba === a ? "btn-responder" : "btn-excluir"}
             onClick={() => setAba(a)}
           >
-            {a === "estoque"
-              ? "Saldo"
-              : a === "capacidade"
-                ? "Dá pra fabricar"
-                : a === "ajustes"
-                  ? "Ajustes"
-                  : "Conta de água"}
+            {a === "estoque" ? "Saldo" : a === "capacidade" ? "Dá pra fabricar" : "Ajustes"}
           </button>
         ))}
       </div>
@@ -385,118 +324,6 @@ export function FabricaEstoque() {
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        </>
-      )}
-      {aba === "contas" && (
-        <>
-          <p className="financeiro-td-mudo">
-            Água não se compra em quilo — vem uma conta no fim do mês. Lançando o valor aqui, o
-            sistema divide pelos quilos de água que os lotes daquele mês usaram e acerta o preço do
-            quilo na fórmula: se a produção pedia R$ 1.000 de água e a conta veio R$ 900, o quilo
-            baixa; se veio mais, sobe. E rateia sozinho entre os lotes, porque quem levou mais água
-            multiplica mais.
-          </p>
-
-          <div className="financeiro-filtros">
-            <BuscaSelecao
-              itens={itensMp}
-              valor={contaMpId ? Number(contaMpId) : null}
-              placeholder="Insumo (ex: Água)"
-              onEscolher={(id) => setContaMpId(id ? String(id) : "")}
-            />
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              type="month"
-              value={contaMes}
-              onChange={(e) => setContaMes(e.target.value)}
-            />
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              placeholder="Valor da conta"
-              value={contaValor}
-              onChange={(e) => setContaValor(e.target.value)}
-            />
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              placeholder="% pra tinta"
-              value={contaPct}
-              onChange={(e) => setContaPct(e.target.value)}
-              title="Quanto da conta virou tinta — o resto é banheiro, limpeza, lavagem de tanque"
-            />
-            <input
-              className="clonar-input"
-              placeholder="Observação (opcional)"
-              value={contaObs}
-              onChange={(e) => setContaObs(e.target.value)}
-            />
-            <button type="button" className="btn-responder" onClick={() => void lancarConta()}>
-              <IconPlus size={14} /> Lançar conta
-            </button>
-          </div>
-
-          <div className="financeiro-tabela-wrap">
-            <table className="financeiro-tabela">
-              <thead>
-                <tr>
-                  <th>MÊS</th>
-                  <th>INSUMO</th>
-                  <th className="financeiro-th-numero">CONTA</th>
-                  <th className="financeiro-th-numero">% PRA TINTA</th>
-                  <th className="financeiro-th-numero">USADO NO MÊS</th>
-                  <th className="financeiro-th-numero">CUSTO POR KG</th>
-                  <th>SITUAÇÃO</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {!contas.length && (
-                  <tr>
-                    <td colSpan={8}>Nenhuma conta lançada.</td>
-                  </tr>
-                )}
-                {contas.map((c) => {
-                  // diferença de centésimo de centavo é arredondamento, não desatualização
-                  const desatualizada =
-                    c.kgConsumidos > 0 && Math.abs(c.custoPorKg - c.custoAplicado) > 0.0001;
-                  return (
-                    <tr key={c.contaId}>
-                      <td className="financeiro-td-mudo">
-                        {c.competencia.split("-").reverse().join("/")}
-                      </td>
-                      <td>{c.materiaPrimaNome}</td>
-                      <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">
-                        {c.percentualProducao}%
-                      </td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">
-                        {c.kgConsumidos > 0 ? kg(c.kgConsumidos) : "sem lote"}
-                      </td>
-                      <td className="financeiro-th-numero">
-                        {c.kgConsumidos > 0 ? `R$ ${c.custoPorKg.toFixed(4)}` : "—"}
-                      </td>
-                      <td className={desatualizada ? undefined : "financeiro-td-mudo"}>
-                        {c.kgConsumidos <= 0
-                          ? "sem lote no mês"
-                          : desatualizada
-                            ? `fórmula está com R$ ${c.custoAplicado.toFixed(4)} — relance pra acertar`
-                            : "aplicado na fórmula"}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="btn-excluir"
-                          onClick={() => void apagarConta(c)}
-                          title="Excluir"
-                        >
-                          <IconTrash size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
               </tbody>
             </table>
           </div>

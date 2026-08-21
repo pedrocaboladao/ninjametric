@@ -7,13 +7,9 @@ import {
   definirStatusConta,
   excluirConta,
 } from "../api/fabricaContas";
-import { fetchEstoque } from "../api/fabricaEstoque";
-import type { Conta, ContaEntrada, ResumoContas, StatusConta, TipoConta } from "../types/fabricaContas";
-import type { EstoqueMateriaPrima } from "../types/fabricaEstoque";
+import type { Conta, ContaEntrada, ResumoContas, StatusConta } from "../types/fabricaContas";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
-import { BuscaSelecao } from "./BuscaSelecao";
-import type { ItemBusca } from "./BuscaSelecao";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
 function num(v: string): number {
@@ -44,7 +40,6 @@ const CATEGORIAS = [
 ];
 
 const VAZIO = {
-  tipo: "pagar" as TipoConta,
   descricao: "",
   categoria: "",
   contraparte: "",
@@ -54,15 +49,12 @@ const VAZIO = {
   dataPagamento: "",
   custoFixo: true,
   observacao: "",
-  materiaPrimaId: "",
-  percentualProducao: "100",
   repetirMeses: "0",
 };
 
 export function FabricaContas() {
   const [contas, setContas] = useState<Conta[] | null>(null);
   const [resumo, setResumo] = useState<ResumoContas | null>(null);
-  const [materias, setMaterias] = useState<EstoqueMateriaPrima[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -70,34 +62,26 @@ export function FabricaContas() {
   const [form, setForm] = useState({ ...VAZIO });
   const [mostrarForm, setMostrarForm] = useState(false);
 
-  const [filtroTipo, setFiltroTipo] = useState<"" | TipoConta>("");
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
 
   const carregar = useCallback(async () => {
     try {
-      const [cs, r, mp] = await Promise.all([
-        fetchContas({ tipo: filtroTipo || undefined, status: filtroStatus || undefined }),
+      const [cs, r] = await Promise.all([
+        fetchContas({ tipo: "pagar", status: filtroStatus || undefined }),
         fetchResumoContas(),
-        fetchEstoque(),
       ]);
       setContas(cs);
       setResumo(r);
-      setMaterias(mp);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
       setContas([]);
     }
-  }, [filtroTipo, filtroStatus]);
+  }, [filtroStatus]);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
-
-  const itensMp: ItemBusca[] = useMemo(
-    () => materias.map((m) => ({ id: m.materiaPrimaId, titulo: m.nome })),
-    [materias]
-  );
 
   const atrasadas = useMemo(() => (contas ?? []).filter((c) => c.atrasada), [contas]);
 
@@ -111,7 +95,6 @@ export function FabricaContas() {
   function editar(c: Conta) {
     setEditandoId(c.id);
     setForm({
-      tipo: c.tipo,
       descricao: c.descricao,
       categoria: c.categoria ?? "",
       contraparte: c.contraparte ?? "",
@@ -121,8 +104,6 @@ export function FabricaContas() {
       dataPagamento: c.dataPagamento ?? "",
       custoFixo: c.custoFixo,
       observacao: c.observacao ?? "",
-      materiaPrimaId: c.materiaPrimaId ? String(c.materiaPrimaId) : "",
-      percentualProducao: String(c.percentualProducao),
       // repetir só faz sentido ao criar: editar uma conta não multiplica ela
       repetirMeses: "0",
     });
@@ -136,7 +117,8 @@ export function FabricaContas() {
     if (!form.vencimento) return setErro("Informe o vencimento.");
 
     const entrada: ContaEntrada = {
-      tipo: form.tipo,
+      // a fábrica só lança a pagar aqui: o a receber vem dos pedidos de venda
+      tipo: "pagar",
       descricao: form.descricao.trim(),
       categoria: form.categoria || null,
       contraparte: form.contraparte.trim() || null,
@@ -146,8 +128,6 @@ export function FabricaContas() {
       dataPagamento: form.dataPagamento || null,
       custoFixo: form.custoFixo,
       observacao: form.observacao.trim() || null,
-      materiaPrimaId: form.materiaPrimaId ? Number(form.materiaPrimaId) : null,
-      percentualProducao: num(form.percentualProducao) || 100,
       repetirMeses: Number(form.repetirMeses) || 0,
     };
     setSalvando(true);
@@ -231,22 +211,13 @@ export function FabricaContas() {
             <div className="financeiro-stat-valor">{formatCurrency(resumo.pago)}</div>
           </div>
           <div>
-            <div className="financeiro-stat-label">A RECEBER</div>
+            <div className="financeiro-stat-label">AS LOJAS DEVEM</div>
             <div className="financeiro-stat-valor">{formatCurrency(resumo.aReceber)}</div>
           </div>
         </div>
       )}
 
       <div className="financeiro-filtros">
-        <select
-          className="clonar-input fabricacao-input-pequeno"
-          value={filtroTipo}
-          onChange={(e) => setFiltroTipo(e.target.value as "" | TipoConta)}
-        >
-          <option value="">Pagar e receber</option>
-          <option value="pagar">A pagar</option>
-          <option value="receber">A receber</option>
-        </select>
         <select
           className="clonar-input fabricacao-input-pequeno"
           value={filtroStatus}
@@ -265,14 +236,6 @@ export function FabricaContas() {
       {mostrarForm && (
         <>
           <div className="financeiro-filtros">
-            <select
-              className="clonar-input fabricacao-input-pequeno"
-              value={form.tipo}
-              onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoConta }))}
-            >
-              <option value="pagar">A pagar</option>
-              <option value="receber">A receber</option>
-            </select>
             <input
               className="clonar-input"
               placeholder="Descrição (ex: Aluguel do barracão)"
@@ -347,24 +310,6 @@ export function FabricaContas() {
           </div>
 
           <div className="financeiro-filtros">
-            <span className="financeiro-td-mudo">
-              Conta de consumo? Ligue ao insumo e o preço do quilo se acerta sozinho:
-            </span>
-            <BuscaSelecao
-              itens={itensMp}
-              valor={form.materiaPrimaId ? Number(form.materiaPrimaId) : null}
-              placeholder="Nenhum insumo — conta comum"
-              onEscolher={(id) => setForm((f) => ({ ...f, materiaPrimaId: id ? String(id) : "" }))}
-            />
-            {form.materiaPrimaId && (
-              <input
-                className="clonar-input fabricacao-input-pequeno"
-                placeholder="% pra tinta"
-                value={form.percentualProducao}
-                onChange={(e) => setForm((f) => ({ ...f, percentualProducao: e.target.value }))}
-                title="Quanto da conta virou tinta — o resto é banheiro, limpeza, lavagem de tanque"
-              />
-            )}
             <button type="button" className="btn-responder" onClick={() => void salvar()} disabled={salvando}>
               {editandoId ? "Salvar" : "Lançar"}
             </button>
@@ -417,15 +362,10 @@ export function FabricaContas() {
                   <button type="button" className="fabricacao-envase-nome-editavel" onClick={() => editar(c)}>
                     {c.descricao}
                   </button>
-                  {c.materiaPrimaNome && (
-                    <span className="financeiro-td-mudo"> · vira preço de {c.materiaPrimaNome}</span>
-                  )}
                 </td>
                 <td className="financeiro-td-mudo">{c.categoria ?? "—"}</td>
                 <td className="financeiro-td-mudo">{c.contraparte ?? "—"}</td>
-                <td className="financeiro-th-numero">
-                  {c.tipo === "receber" ? "+" : "−"} {formatCurrency(c.valor)}
-                </td>
+                <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
                 <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
                 <td>
                   <select
@@ -434,7 +374,7 @@ export function FabricaContas() {
                     onChange={(e) => void marcar(c, e.target.value as StatusConta)}
                   >
                     <option value="pendente">Pendente</option>
-                    <option value="pago">{c.tipo === "receber" ? "Recebido" : "Pago"}</option>
+                    <option value="pago">Pago</option>
                     <option value="cancelado">Cancelado</option>
                   </select>
                 </td>

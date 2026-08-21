@@ -2,7 +2,6 @@ import type {
   EstoqueMateriaPrima,
   AjusteEstoque,
   CapacidadeFormula,
-  ContaInsumo,
 } from "../types/fabricaEstoque";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -43,35 +42,6 @@ export async function definirEstoqueMinimo(id: number, estoqueMinimo: number): P
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ estoqueMinimo }),
-  });
-  await semConteudo(res);
-}
-
-export async function fetchContasInsumo(): Promise<ContaInsumo[]> {
-  const res = await fetch(`${API_BASE}/api/fabrica-estoque/contas`, { credentials: "include" });
-  return (await tratarResposta<{ contas: ContaInsumo[] }>(res)).contas;
-}
-
-export async function registrarContaInsumo(entrada: {
-  materiaPrimaId: number;
-  competencia: string;
-  valor: number;
-  percentualProducao: number;
-  observacao?: string | null;
-}): Promise<{ id: number; kgConsumidos: number; custoPorKg: number; aplicado: boolean }> {
-  const res = await fetch(`${API_BASE}/api/fabrica-estoque/contas`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify(entrada),
-  });
-  return tratarResposta<{ id: number; kgConsumidos: number; custoPorKg: number; aplicado: boolean }>(res);
-}
-
-export async function excluirContaInsumo(id: number): Promise<void> {
-  const res = await fetch(`${API_BASE}/api/fabrica-estoque/contas/${id}`, {
-    method: "DELETE",
-    credentials: "include",
   });
   await semConteudo(res);
 }

@@ -935,10 +935,11 @@ ALTER TABLE materias_primas ADD COLUMN IF NOT EXISTS controla_estoque BOOLEAN NO
 -- custo_fixo separa o que o DRE precisa somar de aluguel e salario do que
 -- varia com a producao.
 --
--- materia_prima_id e o pulo do gato da conta de agua: agua nao se compra em
--- quilo, vem uma conta no fim do mes. Uma conta ligada a um insumo tem os
--- quilos daquele mes calculados e vira preco por quilo na formula. Lancamento
--- unico, dois usos — o dinheiro no financeiro e o custo na formula.
+-- A agua entra aqui como conta comum (categoria AGUA). O preco por quilo dela
+-- fica fixo em R$ 0,01 no cadastro da materia-prima e e ajustado a mao quando
+-- precisa: o custo da agua no produto e estavel e pequeno, e amarrar ele na
+-- conta do mes faria o custo de todo produto oscilar por causa de uma variacao
+-- de consumo que nao tem nada a ver com a receita.
 CREATE TABLE IF NOT EXISTS fabrica_contas (
   id SERIAL PRIMARY KEY,
   tipo TEXT NOT NULL DEFAULT 'pagar' CHECK (tipo IN ('pagar', 'receber')),
@@ -951,16 +952,30 @@ CREATE TABLE IF NOT EXISTS fabrica_contas (
   data_pagamento DATE,
   custo_fixo BOOLEAN NOT NULL DEFAULT TRUE,
   observacao TEXT,
-  materia_prima_id INTEGER REFERENCES materias_primas(id) ON DELETE SET NULL,
-  percentual_producao NUMERIC(5, 2) NOT NULL DEFAULT 100,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_contas_venc ON fabrica_contas (vencimento DESC);
 CREATE INDEX IF NOT EXISTS idx_fabrica_contas_status ON fabrica_contas (status, tipo);
-CREATE INDEX IF NOT EXISTS idx_fabrica_contas_insumo
-  ON fabrica_contas (materia_prima_id, vencimento DESC);
 
--- Sai a tabela especialista: a conta de insumo virou caso particular da conta
--- a pagar. Duas tabelas pro mesmo papel obrigariam a lancar a agua duas vezes,
--- que e exatamente o que este modulo existe pra evitar.
 DROP TABLE IF EXISTS fabrica_contas_insumo;
+ALTER TABLE fabrica_contas DROP COLUMN IF EXISTS materia_prima_id;
+ALTER TABLE fabrica_contas DROP COLUMN IF EXISTS percentual_producao;
+
+-- Recebimento das lojas. Uma forma so: PIX no fechamento de terca.
+--
+-- Nao existe tabela de "conta a receber": o que a loja deve sai de pedidos
+-- menos pagamentos, recalculado. Gerar um recebivel por pedido criaria dois
+-- lugares dizendo a mesma coisa, e o pagamento parcial — que e a regra aqui,
+-- nao a excecao — obrigaria a decidir qual pedido foi quitado primeiro. Com
+-- conta corrente, pagar 90 de 100 simplesmente deixa 10 rolando pra semana
+-- seguinte, que e como a fabrica ja funciona.
+CREATE TABLE IF NOT EXISTS fabrica_pagamentos (
+  id SERIAL PRIMARY KEY,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE RESTRICT,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  valor NUMERIC(12, 2) NOT NULL CHECK (valor > 0),
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_pagamentos_cliente
+  ON fabrica_pagamentos (cliente_id, data DESC);

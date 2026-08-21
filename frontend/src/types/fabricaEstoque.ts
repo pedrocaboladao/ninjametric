@@ -15,23 +15,6 @@ export interface EstoqueMateriaPrima {
   controlaEstoque: boolean;
 }
 
-// Conta de consumo (água) virando preço por quilo: o valor do mês dividido
-// pelos quilos que os lotes daquele mês realmente usaram.
-export interface ContaInsumo {
-  // é uma linha do Contas a pagar da fábrica: lançamento único, dois usos
-  contaId: number;
-  materiaPrimaId: number;
-  materiaPrimaNome: string;
-  descricao: string;
-  competencia: string;
-  valor: number;
-  percentualProducao: number;
-  observacao: string | null;
-  kgConsumidos: number;
-  custoPorKg: number;
-  custoAplicado: number;
-}
-
 export interface AjusteEstoque {
   id: number;
   materiaPrimaId: number;
