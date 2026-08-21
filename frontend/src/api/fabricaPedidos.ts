@@ -7,6 +7,8 @@ import type {
   ContaCorrente,
   Pagamento,
   LinhaExtrato,
+  Devolucao,
+  CondicaoDevolucao,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -163,6 +165,58 @@ export async function registrarPagamento(entrada: {
 
 export async function excluirPagamento(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await semConteudo(res);
+}
+
+// --- devolucoes --------------------------------------------------------------
+
+export async function fetchDevolucoes(filtro: { clienteId?: number } = {}): Promise<{
+  devolucoes: Devolucao[];
+  notasPendentes: number;
+}> {
+  const q = new URLSearchParams();
+  if (filtro.clienteId) q.set("clienteId", String(filtro.clienteId));
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes?${q}`, {
+    credentials: "include",
+  });
+  return tratarResposta<{ devolucoes: Devolucao[]; notasPendentes: number }>(res);
+}
+
+export async function registrarDevolucao(entrada: {
+  clienteId: number;
+  produtoId: number;
+  quantidade: number;
+  condicao: CondicaoDevolucao;
+  data?: string | null;
+  credito?: number | null;
+  notaFiscal?: string | null;
+  recebidoPor?: string | null;
+  observacao?: string | null;
+}): Promise<{ id: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number }>(res);
+}
+
+export async function marcarNotaCancelada(id: number, notaCancelada: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes/${id}/nota`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ notaCancelada }),
+  });
+  await semConteudo(res);
+}
+
+export async function excluirDevolucao(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes/${id}`, {
     method: "DELETE",
     credentials: "include",
   });

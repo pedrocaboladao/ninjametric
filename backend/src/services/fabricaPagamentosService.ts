@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { creditoPorCliente } from "./fabricaDevolucoesService";
 
 // Conta corrente das lojas com a fábrica.
 //
@@ -20,6 +21,8 @@ export interface ContaCorrente {
   clienteTipo: string;
   comprado: number;
   pago: number;
+  // credito de devolucao — abate no fechamento igual a um pagamento
+  credito: number;
   saldo: number;
   ultimoPedido: string | null;
   ultimoPagamento: string | null;
@@ -38,7 +41,7 @@ export interface Pagamento {
 // com o saldo correndo. É o que se manda pra loja na terça.
 export interface LinhaExtrato {
   data: string;
-  tipo: "pedido" | "pagamento";
+  tipo: "pedido" | "pagamento" | "devolucao";
   referencia: number;
   descricao: string;
   valor: number;
@@ -46,6 +49,7 @@ export interface LinhaExtrato {
 }
 
 export async function listarContaCorrente(): Promise<ContaCorrente[]> {
+  const creditos = await creditoPorCliente();
   const { rows } = await pool.query<{
     id: number;
     nome: string;
@@ -80,13 +84,17 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
   return rows.map((r) => {
     const comprado = Number(r.comprado);
     const pago = Number(r.pago);
+    // credito de devolucao abate junto com o PIX: pra loja e a mesma coisa,
+    // ela pega menos dinheiro do bolso na terca
+    const credito = creditos.get(r.id) ?? 0;
     return {
       clienteId: r.id,
       clienteNome: r.nome,
       clienteTipo: r.tipo,
       comprado,
       pago,
-      saldo: comprado - pago,
+      credito,
+      saldo: comprado - pago - credito,
       ultimoPedido: r.ultimo_pedido ? String(r.ultimo_pedido).slice(0, 10) : null,
       ultimoPagamento: r.ultimo_pagamento ? String(r.ultimo_pagamento).slice(0, 10) : null,
     };
@@ -101,7 +109,7 @@ export async function totalAReceber(): Promise<number> {
 }
 
 export async function extratoDoCliente(clienteId: number): Promise<LinhaExtrato[]> {
-  const [pedidos, pagamentos] = await Promise.all([
+  const [pedidos, pagamentos, devolucoes] = await Promise.all([
     pool.query<{ id: number; data: string; total: string; itens: string }>(
       `SELECT p.id, p.data,
               SUM(i.quantidade * i.preco_unitario) AS total,
@@ -114,6 +122,13 @@ export async function extratoDoCliente(clienteId: number): Promise<LinhaExtrato[
     ),
     pool.query<{ id: number; data: string; valor: string; observacao: string | null }>(
       "SELECT id, data, valor, observacao FROM fabrica_pagamentos WHERE cliente_id = $1",
+      [clienteId]
+    ),
+    pool.query<{ id: number; data: string; credito: string; quantidade: string; condicao: string; nome: string }>(
+      `SELECT d.id, d.data, d.credito, d.quantidade, d.condicao, pr.nome
+       FROM fabrica_devolucoes d
+       JOIN fabrica_produtos pr ON pr.id = d.produto_id
+       WHERE d.cliente_id = $1 AND d.credito > 0`,
       [clienteId]
     ),
   ]);
@@ -133,10 +148,17 @@ export async function extratoDoCliente(clienteId: number): Promise<LinhaExtrato[
       descricao: r.observacao ?? "PIX",
       valor: -Number(r.valor),
     })),
+    ...devolucoes.rows.map((r) => ({
+      data: String(r.data).slice(0, 10),
+      tipo: "devolucao" as const,
+      referencia: r.id,
+      descricao: `Devolução ${Number(r.quantidade)}× ${r.nome}`,
+      valor: -Number(r.credito),
+    })),
   ];
 
-  // pedido e pagamento do mesmo dia: o pedido vem primeiro, senão o saldo
-  // aparece negativo no meio do extrato e assusta sem motivo
+  // pedido antes de crédito e pagamento no mesmo dia: senão o saldo aparece
+  // negativo no meio do extrato e assusta sem motivo
   linhas.sort((a, b) =>
     a.data === b.data
       ? a.tipo === b.tipo

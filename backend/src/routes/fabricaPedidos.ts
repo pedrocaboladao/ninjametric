@@ -18,6 +18,15 @@ import {
   registrarPagamento,
   excluirPagamento,
 } from "../services/fabricaPagamentosService";
+import {
+  listarDevolucoes,
+  registrarDevolucao,
+  marcarNotaCancelada,
+  excluirDevolucao,
+  notasPendentes,
+  CONDICOES,
+  type CondicaoDevolucao,
+} from "../services/fabricaDevolucoesService";
 
 export const fabricaPedidosRouter = Router();
 
@@ -131,6 +140,77 @@ fabricaPedidosRouter.delete("/pagamentos/:id", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao excluir o pagamento.");
+  }
+});
+
+// Devolucao vive aqui: e o caminho de volta da mesma venda, e quem recebe o
+// produto no balcao e quem lanca o pedido.
+fabricaPedidosRouter.get("/devolucoes", async (req, res) => {
+  const clienteId = Number(req.query.clienteId);
+  const condicao = req.query.condicao;
+  try {
+    const [devolucoes, pendentes] = await Promise.all([
+      listarDevolucoes({
+        clienteId: Number.isInteger(clienteId) && clienteId > 0 ? clienteId : undefined,
+        condicao: CONDICOES.includes(condicao as CondicaoDevolucao)
+          ? (condicao as CondicaoDevolucao)
+          : undefined,
+      }),
+      notasPendentes(),
+    ]);
+    res.json({ devolucoes, notasPendentes: pendentes });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar devolucoes.");
+  }
+});
+
+fabricaPedidosRouter.post("/devolucoes", async (req, res) => {
+  const b = req.body ?? {};
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  const condicao: CondicaoDevolucao = CONDICOES.includes(b.condicao) ? b.condicao : "BOM";
+  const credito =
+    b.credito === undefined || b.credito === null || b.credito === "" ? null : Number(b.credito);
+  if (credito !== null && (!Number.isFinite(credito) || credito < 0)) {
+    return res.status(400).json({ error: "Credito invalido." });
+  }
+  try {
+    res.status(201).json(
+      await registrarDevolucao({
+        clienteId: Number(b.clienteId),
+        produtoId: Number(b.produtoId),
+        data: typeof b.data === "string" && b.data ? b.data : null,
+        quantidade: Number(b.quantidade),
+        condicao,
+        credito,
+        notaFiscal: texto(b.notaFiscal),
+        recebidoPor: texto(b.recebidoPor),
+        observacao: texto(b.observacao),
+      })
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao registrar a devolucao.");
+  }
+});
+
+fabricaPedidosRouter.put("/devolucoes/:id/nota", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  try {
+    await marcarNotaCancelada(id, req.body?.notaCancelada !== false);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao marcar a nota.");
+  }
+});
+
+fabricaPedidosRouter.delete("/devolucoes/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  try {
+    await excluirDevolucao(id);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao excluir a devolucao.");
   }
 });
 

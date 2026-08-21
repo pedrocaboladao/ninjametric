@@ -25,6 +25,11 @@ export interface Dre {
   ate: string;
 
   receita: number;
+  // credito das devolucoes: reduz a receita porque a venda foi desfeita
+  devolucoes: number;
+  unidadesDevolvidas: number;
+  unidadesPerdidas: number;
+  receitaVendas: number;
   // provisao pela aliquota do mes, nao pela guia paga
   percentualImposto: number;
   impostoHerdadoDe: string | null;
