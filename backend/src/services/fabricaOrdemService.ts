@@ -375,11 +375,24 @@ export async function importarRoteiro(
 
     if (col.length >= 4 && Number.isFinite(pct) && col[2]) {
       const nome = col[2];
-      const achado = casar(nome, rows);
+      const codigo = col[1] || "";
+      let achado = casar(nome, rows);
+
+      // Nome nao bateu? Tenta o codigo do fornecedor da coluna B. A planilha
+      // tem erro de digitacao ("HIIDROXIDO" com dois I, "EMUSAO" sem o L) e o
+      // nome longo nunca vai casar, mas "BB45 K 25%" e "FORTWAX 6400" estao
+      // dentro do nome cadastrado. O codigo e curto e especifico — e mais
+      // confiavel que o nome justamente por isso.
+      if (achado.id === null && codigo) {
+        const porCodigo = casar(codigo, rows);
+        if (porCodigo.id !== null) achado = porCodigo;
+      }
+
       const achadoSub = achado.id === null ? casar(nome, subs.rows) : { id: null, ambiguo: false };
 
       if (achado.id === null && achadoSub.id === null) {
-        (achado.ambiguo || achadoSub.ambiguo ? ambiguos : naoEncontrados).push(nome);
+        const rotulo = codigo ? `${nome} (${codigo})` : nome;
+        (achado.ambiguo || achadoSub.ambiguo ? ambiguos : naoEncontrados).push(rotulo);
         continue;
       }
       soma += pct;
@@ -388,7 +401,7 @@ export async function importarRoteiro(
         materiaPrimaId: achado.id,
         subFormulaId: achado.id === null ? achadoSub.id : null,
         percentual: pct,
-        codigo: col[1] || null,
+        codigo: codigo || null,
         etapa: null,
         instrucao: null,
       });
