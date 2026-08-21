@@ -9,6 +9,8 @@ import type {
   LinhaExtrato,
   Devolucao,
   CondicaoDevolucao,
+  StatusRessarcimento,
+  ConsolidadoRessarcimento,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -176,13 +178,46 @@ export async function excluirPagamento(id: number): Promise<void> {
 export async function fetchDevolucoes(filtro: { clienteId?: number } = {}): Promise<{
   devolucoes: Devolucao[];
   notasPendentes: number;
+  consolidado: ConsolidadoRessarcimento;
 }> {
   const q = new URLSearchParams();
   if (filtro.clienteId) q.set("clienteId", String(filtro.clienteId));
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes?${q}`, {
     credentials: "include",
   });
-  return tratarResposta<{ devolucoes: Devolucao[]; notasPendentes: number }>(res);
+  return tratarResposta<{
+    devolucoes: Devolucao[];
+    notasPendentes: number;
+    consolidado: ConsolidadoRessarcimento;
+  }>(res);
+}
+
+export async function registrarRessarcimento(
+  id: number,
+  entrada: {
+    status: StatusRessarcimento;
+    valor: number;
+    data?: string | null;
+    protocolo?: string | null;
+  }
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes/${id}/ressarcimento`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  await semConteudo(res);
+}
+
+export async function definirCreditoDevolucao(id: number, credito: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/devolucoes/${id}/credito`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ credito }),
+  });
+  await semConteudo(res);
 }
 
 export async function registrarDevolucao(entrada: {
