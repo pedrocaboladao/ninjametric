@@ -164,7 +164,7 @@ export function FabricaEstoque() {
   async function apagarConta(c: ContaInsumo) {
     if (!confirm(`Excluir a conta de ${c.materiaPrimaNome} de ${c.competencia}?`)) return;
     try {
-      await excluirContaInsumo(c.id);
+      await excluirContaInsumo(c.contaId);
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao excluir.");
@@ -462,7 +462,7 @@ export function FabricaEstoque() {
                   const desatualizada =
                     c.kgConsumidos > 0 && Math.abs(c.custoPorKg - c.custoAplicado) > 0.0001;
                   return (
-                    <tr key={c.id}>
+                    <tr key={c.contaId}>
                       <td className="financeiro-td-mudo">
                         {c.competencia.split("-").reverse().join("/")}
                       </td>

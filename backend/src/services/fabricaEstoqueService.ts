@@ -327,17 +327,26 @@ export async function capacidadeDeProducao(): Promise<CapacidadeFormula[]> {
 // era um número inventado. Dividindo a conta pelos quilos de água que os lotes
 // do mês realmente usaram, o preço passa a ser medido.
 //
-// E rateia sozinho entre os lotes: quem levou mais água carrega mais conta,
-// porque o mesmo R$/kg multiplica o consumo de cada um.
+// A conta mora em `fabrica_contas` — a mesma tabela do Contas a pagar da
+// fábrica. Lançamento único, dois usos: o dinheiro no financeiro e o custo na
+// fórmula. Uma tabela só pra isso obrigaria a lançar a água duas vezes.
+//
+// E rateia sozinho entre os lotes: o mesmo R$/kg multiplica o consumo de cada
+// um, então quem levou mais água carrega mais conta.
+
+// piso: a fórmula nunca pode ficar com insumo de graça. Um mês de produção
+// alta e conta baixa daria fração de centavo por quilo, e o custo do produto
+// passaria a ignorar a água — que está lá, ocupando volume.
+const PISO_POR_KG = 0.01;
 
 export interface ContaInsumo {
-  id: number;
+  contaId: number;
   materiaPrimaId: number;
   materiaPrimaNome: string;
+  descricao: string;
   competencia: string;
   valor: number;
   percentualProducao: number;
-  observacao: string | null;
   // recalculados a cada leitura: lote lançado depois muda a conta
   kgConsumidos: number;
   custoPorKg: number;
@@ -345,14 +354,12 @@ export interface ContaInsumo {
   custoAplicado: number;
 }
 
-const PISO_POR_KG = 0.01;
-
-function limitesDoMes(competencia: string): { de: string; ate: string; primeiro: string } {
+function limitesDoMes(competencia: string): { de: string; ate: string } {
   // aceita "2026-08" e "2026-08-01"
   const [ano, mes] = competencia.split("-").map(Number);
-  const primeiro = `${ano}-${String(mes).padStart(2, "0")}-01`;
+  const mm = String(mes).padStart(2, "0");
   const ultimoDia = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
-  return { de: primeiro, ate: `${ano}-${String(mes).padStart(2, "0")}-${ultimoDia}`, primeiro };
+  return { de: `${ano}-${mm}-01`, ate: `${ano}-${mm}-${ultimoDia}` };
 }
 
 async function calcular(
@@ -365,36 +372,37 @@ async function calcular(
   const consumo = await consumoPorMateriaPrima(de, ate);
   const kgConsumidos = consumo.get(materiaPrimaId) ?? 0;
   const bruto = kgConsumidos > 0 ? (valor * (percentual / 100)) / kgConsumidos : 0;
-  // piso: a fórmula nunca pode ficar com insumo de graça. Um mês de produção
-  // alta e conta baixa daria fração de centavo por quilo, e o custo do produto
-  // passaria a ignorar a água — que está lá, ocupando volume.
-  const custoPorKg = kgConsumidos > 0 ? Math.max(PISO_POR_KG, bruto) : 0;
-  return { kgConsumidos, custoPorKg };
+  return { kgConsumidos, custoPorKg: kgConsumidos > 0 ? Math.max(PISO_POR_KG, bruto) : 0 };
 }
 
+// A competência da conta de insumo é o mês do vencimento: a conta de agosto
+// vence em setembro, mas a água que ela cobra foi usada em agosto. Por isso o
+// mês vem da própria data de vencimento menos nada — o operador lança o
+// vencimento no mês de consumo, que é como a conta chega.
 export async function listarContasInsumo(limite = 24): Promise<ContaInsumo[]> {
   const { rows } = await pool.query<{
     id: number;
     materia_prima_id: number;
     nome: string;
-    competencia: string;
+    descricao: string;
+    vencimento: string;
     valor: string;
     percentual_producao: string;
-    observacao: string | null;
     custo_por_kg: string;
   }>(
-    `SELECT c.id, c.materia_prima_id, mp.nome, c.competencia, c.valor,
-            c.percentual_producao, c.observacao, mp.custo_por_kg
-     FROM fabrica_contas_insumo c
+    `SELECT c.id, c.materia_prima_id, mp.nome, c.descricao, c.vencimento, c.valor,
+            c.percentual_producao, mp.custo_por_kg
+     FROM fabrica_contas c
      JOIN materias_primas mp ON mp.id = c.materia_prima_id
-     ORDER BY c.competencia DESC, c.id DESC
+     WHERE c.materia_prima_id IS NOT NULL AND c.status <> 'cancelado'
+     ORDER BY c.vencimento DESC, c.id DESC
      LIMIT $1`,
     [limite]
   );
 
   const contas: ContaInsumo[] = [];
   for (const r of rows) {
-    const competencia = String(r.competencia).slice(0, 7);
+    const competencia = String(r.vencimento).slice(0, 7);
     const valor = Number(r.valor);
     const percentualProducao = Number(r.percentual_producao);
     const { kgConsumidos, custoPorKg } = await calcular(
@@ -404,13 +412,13 @@ export async function listarContasInsumo(limite = 24): Promise<ContaInsumo[]> {
       percentualProducao
     );
     contas.push({
-      id: r.id,
+      contaId: r.id,
       materiaPrimaId: r.materia_prima_id,
       materiaPrimaNome: r.nome,
+      descricao: r.descricao,
       competencia,
       valor,
       percentualProducao,
-      observacao: r.observacao,
       kgConsumidos,
       custoPorKg,
       custoAplicado: Number(r.custo_por_kg),
@@ -419,50 +427,39 @@ export async function listarContasInsumo(limite = 24): Promise<ContaInsumo[]> {
   return contas;
 }
 
-// Lançar a conta já ajusta o preço do quilo no cadastro — é o pedido: lançou a
-// conta de água, a fórmula acerta sozinha.
+// Chamado depois de lançar ou editar uma conta ligada a insumo: recalcula o
+// preço do quilo e grava no cadastro da matéria-prima.
 //
-// Mês sem lote não dá pra dividir: a conta fica guardada, mas o preço não é
-// mexido. Dividir por zero viraria infinito, e sobrescrever com zero apagaria
-// um preço bom por causa de um mês parado.
-export async function registrarContaInsumo(
-  materiaPrimaId: number,
-  competencia: string,
-  valor: number,
-  percentualProducao: number,
-  observacao: string | null
-): Promise<{ id: number; kgConsumidos: number; custoPorKg: number; aplicado: boolean }> {
-  const { primeiro } = limitesDoMes(competencia);
-  const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO fabrica_contas_insumo
-       (materia_prima_id, competencia, valor, percentual_producao, observacao)
-     VALUES ($1, $2::date, $3, $4, $5)
-     ON CONFLICT (materia_prima_id, competencia) DO UPDATE
-       SET valor = EXCLUDED.valor,
-           percentual_producao = EXCLUDED.percentual_producao,
-           observacao = EXCLUDED.observacao
-     RETURNING id`,
-    [materiaPrimaId, primeiro, valor, percentualProducao, observacao]
+// Mês sem lote não aplica nada. Dividir por zero viraria infinito, e
+// sobrescrever com zero apagaria um preço bom por causa de um mês parado.
+export async function aplicarContaInsumo(
+  contaId: number
+): Promise<{ kgConsumidos: number; custoPorKg: number; aplicado: boolean }> {
+  const { rows } = await pool.query<{
+    materia_prima_id: number | null;
+    vencimento: string;
+    valor: string;
+    percentual_producao: string;
+  }>(
+    `SELECT materia_prima_id, vencimento, valor, percentual_producao
+     FROM fabrica_contas WHERE id = $1`,
+    [contaId]
   );
+  const conta = rows[0];
+  if (!conta?.materia_prima_id) return { kgConsumidos: 0, custoPorKg: 0, aplicado: false };
 
   const { kgConsumidos, custoPorKg } = await calcular(
-    materiaPrimaId,
-    competencia,
-    valor,
-    percentualProducao
+    conta.materia_prima_id,
+    String(conta.vencimento).slice(0, 7),
+    Number(conta.valor),
+    Number(conta.percentual_producao)
   );
   const aplicado = kgConsumidos > 0;
   if (aplicado) {
     await pool.query("UPDATE materias_primas SET custo_por_kg = $2 WHERE id = $1", [
-      materiaPrimaId,
+      conta.materia_prima_id,
       custoPorKg,
     ]);
   }
-  return { id: rows[0].id, kgConsumidos, custoPorKg, aplicado };
-}
-
-export async function excluirContaInsumo(id: number): Promise<void> {
-  // não desfaz o preço aplicado: o custo de hoje é o do último lançamento
-  // válido, e voltar sozinho pra um número antigo seria pior que ficar parado
-  await pool.query("DELETE FROM fabrica_contas_insumo WHERE id = $1", [id]);
+  return { kgConsumidos, custoPorKg, aplicado };
 }

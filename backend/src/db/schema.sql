@@ -922,26 +922,45 @@ ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS estoque_minimo NUMERIC(12,
 -- estoque — mas continua no custo, porque custar ele custa.
 ALTER TABLE materias_primas ADD COLUMN IF NOT EXISTS controla_estoque BOOLEAN NOT NULL DEFAULT TRUE;
 
--- Conta de consumo que vira preco por quilo de um insumo.
+
+-- Contas a pagar e receber da FABRICA — o barracao da fabricacao, que paga
+-- aluguel, agua e luz proprios.
 --
--- Agua e o caso: nao se compra em quilo, vem uma conta no fim do mes. Chutar
--- R$ 0,01/kg era um numero inventado. Dividindo a conta pelos quilos de agua
--- que os lotes do mes realmente usaram, o preco passa a ser medido.
+-- Deliberadamente separado de contas_lancamentos, que e das lojas. Aquela
+-- tabela exige loja_id NOT NULL: lancar a agua do barracao ali obrigaria a
+-- escolher uma das 20 lojas, e a despesa da fabrica entraria no resultado
+-- daquela loja. Nao existe "loja fabrica" — a loja chamada Fabrica de Tintas e
+-- outra coisa, uma loja que compra da fabrica e vende no Mercado Livre.
 --
--- percentual_producao existe porque a conta cobre a fabrica inteira — banheiro,
--- limpeza, lavagem de tanque. So a parte que virou tinta pode entrar no custo
--- do quilo.
+-- custo_fixo separa o que o DRE precisa somar de aluguel e salario do que
+-- varia com a producao.
 --
--- UNIQUE por mes: relancar o mesmo mes corrige, nao duplica.
-CREATE TABLE IF NOT EXISTS fabrica_contas_insumo (
+-- materia_prima_id e o pulo do gato da conta de agua: agua nao se compra em
+-- quilo, vem uma conta no fim do mes. Uma conta ligada a um insumo tem os
+-- quilos daquele mes calculados e vira preco por quilo na formula. Lancamento
+-- unico, dois usos — o dinheiro no financeiro e o custo na formula.
+CREATE TABLE IF NOT EXISTS fabrica_contas (
   id SERIAL PRIMARY KEY,
-  materia_prima_id INTEGER NOT NULL REFERENCES materias_primas(id) ON DELETE CASCADE,
-  competencia DATE NOT NULL,
-  valor NUMERIC(12, 2) NOT NULL,
-  percentual_producao NUMERIC(5, 2) NOT NULL DEFAULT 100,
+  tipo TEXT NOT NULL DEFAULT 'pagar' CHECK (tipo IN ('pagar', 'receber')),
+  descricao TEXT NOT NULL,
+  categoria TEXT,
+  contraparte TEXT,
+  valor NUMERIC(12, 2) NOT NULL CHECK (valor > 0),
+  vencimento DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendente' CHECK (status IN ('pendente', 'pago', 'cancelado')),
+  data_pagamento DATE,
+  custo_fixo BOOLEAN NOT NULL DEFAULT TRUE,
   observacao TEXT,
-  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (materia_prima_id, competencia)
+  materia_prima_id INTEGER REFERENCES materias_primas(id) ON DELETE SET NULL,
+  percentual_producao NUMERIC(5, 2) NOT NULL DEFAULT 100,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_fabrica_contas_insumo_mp
-  ON fabrica_contas_insumo (materia_prima_id, competencia DESC);
+CREATE INDEX IF NOT EXISTS idx_fabrica_contas_venc ON fabrica_contas (vencimento DESC);
+CREATE INDEX IF NOT EXISTS idx_fabrica_contas_status ON fabrica_contas (status, tipo);
+CREATE INDEX IF NOT EXISTS idx_fabrica_contas_insumo
+  ON fabrica_contas (materia_prima_id, vencimento DESC);
+
+-- Sai a tabela especialista: a conta de insumo virou caso particular da conta
+-- a pagar. Duas tabelas pro mesmo papel obrigariam a lancar a agua duas vezes,
+-- que e exatamente o que este modulo existe pra evitar.
+DROP TABLE IF EXISTS fabrica_contas_insumo;

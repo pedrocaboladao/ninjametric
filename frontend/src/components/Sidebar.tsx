@@ -48,6 +48,7 @@ export type View =
   | "fabrica_embalagens"
   | "fabrica_estoque"
   | "fabrica_pedidos"
+  | "fabrica_financeiro"
   | "ean"
   | "promocoes"
   | "pesquisa"
@@ -92,6 +93,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFabricaEmbalagens = temPermissao(usuario, "fabrica_embalagens");
   const podeFabricaEstoque = temPermissao(usuario, "fabrica_estoque");
   const podeFabricaPedidos = temPermissao(usuario, "fabrica_pedidos");
+  const podeFabricaFinanceiro = temPermissao(usuario, "fabrica_financeiro");
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
@@ -256,6 +258,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconBarcode size={16} />
                     <span>Pedidos de venda</span>
+                  </button>
+                )}
+                {podeFabricaFinanceiro && (
+                  <button
+                    className={`sidebar-item ${view === "fabrica_financeiro" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabrica_financeiro")}
+                  >
+                    <IconWallet size={16} />
+                    <span>Contas a pagar</span>
                   </button>
                 )}
               </div>

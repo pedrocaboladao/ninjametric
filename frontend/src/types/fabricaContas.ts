@@ -1,0 +1,47 @@
+// Contas a pagar e receber da Fábrica Distribuidora — o barracão da fabricação,
+// que paga aluguel, água e luz próprios.
+//
+// Separado do Contas a pagar das lojas de propósito: lá todo lançamento exige
+// uma loja, e a despesa da fábrica entraria no resultado dela. A loja chamada
+// "Fábrica de Tintas" é outra coisa — uma loja que compra da fábrica.
+export type TipoConta = "pagar" | "receber";
+export type StatusConta = "pendente" | "pago" | "cancelado";
+
+export interface Conta {
+  id: number;
+  tipo: TipoConta;
+  descricao: string;
+  categoria: string | null;
+  contraparte: string | null;
+  valor: number;
+  vencimento: string;
+  status: StatusConta;
+  dataPagamento: string | null;
+  // o DRE precisa separar aluguel e salário do que varia com a produção
+  custoFixo: boolean;
+  observacao: string | null;
+  // conta de insumo (água): o preço do quilo sai desta conta
+  materiaPrimaId: number | null;
+  materiaPrimaNome: string | null;
+  percentualProducao: number;
+  atrasada: boolean;
+  diasParaVencer: number;
+}
+
+export type ContaEntrada = Omit<
+  Conta,
+  "id" | "materiaPrimaNome" | "atrasada" | "diasParaVencer"
+> & {
+  // cria a mesma conta nos próximos N meses, mantendo o dia do vencimento
+  repetirMeses?: number;
+};
+
+export interface ResumoContas {
+  aPagar: number;
+  aReceber: number;
+  pago: number;
+  recebido: number;
+  atrasado: number;
+  custoFixo: number;
+  custoVariavel: number;
+}
