@@ -218,7 +218,7 @@ export function FabricaOrdem() {
           onClick={() => setMostrarImportar((v) => !v)}
           disabled={!formulaId}
         >
-          {mostrarImportar ? "Fechar" : "Colar roteiro da planilha"}
+          {mostrarImportar ? "Fechar" : "Colar uma fórmula"}
         </button>
         <button
           type="button"
@@ -235,7 +235,9 @@ export function FabricaOrdem() {
             Abra a planilha, selecione as linhas da ordem de produção — do primeiro item até o
             último, incluindo as linhas de espera — e cole aqui com Ctrl+V. O Excel copia as colunas
             separadas por tabulação, então não precisa arrumar nada: linha com código, nome e
-            percentual vira passo; linha só com texto vira instrução.
+            percentual vira passo; linha só com texto vira instrução. Esta é a única forma de
+            trazer o controle de qualidade, e serve quando o nome na planilha não bate com o do
+            cadastro — aqui a fórmula é a que está escolhida ali em cima, não a que a planilha diz.
           </p>
           <textarea
             className="clonar-input clonar-textarea"
@@ -247,7 +249,7 @@ export function FabricaOrdem() {
           <textarea
             className="clonar-input clonar-textarea"
             rows={5}
-            placeholder="Cole aqui o controle de qualidade (opcional): teste e especificação"
+            placeholder="Controle de qualidade (opcional): teste e especificação — vazio mantém o que já está gravado"
             value={coladoQc}
             onChange={(e) => setColadoQc(e.target.value)}
           />
@@ -263,7 +265,8 @@ export function FabricaOrdem() {
             Para planilha que tem várias fórmulas numa aba só — a tabela de cores, por exemplo.
             Selecione a aba inteira e cole aqui. Cada bloco precisa começar numa linha só com o
             nome da fórmula, escrito igual ao cadastro; as linhas de ITEM, TOTAL e peso do lote são
-            ignoradas sozinhas.
+            ignoradas sozinhas. Não traz controle de qualidade — o que já estiver gravado continua
+            lá, e para incluir testes novos use "Colar uma fórmula".
           </p>
           <textarea
             className="clonar-input clonar-textarea"
