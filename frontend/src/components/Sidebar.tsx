@@ -266,7 +266,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                     onClick={() => trocarView("fabrica_financeiro")}
                   >
                     <IconWallet size={16} />
-                    <span>Contas a pagar</span>
+                    <span>Financeiro e DRE</span>
                   </button>
                 )}
               </div>

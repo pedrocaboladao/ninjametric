@@ -10,6 +10,7 @@ import {
   type TipoConta,
   type StatusConta,
 } from "../services/fabricaContasService";
+import { montarDre } from "../services/fabricaDreService";
 
 export const fabricaContasRouter = Router();
 
@@ -74,6 +75,23 @@ fabricaContasRouter.get("/resumo", async (req, res) => {
     });
   } catch (err) {
     erro(res, err, "Falha ao calcular o resumo.");
+  }
+});
+
+// DRE vive no mesmo router e na mesma permissao: quem lanca a despesa e quem
+// le o resultado. Um modulo separado so pra isso obrigaria mais uma permissao
+// pra ver numero que ja vem daqui.
+fabricaContasRouter.get("/dre", async (req, res) => {
+  const { de, ate } = req.query;
+  try {
+    res.json({
+      dre: await montarDre(
+        typeof de === "string" && de ? de : undefined,
+        typeof ate === "string" && ate ? ate : undefined
+      ),
+    });
+  } catch (err) {
+    erro(res, err, "Falha ao montar o DRE.");
   }
 });
 
