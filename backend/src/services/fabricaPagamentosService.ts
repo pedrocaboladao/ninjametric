@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso, dataIsoOuNulo } from "./fabricaData";
 import { creditoPorCliente } from "./fabricaDevolucoesService";
 
 // Conta corrente das lojas com a fábrica.
@@ -95,8 +96,8 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
       pago,
       credito,
       saldo: comprado - pago - credito,
-      ultimoPedido: r.ultimo_pedido ? String(r.ultimo_pedido).slice(0, 10) : null,
-      ultimoPagamento: r.ultimo_pagamento ? String(r.ultimo_pagamento).slice(0, 10) : null,
+      ultimoPedido: dataIsoOuNulo(r.ultimo_pedido),
+      ultimoPagamento: dataIsoOuNulo(r.ultimo_pagamento),
     };
   });
 }
@@ -135,21 +136,21 @@ export async function extratoDoCliente(clienteId: number): Promise<LinhaExtrato[
 
   const linhas: Omit<LinhaExtrato, "saldo">[] = [
     ...pedidos.rows.map((r) => ({
-      data: String(r.data).slice(0, 10),
+      data: dataIso(r.data),
       tipo: "pedido" as const,
       referencia: r.id,
       descricao: `Pedido ${r.id} — ${r.itens} ${Number(r.itens) === 1 ? "item" : "itens"}`,
       valor: Number(r.total),
     })),
     ...pagamentos.rows.map((r) => ({
-      data: String(r.data).slice(0, 10),
+      data: dataIso(r.data),
       tipo: "pagamento" as const,
       referencia: r.id,
       descricao: r.observacao ?? "PIX",
       valor: -Number(r.valor),
     })),
     ...devolucoes.rows.map((r) => ({
-      data: String(r.data).slice(0, 10),
+      data: dataIso(r.data),
       tipo: "devolucao" as const,
       referencia: r.id,
       descricao: `Devolução ${Number(r.quantidade)}× ${r.nome}`,
@@ -197,7 +198,7 @@ export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
     id: r.id,
     clienteId: r.cliente_id,
     clienteNome: r.nome,
-    data: String(r.data).slice(0, 10),
+    data: dataIso(r.data),
     valor: Number(r.valor),
     observacao: r.observacao,
   }));

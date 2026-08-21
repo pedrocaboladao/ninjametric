@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso } from "./fabricaData";
 import { totaisDoPeriodo } from "./fabricaDevolucoesService";
 
 // DRE da Fábrica Distribuidora — só desta operação.
@@ -91,7 +92,7 @@ export async function aliquotaDoMes(
     [competencia]
   );
   if (!rows.length) return { percentual: 0, herdadoDe: null };
-  const mes = String(rows[0].competencia).slice(0, 7);
+  const mes = dataIso(rows[0].competencia).slice(0, 7);
   return {
     percentual: Number(rows[0].percentual),
     herdadoDe: mes === competencia.slice(0, 7) ? null : mes,
