@@ -1066,3 +1066,48 @@ ALTER TABLE fabrica_devolucoes ADD COLUMN IF NOT EXISTS ressarcimento_data DATE;
 ALTER TABLE fabrica_devolucoes ADD COLUMN IF NOT EXISTS ressarcimento_protocolo TEXT;
 CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_ressarcimento
   ON fabrica_devolucoes (ressarcimento_status, data DESC);
+
+-- Roteiro de producao: a ordem exata de fazer, com os tempos de espera.
+--
+-- Fica em tabela propria e NAO em formula_itens de proposito. O Custo de
+-- Fabricacao salva a formula com DELETE + INSERT dos itens (salvarItens em
+-- fabricacaoService), entao qualquer coluna de ordem ou instrucao que morasse
+-- la seria apagada na primeira edicao da formula — sem erro, sem aviso, so
+-- sumiria.
+--
+-- O roteiro guarda o proprio percentual em vez de apontar pro item da formula.
+-- Os ids de formula_itens sao recriados a cada save, entao nao ha o que
+-- apontar. Guardando o percentual, o roteiro imprime sozinho e ainda da pra
+-- comparar com a formula e avisar quando os dois discordam.
+--
+-- Duas naturezas de passo na mesma tabela:
+--   materia_prima_id ou sub_formula_id preenchido -> passo de ADICAO
+--   os dois nulos                                 -> passo de INSTRUCAO
+--     ("deixar em dispersao de 40 min a 1 hora ate abrir a fineza")
+--
+-- E por isso que a agua pode aparecer duas vezes: sao dois momentos
+-- diferentes de adicao, que e justamente o que a folha impressa precisa dizer.
+CREATE TABLE IF NOT EXISTS fabrica_roteiro_passos (
+  id SERIAL PRIMARY KEY,
+  formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
+  ordem INTEGER NOT NULL,
+  materia_prima_id INTEGER REFERENCES materias_primas(id) ON DELETE RESTRICT,
+  sub_formula_id INTEGER REFERENCES formulas(id) ON DELETE RESTRICT,
+  percentual NUMERIC(6, 3),
+  codigo TEXT,
+  etapa TEXT,
+  instrucao TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_roteiro_passos_formula
+  ON fabrica_roteiro_passos (formula_id, ordem);
+
+-- Controle de qualidade que vai no rodape da folha, pro operador preencher.
+CREATE TABLE IF NOT EXISTS fabrica_roteiro_qc (
+  id SERIAL PRIMARY KEY,
+  formula_id INTEGER NOT NULL REFERENCES formulas(id) ON DELETE CASCADE,
+  ordem INTEGER NOT NULL,
+  teste TEXT NOT NULL,
+  especificacao TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_roteiro_qc_formula
+  ON fabrica_roteiro_qc (formula_id, ordem);

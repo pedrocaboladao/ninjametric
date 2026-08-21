@@ -25,6 +25,7 @@ import { fabricaEmbalagensRouter } from "./routes/fabricaEmbalagens";
 import { fabricaEstoqueRouter } from "./routes/fabricaEstoque";
 import { fabricaPedidosRouter } from "./routes/fabricaPedidos";
 import { fabricaContasRouter } from "./routes/fabricaContas";
+import { fabricaOrdemRouter } from "./routes/fabricaOrdem";
 import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
 import { agentesRouter } from "./routes/agentes";
@@ -81,6 +82,7 @@ app.use("/api/fabrica-embalagens", requireAuth, requirePermissao("fabrica_embala
 app.use("/api/fabrica-estoque", requireAuth, requirePermissao("fabrica_estoque"), fabricaEstoqueRouter);
 app.use("/api/fabrica-pedidos", requireAuth, requirePermissao("fabrica_pedidos"), fabricaPedidosRouter);
 app.use("/api/fabrica-contas", requireAuth, requirePermissao("fabrica_financeiro"), fabricaContasRouter);
+app.use("/api/fabrica-ordem", requireAuth, requirePermissao("fabricacao"), fabricaOrdemRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
 app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRouter);
 // Admin-only (mesmo padrão de /api/usuarios) — não é módulo comum, não
