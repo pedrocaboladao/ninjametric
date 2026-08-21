@@ -69,6 +69,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const [lojasAberta, setLojasAberta] = useState(true);
   const [equipeAberta, setEquipeAberta] = useState(true);
   const [fabricaAberta, setFabricaAberta] = useState(true);
+  const [financeiroLojasAberto, setFinanceiroLojasAberto] = useState(true);
   const [menuMobileAberto, setMenuMobileAberto] = useState(false);
 
   function trocarView(v: View) {
@@ -94,6 +95,10 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFabricaEstoque = temPermissao(usuario, "fabrica_estoque");
   const podeFabricaPedidos = temPermissao(usuario, "fabrica_pedidos");
   const podeFabricaFinanceiro = temPermissao(usuario, "fabrica_financeiro");
+  // Financeiro, Contas e DRE das lojas viram um grupo so. Soltos no menu, ao
+  // lado do financeiro da Fabrica Distribuidora, davam margem pra lancar
+  // despesa da fabrica na conta das lojas — sao duas empresas diferentes.
+  const mostrarFinanceiroLojas = podeFinanceiro || podeContas || podeDre;
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
@@ -144,41 +149,49 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
           </>
         )}
 
-        {podeFinanceiro && (
+        {mostrarFinanceiroLojas && (
           <>
             <button
-              className={`sidebar-item ${view === "financeiro" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => trocarView("financeiro")}
+              className="sidebar-group-toggle"
+              onClick={() => setFinanceiroLojasAberto((v) => !v)}
             >
-              <IconMoney size={16} />
-              <span>Financeiro</span>
+              <IconMoney />
+              <span>Financeiro Lojas</span>
+              <IconChevron open={financeiroLojasAberto} />
             </button>
-            <div className="sidebar-divider" />
-          </>
-        )}
 
-        {podeContas && (
-          <>
-            <button
-              className={`sidebar-item ${view === "contas" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => trocarView("contas")}
-            >
-              <IconWallet size={16} />
-              <span>Contas a pagar e receber</span>
-            </button>
-            <div className="sidebar-divider" />
-          </>
-        )}
+            {financeiroLojasAberto && (
+              <div className="sidebar-subitems">
+                {podeFinanceiro && (
+                  <button
+                    className={`sidebar-item ${view === "financeiro" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("financeiro")}
+                  >
+                    <IconMoney size={16} />
+                    <span>Feed de vendas</span>
+                  </button>
+                )}
+                {podeContas && (
+                  <button
+                    className={`sidebar-item ${view === "contas" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("contas")}
+                  >
+                    <IconWallet size={16} />
+                    <span>Contas a pagar e receber</span>
+                  </button>
+                )}
+                {podeDre && (
+                  <button
+                    className={`sidebar-item ${view === "dre" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("dre")}
+                  >
+                    <IconReport size={16} />
+                    <span>DRE</span>
+                  </button>
+                )}
+              </div>
+            )}
 
-        {podeDre && (
-          <>
-            <button
-              className={`sidebar-item ${view === "dre" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => trocarView("dre")}
-            >
-              <IconReport size={16} />
-              <span>DRE</span>
-            </button>
             <div className="sidebar-divider" />
           </>
         )}
