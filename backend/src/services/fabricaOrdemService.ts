@@ -242,7 +242,10 @@ export interface PassoEntrada {
 export async function salvarRoteiro(
   formulaId: number,
   passos: PassoEntrada[],
-  qc: LinhaQc[]
+  // null = nao mexe no controle de qualidade que ja esta gravado. Reimportar
+  // so o roteiro nao pode apagar os testes em silencio: foi assim que o
+  // Selador Base A perdeu os 8 dele numa reimportacao.
+  qc: LinhaQc[] | null
 ): Promise<void> {
   const cliente = await pool.connect();
   try {
@@ -266,9 +269,11 @@ export async function salvarRoteiro(
         ]
       );
     }
-    await cliente.query("DELETE FROM fabrica_roteiro_qc WHERE formula_id = $1", [formulaId]);
+    if (qc !== null) {
+      await cliente.query("DELETE FROM fabrica_roteiro_qc WHERE formula_id = $1", [formulaId]);
+    }
     let ordemQc = 0;
-    for (const linha of qc) {
+    for (const linha of qc ?? []) {
       await cliente.query(
         "INSERT INTO fabrica_roteiro_qc (formula_id, ordem, teste, especificacao) VALUES ($1,$2,$3,$4)",
         [formulaId, ordemQc++, linha.teste, linha.especificacao]
@@ -455,7 +460,8 @@ export async function importarRoteiro(
   }
 
   if (!adicoes) throw new Error("Nenhum passo de adição reconhecido — confira o que foi colado.");
-  await salvarRoteiro(formulaId, passos, qc);
+  // caixa do QC vazia = o operador so quis reimportar o roteiro
+  await salvarRoteiro(formulaId, passos, qc.length ? qc : null);
 
   return {
     passos: adicoes,
