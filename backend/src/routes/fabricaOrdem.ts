@@ -4,6 +4,7 @@ import {
   salvarRoteiro,
   formulasComRoteiro,
   type PassoEntrada,
+  importarRoteiro,
   type LinhaQc,
 } from "../services/fabricaOrdemService";
 
@@ -80,5 +81,22 @@ fabricaOrdemRouter.put("/:formulaId", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao salvar o roteiro.");
+  }
+});
+
+// Colar direto do Excel: o operador seleciona as linhas da ordem de producao na
+// planilha, Ctrl+C e cola aqui. O Excel copia como TSV, entao nao precisa de
+// formato nenhum inventado por mim — e ele repete isso sozinho a cada formula
+// nova, sem depender de eu importar.
+fabricaOrdemRouter.post("/:formulaId/importar", async (req, res) => {
+  const formulaId = Number(req.params.formulaId);
+  if (!Number.isInteger(formulaId)) return res.status(400).json({ error: "Id inválido." });
+  const texto = typeof req.body?.texto === "string" ? req.body.texto : "";
+  if (!texto.trim()) return res.status(400).json({ error: "Cole as linhas da planilha." });
+  const textoQc = typeof req.body?.textoQc === "string" ? req.body.textoQc : "";
+  try {
+    res.json(await importarRoteiro(formulaId, texto, textoQc));
+  } catch (err) {
+    erro(res, err, "Falha ao importar o roteiro.");
   }
 });

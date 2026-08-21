@@ -294,3 +294,139 @@ export async function formulasComRoteiro(): Promise<
   );
   return rows.map((r) => ({ formulaId: r.id, nome: r.nome, passos: Number(r.passos) }));
 }
+
+// --- importar colando da planilha --------------------------------------------
+//
+// O Excel copia como TSV: uma linha por celula-linha, colunas separadas por
+// tab. Entao da pra selecionar as linhas da ordem de producao na planilha,
+// Ctrl+C, e colar aqui — sem digitar passo nenhum, e sem eu inventar um
+// formato que so eu sei escrever.
+//
+// Linha com codigo, nome e percentual vira passo de ADICAO.
+// Linha so com texto na primeira coluna vira INSTRUCAO ("deixar em dispersao
+// de 40 min a 1 hora"), que e exatamente como a planilha ja guarda os tempos.
+
+function normalizar(s: string): string {
+  return s
+    .toUpperCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim();
+}
+
+interface Achado {
+  id: number;
+  nome: string;
+}
+
+// Casa o nome da planilha com a materia-prima cadastrada. Tenta igualdade
+// primeiro; so depois aceita que um contenha o outro, porque o cadastro usa
+// nome longo ("BACTERICIDA / FORTBIO BT 1001") e a planilha as vezes usa curto.
+// Se dois cadastros servirem, nao escolhe — devolve nulo e a tela mostra a
+// linha pro operador resolver. Chutar aqui poria a materia errada na formula.
+function casar(nome: string, cadastro: Achado[]): { id: number | null; ambiguo: boolean } {
+  const alvo = normalizar(nome);
+  if (!alvo) return { id: null, ambiguo: false };
+
+  const exatos = cadastro.filter((c) => normalizar(c.nome) === alvo);
+  if (exatos.length === 1) return { id: exatos[0].id, ambiguo: false };
+  if (exatos.length > 1) return { id: null, ambiguo: true };
+
+  const parciais = cadastro.filter((c) => {
+    const n = normalizar(c.nome);
+    return n.includes(alvo) || alvo.includes(n);
+  });
+  if (parciais.length === 1) return { id: parciais[0].id, ambiguo: false };
+  return { id: null, ambiguo: parciais.length > 1 };
+}
+
+export interface ResultadoImportacao {
+  passos: number;
+  instrucoes: number;
+  qc: number;
+  naoEncontrados: string[];
+  ambiguos: string[];
+  somaPercentual: number;
+}
+
+export async function importarRoteiro(
+  formulaId: number,
+  texto: string,
+  textoQc: string
+): Promise<ResultadoImportacao> {
+  const { rows } = await pool.query<Achado>("SELECT id, nome FROM materias_primas");
+  const subs = await pool.query<Achado>("SELECT id, nome FROM formulas WHERE id <> $1", [formulaId]);
+
+  const passos: PassoEntrada[] = [];
+  const naoEncontrados: string[] = [];
+  const ambiguos: string[] = [];
+  let soma = 0;
+  let instrucoes = 0;
+  let adicoes = 0;
+
+  for (const linhaBruta of texto.split(/\r?\n/)) {
+    const linha = linhaBruta.replace(/\t+$/, "");
+    if (!linha.trim()) continue;
+    const col = linha.split("\t").map((c) => c.trim());
+
+    // percentual pode vir com virgula decimal do Excel em pt-BR
+    const pct = col.length >= 4 ? Number(col[3].replace(",", ".")) : NaN;
+
+    if (col.length >= 4 && Number.isFinite(pct) && col[2]) {
+      const nome = col[2];
+      const achado = casar(nome, rows);
+      const achadoSub = achado.id === null ? casar(nome, subs.rows) : { id: null, ambiguo: false };
+
+      if (achado.id === null && achadoSub.id === null) {
+        (achado.ambiguo || achadoSub.ambiguo ? ambiguos : naoEncontrados).push(nome);
+        continue;
+      }
+      soma += pct;
+      adicoes += 1;
+      passos.push({
+        materiaPrimaId: achado.id,
+        subFormulaId: achado.id === null ? achadoSub.id : null,
+        percentual: pct,
+        codigo: col[1] || null,
+        etapa: null,
+        instrucao: null,
+      });
+      continue;
+    }
+
+    // sobrou texto: e a instrucao ou o nome da fase
+    const instrucao = col.find((c) => c.length > 2) ?? "";
+    if (!instrucao) continue;
+    instrucoes += 1;
+    passos.push({
+      materiaPrimaId: null,
+      subFormulaId: null,
+      percentual: null,
+      codigo: null,
+      etapa: null,
+      instrucao,
+    });
+  }
+
+  const qc: LinhaQc[] = [];
+  for (const linhaBruta of (textoQc || "").split(/\r?\n/)) {
+    if (!linhaBruta.trim()) continue;
+    const col = linhaBruta.split("\t").map((c) => c.trim());
+    const teste = col[0];
+    if (!teste) continue;
+    qc.push({ teste, especificacao: col.slice(1).find((c) => c) ?? null });
+  }
+
+  if (!adicoes) throw new Error("Nenhum passo de adição reconhecido — confira o que foi colado.");
+  await salvarRoteiro(formulaId, passos, qc);
+
+  return {
+    passos: adicoes,
+    instrucoes,
+    qc: qc.length,
+    naoEncontrados,
+    ambiguos,
+    somaPercentual: soma,
+  };
+}

@@ -18,6 +18,29 @@ async function fetchFormulas(): Promise<FormulaComRoteiro[]> {
   return (await tratar<{ formulas: FormulaComRoteiro[] }>(res)).formulas;
 }
 
+interface ResultadoImportacao {
+  passos: number;
+  instrucoes: number;
+  qc: number;
+  naoEncontrados: string[];
+  ambiguos: string[];
+  somaPercentual: number;
+}
+
+async function importar(
+  formulaId: number,
+  texto: string,
+  textoQc: string
+): Promise<ResultadoImportacao> {
+  const res = await fetch(`${API_BASE}/api/fabrica-ordem/${formulaId}/importar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ texto, textoQc }),
+  });
+  return tratar<ResultadoImportacao>(res);
+}
+
 async function fetchOrdem(formulaId: number, peso: number): Promise<OrdemFabricacao> {
   const res = await fetch(`${API_BASE}/api/fabrica-ordem/${formulaId}?peso=${peso}`, {
     credentials: "include",
@@ -45,6 +68,10 @@ export function FabricaOrdem() {
   const [ordem, setOrdem] = useState<OrdemFabricacao | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
+  const [mostrarImportar, setMostrarImportar] = useState(false);
+  const [colado, setColado] = useState("");
+  const [coladoQc, setColadoQc] = useState("");
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     fetchFormulas()
@@ -74,6 +101,31 @@ export function FabricaOrdem() {
     const t = setTimeout(() => void gerar(), 400);
     return () => clearTimeout(t);
   }, [formulaId, peso, gerar]);
+
+  async function importarColado() {
+    const id = Number(formulaId);
+    if (!Number.isInteger(id) || !id) return setErro("Escolha a fórmula primeiro.");
+    try {
+      const r = await importar(id, colado, coladoQc);
+      const partes = [
+        `${r.passos} passos e ${r.instrucoes} instruções importados`,
+        `somam ${r.somaPercentual.toFixed(2)}%`,
+      ];
+      if (r.qc) partes.push(`${r.qc} testes de qualidade`);
+      if (r.naoEncontrados.length)
+        partes.push(`não achei no cadastro: ${r.naoEncontrados.join(", ")}`);
+      if (r.ambiguos.length) partes.push(`nome ambíguo: ${r.ambiguos.join(", ")}`);
+      setAviso(partes.join(" · "));
+      setErro(null);
+      setMostrarImportar(false);
+      setColado("");
+      setColadoQc("");
+      setFormulas(await fetchFormulas());
+      await gerar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao importar.");
+    }
+  }
 
   const itens: ItemBusca[] = useMemo(
     () =>
@@ -128,9 +180,46 @@ export function FabricaOrdem() {
         >
           Imprimir
         </button>
+        <button
+          type="button"
+          className="btn-excluir"
+          onClick={() => setMostrarImportar((v) => !v)}
+          disabled={!formulaId}
+        >
+          {mostrarImportar ? "Fechar" : "Colar roteiro da planilha"}
+        </button>
       </div>
 
+      {mostrarImportar && (
+        <div className="ordem-sem-impressao">
+          <p className="financeiro-td-mudo">
+            Abra a planilha, selecione as linhas da ordem de produção — do primeiro item até o
+            último, incluindo as linhas de espera — e cole aqui com Ctrl+V. O Excel copia as colunas
+            separadas por tabulação, então não precisa arrumar nada: linha com código, nome e
+            percentual vira passo; linha só com texto vira instrução.
+          </p>
+          <textarea
+            className="clonar-input clonar-textarea"
+            rows={10}
+            placeholder="Cole aqui as linhas da fórmula"
+            value={colado}
+            onChange={(e) => setColado(e.target.value)}
+          />
+          <textarea
+            className="clonar-input clonar-textarea"
+            rows={5}
+            placeholder="Cole aqui o controle de qualidade (opcional): teste e especificação"
+            value={coladoQc}
+            onChange={(e) => setColadoQc(e.target.value)}
+          />
+          <button type="button" className="btn-responder" onClick={() => void importarColado()}>
+            Importar roteiro
+          </button>
+        </div>
+      )}
+
       {erro && <p className="financeiro-td-mudo ordem-sem-impressao">{erro}</p>}
+      {aviso && <p className="financeiro-td-mudo ordem-sem-impressao">{aviso}</p>}
       {carregando && <p className="financeiro-td-mudo ordem-sem-impressao">Montando…</p>}
 
       {ordem && ordem.avisos.length > 0 && (
