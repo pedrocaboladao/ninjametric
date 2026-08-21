@@ -914,3 +914,10 @@ CREATE TABLE IF NOT EXISTS fabrica_produto_ajustes (
 CREATE INDEX IF NOT EXISTS idx_fabrica_produto_ajustes_produto ON fabrica_produto_ajustes (produto_id);
 
 ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS estoque_minimo NUMERIC(12, 3) NOT NULL DEFAULT 0;
+
+-- Nem toda materia-prima e comprada. Agua sai da torneira e e 30 a 39% de
+-- cada receita: sem esta marca ela vira o gargalo de TODAS as formulas, com
+-- saldo zero, e a tela "Da pra fabricar" responde zero pra tudo. Insumo nao
+-- controlado sai do calculo de gargalo, do alerta de minimo e do valor em
+-- estoque — mas continua no custo, porque custar ele custa.
+ALTER TABLE materias_primas ADD COLUMN IF NOT EXISTS controla_estoque BOOLEAN NOT NULL DEFAULT TRUE;

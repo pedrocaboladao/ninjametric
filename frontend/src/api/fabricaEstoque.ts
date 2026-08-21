@@ -42,6 +42,16 @@ export async function definirEstoqueMinimo(id: number, estoqueMinimo: number): P
   await semConteudo(res);
 }
 
+export async function definirControlaEstoque(id: number, controlaEstoque: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-estoque/${id}/controla`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ controlaEstoque }),
+  });
+  await semConteudo(res);
+}
+
 export async function registrarAjuste(entrada: {
   materiaPrimaId: number;
   tipo: "ajuste" | "inventario";
