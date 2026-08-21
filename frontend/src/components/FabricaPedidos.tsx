@@ -19,6 +19,8 @@ import {
   registrarDevolucao,
   marcarNotaCancelada,
   excluirDevolucao,
+  registrarRessarcimento,
+  definirCreditoDevolucao,
 } from "../api/fabricaPedidos";
 import { fetchFabricaClientes } from "../api/fabricaClientes";
 import { fetchFabricaProdutos } from "../api/fabricaProdutos";
@@ -33,6 +35,8 @@ import type {
   LinhaExtrato,
   Devolucao,
   CondicaoDevolucao,
+  StatusRessarcimento,
+  ConsolidadoRessarcimento,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -74,6 +78,7 @@ export function FabricaPedidos() {
   const [extratoDe, setExtratoDe] = useState<ContaCorrente | null>(null);
   const [devolucoes, setDevolucoes] = useState<Devolucao[]>([]);
   const [notasPendentes, setNotasPendentes] = useState(0);
+  const [consolidado, setConsolidado] = useState<ConsolidadoRessarcimento | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [aba, setAba] = useState<
@@ -136,6 +141,7 @@ export function FabricaPedidos() {
       setPagamentos(pg);
       setDevolucoes(dv.devolucoes);
       setNotasPendentes(dv.notasPendentes);
+      setConsolidado(dv.consolidado);
       setPedidos(ps);
       setClientes(cs);
       setProdutos(prs);
@@ -362,6 +368,49 @@ export function FabricaPedidos() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao registrar a devolucao.");
+    }
+  }
+
+  async function mudarRessarcimento(d: Devolucao, status: StatusRessarcimento) {
+    try {
+      // ao marcar recebido sem valor informado ainda, assume o valor cheio da
+      // mercadoria: e o caso comum, e o funcionario corrige se veio parcial
+      const valor =
+        status === "RECEBIDO" && d.ressarcimentoValor === 0
+          ? d.valorDaMercadoria
+          : d.ressarcimentoValor;
+      await registrarRessarcimento(d.id, {
+        status,
+        valor,
+        data: status === "RECEBIDO" ? d.ressarcimentoData : null,
+        protocolo: d.ressarcimentoProtocolo,
+      });
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar o ressarcimento.");
+    }
+  }
+
+  async function mudarValorRessarcimento(d: Devolucao, valor: string) {
+    try {
+      await registrarRessarcimento(d.id, {
+        status: "RECEBIDO",
+        valor: num(valor),
+        data: d.ressarcimentoData,
+        protocolo: d.ressarcimentoProtocolo,
+      });
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar o valor.");
+    }
+  }
+
+  async function mudarCredito(d: Devolucao, valor: string) {
+    try {
+      await definirCreditoDevolucao(d.id, num(valor));
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar o crédito.");
     }
   }
 
@@ -1115,6 +1164,45 @@ export function FabricaPedidos() {
             )}
           </div>
 
+          {consolidado && consolidado.avarias > 0 && (
+            <>
+              <div className="financeiro-filtros">
+                <div>
+                  <div className="financeiro-stat-label">SE NADA FOSSE LANÇADO</div>
+                  <div className="financeiro-stat-valor">
+                    {formatCurrency(consolidado.valorAvariado)}
+                  </div>
+                </div>
+                <div>
+                  <div className="financeiro-stat-label">MERCADO LIVRE COBRIU</div>
+                  <div className="financeiro-stat-valor">
+                    {formatCurrency(consolidado.recebidoValor)}
+                  </div>
+                </div>
+                <div>
+                  <div className="financeiro-stat-label">FÁBRICA CREDITOU</div>
+                  <div className="financeiro-stat-valor">
+                    {formatCurrency(consolidado.creditoDado)}
+                  </div>
+                </div>
+                <div>
+                  <div className="financeiro-stat-label">AINDA DESCOBERTO</div>
+                  <div className="financeiro-stat-valor">
+                    {formatCurrency(consolidado.descoberto)}
+                  </div>
+                </div>
+              </div>
+              <p className="financeiro-td-mudo">
+                {consolidado.avarias} avaria{consolidado.avarias === 1 ? "" : "s"} no período ·{" "}
+                {consolidado.naoPedido} sem pedir ao ML · {consolidado.pedido} aguardando resposta ·{" "}
+                {consolidado.recebido} recebido{consolidado.recebido === 1 ? "" : "s"} ·{" "}
+                {consolidado.negado} negado{consolidado.negado === 1 ? "" : "s"}.
+                {consolidado.naoPedido > 0 &&
+                  ` Enquanto ${consolidado.naoPedido} não for pedido, esse dinheiro aparece como perda total sem ser.`}
+              </p>
+            </>
+          )}
+
           <div className="financeiro-filtros">
             <BuscaSelecao
               itens={itensCliente}
@@ -1185,6 +1273,7 @@ export function FabricaPedidos() {
                   <th>PRODUTO</th>
                   <th className="financeiro-th-numero">QTD</th>
                   <th>CONDIÇÃO</th>
+                  <th>RESSARCIMENTO ML</th>
                   <th className="financeiro-th-numero">CRÉDITO</th>
                   <th>NOTA FISCAL</th>
                   <th>RECEBEU</th>
@@ -1194,7 +1283,7 @@ export function FabricaPedidos() {
               <tbody>
                 {!devolucoes.length && (
                   <tr>
-                    <td colSpan={9}>Nenhuma devolução registrada.</td>
+                    <td colSpan={10}>Nenhuma devolução registrada.</td>
                   </tr>
                 )}
                 {devolucoes.map((d) => (
@@ -1210,8 +1299,54 @@ export function FabricaPedidos() {
                           ? "estourado · descartado"
                           : "quebrado · tambor"}
                     </td>
+                    <td>
+                      {d.condicao === "BOM" ? (
+                        <span className="financeiro-td-mudo">não se aplica</span>
+                      ) : (
+                        <>
+                          <select
+                            className="clonar-input fabricacao-input-pequeno"
+                            value={d.ressarcimentoStatus}
+                            onChange={(e) =>
+                              void mudarRessarcimento(d, e.target.value as StatusRessarcimento)
+                            }
+                          >
+                            <option value="NAO_PEDIDO">Não pedido</option>
+                            <option value="PEDIDO">Pedido — aguardando</option>
+                            <option value="RECEBIDO">Recebido</option>
+                            <option value="NEGADO">Negado</option>
+                          </select>
+                          {d.ressarcimentoStatus === "RECEBIDO" && (
+                            <input
+                              className="clonar-input fabricacao-input-pequeno"
+                              defaultValue={d.ressarcimentoValor || ""}
+                              placeholder={String(d.valorDaMercadoria)}
+                              title="Quanto o Mercado Livre pagou de fato"
+                              onBlur={(ev) => {
+                                if (num(ev.target.value) !== d.ressarcimentoValor)
+                                  void mudarValorRessarcimento(d, ev.target.value);
+                              }}
+                            />
+                          )}
+                          {d.descoberto > 0 && (
+                            <span className="financeiro-td-mudo">
+                              {" "}
+                              descoberto {formatCurrency(d.descoberto)}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </td>
                     <td className="financeiro-th-numero">
-                      {d.credito > 0 ? formatCurrency(d.credito) : "—"}
+                      <input
+                        className="clonar-input fabricacao-input-pequeno"
+                        defaultValue={d.credito || ""}
+                        placeholder="—"
+                        title="Editável: cubra aqui o que o Mercado Livre não pagou"
+                        onBlur={(ev) => {
+                          if (num(ev.target.value) !== d.credito) void mudarCredito(d, ev.target.value);
+                        }}
+                      />
                     </td>
                     <td className={d.notaCancelada ? "financeiro-td-mudo" : undefined}>
                       <button
@@ -1245,6 +1380,12 @@ export function FabricaPedidos() {
               </tbody>
             </table>
           </div>
+          <p className="financeiro-td-mudo">
+            O ressarcimento do Mercado Livre cai na conta da <strong>loja</strong>, não da fábrica
+            — lançar aqui não move dinheiro nenhum, serve pra avaria parada não parecer perda de
+            100% quando o ML já cobriu. O que o ML não pagar aparece como{" "}
+            <strong>descoberto</strong>, e é esse número que você usa pra decidir o crédito.
+          </p>
           <p className="financeiro-td-mudo">
             A fábrica emite nota em 100% das vendas, então toda devolução deixa uma nota pra
             cancelar. O botão vermelho não cancela nada sozinho — quem cancela é o emissor. Ele

@@ -1046,3 +1046,23 @@ CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_cliente
   ON fabrica_devolucoes (cliente_id, data DESC);
 CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_produto
   ON fabrica_devolucoes (produto_id, data DESC);
+
+-- Ressarcimento do Mercado Livre pela avaria.
+--
+-- O funcionario que recebe a devolucao manda foto pro ML e pede ressarcimento.
+-- O dinheiro cai na conta da LOJA, nao da fabrica — a venda no ML era dela.
+-- Entao isso nao e receita da fabrica: e o controle de quanto a loja foi
+-- coberta, que e o que decide se ela ainda merece credito.
+--
+-- ML pagou o valor cheio? A loja esta inteira, credito zero. Pagou parcial ou
+-- negou? A diferenca ficou no colo da loja, e ai o credito entra pra cobrir.
+-- Sem isso o funcionario teria que fazer essa conta de cabeca, balde a balde.
+ALTER TABLE fabrica_devolucoes
+  ADD COLUMN IF NOT EXISTS ressarcimento_status TEXT NOT NULL DEFAULT 'NAO_PEDIDO'
+    CHECK (ressarcimento_status IN ('NAO_PEDIDO', 'PEDIDO', 'RECEBIDO', 'NEGADO'));
+ALTER TABLE fabrica_devolucoes
+  ADD COLUMN IF NOT EXISTS ressarcimento_valor NUMERIC(12, 2) NOT NULL DEFAULT 0;
+ALTER TABLE fabrica_devolucoes ADD COLUMN IF NOT EXISTS ressarcimento_data DATE;
+ALTER TABLE fabrica_devolucoes ADD COLUMN IF NOT EXISTS ressarcimento_protocolo TEXT;
+CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_ressarcimento
+  ON fabrica_devolucoes (ressarcimento_status, data DESC);

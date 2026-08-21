@@ -131,8 +131,33 @@ export interface Devolucao {
   custoUnitario: number;
   notaFiscal: string | null;
   notaCancelada: boolean;
+  ressarcimentoStatus: StatusRessarcimento;
+  ressarcimentoValor: number;
+  ressarcimentoData: string | null;
+  ressarcimentoProtocolo: string | null;
   recebidoPor: string | null;
   observacao: string | null;
   voltouAoEstoque: boolean;
   custoTotal: number;
+  // quanto a mercadoria valia pra loja, pelo preco que ela pagou
+  valorDaMercadoria: number;
+  // o que sobrou descoberto: nem o ML pagou, nem a fabrica creditou
+  descoberto: number;
+}
+
+// O funcionario manda foto pro ML e pede ressarcimento pela avaria. O dinheiro
+// cai na conta da LOJA, nao da fabrica. Lancar aqui e o que impede a avaria de
+// parecer perda total quando o ML ja cobriu.
+export type StatusRessarcimento = "NAO_PEDIDO" | "PEDIDO" | "RECEBIDO" | "NEGADO";
+
+export interface ConsolidadoRessarcimento {
+  avarias: number;
+  valorAvariado: number;
+  naoPedido: number;
+  pedido: number;
+  recebido: number;
+  negado: number;
+  recebidoValor: number;
+  creditoDado: number;
+  descoberto: number;
 }

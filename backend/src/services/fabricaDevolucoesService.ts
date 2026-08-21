@@ -22,6 +22,19 @@ export type CondicaoDevolucao = "BOM" | "ESTOURADO" | "QUEBRADO";
 
 export const CONDICOES: CondicaoDevolucao[] = ["BOM", "ESTOURADO", "QUEBRADO"];
 
+// O funcionário manda foto pro ML e pede ressarcimento pela avaria. O dinheiro
+// cai na conta da LOJA, não da fábrica — a venda no ML era dela. Então isto não
+// é receita da fábrica: é o controle de quanto a loja foi coberta, que é o que
+// decide se ela ainda merece crédito.
+export type StatusRessarcimento = "NAO_PEDIDO" | "PEDIDO" | "RECEBIDO" | "NEGADO";
+
+export const STATUS_RESSARCIMENTO: StatusRessarcimento[] = [
+  "NAO_PEDIDO",
+  "PEDIDO",
+  "RECEBIDO",
+  "NEGADO",
+];
+
 export interface Devolucao {
   id: number;
   clienteId: number;
@@ -36,11 +49,19 @@ export interface Devolucao {
   custoUnitario: number;
   notaFiscal: string | null;
   notaCancelada: boolean;
+  ressarcimentoStatus: StatusRessarcimento;
+  ressarcimentoValor: number;
+  ressarcimentoData: string | null;
+  ressarcimentoProtocolo: string | null;
   recebidoPor: string | null;
   observacao: string | null;
   // derivados
   voltouAoEstoque: boolean;
   custoTotal: number;
+  // quanto a mercadoria valia pra loja, pelo preco que ela pagou
+  valorDaMercadoria: number;
+  // o que sobrou descoberto: nem o ML pagou, nem a fabrica creditou
+  descoberto: number;
 }
 
 export interface DevolucaoEntrada {
@@ -68,8 +89,13 @@ interface Linha {
   condicao: string;
   credito: string;
   custo_unitario: string;
+  preco_venda: string;
   nota_fiscal: string | null;
   nota_cancelada: boolean;
+  ressarcimento_status: string;
+  ressarcimento_valor: string;
+  ressarcimento_data: string | null;
+  ressarcimento_protocolo: string | null;
   recebido_por: string | null;
   observacao: string | null;
 }
@@ -80,6 +106,11 @@ function montar(r: Linha): Devolucao {
     : "BOM") as CondicaoDevolucao;
   const quantidade = Number(r.quantidade);
   const custoUnitario = Number(r.custo_unitario);
+  const credito = Number(r.credito);
+  const ressarcimentoValor = Number(r.ressarcimento_valor);
+  // preço atual do cadastro: é a melhor referência disponível do que a loja
+  // pagou, já que a devolução não aponta pra um pedido específico
+  const valorDaMercadoria = Number(r.preco_venda) * quantidade;
   return {
     id: r.id,
     clienteId: r.cliente_id,
@@ -90,16 +121,28 @@ function montar(r: Linha): Devolucao {
     data: String(r.data).slice(0, 10),
     quantidade,
     condicao,
-    credito: Number(r.credito),
+    credito,
     custoUnitario,
     notaFiscal: r.nota_fiscal,
     notaCancelada: r.nota_cancelada,
+    ressarcimentoStatus: (STATUS_RESSARCIMENTO.includes(
+      r.ressarcimento_status as StatusRessarcimento
+    )
+      ? r.ressarcimento_status
+      : "NAO_PEDIDO") as StatusRessarcimento,
+    ressarcimentoValor,
+    ressarcimentoData: r.ressarcimento_data ? String(r.ressarcimento_data).slice(0, 10) : null,
+    ressarcimentoProtocolo: r.ressarcimento_protocolo,
     recebidoPor: r.recebido_por,
     observacao: r.observacao,
     // só o produto inteiro volta pra prateleira: estourado virou lixo e
     // quebrado virou tinta a granel
     voltouAoEstoque: condicao === "BOM",
     custoTotal: quantidade * custoUnitario,
+    valorDaMercadoria,
+    // nunca negativo: ML pagando mais que o valor da mercadoria e sobra da
+    // loja, não dívida da fábrica
+    descoberto: Math.max(0, valorDaMercadoria - ressarcimentoValor - credito),
   };
 }
 
@@ -137,7 +180,9 @@ export async function listarDevolucoes(filtro: FiltroDevolucoes = {}): Promise<D
     `SELECT d.id, d.cliente_id, c.nome AS cliente_nome,
             d.produto_id, pr.sku, pr.nome AS produto_nome,
             d.data, d.quantidade, d.condicao, d.credito, d.custo_unitario,
-            d.nota_fiscal, d.nota_cancelada, d.recebido_por, d.observacao
+            d.nota_fiscal, d.nota_cancelada, d.recebido_por, d.observacao,
+            d.ressarcimento_status, d.ressarcimento_valor, d.ressarcimento_data,
+            d.ressarcimento_protocolo, pr.preco_venda
      FROM fabrica_devolucoes d
      JOIN fabrica_clientes c ON c.id = d.cliente_id
      JOIN fabrica_produtos pr ON pr.id = d.produto_id
@@ -194,6 +239,68 @@ export async function registrarDevolucao(e: DevolucaoEntrada): Promise<{ id: num
 
 // Cancelar a nota e uma acao de fora do sistema — quem cancela e o emissor.
 // Aqui so se marca que foi feito, pra pendencia sair da lista.
+// Lancado depois, quando o ML responde. Fica separado do cadastro da devolucao
+// porque a resposta chega dias depois e quem lanca pode ser outra pessoa.
+export async function registrarRessarcimento(
+  id: number,
+  status: StatusRessarcimento,
+  valor: number,
+  data: string | null,
+  protocolo: string | null
+): Promise<void> {
+  await pool.query(
+    `UPDATE fabrica_devolucoes
+     SET ressarcimento_status = $2,
+         -- negado ou nao pedido nao tem valor: guardar um numero ali faria o
+         -- consolidado somar dinheiro que nunca entrou
+         ressarcimento_valor = CASE WHEN $2 = 'RECEBIDO' THEN $3 ELSE 0 END,
+         ressarcimento_data = $4::date,
+         ressarcimento_protocolo = $5
+     WHERE id = $1`,
+    [id, status, valor, data, protocolo]
+  );
+}
+
+export async function definirCredito(id: number, credito: number): Promise<void> {
+  await pool.query("UPDATE fabrica_devolucoes SET credito = $2 WHERE id = $1", [id, credito]);
+}
+
+export interface ConsolidadoRessarcimento {
+  avarias: number;
+  valorAvariado: number;
+  naoPedido: number;
+  pedido: number;
+  recebido: number;
+  negado: number;
+  recebidoValor: number;
+  creditoDado: number;
+  descoberto: number;
+}
+
+// Consolidado do que a fabrica precisa cobrar do Mercado Livre e do que ja
+// entrou. E o painel que o funcionario olha pra saber o que falta correr atras.
+export async function consolidadoRessarcimento(
+  de?: string,
+  ate?: string
+): Promise<ConsolidadoRessarcimento> {
+  const devolucoes = await listarDevolucoes({ de, ate, limite: 5000 });
+  const avariadas = devolucoes.filter((d) => d.condicao !== "BOM");
+  const contar = (s: StatusRessarcimento) =>
+    avariadas.filter((d) => d.ressarcimentoStatus === s).length;
+
+  return {
+    avarias: avariadas.length,
+    valorAvariado: avariadas.reduce((s, d) => s + d.valorDaMercadoria, 0),
+    naoPedido: contar("NAO_PEDIDO"),
+    pedido: contar("PEDIDO"),
+    recebido: contar("RECEBIDO"),
+    negado: contar("NEGADO"),
+    recebidoValor: avariadas.reduce((s, d) => s + d.ressarcimentoValor, 0),
+    creditoDado: avariadas.reduce((s, d) => s + d.credito, 0),
+    descoberto: avariadas.reduce((s, d) => s + d.descoberto, 0),
+  };
+}
+
 export async function marcarNotaCancelada(id: number, cancelada: boolean): Promise<void> {
   await pool.query("UPDATE fabrica_devolucoes SET nota_cancelada = $2 WHERE id = $1", [
     id,

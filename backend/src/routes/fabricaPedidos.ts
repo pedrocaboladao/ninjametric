@@ -25,7 +25,12 @@ import {
   excluirDevolucao,
   notasPendentes,
   CONDICOES,
+  registrarRessarcimento,
+  definirCredito,
+  consolidadoRessarcimento,
+  STATUS_RESSARCIMENTO,
   type CondicaoDevolucao,
+  type StatusRessarcimento,
 } from "../services/fabricaDevolucoesService";
 
 export const fabricaPedidosRouter = Router();
@@ -158,7 +163,11 @@ fabricaPedidosRouter.get("/devolucoes", async (req, res) => {
       }),
       notasPendentes(),
     ]);
-    res.json({ devolucoes, notasPendentes: pendentes });
+    res.json({
+      devolucoes,
+      notasPendentes: pendentes,
+      consolidado: await consolidadoRessarcimento(),
+    });
   } catch (err) {
     erro(res, err, "Falha ao carregar devolucoes.");
   }
@@ -200,6 +209,47 @@ fabricaPedidosRouter.put("/devolucoes/:id/nota", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao marcar a nota.");
+  }
+});
+
+fabricaPedidosRouter.put("/devolucoes/:id/ressarcimento", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  const b = req.body ?? {};
+  if (!STATUS_RESSARCIMENTO.includes(b.status)) {
+    return res.status(400).json({ error: "Status invalido." });
+  }
+  const valor = Number(b.valor);
+  if (!Number.isFinite(valor) || valor < 0) {
+    return res.status(400).json({ error: "Valor invalido." });
+  }
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  try {
+    await registrarRessarcimento(
+      id,
+      b.status as StatusRessarcimento,
+      valor,
+      typeof b.data === "string" && b.data ? b.data : null,
+      texto(b.protocolo)
+    );
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao registrar o ressarcimento.");
+  }
+});
+
+fabricaPedidosRouter.put("/devolucoes/:id/credito", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  const credito = Number(req.body?.credito);
+  if (!Number.isFinite(credito) || credito < 0) {
+    return res.status(400).json({ error: "Credito invalido." });
+  }
+  try {
+    await definirCredito(id, credito);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao salvar o credito.");
   }
 });
 
