@@ -10,7 +10,7 @@ import {
   type TipoConta,
   type StatusConta,
 } from "../services/fabricaContasService";
-import { montarDre } from "../services/fabricaDreService";
+import { montarDre, definirAliquota } from "../services/fabricaDreService";
 
 export const fabricaContasRouter = Router();
 
@@ -92,6 +92,25 @@ fabricaContasRouter.get("/dre", async (req, res) => {
     });
   } catch (err) {
     erro(res, err, "Falha ao montar o DRE.");
+  }
+});
+
+// Reprocessar o mes e so mudar a aliquota: o DRE e calculado na leitura, entao
+// corrigir a % de marco refaz marco na hora, sem refazer lancamento nenhum.
+fabricaContasRouter.put("/dre/imposto", async (req, res) => {
+  const competencia = req.body?.competencia;
+  if (typeof competencia !== "string" || !/^\d{4}-\d{2}/.test(competencia)) {
+    return res.status(400).json({ error: "Informe o mes." });
+  }
+  const percentual = Number(req.body?.percentual);
+  if (!Number.isFinite(percentual) || percentual < 0 || percentual > 100) {
+    return res.status(400).json({ error: "Percentual deve ficar entre 0 e 100." });
+  }
+  try {
+    await definirAliquota(competencia, percentual);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao salvar a aliquota.");
   }
 });
 

@@ -25,6 +25,13 @@ export interface Dre {
   ate: string;
 
   receita: number;
+  // provisao pela aliquota do mes, nao pela guia paga
+  percentualImposto: number;
+  impostoHerdadoDe: string | null;
+  imposto: number;
+  // o que a guia lancada no contas a pagar deste mes cobra
+  impostoLancado: number;
+  receitaLiquida: number;
   custoProdutos: number;
   margemContribuicao: number;
   percentualMargem: number;
