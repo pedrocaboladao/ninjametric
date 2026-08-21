@@ -1,0 +1,457 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  fetchContas,
+  fetchResumoContas,
+  criarConta,
+  atualizarConta,
+  definirStatusConta,
+  excluirConta,
+} from "../api/fabricaContas";
+import { fetchEstoque } from "../api/fabricaEstoque";
+import type { Conta, ContaEntrada, ResumoContas, StatusConta, TipoConta } from "../types/fabricaContas";
+import type { EstoqueMateriaPrima } from "../types/fabricaEstoque";
+import { formatCurrency } from "../utils/format";
+import { IconPlus, IconTrash } from "./icons";
+import { BuscaSelecao } from "./BuscaSelecao";
+import type { ItemBusca } from "./BuscaSelecao";
+
+// aceita "1.234,56" e "1234.56" — o operador digita como fala
+function num(v: string): number {
+  return Number(String(v).replace(/\./g, "").replace(",", ".")) || 0;
+}
+
+function data(d: string): string {
+  return d.split("-").reverse().join("/");
+}
+
+// "hoje" pelo fuso de São Paulo: às 22h o UTC já virou o dia seguinte
+function hoje(): string {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+}
+
+const CATEGORIAS = [
+  "ALUGUEL",
+  "ÁGUA",
+  "LUZ",
+  "SALÁRIO",
+  "MATÉRIA-PRIMA",
+  "EMBALAGEM",
+  "MANUTENÇÃO",
+  "IMPOSTO",
+  "FRETE",
+  "CONSUMO",
+  "OUTROS",
+];
+
+const VAZIO = {
+  tipo: "pagar" as TipoConta,
+  descricao: "",
+  categoria: "",
+  contraparte: "",
+  valor: "",
+  vencimento: "",
+  status: "pendente" as StatusConta,
+  dataPagamento: "",
+  custoFixo: true,
+  observacao: "",
+  materiaPrimaId: "",
+  percentualProducao: "100",
+  repetirMeses: "0",
+};
+
+export function FabricaContas() {
+  const [contas, setContas] = useState<Conta[] | null>(null);
+  const [resumo, setResumo] = useState<ResumoContas | null>(null);
+  const [materias, setMaterias] = useState<EstoqueMateriaPrima[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [form, setForm] = useState({ ...VAZIO });
+  const [mostrarForm, setMostrarForm] = useState(false);
+
+  const [filtroTipo, setFiltroTipo] = useState<"" | TipoConta>("");
+  const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
+
+  const carregar = useCallback(async () => {
+    try {
+      const [cs, r, mp] = await Promise.all([
+        fetchContas({ tipo: filtroTipo || undefined, status: filtroStatus || undefined }),
+        fetchResumoContas(),
+        fetchEstoque(),
+      ]);
+      setContas(cs);
+      setResumo(r);
+      setMaterias(mp);
+      setErro(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao carregar.");
+      setContas([]);
+    }
+  }, [filtroTipo, filtroStatus]);
+
+  useEffect(() => {
+    void carregar();
+  }, [carregar]);
+
+  const itensMp: ItemBusca[] = useMemo(
+    () => materias.map((m) => ({ id: m.materiaPrimaId, titulo: m.nome })),
+    [materias]
+  );
+
+  const atrasadas = useMemo(() => (contas ?? []).filter((c) => c.atrasada), [contas]);
+
+  function novo() {
+    setEditandoId(null);
+    setForm({ ...VAZIO, vencimento: hoje() });
+    setMostrarForm(true);
+    setErro(null);
+  }
+
+  function editar(c: Conta) {
+    setEditandoId(c.id);
+    setForm({
+      tipo: c.tipo,
+      descricao: c.descricao,
+      categoria: c.categoria ?? "",
+      contraparte: c.contraparte ?? "",
+      valor: String(c.valor),
+      vencimento: c.vencimento,
+      status: c.status,
+      dataPagamento: c.dataPagamento ?? "",
+      custoFixo: c.custoFixo,
+      observacao: c.observacao ?? "",
+      materiaPrimaId: c.materiaPrimaId ? String(c.materiaPrimaId) : "",
+      percentualProducao: String(c.percentualProducao),
+      // repetir só faz sentido ao criar: editar uma conta não multiplica ela
+      repetirMeses: "0",
+    });
+    setMostrarForm(true);
+    setErro(null);
+  }
+
+  async function salvar() {
+    if (!form.descricao.trim()) return setErro("Informe a descrição.");
+    if (num(form.valor) <= 0) return setErro("Informe o valor.");
+    if (!form.vencimento) return setErro("Informe o vencimento.");
+
+    const entrada: ContaEntrada = {
+      tipo: form.tipo,
+      descricao: form.descricao.trim(),
+      categoria: form.categoria || null,
+      contraparte: form.contraparte.trim() || null,
+      valor: num(form.valor),
+      vencimento: form.vencimento,
+      status: form.status,
+      dataPagamento: form.dataPagamento || null,
+      custoFixo: form.custoFixo,
+      observacao: form.observacao.trim() || null,
+      materiaPrimaId: form.materiaPrimaId ? Number(form.materiaPrimaId) : null,
+      percentualProducao: num(form.percentualProducao) || 100,
+      repetirMeses: Number(form.repetirMeses) || 0,
+    };
+    setSalvando(true);
+    try {
+      if (editandoId) {
+        await atualizarConta(editandoId, entrada);
+        setAviso("Conta salva.");
+      } else {
+        const r = await criarConta(entrada);
+        setAviso(
+          r.ids.length > 1 ? `${r.ids.length} contas criadas, uma por mês.` : "Conta lançada."
+        );
+      }
+      setMostrarForm(false);
+      setEditandoId(null);
+      setForm({ ...VAZIO });
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function marcar(c: Conta, status: StatusConta) {
+    try {
+      await definirStatusConta(c.id, status);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao mudar o status.");
+    }
+  }
+
+  async function apagar(c: Conta) {
+    if (!confirm(`Excluir "${c.descricao}" de ${data(c.vencimento)}?`)) return;
+    try {
+      await excluirConta(c.id);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao excluir.");
+    }
+  }
+
+  return (
+    <div className="financeiro-page">
+      <div className="financeiro-topo">
+        <div>
+          <div className="financeiro-stat-label">FÁBRICA DISTRIBUIDORA</div>
+          <h1>Contas a pagar e receber</h1>
+          <p className="financeiro-td-mudo">
+            O barracão da fabricação paga aluguel, água e luz próprios. Isto é outra empresa: nada
+            aqui encosta no financeiro das lojas, e a loja chamada Fábrica de Tintas continua lá
+            junto com as outras.
+          </p>
+        </div>
+        <div>
+          <div className="financeiro-stat-label">
+            {atrasadas.length ? `${atrasadas.length} ATRASADA${atrasadas.length > 1 ? "S" : ""}` : "A PAGAR"}
+          </div>
+          <div className="financeiro-stat-valor">
+            {formatCurrency(atrasadas.length ? resumo?.atrasado ?? 0 : resumo?.aPagar ?? 0)}
+          </div>
+        </div>
+      </div>
+
+      {erro && <p className="financeiro-td-mudo">{erro}</p>}
+      {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
+
+      {resumo && (
+        <div className="financeiro-filtros">
+          <div>
+            <div className="financeiro-stat-label">CUSTO FIXO</div>
+            <div className="financeiro-stat-valor">{formatCurrency(resumo.custoFixo)}</div>
+          </div>
+          <div>
+            <div className="financeiro-stat-label">CUSTO VARIÁVEL</div>
+            <div className="financeiro-stat-valor">{formatCurrency(resumo.custoVariavel)}</div>
+          </div>
+          <div>
+            <div className="financeiro-stat-label">JÁ PAGO</div>
+            <div className="financeiro-stat-valor">{formatCurrency(resumo.pago)}</div>
+          </div>
+          <div>
+            <div className="financeiro-stat-label">A RECEBER</div>
+            <div className="financeiro-stat-valor">{formatCurrency(resumo.aReceber)}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="financeiro-filtros">
+        <select
+          className="clonar-input fabricacao-input-pequeno"
+          value={filtroTipo}
+          onChange={(e) => setFiltroTipo(e.target.value as "" | TipoConta)}
+        >
+          <option value="">Pagar e receber</option>
+          <option value="pagar">A pagar</option>
+          <option value="receber">A receber</option>
+        </select>
+        <select
+          className="clonar-input fabricacao-input-pequeno"
+          value={filtroStatus}
+          onChange={(e) => setFiltroStatus(e.target.value as "" | StatusConta)}
+        >
+          <option value="">Todos os status</option>
+          <option value="pendente">Pendente</option>
+          <option value="pago">Pago</option>
+          <option value="cancelado">Cancelado</option>
+        </select>
+        <button type="button" className="btn-responder" onClick={novo}>
+          <IconPlus size={14} /> Nova conta
+        </button>
+      </div>
+
+      {mostrarForm && (
+        <>
+          <div className="financeiro-filtros">
+            <select
+              className="clonar-input fabricacao-input-pequeno"
+              value={form.tipo}
+              onChange={(e) => setForm((f) => ({ ...f, tipo: e.target.value as TipoConta }))}
+            >
+              <option value="pagar">A pagar</option>
+              <option value="receber">A receber</option>
+            </select>
+            <input
+              className="clonar-input"
+              placeholder="Descrição (ex: Aluguel do barracão)"
+              value={form.descricao}
+              onChange={(e) => setForm((f) => ({ ...f, descricao: e.target.value }))}
+            />
+            <select
+              className="clonar-input fabricacao-input-pequeno"
+              value={form.categoria}
+              onChange={(e) => setForm((f) => ({ ...f, categoria: e.target.value }))}
+            >
+              <option value="">Categoria</option>
+              {CATEGORIAS.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Fornecedor"
+              value={form.contraparte}
+              onChange={(e) => setForm((f) => ({ ...f, contraparte: e.target.value }))}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Valor"
+              value={form.valor}
+              onChange={(e) => setForm((f) => ({ ...f, valor: e.target.value }))}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              value={form.vencimento}
+              onChange={(e) => setForm((f) => ({ ...f, vencimento: e.target.value }))}
+            />
+            <select
+              className="clonar-input fabricacao-input-pequeno"
+              value={form.status}
+              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as StatusConta }))}
+            >
+              <option value="pendente">Pendente</option>
+              <option value="pago">Pago</option>
+              <option value="cancelado">Cancelado</option>
+            </select>
+          </div>
+
+          <div className="financeiro-filtros">
+            <label className="financeiro-td-mudo">
+              <input
+                type="checkbox"
+                checked={form.custoFixo}
+                onChange={(e) => setForm((f) => ({ ...f, custoFixo: e.target.checked }))}
+              />{" "}
+              custo fixo (aluguel, salário) — desmarque o que varia com a produção
+            </label>
+            {!editandoId && (
+              <input
+                className="clonar-input fabricacao-input-pequeno"
+                placeholder="Repetir por N meses"
+                value={form.repetirMeses}
+                onChange={(e) => setForm((f) => ({ ...f, repetirMeses: e.target.value }))}
+                title="Cria a mesma conta nos próximos meses, mantendo o dia do vencimento"
+              />
+            )}
+            <input
+              className="clonar-input"
+              placeholder="Observação"
+              value={form.observacao}
+              onChange={(e) => setForm((f) => ({ ...f, observacao: e.target.value }))}
+            />
+          </div>
+
+          <div className="financeiro-filtros">
+            <span className="financeiro-td-mudo">
+              Conta de consumo? Ligue ao insumo e o preço do quilo se acerta sozinho:
+            </span>
+            <BuscaSelecao
+              itens={itensMp}
+              valor={form.materiaPrimaId ? Number(form.materiaPrimaId) : null}
+              placeholder="Nenhum insumo — conta comum"
+              onEscolher={(id) => setForm((f) => ({ ...f, materiaPrimaId: id ? String(id) : "" }))}
+            />
+            {form.materiaPrimaId && (
+              <input
+                className="clonar-input fabricacao-input-pequeno"
+                placeholder="% pra tinta"
+                value={form.percentualProducao}
+                onChange={(e) => setForm((f) => ({ ...f, percentualProducao: e.target.value }))}
+                title="Quanto da conta virou tinta — o resto é banheiro, limpeza, lavagem de tanque"
+              />
+            )}
+            <button type="button" className="btn-responder" onClick={() => void salvar()} disabled={salvando}>
+              {editandoId ? "Salvar" : "Lançar"}
+            </button>
+            <button
+              type="button"
+              className="btn-excluir"
+              onClick={() => {
+                setMostrarForm(false);
+                setEditandoId(null);
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </>
+      )}
+
+      <div className="financeiro-tabela-wrap">
+        <table className="financeiro-tabela">
+          <thead>
+            <tr>
+              <th>VENCIMENTO</th>
+              <th>DESCRIÇÃO</th>
+              <th>CATEGORIA</th>
+              <th>FORNECEDOR</th>
+              <th className="financeiro-th-numero">VALOR</th>
+              <th>CUSTO</th>
+              <th>STATUS</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {contas === null && (
+              <tr>
+                <td colSpan={8}>Carregando…</td>
+              </tr>
+            )}
+            {contas !== null && !contas.length && (
+              <tr>
+                <td colSpan={8}>Nenhuma conta lançada.</td>
+              </tr>
+            )}
+            {(contas ?? []).map((c) => (
+              <tr key={c.id} style={c.status === "cancelado" ? { opacity: 0.5 } : undefined}>
+                <td className={c.atrasada ? undefined : "financeiro-td-mudo"}>
+                  {data(c.vencimento)}
+                  {c.atrasada && ` · ${Math.abs(c.diasParaVencer)}d atrasada`}
+                </td>
+                <td>
+                  <button type="button" className="fabricacao-envase-nome-editavel" onClick={() => editar(c)}>
+                    {c.descricao}
+                  </button>
+                  {c.materiaPrimaNome && (
+                    <span className="financeiro-td-mudo"> · vira preço de {c.materiaPrimaNome}</span>
+                  )}
+                </td>
+                <td className="financeiro-td-mudo">{c.categoria ?? "—"}</td>
+                <td className="financeiro-td-mudo">{c.contraparte ?? "—"}</td>
+                <td className="financeiro-th-numero">
+                  {c.tipo === "receber" ? "+" : "−"} {formatCurrency(c.valor)}
+                </td>
+                <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
+                <td>
+                  <select
+                    className="clonar-input fabricacao-input-pequeno"
+                    value={c.status}
+                    onChange={(e) => void marcar(c, e.target.value as StatusConta)}
+                  >
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">{c.tipo === "receber" ? "Recebido" : "Pago"}</option>
+                    <option value="cancelado">Cancelado</option>
+                  </select>
+                </td>
+                <td>
+                  <button type="button" className="btn-excluir" onClick={() => void apagar(c)} title="Excluir">
+                    <IconTrash size={14} />
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="financeiro-td-mudo">
+        Custo fixo e variável somam o período todo, pago ou não — o DRE olha competência, não caixa.
+        Conta cancelada não entra em nada.
+      </p>
+    </div>
+  );
+}

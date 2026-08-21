@@ -23,6 +23,7 @@ export const MODULOS_VALIDOS = [
   "fabrica_embalagens",
   "fabrica_estoque",
   "fabrica_pedidos",
+  "fabrica_financeiro",
 ] as const;
 
 export interface Usuario {
