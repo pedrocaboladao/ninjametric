@@ -8,6 +8,9 @@ import {
   registrarInventario,
   excluirAjuste,
   capacidadeDeProducao,
+  listarContasInsumo,
+  registrarContaInsumo,
+  excluirContaInsumo,
 } from "../services/fabricaEstoqueService";
 
 export const fabricaEstoqueRouter = Router();
@@ -45,6 +48,53 @@ fabricaEstoqueRouter.put("/:id/minimo", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao definir estoque mínimo.");
+  }
+});
+
+fabricaEstoqueRouter.get("/contas", async (_req, res) => {
+  try {
+    res.json({ contas: await listarContasInsumo() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar contas.");
+  }
+});
+
+fabricaEstoqueRouter.post("/contas", async (req, res) => {
+  const b = req.body ?? {};
+  const materiaPrimaId = Number(b.materiaPrimaId);
+  if (!Number.isInteger(materiaPrimaId)) {
+    return res.status(400).json({ error: "Escolha o insumo." });
+  }
+  if (typeof b.competencia !== "string" || !/^\d{4}-\d{2}/.test(b.competencia)) {
+    return res.status(400).json({ error: "Informe o mês da conta." });
+  }
+  const valor = Number(b.valor);
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return res.status(400).json({ error: "Valor da conta inválido." });
+  }
+  const percentual = b.percentualProducao === undefined ? 100 : Number(b.percentualProducao);
+  if (!Number.isFinite(percentual) || percentual <= 0 || percentual > 100) {
+    return res.status(400).json({ error: "Percentual deve ficar entre 1 e 100." });
+  }
+  const observacao =
+    typeof b.observacao === "string" && b.observacao.trim() ? b.observacao.trim() : null;
+  try {
+    res.status(201).json(
+      await registrarContaInsumo(materiaPrimaId, b.competencia, valor, percentual, observacao)
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao lançar a conta.");
+  }
+});
+
+fabricaEstoqueRouter.delete("/contas/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  try {
+    await excluirContaInsumo(id);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao excluir a conta.");
   }
 });
 
