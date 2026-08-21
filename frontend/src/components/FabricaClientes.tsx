@@ -6,7 +6,8 @@ import {
   excluirFabricaCliente,
 } from "../api/fabricaClientes";
 import type { FabricaCliente, FabricaClienteEntrada } from "../types/fabricaClientes";
-import { IconPlus, IconTrash } from "./icons";
+import { IconPlus } from "./icons";
+import { BotaoExcluir } from "./BotaoExcluir";
 
 const VAZIO: FabricaClienteEntrada = {
   nome: "", tipo: "LOJA", cnpj: null, inscricaoEstadual: null, email: null, telefone: null,
@@ -99,7 +100,6 @@ export function FabricaClientes() {
   }
 
   async function excluir(c: FabricaCliente) {
-    if (!confirm(`Excluir o cliente "${c.nome}"?`)) return;
     try {
       await excluirFabricaCliente(c.id);
       await carregar();
@@ -219,9 +219,7 @@ export function FabricaClientes() {
                   {c.completo ? "completo" : `falta ${c.faltando.length}`}
                 </td>
                 <td>
-                  <button type="button" className="btn-excluir" onClick={() => void excluir(c)} title="Excluir">
-                    <IconTrash size={14} />
-                  </button>
+                  <BotaoExcluir onConfirmar={() => void excluir(c)} />
                 </td>
               </tr>
             ))}
