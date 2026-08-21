@@ -135,6 +135,28 @@ export function FabricaDre() {
               <td className="financeiro-th-numero">{formatCurrency(dre.receita)}</td>
               <td className="financeiro-th-numero financeiro-td-mudo">100%</td>
             </tr>
+            {dre.unidadesDevolvidas > 0 && (
+              <>
+                <tr>
+                  <td className="financeiro-td-mudo">
+                    (−) Devoluções ({dre.unidadesDevolvidas} un, {dre.unidadesPerdidas} perdidas)
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">
+                    {formatCurrency(dre.devolucoes)}
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">
+                    {dre.receita > 0 ? pct(dre.devolucoes / dre.receita) : "—"}
+                  </td>
+                </tr>
+                <tr>
+                  <td>= RECEITA DE VENDAS</td>
+                  <td className="financeiro-th-numero">{formatCurrency(dre.receitaVendas)}</td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">
+                    {dre.receita > 0 ? pct(dre.receitaVendas / dre.receita) : "—"}
+                  </td>
+                </tr>
+              </>
+            )}
             <tr>
               <td className="financeiro-td-mudo">
                 (−) Imposto sobre a venda ({dre.percentualImposto}%)

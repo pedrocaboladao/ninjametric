@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { retornoPorProduto } from "./fabricaDevolucoesService";
 
 // Estoque de produto acabado da Fábrica Distribuidora.
 //
@@ -21,6 +22,8 @@ export interface EstoqueProduto {
   nome: string;
   produzido: number;
   vendido: number;
+  // devolucao que chegou inteira e voltou pra prateleira
+  devolvido: number;
   ajustes: number;
   saldo: number;
   estoqueMinimo: number;
@@ -67,7 +70,7 @@ export async function vendaPorProduto(): Promise<Map<number, number>> {
 export async function listarEstoqueProdutos(
   custoPor: Map<number, number> = new Map()
 ): Promise<EstoqueProduto[]> {
-  const [produtos, producao, venda, ajustes] = await Promise.all([
+  const [produtos, producao, venda, retorno, ajustes] = await Promise.all([
     pool.query<{
       id: number;
       sku: string;
@@ -81,6 +84,7 @@ export async function listarEstoqueProdutos(
     ),
     producaoPorProduto(),
     vendaPorProduto(),
+    retornoPorProduto(),
     pool.query<{ produto_id: number; total: string }>(
       "SELECT produto_id, SUM(quantidade) AS total FROM fabrica_produto_ajustes GROUP BY produto_id"
     ),
@@ -91,8 +95,9 @@ export async function listarEstoqueProdutos(
   return produtos.rows.map((r) => {
     const produzido = producao.get(r.id) ?? 0;
     const vendido = venda.get(r.id) ?? 0;
+    const devolvido = retorno.get(r.id) ?? 0;
     const ajuste = ajustePor.get(r.id) ?? 0;
-    const saldo = produzido - vendido + ajuste;
+    const saldo = produzido - vendido + devolvido + ajuste;
     const estoqueMinimo = Number(r.estoque_minimo);
     const custoUnitario = custoPor.get(r.id) ?? 0;
     return {
@@ -101,6 +106,7 @@ export async function listarEstoqueProdutos(
       nome: r.nome,
       produzido,
       vendido,
+      devolvido,
       ajustes: ajuste,
       saldo,
       estoqueMinimo,

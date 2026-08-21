@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { totaisDoPeriodo } from "./fabricaDevolucoesService";
 
 // DRE da Fábrica Distribuidora — só desta operação.
 //
@@ -31,6 +32,12 @@ export interface Dre {
   ate: string;
 
   receita: number;
+  // credito das devolucoes: reduz a receita porque a venda foi desfeita
+  devolucoes: number;
+  // unidades que voltaram e unidades que viraram perda (estourado/quebrado)
+  unidadesDevolvidas: number;
+  unidadesPerdidas: number;
+  receitaVendas: number;
   // imposto sobre a venda: provisao pela aliquota do mes, nao pela guia paga
   percentualImposto: number;
   // de qual mes veio a aliquota, quando este mes nao tem uma propria
@@ -114,7 +121,7 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   const de = deEntrada || padrao.de;
   const ate = ateEntrada || padrao.ate;
 
-  const aliquota = await aliquotaDoMes(de);
+  const [aliquota, devolucao] = await Promise.all([aliquotaDoMes(de), totaisDoPeriodo(de, ate)]);
 
   const [vendas, contas, resumoPedidos] = await Promise.all([
     // receita e custo saem do item do pedido, onde ficaram GRAVADOS no
@@ -173,9 +180,15 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   porProduto.sort((a, b) => b.receita - a.receita);
 
   const receita = porProduto.reduce((s, p) => s + p.receita, 0);
-  const imposto = receita * (aliquota.percentual / 100);
-  const receitaLiquida = receita - imposto;
-  const custoProdutos = porProduto.reduce((s, p) => s + p.custo, 0);
+  // a venda devolvida foi desfeita: nao pode pagar imposto nem ficar na receita
+  const receitaVendas = receita - devolucao.credito;
+  const imposto = receitaVendas * (aliquota.percentual / 100);
+  const receitaLiquida = receitaVendas - imposto;
+  // o produto que voltou inteiro esta na prateleira de novo: o custo dele sai
+  // do CPV, senao a fabrica pagaria duas vezes pelo mesmo balde. O avariado
+  // continua no custo, porque virou perda de verdade.
+  const custoProdutos =
+    porProduto.reduce((s, p) => s + p.custo, 0) - devolucao.custoRetornado;
   const margemContribuicao = receitaLiquida - custoProdutos;
 
   let despesaFixa = 0;
@@ -221,6 +234,10 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     de,
     ate,
     receita,
+    devolucoes: devolucao.credito,
+    unidadesDevolvidas: devolucao.unidades,
+    unidadesPerdidas: devolucao.perdidas,
+    receitaVendas,
     percentualImposto: aliquota.percentual,
     impostoHerdadoDe: aliquota.herdadoDe,
     imposto,

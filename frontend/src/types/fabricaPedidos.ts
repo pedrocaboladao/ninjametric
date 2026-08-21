@@ -57,6 +57,7 @@ export interface EstoqueProduto {
   nome: string;
   produzido: number;
   vendido: number;
+  devolvido: number;
   ajustes: number;
   saldo: number;
   estoqueMinimo: number;
@@ -85,6 +86,8 @@ export interface ContaCorrente {
   clienteTipo: string;
   comprado: number;
   pago: number;
+  // credito de devolucao — abate no fechamento igual a um pagamento
+  credito: number;
   saldo: number;
   ultimoPedido: string | null;
   ultimoPagamento: string | null;
@@ -103,9 +106,33 @@ export interface Pagamento {
 // tempo, com o saldo correndo.
 export interface LinhaExtrato {
   data: string;
-  tipo: "pedido" | "pagamento";
+  tipo: "pedido" | "pagamento" | "devolucao";
   referencia: number;
   descricao: string;
   valor: number;
   saldo: number;
+}
+
+// Devolucao: o caminho de volta da mercadoria. Tres finais possiveis, e eles
+// nao sao a mesma coisa nem no estoque nem no dinheiro.
+export type CondicaoDevolucao = "BOM" | "ESTOURADO" | "QUEBRADO";
+
+export interface Devolucao {
+  id: number;
+  clienteId: number;
+  clienteNome: string;
+  produtoId: number;
+  produtoSku: string;
+  produtoNome: string;
+  data: string;
+  quantidade: number;
+  condicao: CondicaoDevolucao;
+  credito: number;
+  custoUnitario: number;
+  notaFiscal: string | null;
+  notaCancelada: boolean;
+  recebidoPor: string | null;
+  observacao: string | null;
+  voltouAoEstoque: boolean;
+  custoTotal: number;
 }

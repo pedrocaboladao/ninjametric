@@ -15,6 +15,10 @@ import {
   fetchPagamentos,
   registrarPagamento,
   excluirPagamento,
+  fetchDevolucoes,
+  registrarDevolucao,
+  marcarNotaCancelada,
+  excluirDevolucao,
 } from "../api/fabricaPedidos";
 import { fetchFabricaClientes } from "../api/fabricaClientes";
 import { fetchFabricaProdutos } from "../api/fabricaProdutos";
@@ -27,6 +31,8 @@ import type {
   ContaCorrente,
   Pagamento,
   LinhaExtrato,
+  Devolucao,
+  CondicaoDevolucao,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -66,9 +72,23 @@ export function FabricaPedidos() {
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [extrato, setExtrato] = useState<LinhaExtrato[] | null>(null);
   const [extratoDe, setExtratoDe] = useState<ContaCorrente | null>(null);
+  const [devolucoes, setDevolucoes] = useState<Devolucao[]>([]);
+  const [notasPendentes, setNotasPendentes] = useState(0);
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
-  const [aba, setAba] = useState<"pedidos" | "novo" | "estoque" | "fechamento">("pedidos");
+  const [aba, setAba] = useState<
+    "pedidos" | "novo" | "estoque" | "fechamento" | "devolucoes"
+  >("pedidos");
+
+  // devolucao recebida no balcao
+  const [devCliente, setDevCliente] = useState("");
+  const [devProduto, setDevProduto] = useState("");
+  const [devQtd, setDevQtd] = useState("");
+  const [devCondicao, setDevCondicao] = useState<CondicaoDevolucao>("BOM");
+  const [devCredito, setDevCredito] = useState("");
+  const [devNota, setDevNota] = useState("");
+  const [devRecebidoPor, setDevRecebidoPor] = useState("");
+  const [devObs, setDevObs] = useState("");
 
   // recebimento: PIX no fechamento de terca
   const [pagCliente, setPagCliente] = useState("");
@@ -107,9 +127,15 @@ export function FabricaPedidos() {
         fetchEstoqueProdutos(),
         fetchAjustesProduto(),
       ]);
-      const [cc, pg] = await Promise.all([fetchContaCorrente(), fetchPagamentos()]);
+      const [cc, pg, dv] = await Promise.all([
+        fetchContaCorrente(),
+        fetchPagamentos(),
+        fetchDevolucoes(),
+      ]);
       setContaCorrente(cc);
       setPagamentos(pg);
+      setDevolucoes(dv.devolucoes);
+      setNotasPendentes(dv.notasPendentes);
       setPedidos(ps);
       setClientes(cs);
       setProdutos(prs);
@@ -297,6 +323,67 @@ export function FabricaPedidos() {
     }
   }
 
+  // o padrao segue a regra da fabrica: valor cheio so quando o produto volta
+  // inteiro. Avariado a loja ja recebe do Mercado Livre, e dar credito tambem
+  // faria ela receber duas vezes pelo mesmo balde.
+  const creditoSugerido = useMemo(() => {
+    if (devCondicao !== "BOM") return 0;
+    const p = produtoPor.get(Number(devProduto));
+    return p ? p.precoVenda * num(devQtd) : 0;
+  }, [devCondicao, devProduto, devQtd, produtoPor]);
+
+  async function lancarDevolucao() {
+    const cliente = Number(devCliente);
+    if (!Number.isInteger(cliente) || !cliente) return setErro("Escolha a loja.");
+    const produto = Number(devProduto);
+    if (!Number.isInteger(produto) || !produto) return setErro("Escolha o produto.");
+    const qtd = num(devQtd);
+    if (qtd <= 0) return setErro("Quantidade deve ser maior que zero.");
+    try {
+      await registrarDevolucao({
+        clienteId: cliente,
+        produtoId: produto,
+        quantidade: qtd,
+        condicao: devCondicao,
+        credito: devCredito === "" ? null : num(devCredito),
+        notaFiscal: devNota.trim() || null,
+        recebidoPor: devRecebidoPor.trim() || null,
+        observacao: devObs.trim() || null,
+      });
+      setAviso(
+        devCondicao === "BOM"
+          ? "Devolucao registrada. Produto de volta no estoque e credito abatido no fechamento. Nao esqueca de cancelar a nota."
+          : "Devolucao registrada sem credito — a loja recebe o ressarcimento do Mercado Livre. Nao esqueca de cancelar a nota."
+      );
+      setDevQtd("");
+      setDevCredito("");
+      setDevNota("");
+      setDevObs("");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao registrar a devolucao.");
+    }
+  }
+
+  async function alternarNota(d: Devolucao) {
+    try {
+      await marcarNotaCancelada(d.id, !d.notaCancelada);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao marcar a nota.");
+    }
+  }
+
+  async function apagarDevolucao(d: Devolucao) {
+    if (!confirm(`Excluir a devolucao de ${d.quantidade}x ${d.produtoNome}?`)) return;
+    try {
+      await excluirDevolucao(d.id);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao excluir.");
+    }
+  }
+
   async function salvar() {
     const itens = linhas
       .filter((l) => l.produtoId && num(l.quantidade) > 0)
@@ -421,7 +508,7 @@ export function FabricaPedidos() {
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
-        {(["pedidos", "novo", "estoque", "fechamento"] as const).map((a) => (
+        {(["pedidos", "novo", "estoque", "fechamento", "devolucoes"] as const).map((a) => (
           <button
             key={a}
             type="button"
@@ -436,7 +523,9 @@ export function FabricaPedidos() {
                   : "Novo pedido"
                 : a === "estoque"
                   ? `Estoque de produto${alertas.length ? ` (${alertas.length})` : ""}`
-                  : "Fechamento"}
+                  : a === "fechamento"
+                    ? "Fechamento"
+                    : `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`}
           </button>
         ))}
       </div>
@@ -684,6 +773,7 @@ export function FabricaPedidos() {
                   <th>PRODUTO</th>
                   <th className="financeiro-th-numero">PRODUZIDO</th>
                   <th className="financeiro-th-numero">VENDIDO</th>
+                  <th className="financeiro-th-numero">DEVOLVIDO</th>
                   <th className="financeiro-th-numero">AJUSTES</th>
                   <th className="financeiro-th-numero">SALDO</th>
                   <th className="financeiro-th-numero">MÍNIMO</th>
@@ -694,7 +784,7 @@ export function FabricaPedidos() {
               <tbody>
                 {!estoque.length && (
                   <tr>
-                    <td colSpan={8}>Nenhum produto cadastrado.</td>
+                    <td colSpan={9}>Nenhum produto cadastrado.</td>
                   </tr>
                 )}
                 {estoque.map((e) => (
@@ -707,6 +797,7 @@ export function FabricaPedidos() {
                     </td>
                     <td className="financeiro-th-numero financeiro-td-mudo">{e.produzido || "—"}</td>
                     <td className="financeiro-th-numero financeiro-td-mudo">{e.vendido || "—"}</td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">{e.devolvido || "—"}</td>
                     <td className="financeiro-th-numero financeiro-td-mudo">{e.ajustes || "—"}</td>
                     <td className="financeiro-th-numero">{e.saldo}</td>
                     <td className="financeiro-th-numero">
@@ -865,6 +956,7 @@ export function FabricaPedidos() {
                   <th>LOJA</th>
                   <th className="financeiro-th-numero">PEGOU</th>
                   <th className="financeiro-th-numero">PAGOU</th>
+                  <th className="financeiro-th-numero">CRÉDITO</th>
                   <th className="financeiro-th-numero">DEVE</th>
                   <th>ÚLTIMO PEDIDO</th>
                   <th>ÚLTIMO PIX</th>
@@ -873,7 +965,7 @@ export function FabricaPedidos() {
               <tbody>
                 {!contaCorrente.length && (
                   <tr>
-                    <td colSpan={6}>Nenhum cliente cadastrado.</td>
+                    <td colSpan={7}>Nenhum cliente cadastrado.</td>
                   </tr>
                 )}
                 {contaCorrente
@@ -896,6 +988,9 @@ export function FabricaPedidos() {
                       </td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
                         {c.pago ? formatCurrency(c.pago) : "—"}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {c.credito ? formatCurrency(c.credito) : "—"}
                       </td>
                       <td className={c.saldo > 0.005 ? "financeiro-th-numero" : "financeiro-th-numero financeiro-td-mudo"}>
                         {Math.abs(c.saldo) < 0.005
@@ -996,6 +1091,166 @@ export function FabricaPedidos() {
               </tbody>
             </table>
           </div>
+        </>
+      )}
+      {aba === "devolucoes" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Devoluções</h2>
+              <p className="financeiro-td-mudo">
+                O cliente não quis, não estava em casa ou o pedido extraviou, e o produto volta pra
+                loja e da loja pra cá. Produto <strong>inteiro</strong> volta pro estoque e gera
+                crédito abatido no fechamento. <strong>Estourado</strong> e{" "}
+                <strong>quebrado</strong> não geram crédito: a loja pede ressarcimento ao Mercado
+                Livre e recebe direto na conta dela — dar crédito também faria ela receber duas
+                vezes pelo mesmo balde.
+              </p>
+            </div>
+            {notasPendentes > 0 && (
+              <div>
+                <div className="financeiro-stat-label">NOTAS PRA CANCELAR</div>
+                <div className="financeiro-stat-valor">{notasPendentes}</div>
+              </div>
+            )}
+          </div>
+
+          <div className="financeiro-filtros">
+            <BuscaSelecao
+              itens={itensCliente}
+              valor={devCliente ? Number(devCliente) : null}
+              placeholder="Loja que devolveu"
+              onEscolher={(id) => setDevCliente(id ? String(id) : "")}
+            />
+            <BuscaSelecao
+              itens={itensProduto}
+              valor={devProduto ? Number(devProduto) : null}
+              placeholder="Produto por nome ou SKU"
+              onEscolher={(id) => setDevProduto(id ? String(id) : "")}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Qtd"
+              value={devQtd}
+              onChange={(e) => setDevQtd(e.target.value)}
+            />
+            <select
+              className="clonar-input fabricacao-input-pequeno"
+              value={devCondicao}
+              onChange={(e) => setDevCondicao(e.target.value as CondicaoDevolucao)}
+            >
+              <option value="BOM">Inteiro — volta pro estoque</option>
+              <option value="ESTOURADO">Estourado — descarte</option>
+              <option value="QUEBRADO">Quebrado — tinta pro tambor</option>
+            </select>
+          </div>
+
+          <div className="financeiro-filtros">
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder={`Crédito (${formatCurrency(creditoSugerido)})`}
+              value={devCredito}
+              onChange={(e) => setDevCredito(e.target.value)}
+              title="Vazio usa o sugerido: valor cheio se voltou inteiro, zero se avariado"
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Nº da nota"
+              value={devNota}
+              onChange={(e) => setDevNota(e.target.value)}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Quem recebeu"
+              value={devRecebidoPor}
+              onChange={(e) => setDevRecebidoPor(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Observação (opcional)"
+              value={devObs}
+              onChange={(e) => setDevObs(e.target.value)}
+            />
+            <button type="button" className="btn-responder" onClick={() => void lancarDevolucao()}>
+              <IconPlus size={14} /> Registrar devolução
+            </button>
+          </div>
+
+          <div className="financeiro-tabela-wrap">
+            <table className="financeiro-tabela">
+              <thead>
+                <tr>
+                  <th>DATA</th>
+                  <th>LOJA</th>
+                  <th>PRODUTO</th>
+                  <th className="financeiro-th-numero">QTD</th>
+                  <th>CONDIÇÃO</th>
+                  <th className="financeiro-th-numero">CRÉDITO</th>
+                  <th>NOTA FISCAL</th>
+                  <th>RECEBEU</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {!devolucoes.length && (
+                  <tr>
+                    <td colSpan={9}>Nenhuma devolução registrada.</td>
+                  </tr>
+                )}
+                {devolucoes.map((d) => (
+                  <tr key={d.id}>
+                    <td className="financeiro-td-mudo">{data(d.data)}</td>
+                    <td>{d.clienteNome}</td>
+                    <td>{d.produtoNome}</td>
+                    <td className="financeiro-th-numero">{d.quantidade}</td>
+                    <td className="financeiro-td-mudo">
+                      {d.condicao === "BOM"
+                        ? "inteiro · voltou ao estoque"
+                        : d.condicao === "ESTOURADO"
+                          ? "estourado · descartado"
+                          : "quebrado · tambor"}
+                    </td>
+                    <td className="financeiro-th-numero">
+                      {d.credito > 0 ? formatCurrency(d.credito) : "—"}
+                    </td>
+                    <td className={d.notaCancelada ? "financeiro-td-mudo" : undefined}>
+                      <button
+                        type="button"
+                        className={d.notaCancelada ? "btn-excluir" : "btn-responder"}
+                        onClick={() => void alternarNota(d)}
+                        title={
+                          d.notaCancelada
+                            ? "Marcada como cancelada — clique pra desfazer"
+                            : "Cancele a nota no emissor e marque aqui"
+                        }
+                      >
+                        {d.notaCancelada
+                          ? `NF ${d.notaFiscal ?? ""} cancelada`
+                          : `CANCELAR NF ${d.notaFiscal ?? ""}`}
+                      </button>
+                    </td>
+                    <td className="financeiro-td-mudo">{d.recebidoPor ?? "—"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-excluir"
+                        onClick={() => void apagarDevolucao(d)}
+                        title="Excluir"
+                      >
+                        <IconTrash size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="financeiro-td-mudo">
+            A fábrica emite nota em 100% das vendas, então toda devolução deixa uma nota pra
+            cancelar. O botão vermelho não cancela nada sozinho — quem cancela é o emissor. Ele
+            marca aqui que foi feito, pra pendência sair da lista. Esquecer de cancelar significa
+            pagar imposto sobre uma venda que foi desfeita.
+          </p>
         </>
       )}
     </div>

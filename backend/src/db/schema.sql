@@ -996,3 +996,53 @@ CREATE TABLE IF NOT EXISTS fabrica_impostos (
   percentual NUMERIC(6, 3) NOT NULL CHECK (percentual >= 0 AND percentual <= 100),
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Devolucao: o caminho de volta da mercadoria.
+--
+-- Fabrica > vende > loja > cliente final. O cliente nao quis, nao estava em
+-- casa ou o pedido extraviou, e o produto volta pra loja e da loja pra ca.
+-- Acontece com todas as 21, toda semana.
+--
+-- Tres finais possiveis, e eles nao sao a mesma coisa nem no estoque nem no
+-- dinheiro:
+--
+--   BOM        produto inteiro. Volta pro estoque de produto acabado e a loja
+--              ganha credito, abatido no fechamento de terca.
+--   ESTOURADO  vazou. Embalagem descartada, produto perdido. A loja pede
+--              ressarcimento ao Mercado Livre e recebe direto na conta dela,
+--              entao NAO ganha credito da fabrica — senao receberia duas vezes.
+--   QUEBRADO   trincado mas com tinta. A tinta vai pros tambores pra
+--              reprocesso, a embalagem e descartada. Tambem sem credito, pela
+--              mesma razao do estourado.
+--
+-- credito fica editavel em vez de calculado: a regra acima e o padrao, mas
+-- caso a caso muda, e uma regra rigida obrigaria a mentir a condicao pra
+-- conseguir o valor certo.
+--
+-- custo_unitario e copiado do cadastro no lancamento, igual ao item do pedido.
+-- Uma devolucao que aconteceu e um fato: recalcular com o custo de hoje mudaria
+-- o resultado de um mes ja fechado.
+CREATE TABLE IF NOT EXISTS fabrica_devolucoes (
+  id SERIAL PRIMARY KEY,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE RESTRICT,
+  produto_id INTEGER NOT NULL REFERENCES fabrica_produtos(id) ON DELETE RESTRICT,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  quantidade NUMERIC(12, 3) NOT NULL CHECK (quantidade > 0),
+  condicao TEXT NOT NULL DEFAULT 'BOM' CHECK (condicao IN ('BOM', 'ESTOURADO', 'QUEBRADO')),
+  credito NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  custo_unitario NUMERIC(12, 4) NOT NULL DEFAULT 0,
+  -- a fabrica emite nota em 100% das vendas, entao TODA devolucao deixa uma
+  -- nota pra cancelar. Fica como pendencia visivel ate alguem marcar: esquecer
+  -- de cancelar significa pagar imposto sobre uma venda que foi desfeita.
+  nota_fiscal TEXT,
+  nota_cancelada BOOLEAN NOT NULL DEFAULT FALSE,
+  recebido_por TEXT,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_nota
+  ON fabrica_devolucoes (nota_cancelada, data DESC);
+CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_cliente
+  ON fabrica_devolucoes (cliente_id, data DESC);
+CREATE INDEX IF NOT EXISTS idx_fabrica_devolucoes_produto
+  ON fabrica_devolucoes (produto_id, data DESC);
