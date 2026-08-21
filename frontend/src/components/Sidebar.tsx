@@ -49,6 +49,7 @@ export type View =
   | "fabrica_estoque"
   | "fabrica_pedidos"
   | "fabrica_financeiro"
+  | "fabrica_ordem"
   | "ean"
   | "promocoes"
   | "pesquisa"
@@ -219,6 +220,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
 
             {fabricaAberta && (
               <div className="sidebar-subitems">
+                {podeFabricacao && (
+                  <button
+                    className={`sidebar-item ${view === "fabrica_ordem" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabrica_ordem")}
+                  >
+                    <IconReport size={16} />
+                    <span>Ordem de fabricação</span>
+                  </button>
+                )}
                 {podeFabricacao && (
                   <button
                     className={`sidebar-item ${view === "fabricacao" ? "sidebar-item-ativo" : ""}`}

@@ -5621,3 +5621,148 @@
 .financeiro-tabela-wrap-transbordo {
   overflow: visible;
 }
+
+/* Ordem de fabricacao: a folha que vai pro chao de fabrica.
+   Na tela ela segue o tema escuro; no papel vira preto no branco, porque
+   impressora nao imprime fundo e o texto claro sairia invisivel. */
+.ordem-folha {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  background: var(--bg-panel);
+  margin-top: 12px;
+}
+
+.ordem-cabecalho {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  border-bottom: 2px solid var(--border-strong);
+  padding-bottom: 12px;
+  margin-bottom: 16px;
+}
+
+.ordem-empresa {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.ordem-cabecalho h2 {
+  margin: 4px 0 0;
+}
+
+.ordem-cabecalho-dados {
+  display: grid;
+  gap: 4px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.ordem-tabela {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.ordem-tabela th,
+.ordem-tabela td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.ordem-tabela th {
+  font-size: 11.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.ordem-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* coluna que o operador preenche a mao: precisa de altura pra caber o numero */
+.ordem-pesado {
+  min-width: 90px;
+  height: 26px;
+}
+
+/* passo que veio da base expandida — recuado pra mostrar de onde saiu */
+.ordem-linha-filha td:first-child,
+.ordem-linha-filha td:nth-child(3) {
+  padding-left: 20px;
+}
+
+.ordem-linha-base td {
+  background: var(--bg-hover);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.ordem-linha-instrucao td {
+  font-style: italic;
+  color: var(--text-secondary);
+  background: var(--bg-panel-alt);
+}
+
+.ordem-secao {
+  margin: 20px 0 8px;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+
+.ordem-assinaturas {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  margin-top: 28px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+@media print {
+  /* fora tudo que nao e a folha: menu, filtros, avisos de tela */
+  .sidebar,
+  .ordem-sem-impressao {
+    display: none !important;
+  }
+
+  body,
+  .financeiro-page,
+  .ordem-folha {
+    background: #fff !important;
+    color: #000 !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .ordem-tabela th,
+  .ordem-tabela td {
+    border: 1px solid #555 !important;
+    color: #000 !important;
+  }
+
+  .ordem-linha-base td,
+  .ordem-linha-instrucao td {
+    background: #eee !important;
+    color: #000 !important;
+  }
+
+  .ordem-empresa,
+  .ordem-cabecalho-dados,
+  .ordem-assinaturas {
+    color: #000 !important;
+  }
+
+  /* instrucao separada do passo que ela manda esperar seria papel jogado fora */
+  .ordem-tabela tr {
+    break-inside: avoid;
+  }
+}

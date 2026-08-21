@@ -13,6 +13,7 @@ import { FabricaEmbalagens } from "./components/FabricaEmbalagens";
 import { FabricaEstoque } from "./components/FabricaEstoque";
 import { FabricaPedidos } from "./components/FabricaPedidos";
 import { FabricaContas } from "./components/FabricaContas";
+import { FabricaOrdem } from "./components/FabricaOrdem";
 import { GeradorEan } from "./components/GeradorEan";
 import { Promocoes } from "./components/Promocoes";
 import { PesquisaMercado } from "./components/PesquisaMercado";
@@ -52,6 +53,7 @@ const VIEWS_VALIDAS: View[] = [
   "fabrica_estoque",
   "fabrica_pedidos",
   "fabrica_financeiro",
+  "fabrica_ordem",
   "promocoes",
   "pesquisa",
   "tarefas",
@@ -93,6 +95,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "fabrica_estoque")) return "fabrica_estoque";
   if (temPermissao(usuario, "fabrica_pedidos")) return "fabrica_pedidos";
   if (temPermissao(usuario, "fabrica_financeiro")) return "fabrica_financeiro";
+  if (temPermissao(usuario, "fabricacao")) return "fabrica_ordem";
   if (temPermissao(usuario, "promocoes")) return "promocoes";
   if (temPermissao(usuario, "pesquisa")) return "pesquisa";
   if (temPermissao(usuario, "tarefas")) return "tarefas";
@@ -184,6 +187,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "fabrica_estoque" && temPermissao(usuario, "fabrica_estoque") && <FabricaEstoque />}
         {view === "fabrica_pedidos" && temPermissao(usuario, "fabrica_pedidos") && <FabricaPedidos />}
         {view === "fabrica_financeiro" && temPermissao(usuario, "fabrica_financeiro") && <FabricaContas />}
+        {view === "fabrica_ordem" && temPermissao(usuario, "fabricacao") && <FabricaOrdem />}
         {view === "promocoes" && temPermissao(usuario, "promocoes") && <Promocoes />}
         {view === "pesquisa" && temPermissao(usuario, "pesquisa") && <PesquisaMercado />}
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
