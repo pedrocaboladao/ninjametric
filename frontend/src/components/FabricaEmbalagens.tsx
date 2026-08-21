@@ -21,7 +21,8 @@ import type {
   MovimentoEmbalagem,
 } from "../types/fabricaEmbalagens";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash } from "./icons";
+import { IconPlus } from "./icons";
+import { BotaoExcluir } from "./BotaoExcluir";
 
 // aceita "8,47" e "8.47" — o operador digita como fala
 function num(v: string): number {
@@ -147,10 +148,6 @@ export function FabricaEmbalagens() {
   }
 
   async function excluir(e: FabricaEmbalagem) {
-    const extra = e.formulasLigadas
-      ? `\n\n${e.formulasLigadas} fórmula(s) estão ligadas a ela e voltarão a usar o custo digitado nelas.`
-      : "";
-    if (!confirm(`Excluir a embalagem "${e.nome}"?${extra}`)) return;
     try {
       await excluirFabricaEmbalagem(e.id);
       await carregar();
@@ -236,7 +233,6 @@ export function FabricaEmbalagens() {
   }
 
   async function apagarMovimento(m: MovimentoEmbalagem, tipo: "compra" | "ajuste") {
-    if (!confirm(`Excluir o lançamento de ${m.quantidade} em ${m.embalagemNome}?`)) return;
     try {
       if (tipo === "compra") await excluirCompraEmbalagem(m.id);
       else await excluirAjusteEmbalagem(m.id);
@@ -393,9 +389,7 @@ export function FabricaEmbalagens() {
                     </td>
                     <td className="financeiro-th-numero financeiro-td-mudo">{e.formulasLigadas || "—"}</td>
                     <td>
-                      <button type="button" className="btn-excluir" onClick={() => void excluir(e)} title="Excluir">
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void excluir(e)} />
                     </td>
                   </tr>
                 ))}
@@ -475,14 +469,7 @@ export function FabricaEmbalagens() {
                     </td>
                     <td className="financeiro-td-mudo">{c.texto ?? "—"}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-excluir"
-                        onClick={() => void apagarMovimento(c, "compra")}
-                        title="Excluir"
-                      >
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagarMovimento(c, "compra")} />
                     </td>
                   </tr>
                 ))}
@@ -559,14 +546,7 @@ export function FabricaEmbalagens() {
                     </td>
                     <td className="financeiro-td-mudo">{a.texto ?? "—"}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-excluir"
-                        onClick={() => void apagarMovimento(a, "ajuste")}
-                        title="Excluir"
-                      >
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagarMovimento(a, "ajuste")} />
                     </td>
                   </tr>
                 ))}

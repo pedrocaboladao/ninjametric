@@ -42,6 +42,7 @@ import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
+import { BotaoExcluir } from "./BotaoExcluir";
 import { BuscaSelecao } from "./BuscaSelecao";
 import type { ItemBusca } from "./BuscaSelecao";
 
@@ -320,7 +321,6 @@ export function FabricaPedidos() {
   }
 
   async function apagarPagamento(pg: Pagamento) {
-    if (!confirm(`Excluir o PIX de ${formatCurrency(pg.valor)} de ${pg.clienteNome}?`)) return;
     try {
       await excluirPagamento(pg.id);
       await carregar();
@@ -424,7 +424,6 @@ export function FabricaPedidos() {
   }
 
   async function apagarDevolucao(d: Devolucao) {
-    if (!confirm(`Excluir a devolucao de ${d.quantidade}x ${d.produtoNome}?`)) return;
     try {
       await excluirDevolucao(d.id);
       await carregar();
@@ -476,7 +475,6 @@ export function FabricaPedidos() {
   }
 
   async function apagar(p: Pedido) {
-    if (!confirm(`Excluir o pedido ${p.id} de ${p.clienteNome}?`)) return;
     try {
       await excluirPedido(p.id);
       await carregar();
@@ -523,7 +521,6 @@ export function FabricaPedidos() {
   }
 
   async function apagarAjuste(a: AjusteProduto) {
-    if (!confirm(`Excluir o ajuste de ${a.quantidade} em ${a.produtoNome}?`)) return;
     try {
       await excluirAjusteProduto(a.id);
       await carregar();
@@ -667,14 +664,7 @@ export function FabricaPedidos() {
                       </select>
                     </td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-excluir"
-                        onClick={() => void apagar(p)}
-                        title="Excluir"
-                      >
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagar(p)} />
                     </td>
                   </tr>
                 ))}
@@ -935,14 +925,7 @@ export function FabricaPedidos() {
                     </td>
                     <td className="financeiro-td-mudo">{a.motivo ?? "—"}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-excluir"
-                        onClick={() => void apagarAjuste(a)}
-                        title="Excluir"
-                      >
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagarAjuste(a)} />
                     </td>
                   </tr>
                 ))}
@@ -1126,14 +1109,7 @@ export function FabricaPedidos() {
                     <td className="financeiro-th-numero">{formatCurrency(pg.valor)}</td>
                     <td className="financeiro-td-mudo">{pg.observacao ?? "PIX"}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-excluir"
-                        onClick={() => void apagarPagamento(pg)}
-                        title="Excluir"
-                      >
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagarPagamento(pg)} />
                     </td>
                   </tr>
                 ))}
@@ -1366,14 +1342,7 @@ export function FabricaPedidos() {
                     </td>
                     <td className="financeiro-td-mudo">{d.recebidoPor ?? "—"}</td>
                     <td>
-                      <button
-                        type="button"
-                        className="btn-excluir"
-                        onClick={() => void apagarDevolucao(d)}
-                        title="Excluir"
-                      >
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagarDevolucao(d)} />
                     </td>
                   </tr>
                 ))}

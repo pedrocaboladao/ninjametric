@@ -9,7 +9,8 @@ import {
 } from "../api/fabricaContas";
 import type { Conta, ContaEntrada, ResumoContas, StatusConta } from "../types/fabricaContas";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash } from "./icons";
+import { IconPlus } from "./icons";
+import { BotaoExcluir } from "./BotaoExcluir";
 import { FabricaDre } from "./FabricaDre";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
@@ -164,7 +165,6 @@ export function FabricaContas() {
   }
 
   async function apagar(c: Conta) {
-    if (!confirm(`Excluir "${c.descricao}" de ${data(c.vencimento)}?`)) return;
     try {
       await excluirConta(c.id);
       await carregar();
@@ -400,9 +400,7 @@ export function FabricaContas() {
                   </select>
                 </td>
                 <td>
-                  <button type="button" className="btn-excluir" onClick={() => void apagar(c)} title="Excluir">
-                    <IconTrash size={14} />
-                  </button>
+                  <BotaoExcluir onConfirmar={() => void apagar(c)} />
                 </td>
               </tr>
             ))}

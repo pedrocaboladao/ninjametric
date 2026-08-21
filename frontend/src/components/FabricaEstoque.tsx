@@ -14,7 +14,8 @@ import type {
   CapacidadeFormula,
 } from "../types/fabricaEstoque";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash } from "./icons";
+import { IconPlus } from "./icons";
+import { BotaoExcluir } from "./BotaoExcluir";
 import { BuscaSelecao } from "./BuscaSelecao";
 import type { ItemBusca } from "./BuscaSelecao";
 
@@ -117,7 +118,6 @@ export function FabricaEstoque() {
   }
 
   async function apagar(a: AjusteEstoque) {
-    if (!confirm(`Excluir o ajuste de ${kg(a.quantidadeKg)} em ${a.materiaPrimaNome}?`)) return;
     try {
       await excluirAjuste(a.id);
       await carregar();
@@ -318,9 +318,7 @@ export function FabricaEstoque() {
                     </td>
                     <td className="financeiro-td-mudo">{a.motivo ?? "—"}</td>
                     <td>
-                      <button type="button" className="btn-excluir" onClick={() => void apagar(a)} title="Excluir">
-                        <IconTrash size={14} />
-                      </button>
+                      <BotaoExcluir onConfirmar={() => void apagar(a)} />
                     </td>
                   </tr>
                 ))}

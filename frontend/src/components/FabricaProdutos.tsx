@@ -9,7 +9,8 @@ import { fetchFormulas, fetchFormula } from "../api/fabricacao";
 import type { FabricaProduto } from "../types/fabricaProdutos";
 import type { FormulaResumo, FormulaEmbalagem } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
-import { IconPlus, IconTrash } from "./icons";
+import { IconPlus } from "./icons";
+import { BotaoExcluir } from "./BotaoExcluir";
 
 function formatPercent(v: number): string {
   return `${(v * 100).toFixed(1)}%`;
@@ -135,7 +136,6 @@ export function FabricaProdutos() {
   }
 
   async function excluir(p: FabricaProduto) {
-    if (!confirm(`Excluir o produto "${p.nome}"?`)) return;
     try {
       await excluirFabricaProduto(p.id);
       await carregar();
@@ -279,9 +279,7 @@ export function FabricaProdutos() {
                 <td className="financeiro-th-numero">{formatPercent(p.markup)}</td>
                 <td className="financeiro-th-numero">{formatPercent(p.percentualLucro)}</td>
                 <td>
-                  <button type="button" className="btn-excluir" onClick={() => void excluir(p)} title="Excluir">
-                    <IconTrash size={14} />
-                  </button>
+                  <BotaoExcluir onConfirmar={() => void excluir(p)} />
                 </td>
               </tr>
             ))}
