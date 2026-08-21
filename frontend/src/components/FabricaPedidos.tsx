@@ -24,7 +24,8 @@ import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
-import { BuscaProduto } from "./BuscaProduto";
+import { BuscaSelecao } from "./BuscaSelecao";
+import type { ItemBusca } from "./BuscaSelecao";
 
 // aceita "1.234,5" e "1234.5" — o operador digita como fala
 function num(v: string): number {
@@ -115,6 +116,43 @@ export function FabricaPedidos() {
   }, [pedidos]);
 
   const alertas = useMemo(() => estoque.filter((e) => e.abaixoDoMinimo), [estoque]);
+
+  // o saldo entra como detalhe na busca porque a pergunta logo depois de achar
+  // o produto e "tem quanto?"
+  const itensProduto: ItemBusca[] = useMemo(
+    () =>
+      produtos.map((p) => ({
+        id: p.id,
+        titulo: p.nome,
+        codigo: p.sku,
+        detalhe: saldoPor.has(p.id) ? `${saldoPor.get(p.id)!.saldo} em estoque` : null,
+        ativo: p.ativo,
+      })),
+    [produtos, saldoPor]
+  );
+
+  const itensCliente: ItemBusca[] = useMemo(
+    () =>
+      clientes.map((c) => ({
+        id: c.id,
+        titulo: c.nome,
+        codigo: c.cnpj,
+        detalhe: c.tipo === "EXTERNO" ? "cliente de fora" : null,
+        ativo: c.ativo,
+      })),
+    [clientes]
+  );
+
+  const itensEstoque: ItemBusca[] = useMemo(
+    () =>
+      estoque.map((e) => ({
+        id: e.produtoId,
+        titulo: e.nome,
+        codigo: e.sku,
+        detalhe: `saldo ${e.saldo}`,
+      })),
+    [estoque]
+  );
 
   // total do rascunho, calculado enquanto digita
   const totalRascunho = useMemo(() => {
@@ -316,18 +354,12 @@ export function FabricaPedidos() {
       {aba === "pedidos" && (
         <>
           <div className="financeiro-filtros">
-            <select
-              className="clonar-input"
-              value={filtroCliente}
-              onChange={(e) => setFiltroCliente(e.target.value)}
-            >
-              <option value="">Todos os clientes</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                </option>
-              ))}
-            </select>
+            <BuscaSelecao
+              itens={itensCliente}
+              valor={filtroCliente ? Number(filtroCliente) : null}
+              placeholder="Todos os clientes"
+              onEscolher={(id) => setFiltroCliente(id ? String(id) : "")}
+            />
             <select
               className="clonar-input fabricacao-input-pequeno"
               value={filtroStatus}
@@ -431,15 +463,12 @@ export function FabricaPedidos() {
       {aba === "novo" && (
         <>
           <div className="financeiro-filtros">
-            <select className="clonar-input" value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-              <option value="">Cliente</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
-                  {c.tipo === "EXTERNO" ? " (de fora)" : ""}
-                </option>
-              ))}
-            </select>
+            <BuscaSelecao
+              itens={itensCliente}
+              valor={clienteId ? Number(clienteId) : null}
+              placeholder="Buscar cliente"
+              onEscolher={(id) => setClienteId(id ? String(id) : "")}
+            />
             <input
               className="clonar-input fabricacao-input-pequeno"
               type="date"
@@ -485,10 +514,10 @@ export function FabricaPedidos() {
                   return (
                     <tr key={idx}>
                       <td>
-                        <BuscaProduto
-                          produtos={produtos}
+                        <BuscaSelecao
+                          itens={itensProduto}
                           valor={l.produtoId ? Number(l.produtoId) : null}
-                          saldoDe={(id) => saldoPor.get(id)?.saldo}
+                          placeholder="Buscar por nome ou SKU"
                           onEscolher={(id) => escolherProduto(idx, id ? String(id) : "")}
                         />
                       </td>
@@ -618,18 +647,12 @@ export function FabricaPedidos() {
           </p>
 
           <div className="financeiro-filtros">
-            <select
-              className="clonar-input"
-              value={ajusteProdutoId}
-              onChange={(e) => setAjusteProdutoId(e.target.value)}
-            >
-              <option value="">Produto</option>
-              {estoque.map((e) => (
-                <option key={e.produtoId} value={e.produtoId}>
-                  {e.nome} — saldo {e.saldo}
-                </option>
-              ))}
-            </select>
+            <BuscaSelecao
+              itens={itensEstoque}
+              valor={ajusteProdutoId ? Number(ajusteProdutoId) : null}
+              placeholder="Buscar produto por nome ou SKU"
+              onEscolher={(id) => setAjusteProdutoId(id ? String(id) : "")}
+            />
             <select
               className="clonar-input fabricacao-input-pequeno"
               value={ajusteTipo}
