@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso } from "./fabricaData";
 
 // Estoque de matéria-prima da Fábrica Distribuidora.
 //
@@ -224,7 +225,7 @@ export async function listarAjustes(limite = 50): Promise<Ajuste[]> {
     id: r.id,
     materiaPrimaId: r.materia_prima_id,
     materiaPrimaNome: r.nome,
-    data: String(r.data).slice(0, 10),
+    data: dataIso(r.data),
     quantidadeKg: Number(r.quantidade_kg),
     motivo: r.motivo,
     criadoEm: r.criado_em,

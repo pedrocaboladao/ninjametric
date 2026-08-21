@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso } from "./fabricaData";
 import { retornoPorProduto } from "./fabricaDevolucoesService";
 
 // Estoque de produto acabado da Fábrica Distribuidora.
@@ -142,7 +143,7 @@ export async function listarAjustesProduto(limite = 50): Promise<AjusteProduto[]
     id: r.id,
     produtoId: r.produto_id,
     produtoNome: r.nome,
-    data: String(r.data).slice(0, 10),
+    data: dataIso(r.data),
     quantidade: Number(r.quantidade),
     motivo: r.motivo,
   }));

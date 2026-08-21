@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso, dataIsoOuNulo } from "./fabricaData";
 import { listarProdutos } from "./fabricaProdutosService";
 
 // Devolução — o caminho de volta da mercadoria.
@@ -118,7 +119,7 @@ function montar(r: Linha): Devolucao {
     produtoId: r.produto_id,
     produtoSku: r.sku,
     produtoNome: r.produto_nome,
-    data: String(r.data).slice(0, 10),
+    data: dataIso(r.data),
     quantidade,
     condicao,
     credito,
@@ -131,7 +132,7 @@ function montar(r: Linha): Devolucao {
       ? r.ressarcimento_status
       : "NAO_PEDIDO") as StatusRessarcimento,
     ressarcimentoValor,
-    ressarcimentoData: r.ressarcimento_data ? String(r.ressarcimento_data).slice(0, 10) : null,
+    ressarcimentoData: dataIsoOuNulo(r.ressarcimento_data),
     ressarcimentoProtocolo: r.ressarcimento_protocolo,
     recebidoPor: r.recebido_por,
     observacao: r.observacao,

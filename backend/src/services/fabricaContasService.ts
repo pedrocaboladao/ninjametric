@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso, dataIsoOuNulo } from "./fabricaData";
 import { totalAReceber } from "./fabricaPagamentosService";
 
 // Contas a pagar e receber da Fábrica Distribuidora — o barracão da
@@ -71,7 +72,7 @@ interface Linha {
 }
 
 function montar(r: Linha): Conta {
-  const vencimento = String(r.vencimento).slice(0, 10);
+  const vencimento = dataIso(r.vencimento);
   const status = r.status as StatusConta;
   const diasParaVencer = diasEntre(hoje(), vencimento);
   return {
@@ -83,7 +84,7 @@ function montar(r: Linha): Conta {
     valor: Number(r.valor),
     vencimento,
     status,
-    dataPagamento: r.data_pagamento ? String(r.data_pagamento).slice(0, 10) : null,
+    dataPagamento: dataIsoOuNulo(r.data_pagamento),
     custoFixo: r.custo_fixo,
     observacao: r.observacao,
     // conta paga ou cancelada não atrasa, por mais antiga que seja

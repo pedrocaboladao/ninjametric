@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso } from "./fabricaData";
 
 // Estoque de embalagem da Fábrica Distribuidora.
 //
@@ -187,7 +188,7 @@ export async function listarComprasEmbalagem(limite = 50): Promise<MovimentoEmba
     id: r.id,
     embalagemId: r.embalagem_id,
     embalagemNome: r.nome,
-    data: String(r.data).slice(0, 10),
+    data: dataIso(r.data),
     quantidade: r.quantidade,
     custoUnitario: Number(r.custo_unitario),
     texto: r.observacao,
@@ -242,7 +243,7 @@ export async function listarAjustesEmbalagem(limite = 50): Promise<MovimentoEmba
     id: r.id,
     embalagemId: r.embalagem_id,
     embalagemNome: r.nome,
-    data: String(r.data).slice(0, 10),
+    data: dataIso(r.data),
     quantidade: r.quantidade,
     custoUnitario: null,
     texto: r.motivo,

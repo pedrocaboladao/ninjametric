@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso } from "./fabricaData";
 import { listarProdutos } from "./fabricaProdutosService";
 
 // Pedido de venda da Fábrica Distribuidora.
@@ -186,7 +187,7 @@ export async function listarPedidos(filtro: FiltroPedidos = {}): Promise<Pedido[
       clienteId: r.cliente_id,
       clienteNome: r.cliente_nome,
       clienteTipo: r.cliente_tipo,
-      data: String(r.data).slice(0, 10),
+      data: dataIso(r.data),
       status: (statusValido(r.status) ? r.status : "ABERTO") as StatusPedido,
       observacao: r.observacao,
       itens: lista,
