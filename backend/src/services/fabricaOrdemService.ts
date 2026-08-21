@@ -338,7 +338,24 @@ function casar(nome: string, cadastro: Achado[]): { id: number | null; ambiguo: 
     return n.includes(alvo) || alvo.includes(n);
   });
   if (parciais.length === 1) return { id: parciais[0].id, ambiguo: false };
-  return { id: null, ambiguo: parciais.length > 1 };
+  if (parciais.length > 1) return { id: null, ambiguo: true };
+
+  // Ultima tentativa: todos os pedacos do alvo aparecem no nome cadastrado,
+  // em qualquer ordem. O codigo "BB45 K 25%" nao esta contido em "Hidroxido de
+  // Amonia Sol 25% BB45 K" porque a ordem dos pedacos e outra — mas BB45, K e
+  // 25 estao todos la.
+  //
+  // Exige pelo menos um pedaco de 4 letras ou mais. Sem isso, um codigo tipo
+  // "K 25" casaria com meio cadastro, e o match viraria sorteio.
+  const pedacos = alvo.split(" ").filter(Boolean);
+  if (!pedacos.some((t) => t.length >= 4)) return { id: null, ambiguo: false };
+
+  const porPedaco = cadastro.filter((c) => {
+    const n = normalizar(c.nome).split(" ");
+    return pedacos.every((t) => n.includes(t));
+  });
+  if (porPedaco.length === 1) return { id: porPedaco[0].id, ambiguo: false };
+  return { id: null, ambiguo: porPedaco.length > 1 };
 }
 
 export interface ResultadoImportacao {
