@@ -23,6 +23,8 @@ export interface EstoqueMateriaPrima {
   estoqueMinimo: number;
   abaixoDoMinimo: boolean;
   valorEmEstoque: number;
+  // agua sai da torneira: custa, mas nao se compra nem se conta
+  controlaEstoque: boolean;
 }
 
 export interface Ajuste {
@@ -126,8 +128,16 @@ export async function consumoPorMateriaPrima(): Promise<Map<number, number>> {
 
 export async function listarEstoque(): Promise<EstoqueMateriaPrima[]> {
   const [mps, compras, ajustes, consumo] = await Promise.all([
-    pool.query<{ id: number; nome: string; custo_por_kg: string; estoque_minimo: string }>(
-      "SELECT id, nome, custo_por_kg, COALESCE(estoque_minimo, 0) AS estoque_minimo FROM materias_primas ORDER BY nome"
+    pool.query<{
+      id: number;
+      nome: string;
+      custo_por_kg: string;
+      estoque_minimo: string;
+      controla_estoque: boolean;
+    }>(
+      `SELECT id, nome, custo_por_kg, COALESCE(estoque_minimo, 0) AS estoque_minimo,
+              COALESCE(controla_estoque, TRUE) AS controla_estoque
+       FROM materias_primas ORDER BY nome`
     ),
     pool.query<{ materia_prima_id: number; total: string }>(
       "SELECT materia_prima_id, SUM(quantidade_kg) AS total FROM materia_prima_compras GROUP BY materia_prima_id"
@@ -148,6 +158,7 @@ export async function listarEstoque(): Promise<EstoqueMateriaPrima[]> {
     const saldo = comprado - consumido + ajuste;
     const estoqueMinimo = Number(r.estoque_minimo);
     const custoPorKg = Number(r.custo_por_kg);
+    const controlaEstoque = r.controla_estoque !== false;
     return {
       materiaPrimaId: r.id,
       nome: r.nome,
@@ -158,8 +169,10 @@ export async function listarEstoque(): Promise<EstoqueMateriaPrima[]> {
       saldo,
       estoqueMinimo,
       // mínimo zero significa "não controlo essa", não "está sempre em falta"
-      abaixoDoMinimo: estoqueMinimo > 0 && saldo < estoqueMinimo,
-      valorEmEstoque: saldo * custoPorKg,
+      abaixoDoMinimo: controlaEstoque && estoqueMinimo > 0 && saldo < estoqueMinimo,
+      // insumo não controlado não tem saldo confiável, então não tem valor
+      valorEmEstoque: controlaEstoque ? saldo * custoPorKg : 0,
+      controlaEstoque,
     };
   });
 }
@@ -168,6 +181,16 @@ export async function definirEstoqueMinimo(materiaPrimaId: number, minimo: numbe
   await pool.query("UPDATE materias_primas SET estoque_minimo = $2 WHERE id = $1", [
     materiaPrimaId,
     minimo,
+  ]);
+}
+
+export async function definirControlaEstoque(
+  materiaPrimaId: number,
+  controla: boolean
+): Promise<void> {
+  await pool.query("UPDATE materias_primas SET controla_estoque = $2 WHERE id = $1", [
+    materiaPrimaId,
+    controla,
   ]);
 }
 
@@ -243,7 +266,9 @@ export async function excluirAjuste(id: number): Promise<void> {
 export interface CapacidadeFormula {
   formulaId: number;
   formulaNome: string;
-  maximoKg: number;
+  // null quando a fórmula não tem nenhum insumo controlado limitando: não é
+  // "dá zero", é "não dá pra dizer"
+  maximoKg: number | null;
   gargaloNome: string | null;
   gargaloSaldo: number;
   gargaloFracao: number;
@@ -268,6 +293,9 @@ export async function capacidadeDeProducao(): Promise<CapacidadeFormula[]> {
     for (const [mpId, fracao] of fracoes) {
       if (fracao <= 0) continue;
       const mp = saldoPor.get(mpId);
+      // água não trava produção — sem isso ela seria o gargalo de tudo, porque
+      // é 30 a 39% de cada receita e nunca tem saldo
+      if (mp && !mp.controlaEstoque) continue;
       const saldo = mp?.saldo ?? 0;
       const possivel = saldo / fracao;
       if (possivel < maximoKg) {
@@ -278,7 +306,7 @@ export async function capacidadeDeProducao(): Promise<CapacidadeFormula[]> {
     return {
       formulaId: f.id,
       formulaNome: f.nome,
-      maximoKg: Number.isFinite(maximoKg) ? Math.max(0, maximoKg) : 0,
+      maximoKg: Number.isFinite(maximoKg) ? Math.max(0, maximoKg) : null,
       gargaloNome: gargalo?.nome ?? null,
       gargaloSaldo: gargalo?.saldo ?? 0,
       gargaloFracao: gargalo?.fracao ?? 0,

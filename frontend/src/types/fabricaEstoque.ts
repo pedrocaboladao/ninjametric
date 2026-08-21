@@ -11,6 +11,8 @@ export interface EstoqueMateriaPrima {
   estoqueMinimo: number;
   abaixoDoMinimo: boolean;
   valorEmEstoque: number;
+  // água sai da torneira: custa, mas não se compra nem se conta
+  controlaEstoque: boolean;
 }
 
 export interface AjusteEstoque {
@@ -28,7 +30,8 @@ export interface AjusteEstoque {
 export interface CapacidadeFormula {
   formulaId: number;
   formulaNome: string;
-  maximoKg: number;
+  // null = nenhum insumo controlado limita esta fórmula
+  maximoKg: number | null;
   gargaloNome: string | null;
   gargaloSaldo: number;
   gargaloFracao: number;

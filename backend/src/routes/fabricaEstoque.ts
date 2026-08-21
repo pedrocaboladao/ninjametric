@@ -2,6 +2,7 @@ import { Router, Response } from "express";
 import {
   listarEstoque,
   definirEstoqueMinimo,
+  definirControlaEstoque,
   listarAjustes,
   registrarAjuste,
   registrarInventario,
@@ -44,6 +45,20 @@ fabricaEstoqueRouter.put("/:id/minimo", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao definir estoque mínimo.");
+  }
+});
+
+fabricaEstoqueRouter.put("/:id/controla", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  if (typeof req.body?.controlaEstoque !== "boolean") {
+    return res.status(400).json({ error: "Informe controlaEstoque como verdadeiro ou falso." });
+  }
+  try {
+    await definirControlaEstoque(id, req.body.controlaEstoque);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao mudar o controle de estoque.");
   }
 });
 

@@ -4,6 +4,7 @@ import {
   fetchCapacidade,
   fetchAjustes,
   definirEstoqueMinimo,
+  definirControlaEstoque,
   registrarAjuste,
   excluirAjuste,
 } from "../api/fabricaEstoque";
@@ -67,6 +68,15 @@ export function FabricaEstoque() {
     [estoque]
   );
 
+  async function alternarControle(e: EstoqueMateriaPrima) {
+    try {
+      await definirControlaEstoque(e.materiaPrimaId, !e.controlaEstoque);
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao mudar o controle.");
+    }
+  }
+
   async function salvarMinimo(e: EstoqueMateriaPrima, valor: string) {
     try {
       await definirEstoqueMinimo(e.materiaPrimaId, num(valor));
@@ -121,6 +131,8 @@ export function FabricaEstoque() {
           <p className="financeiro-td-mudo">
             O saldo não é digitado: sai do que foi comprado menos o que os lotes consumiram, mais
             os ajustes. Um lote de cor consome a matéria-prima crua — a base é passagem, não insumo.
+            Desmarque CONTROLA no que não se compra: a água sai da torneira e é 30% de cada receita,
+            então sem isso ela vira o gargalo de todas as fórmulas.
           </p>
         </div>
         <div>
@@ -160,12 +172,13 @@ export function FabricaEstoque() {
                 <th className="financeiro-th-numero">AJUSTES</th>
                 <th className="financeiro-th-numero">SALDO</th>
                 <th className="financeiro-th-numero">MÍNIMO</th>
+                <th>CONTROLA</th>
                 <th>SITUAÇÃO</th>
                 <th className="financeiro-th-numero">VALOR</th>
               </tr>
             </thead>
             <tbody>
-              {estoque === null && <tr><td colSpan={8}>Carregando…</td></tr>}
+              {estoque === null && <tr><td colSpan={9}>Carregando…</td></tr>}
               {(estoque ?? []).map((e) => (
                 <tr key={e.materiaPrimaId}>
                   <td>{e.nome}</td>
@@ -183,8 +196,22 @@ export function FabricaEstoque() {
                       }}
                     />
                   </td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={e.controlaEstoque}
+                      onChange={() => void alternarControle(e)}
+                      title="Desmarque o que não se compra — água sai da torneira"
+                    />
+                  </td>
                   <td className={e.abaixoDoMinimo ? undefined : "financeiro-td-mudo"}>
-                    {e.estoqueMinimo <= 0 ? "sem controle" : e.abaixoDoMinimo ? "COMPRAR" : "ok"}
+                    {!e.controlaEstoque
+                      ? "não controlada"
+                      : e.estoqueMinimo <= 0
+                        ? "sem mínimo"
+                        : e.abaixoDoMinimo
+                          ? "COMPRAR"
+                          : "ok"}
                   </td>
                   <td className="financeiro-th-numero financeiro-td-mudo">{formatCurrency(e.valorEmEstoque)}</td>
                 </tr>
@@ -210,11 +237,15 @@ export function FabricaEstoque() {
               {!capacidade.length && <tr><td colSpan={5}>Sem dados.</td></tr>}
               {capacidade
                 .slice()
-                .sort((a, b) => a.maximoKg - b.maximoKg)
+                // quem não tem limite conhecido vai pro fim: o que aperta primeiro
+                // é o que precisa aparecer primeiro
+                .sort((a, b) => (a.maximoKg ?? Infinity) - (b.maximoKg ?? Infinity))
                 .map((c) => (
                   <tr key={c.formulaId}>
                     <td>{c.formulaNome}</td>
-                    <td className="financeiro-th-numero">{kg(c.maximoKg)}</td>
+                    <td className="financeiro-th-numero">
+                      {c.maximoKg === null ? "sem limite" : kg(c.maximoKg)}
+                    </td>
                     <td className="financeiro-td-mudo">{c.gargaloNome ?? "—"}</td>
                     <td className="financeiro-th-numero financeiro-td-mudo">{kg(c.gargaloSaldo)}</td>
                     <td className="financeiro-th-numero financeiro-td-mudo">
