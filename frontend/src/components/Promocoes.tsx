@@ -12,6 +12,7 @@ import {
   fetchProgressoBuscaOportunidades,
   fetchOportunidades,
   aprovarOportunidade,
+  aprovarVariasOportunidades,
   rejeitarOportunidade,
   limparOportunidades,
   compararComVendaReal,
@@ -26,6 +27,7 @@ import type {
   Oportunidade,
   ProgressoBuscaOportunidades,
   ComparacaoOportunidade,
+  ResultadoAprovacaoLote,
 } from "../types/promocoes";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -547,7 +549,19 @@ function DescobertaAutomatica({
   );
 }
 
-function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportunidade; onDecidida: () => void }) {
+function LinhaOportunidade({
+  oportunidade,
+  onDecidida,
+  selecionavel,
+  selecionado,
+  onToggleSelecao,
+}: {
+  oportunidade: Oportunidade;
+  onDecidida: () => void;
+  selecionavel: boolean;
+  selecionado: boolean;
+  onToggleSelecao: () => void;
+}) {
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -598,6 +612,15 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
   return (
     <div className="promocoes-linha">
       <div className="promocoes-linha-topo">
+        {selecionavel && (
+          <input
+            type="checkbox"
+            checked={selecionado}
+            onChange={onToggleSelecao}
+            disabled={enviando || semIdentificador}
+            title={semIdentificador ? "Essa modalidade não tem identificador pra confirmar via API." : undefined}
+          />
+        )}
         {o.permalink ? (
           <a href={o.permalink} target="_blank" rel="noreferrer" className="financeiro-td-titulo promocoes-link-anuncio">
             {o.titulo ?? o.itemId}
@@ -804,12 +827,158 @@ function BuscaOportunidades({
   );
 }
 
+const SEM_SKU = "__sem_sku__";
+
+function GrupoSku({
+  sku,
+  itens,
+  selecionados,
+  onToggle,
+  onToggleGrupo,
+  onDecidida,
+}: {
+  sku: string;
+  itens: Oportunidade[];
+  selecionados: Set<number>;
+  onToggle: (id: number) => void;
+  onToggleGrupo: (ids: number[], marcar: boolean) => void;
+  onDecidida: () => void;
+}) {
+  const idsSelecionaveis = itens.filter((o) => o.promotionId).map((o) => o.id);
+  const todosSelecionados = idsSelecionaveis.length > 0 && idsSelecionaveis.every((id) => selecionados.has(id));
+
+  return (
+    <div className="promocoes-grupo-sku">
+      <div className="promocoes-grupo-sku-cabecalho">
+        {idsSelecionaveis.length > 0 && (
+          <input
+            type="checkbox"
+            checked={todosSelecionados}
+            onChange={() => onToggleGrupo(idsSelecionaveis, !todosSelecionados)}
+            title="Selecionar todos desse SKU"
+          />
+        )}
+        <span className="financeiro-td-mudo">
+          {sku === SEM_SKU ? "Sem SKU" : sku} — {itens.length} variação{itens.length !== 1 ? "ões" : ""}
+        </span>
+      </div>
+      {itens.map((o) => (
+        <LinhaOportunidade
+          key={o.id}
+          oportunidade={o}
+          onDecidida={onDecidida}
+          selecionavel={!!o.promotionId}
+          selecionado={selecionados.has(o.id)}
+          onToggleSelecao={() => onToggle(o.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function AprovarSelecionadosBarra({
+  selecionados,
+  onDecidido,
+}: {
+  selecionados: Set<number>;
+  onDecidido: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [resultados, setResultados] = useState<ResultadoAprovacaoLote[] | null>(null);
+
+  async function confirmar() {
+    setEnviando(true);
+    setResultados(null);
+    try {
+      const res = await aprovarVariasOportunidades(Array.from(selecionados));
+      setResultados(res);
+      setConfirmando(false);
+      onDecidido();
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (selecionados.size === 0 && !resultados) return null;
+
+  return (
+    <div className="promocoes-barra-selecionados">
+      {selecionados.size > 0 && !confirmando && (
+        <button type="button" className="btn-responder" onClick={() => setConfirmando(true)}>
+          Aprovar {selecionados.size} selecionado{selecionados.size !== 1 ? "s" : ""}
+        </button>
+      )}
+      {confirmando && (
+        <div className="promocoes-confirmacao">
+          <p>
+            Confirma entrar em <b>{selecionados.size}</b> promoções de uma vez? Isso muda preço/participação de
+            verdade em cada um desses anúncios no Mercado Livre agora — cada um é aprovado um de cada vez, e um erro
+            pontual num item não trava os outros.
+          </p>
+          <div className="fabricacao-editor-acoes">
+            <button type="button" className="btn-responder" disabled={enviando} onClick={confirmar}>
+              {enviando ? "Aprovando..." : "Confirmar e entrar em todos"}
+            </button>
+            <button type="button" className="btn-excluir" onClick={() => setConfirmando(false)}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+      {resultados && (
+        <div className="promocoes-resultado-falhas">
+          {resultados.map((r) => (
+            <div key={r.id} className={r.ok ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}>
+              #{r.id}: {r.ok ? "entrou na promoção" : r.erro}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
   const buscar = useCallback(() => fetchOportunidades(lojaFiltro), [lojaFiltro]);
   const { dados, erro, atualizarAgora } = useBuscaComCancelamento<Oportunidade[]>(buscar, true);
+  const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
 
-  const pendentes = dados?.filter((o) => o.status === "pendente") ?? [];
-  const decididas = dados?.filter((o) => o.status !== "pendente") ?? [];
+  const acionaveis = dados?.filter((o) => o.status === "pendente" || o.status === "erro") ?? [];
+  const decididas = dados?.filter((o) => o.status === "aprovada" || o.status === "rejeitada") ?? [];
+
+  const grupos = new Map<string, Oportunidade[]>();
+  for (const o of acionaveis) {
+    const chave = o.sku ?? SEM_SKU;
+    const lista = grupos.get(chave) ?? [];
+    lista.push(o);
+    grupos.set(chave, lista);
+  }
+
+  function toggle(id: number) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(id)) novo.delete(id);
+      else novo.add(id);
+      return novo;
+    });
+  }
+
+  function toggleGrupo(ids: number[], marcar: boolean) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      for (const id of ids) {
+        if (marcar) novo.add(id);
+        else novo.delete(id);
+      }
+      return novo;
+    });
+  }
+
+  function atualizarELimparSelecao() {
+    setSelecionados(new Set());
+    atualizarAgora();
+  }
 
   return (
     <div className="promocoes-oportunidades-secao">
@@ -822,7 +991,8 @@ function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "mi
             Mercado Livre banca parte do desconto de verdade (confirmado ao vivo, com dado real). Outras propostas do
             ML (ofertas relâmpago, descontos por conta própria) não têm ajuda nenhuma, então ficam de fora daqui — são
             desconto seu mesmo, sem diferença de fazer manual. A margem mostrada já desconta só a parte que sai do seu
-            bolso. Nada entra sozinho: você aprova cada uma.
+            bolso e o frete grátis estimado. Agrupado por SKU — dá pra selecionar e aprovar várias variações de uma
+            vez.
           </p>
         </div>
       </div>
@@ -832,17 +1002,34 @@ function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "mi
         {dados !== null && dados.length > 0 && <LimparOportunidades lojaFiltro={lojaFiltro} onLimpo={atualizarAgora} />}
       </div>
 
+      <AprovarSelecionadosBarra selecionados={selecionados} onDecidido={atualizarELimparSelecao} />
+
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && dados === null && <div className="state-message">Carregando...</div>}
       {dados?.length === 0 && (
         <div className="state-message">Nenhuma oportunidade encontrada ainda — clique em "Buscar oportunidades".</div>
       )}
 
-      {pendentes.map((o) => (
-        <LinhaOportunidade key={o.id} oportunidade={o} onDecidida={atualizarAgora} />
+      {Array.from(grupos.entries()).map(([sku, itens]) => (
+        <GrupoSku
+          key={sku}
+          sku={sku}
+          itens={itens}
+          selecionados={selecionados}
+          onToggle={toggle}
+          onToggleGrupo={toggleGrupo}
+          onDecidida={atualizarELimparSelecao}
+        />
       ))}
       {decididas.map((o) => (
-        <LinhaOportunidade key={o.id} oportunidade={o} onDecidida={atualizarAgora} />
+        <LinhaOportunidade
+          key={o.id}
+          oportunidade={o}
+          onDecidida={atualizarAgora}
+          selecionavel={false}
+          selecionado={false}
+          onToggleSelecao={() => {}}
+        />
       ))}
     </div>
   );

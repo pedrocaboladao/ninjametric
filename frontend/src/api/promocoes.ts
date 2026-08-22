@@ -7,6 +7,7 @@ import type {
   Oportunidade,
   ProgressoBuscaOportunidades,
   ComparacaoOportunidade,
+  ResultadoAprovacaoLote,
 } from "../types/promocoes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -113,6 +114,17 @@ export async function aprovarOportunidade(id: number): Promise<void> {
     credentials: "include",
   });
   await tratarResposta(res);
+}
+
+export async function aprovarVariasOportunidades(ids: number[]): Promise<ResultadoAprovacaoLote[]> {
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/aprovar-varias`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ ids }),
+  });
+  const data = await tratarResposta<{ resultados: ResultadoAprovacaoLote[] }>(res);
+  return data.resultados;
 }
 
 export async function rejeitarOportunidade(id: number): Promise<void> {

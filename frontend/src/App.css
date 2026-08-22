@@ -3793,6 +3793,34 @@
   margin-top: 4px;
 }
 
+.promocoes-grupo-sku {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 14px;
+}
+
+.promocoes-grupo-sku-cabecalho {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 6px 10px;
+}
+
+.promocoes-grupo-sku .promocoes-linha {
+  margin-bottom: 8px;
+}
+
+.promocoes-grupo-sku .promocoes-linha:last-child {
+  margin-bottom: 0;
+}
+
+.promocoes-barra-selecionados {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .promocoes-comparacao-tabela {
   width: auto;
 }

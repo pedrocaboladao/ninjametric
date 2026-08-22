@@ -409,6 +409,36 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
   }
 }
 
+export interface ResultadoAprovacaoLote {
+  id: number;
+  ok: boolean;
+  erro?: string;
+}
+
+// Aprova uma lista de oportunidades de uma vez (ex.: todas as variações do
+// mesmo SKU selecionadas na tela) — sequencial, não em paralelo: cada
+// aprovação já é uma ação real no Mercado Livre (busca candidata ao vivo +
+// confirma participação), então roda uma de cada vez pra não estourar rate
+// limit e pra um erro pontual não travar as outras (mesmo espírito do
+// registrarCampanhaExistente em promocoesService.ts, que também isola erro
+// por linha).
+export async function aprovarVariasOportunidades(
+  ids: number[],
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<ResultadoAprovacaoLote[]> {
+  const resultados: ResultadoAprovacaoLote[] = [];
+  for (const id of ids) {
+    try {
+      await aprovarOportunidade(id, lojaIdFiltro, lojasPermitidas);
+      resultados.push({ id, ok: true });
+    } catch (err) {
+      resultados.push({ id, ok: false, erro: err instanceof Error ? err.message : "Falha ao aprovar." });
+    }
+  }
+  return resultados;
+}
+
 export async function rejeitarOportunidade(id: number, lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<void> {
   const row = await buscarOportunidade(id);
   if (!row) throw new Error("Oportunidade não encontrada.");

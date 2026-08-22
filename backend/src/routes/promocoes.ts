@@ -15,6 +15,7 @@ import {
   obterProgressoBuscaOportunidades,
   listarOportunidades,
   aprovarOportunidade,
+  aprovarVariasOportunidades,
   rejeitarOportunidade,
   limparOportunidades,
   compararComVendaReal,
@@ -253,6 +254,22 @@ promocoesRouter.get("/oportunidades", async (req, res) => {
     res.json({ oportunidades: await listarOportunidades(filtro.lojaId, filtro.lojasPermitidas) });
   } catch (err) {
     erro(res, err, "Falha ao carregar oportunidades.");
+  }
+});
+
+promocoesRouter.post("/oportunidades/aprovar-varias", async (req, res) => {
+  const { ids } = req.body ?? {};
+  if (!Array.isArray(ids) || ids.length === 0 || ids.some((id: unknown) => !Number.isInteger(id))) {
+    res.status(400).json({ error: "Lista de ids inválida." });
+    return;
+  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    const resultados = await aprovarVariasOportunidades(ids, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ resultados });
+  } catch (err) {
+    erro(res, err, "Falha ao aprovar oportunidades selecionadas.");
   }
 });
 

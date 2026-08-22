@@ -104,6 +104,12 @@ export interface ComparacaoOportunidade {
   percentualMargemPrevista: number | null;
 }
 
+export interface ResultadoAprovacaoLote {
+  id: number;
+  ok: boolean;
+  erro?: string;
+}
+
 export interface ProgressoBuscaOportunidades {
   emAndamento: boolean;
   lojaAtual: string | null;
