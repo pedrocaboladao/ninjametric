@@ -13,6 +13,7 @@ import {
   fetchOportunidades,
   aprovarOportunidade,
   rejeitarOportunidade,
+  limparOportunidades,
 } from "../api/promocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type {
@@ -742,7 +743,10 @@ function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "mi
         </div>
       </div>
 
-      <BuscaOportunidades lojaFiltro={lojaFiltro} onEncontradas={atualizarAgora} />
+      <div className="promocoes-acoes-topo">
+        <BuscaOportunidades lojaFiltro={lojaFiltro} onEncontradas={atualizarAgora} />
+        {dados !== null && dados.length > 0 && <LimparOportunidades lojaFiltro={lojaFiltro} onLimpo={atualizarAgora} />}
+      </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && dados === null && <div className="state-message">Carregando...</div>}
@@ -866,6 +870,60 @@ function LimparTudo({
       <p>
         Apaga o rastreamento de <b>todas</b> as campanhas de <b>{escopo}</b> no painel — não mexe em nada real no
         Mercado Livre. Não dá pra desfazer.
+      </p>
+      <div className="fabricacao-editor-acoes">
+        <button type="button" className="btn-excluir" disabled={enviando} onClick={limpar}>
+          {enviando ? "Limpando..." : "Confirmar limpeza total"}
+        </button>
+        <button type="button" className="btn-responder" onClick={() => setConfirmando(false)}>
+          Voltar
+        </button>
+      </div>
+      {erro && <div className="state-message state-error">{erro}</div>}
+    </div>
+  );
+}
+
+function LimparOportunidades({
+  lojaFiltro,
+  onLimpo,
+}: {
+  lojaFiltro: number | "todas" | "minhas";
+  onLimpo: () => void;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function limpar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await limparOportunidades(lojaFiltro);
+      setConfirmando(false);
+      onLimpo();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao limpar.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  const escopo = lojaFiltro === "todas" ? "todas as lojas" : lojaFiltro === "minhas" ? "minhas lojas" : "essa loja";
+
+  if (!confirmando) {
+    return (
+      <button type="button" className="btn-excluir" onClick={() => setConfirmando(true)}>
+        Limpar {lojaFiltro === "todas" ? "tudo" : "dessa loja"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="promocoes-confirmacao">
+      <p>
+        Apaga o rastreamento de <b>todas</b> as oportunidades de <b>{escopo}</b> no painel (pendentes, aprovadas e
+        rejeitadas) — não mexe em nada real no Mercado Livre. Não dá pra desfazer.
       </p>
       <div className="fabricacao-editor-acoes">
         <button type="button" className="btn-excluir" disabled={enviando} onClick={limpar}>

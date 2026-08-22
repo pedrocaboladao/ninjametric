@@ -16,6 +16,7 @@ import {
   listarOportunidades,
   aprovarOportunidade,
   rejeitarOportunidade,
+  limparOportunidades,
 } from "../services/promocoesOportunidadesService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
@@ -86,6 +87,19 @@ promocoesRouter.delete("/", async (req, res) => {
     res.json({ apagadas });
   } catch (err) {
     erro(res, err, "Falha ao limpar campanhas.");
+  }
+});
+
+// Precisa vir ANTES de "/:id" abaixo — senão Express casa "/oportunidades"
+// com aquela rota primeiro (id="oportunidades", 400 antes de chegar aqui).
+promocoesRouter.delete("/oportunidades", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    const apagadas = await limparOportunidades(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ apagadas });
+  } catch (err) {
+    erro(res, err, "Falha ao limpar oportunidades.");
   }
 });
 
@@ -228,6 +242,9 @@ promocoesRouter.get("/oportunidades/buscar/status", async (_req, res) => {
   res.json(obterProgressoBuscaOportunidades());
 });
 
+// Precisa vir ANTES de "/:id" (linha ~93) — senão Express casa
+// "/oportunidades" com aquela rota primeiro (id="oportunidades", 400 antes
+// de chegar aqui).
 promocoesRouter.get("/oportunidades", async (req, res) => {
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;

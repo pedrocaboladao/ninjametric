@@ -340,3 +340,15 @@ export async function rejeitarOportunidade(id: number, lojaIdFiltro?: number, lo
   }
   await pool.query(`UPDATE promocoes_oportunidades SET status = 'rejeitada', decidido_em = now() WHERE id = $1`, [id]);
 }
+
+// Só apaga o rastreamento no painel — não mexe em nada real no Mercado
+// Livre (mesmo comportamento de limparCampanhas em promocoesService.ts).
+export async function limparOportunidades(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<number> {
+  const lojas = (await listLojas()).filter(
+    (l) => (lojaIdFiltro === undefined || l.id === lojaIdFiltro) && (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+  const lojaIds = lojas.map((l) => l.id);
+  if (lojaIds.length === 0) return 0;
+  const { rowCount } = await pool.query("DELETE FROM promocoes_oportunidades WHERE loja_id = ANY($1)", [lojaIds]);
+  return rowCount ?? 0;
+}

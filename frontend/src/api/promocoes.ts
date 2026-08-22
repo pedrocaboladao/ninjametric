@@ -121,3 +121,10 @@ export async function rejeitarOportunidade(id: number): Promise<void> {
   });
   await tratarResposta(res);
 }
+
+export async function limparOportunidades(lojaFiltro: number | "todas" | "minhas"): Promise<number> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades?${params}`, { method: "DELETE", credentials: "include" });
+  const data = await tratarResposta<{ apagadas: number }>(res);
+  return data.apagadas;
+}
