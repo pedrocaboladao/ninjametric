@@ -17,6 +17,7 @@ import type {
 import { formatCurrency } from "../utils/format";
 import { IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
+import { Modal } from "./Modal";
 import { FabricaDre } from "./FabricaDre";
 import { FabricaBens } from "./FabricaBens";
 import { FabricaFornecedores } from "./FabricaFornecedores";
@@ -458,7 +459,42 @@ export function FabricaContas() {
       )}
 
       {aba === "contas" && mostrarForm && (
-        <>
+        <Modal
+          titulo={editandoId ? "Editar conta" : "Nova conta"}
+          subtitulo={
+            editandoId
+              ? `${form.contraparte || "sem fornecedor"} · vencimento ${
+                  form.vencimento ? data(form.vencimento) : "—"
+                }`
+              : "Lançar uma conta a pagar ou a receber da Fábrica"
+          }
+          onFechar={() => {
+            setMostrarForm(false);
+            setEditandoId(null);
+          }}
+          rodape={
+            <>
+              <button
+                type="button"
+                className="btn-responder"
+                onClick={() => void salvar()}
+                disabled={salvando}
+              >
+                {editandoId ? "Salvar" : "Lançar"}
+              </button>
+              <button
+                type="button"
+                className="btn-excluir"
+                onClick={() => {
+                  setMostrarForm(false);
+                  setEditandoId(null);
+                }}
+              >
+                Cancelar
+              </button>
+            </>
+          }
+        >
           <div className="financeiro-filtros contas-form">
             <select
               className="clonar-input fabricacao-input-pequeno"
@@ -584,22 +620,7 @@ export function FabricaContas() {
             />
           </div>
 
-          <div className="financeiro-filtros contas-form">
-            <button type="button" className="btn-responder" onClick={() => void salvar()} disabled={salvando}>
-              {editandoId ? "Salvar" : "Lançar"}
-            </button>
-            <button
-              type="button"
-              className="btn-excluir"
-              onClick={() => {
-                setMostrarForm(false);
-                setEditandoId(null);
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </>
+        </Modal>
       )}
 
       {aba === "contas" && (

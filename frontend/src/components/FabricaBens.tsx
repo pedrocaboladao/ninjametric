@@ -4,6 +4,7 @@ import type { Bem, BemEntrada } from "../types/fabricaBens";
 import { formatCurrency } from "../utils/format";
 import { IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
+import { Modal } from "./Modal";
 
 // aceita "110.000" e "110000,50" — o operador digita como fala
 function num(v: string): number {
@@ -163,8 +164,37 @@ export function FabricaBens() {
       </div>
 
       {mostrarForm && (
-        <>
-          <div className="financeiro-filtros">
+        <Modal
+          titulo={editandoId ? "Editar bem" : "Novo bem"}
+          subtitulo="O valor é o de compra, cheio — não desconte o que já foi pago"
+          onFechar={() => {
+            setMostrarForm(false);
+            setEditandoId(null);
+          }}
+          rodape={
+            <>
+              <button
+                type="button"
+                className="btn-responder"
+                onClick={() => void salvar()}
+                disabled={salvando}
+              >
+                {editandoId ? "Salvar" : "Cadastrar"}
+              </button>
+              <button
+                type="button"
+                className="btn-excluir"
+                onClick={() => {
+                  setMostrarForm(false);
+                  setEditandoId(null);
+                }}
+              >
+                Cancelar
+              </button>
+            </>
+          }
+        >
+          <div className="financeiro-filtros contas-form">
             <input
               className="clonar-input"
               placeholder="Nome (ex: Caminhão Volvo, Dispersor 500L)"
@@ -207,7 +237,7 @@ export function FabricaBens() {
             </select>
           </div>
 
-          <div className="financeiro-filtros">
+          <div className="financeiro-filtros contas-form">
             <label className="financeiro-td-mudo">
               <input
                 type="checkbox"
@@ -224,27 +254,7 @@ export function FabricaBens() {
             />
           </div>
 
-          <div className="financeiro-filtros">
-            <button
-              type="button"
-              className="btn-responder"
-              onClick={() => void salvar()}
-              disabled={salvando}
-            >
-              {editandoId ? "Salvar" : "Cadastrar"}
-            </button>
-            <button
-              type="button"
-              className="btn-excluir"
-              onClick={() => {
-                setMostrarForm(false);
-                setEditandoId(null);
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </>
+        </Modal>
       )}
 
       <div className="financeiro-tabela-wrap">
