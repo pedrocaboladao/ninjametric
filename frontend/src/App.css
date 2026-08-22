@@ -6100,22 +6100,25 @@ button.contas-cartao:hover {
 /* Fecho da lista: o total do que esta na tela.
    A folha de conferencia terminava na ultima linha, sem soma — quem confere
    tinha que somar na mao pra saber se bate. E o numero do topo da pagina e o
-   "a pagar" geral, que ignora o filtro de mes. */
+   "a pagar" geral, que ignora o filtro de mes.
+
+   Cada total e um bloco com rotulo EM CIMA do valor. Lado a lado numa linha
+   so, o valor de um encostava no rotulo do proximo e dava pra ler "PAGO
+   R$ 1.802.028,04" — que e o total, nao o pago. */
 .contas-totais {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 8px 18px;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 10px;
   margin: 14px 0 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
 }
 
 .contas-total-linha {
   display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 
 .contas-total-linha span {
@@ -6126,8 +6129,14 @@ button.contas-cartao:hover {
 }
 
 .contas-total-linha strong {
-  font-size: 16px;
+  font-size: 17px;
   color: var(--text-primary);
+}
+
+/* a quebra por natureza e leitura de apoio: fica mais discreta que os tres
+   numeros principais, pra nao competir com eles */
+.contas-total-mudo {
+  border-style: dashed;
 }
 
 .contas-total-mudo span {
@@ -6136,18 +6145,37 @@ button.contas-cartao:hover {
 }
 
 .contas-total-mudo span:last-child {
+  font-size: 15px;
   color: var(--text-primary);
 }
 
 @media print {
   .contas-totais {
-    border: 1px solid #666 !important;
     break-inside: avoid;
     grid-template-columns: repeat(3, 1fr);
+  }
+
+  .contas-total-linha {
+    border: 1px solid #666 !important;
   }
 
   .contas-total-linha span,
   .contas-total-linha strong {
     color: #000 !important;
   }
+}
+
+/* Os dois numeros do topo lado a lado: o bruto do mes que esta na tela e o
+   provisionado de todos os meses. Cada um com seu rotulo de periodo — sem
+   isso os dois pareciam falar da mesma coisa e discordar. */
+.financeiro-topo-numeros {
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  text-align: right;
+}
+
+.financeiro-topo-numeros > div {
+  min-width: 150px;
 }

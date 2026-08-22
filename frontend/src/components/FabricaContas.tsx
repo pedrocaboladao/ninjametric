@@ -204,6 +204,25 @@ export function FabricaContas() {
     [visiveis]
   );
 
+  // O bruto olha a lista carregada inteira, sem o filtro de natureza: o topo
+  // responde "quanto vence neste mes", nao "quanto vence do que estou olhando".
+  const brutoPeriodo = useMemo(
+    () => (contas ?? []).filter((c) => c.status !== "cancelado").reduce((s, c) => s + c.valor, 0),
+    [contas]
+  );
+
+  // "AGO/2026" quando o filtro cobre um mes inteiro; senao, as duas datas
+  const rotuloPeriodo = useMemo(() => {
+    const [ay, am, ad] = de.split("-").map(Number);
+    const [by, bm, bd] = ate.split("-").map(Number);
+    const ultimo = new Date(Date.UTC(by, bm, 0)).getUTCDate();
+    if (ay === by && am === bm && ad === 1 && bd === ultimo) {
+      const nomes = ["JAN", "FEV", "MAR", "ABR", "MAI", "JUN", "JUL", "AGO", "SET", "OUT", "NOV", "DEZ"];
+      return `${nomes[am - 1]}/${ay}`;
+    }
+    return `${data(de)} A ${data(ate)}`;
+  }, [de, ate]);
+
   const totalPeriodo = useMemo(
     () => visiveis.filter((c) => c.status !== "cancelado").reduce((s, c) => s + c.valor, 0),
     [visiveis]
@@ -339,12 +358,29 @@ export function FabricaContas() {
             junto com as outras.
           </p>
         </div>
-        <div>
-          <div className="financeiro-stat-label">
-            {atrasadas.length ? `${atrasadas.length} ATRASADA${atrasadas.length > 1 ? "S" : ""}` : "A PAGAR"}
-          </div>
-          <div className="financeiro-stat-valor">
-            {formatCurrency(atrasadas.length ? resumo?.atrasado ?? 0 : resumo?.aPagar ?? 0)}
+        <div className="financeiro-topo-numeros">
+          {aba === "contas" && (
+            <div>
+              <div className="financeiro-stat-label">
+                {filtroTipo === "receber" ? "FATURADO" : "BRUTO"} {rotuloPeriodo}
+              </div>
+              <div className="financeiro-stat-valor">{formatCurrency(brutoPeriodo)}</div>
+              <div className="financeiro-stat-sub">
+                {formatCurrency(pagoNoPeriodo)} {filtroTipo === "receber" ? "recebido" : "pago"} ·{" "}
+                {formatCurrency(faltaPagar)} em aberto
+              </div>
+            </div>
+          )}
+          <div>
+            <div className="financeiro-stat-label">
+              {atrasadas.length
+                ? `${atrasadas.length} ATRASADA${atrasadas.length > 1 ? "S" : ""}`
+                : "A PAGAR"}
+            </div>
+            <div className="financeiro-stat-valor">
+              {formatCurrency(atrasadas.length ? resumo?.atrasado ?? 0 : resumo?.aPagar ?? 0)}
+            </div>
+            <div className="financeiro-stat-sub">todos os meses</div>
           </div>
         </div>
       </div>
