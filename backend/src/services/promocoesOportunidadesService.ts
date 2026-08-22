@@ -145,12 +145,13 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
     try {
       await pool.query(
         `INSERT INTO promocoes_oportunidades
-           (loja_id, item_id, titulo, permalink, sku, promotion_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pendente', now())
+           (loja_id, item_id, titulo, permalink, sku, promotion_id, offer_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'pendente', now())
          ON CONFLICT (loja_id, item_id, tipo, promotion_id) DO UPDATE SET
            titulo = EXCLUDED.titulo,
            permalink = EXCLUDED.permalink,
            sku = EXCLUDED.sku,
+           offer_id = EXCLUDED.offer_id,
            nome = EXCLUDED.nome,
            preco_original = EXCLUDED.preco_original,
            preco_escolhido = EXCLUDED.preco_escolhido,
@@ -160,8 +161,13 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
            elegivel = EXCLUDED.elegivel,
            meli_percentual = EXCLUDED.meli_percentual,
            seller_percentual = EXCLUDED.seller_percentual,
+           status = 'pendente',
+           erro = NULL,
            descoberto_em = now()
-         WHERE promocoes_oportunidades.status = 'pendente'`,
+         -- inclui 'erro' de propósito: uma nova varredura tem que poder
+         -- reviver/corrigir uma linha que falhou antes (ex.: esse mesmo caso
+         -- do offer_id que faltava), não só as pendentes.
+         WHERE promocoes_oportunidades.status IN ('pendente', 'erro')`,
         [
           loja.id,
           itemId,
@@ -169,6 +175,7 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
           info.permalink,
           skuNorm,
           promo.promotionId || null,
+          promo.refId,
           promo.type,
           promo.name,
           precoOriginal,
@@ -235,6 +242,7 @@ interface OportunidadeRow {
   permalink: string | null;
   sku: string | null;
   promotion_id: string | null;
+  offer_id: string | null;
   tipo: string;
   nome: string | null;
   preco_original: string;
@@ -336,7 +344,7 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
   }
 
   try {
-    await adicionarItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo, Number(row.preco_escolhido));
+    await adicionarItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo, Number(row.preco_escolhido), row.offer_id);
     await pool.query(`UPDATE promocoes_oportunidades SET status = 'aprovada', erro = NULL, decidido_em = now() WHERE id = $1`, [id]);
   } catch (err) {
     // Mesmo padrão de erro de criarCampanhaVendedor (promocoesService.ts) —

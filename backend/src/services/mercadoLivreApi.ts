@@ -141,17 +141,29 @@ export async function criarCampanhaVendedor(
 // item, ver deal_price). promotionType aceita qualquer tipo devolvido por
 // consultarPromocoesDoItem (SELLER_CAMPAIGN, SMART, DEAL — não só campanha
 // própria, ver promocoesOportunidadesService).
+//
+// offerId: só o tipo SMART tem/precisa disso (campo ref_id da resposta de
+// consultarPromocoesDoItem) — descoberto ao vivo depois de um 400 real
+// "Offer id is required" tentando aprovar sem mandar esse campo. Sem
+// confirmação oficial se os outros tipos algum dia vão precisar também,
+// então só manda quando vier preenchido.
 export async function adicionarItemCampanha(
   lojaId: number,
   itemId: string,
   promotionId: string,
   promotionType: string,
-  dealPrice: number
+  dealPrice: number,
+  offerId?: string | null
 ): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   await axios.post(
     `${ML_API_BASE}/seller-promotions/items/${itemId}`,
-    { promotion_id: promotionId, promotion_type: promotionType, deal_price: dealPrice },
+    {
+      promotion_id: promotionId,
+      promotion_type: promotionType,
+      deal_price: dealPrice,
+      ...(offerId ? { offer_id: offerId } : {}),
+    },
     { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
   );
 }
@@ -294,6 +306,11 @@ export interface MlPromocaoDoItem {
   meliPercentage: number | null;
   sellerPercentage: number | null;
   originalPrice: number | null;
+  // Só no tipo SMART, formato "CANDIDATE-{itemId}-{n}" (candidate) ou
+  // "OFFER-{itemId}-{n}" (started). Descoberto na marra: tentar aprovar
+  // mandando só promotion_id devolveu 400 "Offer id is required" — é esse
+  // campo que a API quer no join (ver adicionarItemCampanha).
+  refId: string | null;
 }
 
 // Versão mais rica de getPromocaoStatus (que só devolve um enum
@@ -317,6 +334,7 @@ export async function consultarPromocoesDoItem(lojaId: number, itemId: string): 
       meli_percentage?: number;
       seller_percentage?: number;
       original_price?: number;
+      ref_id?: string;
     }>
   >(`${ML_API_BASE}/seller-promotions/items/${itemId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -338,6 +356,7 @@ export async function consultarPromocoesDoItem(lojaId: number, itemId: string): 
     meliPercentage: d.meli_percentage ?? null,
     sellerPercentage: d.seller_percentage ?? null,
     originalPrice: d.original_price ?? null,
+    refId: d.ref_id ?? null,
   }));
 }
 
