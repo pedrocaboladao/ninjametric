@@ -1215,3 +1215,37 @@ CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_origem
   ON fabrica_produtos (origem, familia);
 CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_ean
   ON fabrica_produtos (ean) WHERE ean IS NOT NULL;
+
+-- Liga o cliente da Fábrica à loja do Mercado Livre.
+--
+-- As lojas trabalham com estoque zero: só pegam o que venderam, e a expedição
+-- fica no mesmo galpão. Então a venda no ML É a retirada do estoque da fábrica
+-- — não é aproximação, é o mesmo evento visto de outro lado.
+--
+-- Casar por nome funcionaria hoje (20 de 21 batem), mas quebra em silêncio no
+-- dia em que alguém renomear a loja. O id fica gravado.
+ALTER TABLE fabrica_clientes
+  ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_loja ON fabrica_clientes (loja_id);
+
+-- Venda do ML que já virou pedido da fábrica.
+--
+-- O ciclo do Hudson é de 7 dias, mas o dia 8 já gera compra nova, e sobra do
+-- dia 7 que ficou fora do fechamento. Sem marcar o que já entrou, a mesma
+-- venda entraria em dois pedidos e ele faturaria duas vezes a mesma coisa.
+--
+-- A chave é o item da ordem no ML (order_id + item_id): uma ordem pode ter
+-- vários itens, e cada um vira uma linha do pedido.
+CREATE TABLE IF NOT EXISTS fabrica_ml_importado (
+  order_id BIGINT NOT NULL,
+  item_id TEXT NOT NULL,
+  pedido_id INTEGER REFERENCES fabrica_pedidos(id) ON DELETE CASCADE,
+  loja_id INTEGER,
+  sku TEXT,
+  quantidade NUMERIC(12, 3) NOT NULL DEFAULT 0,
+  data_venda DATE,
+  importado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (order_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_ml_importado_pedido
+  ON fabrica_ml_importado (pedido_id);

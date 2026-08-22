@@ -324,3 +324,21 @@ fabricaPedidosRouter.delete("/:id", async (req, res) => {
     erro(res, err, "Falha ao excluir pedido.");
   }
 });
+
+// Conferência das vendas do Mercado Livre antes de virarem pedido.
+//
+// Só lê e agrupa: nada é lançado aqui. As lojas trabalham com estoque zero, e a
+// expedição fica no mesmo galpão — então a venda no ML é a retirada do estoque
+// da fábrica, e o que a API sabe é o que o Hudson hoje digita à mão.
+fabricaPedidosRouter.get("/vendas-ml", async (req, res) => {
+  const de = typeof req.query.de === "string" ? req.query.de : "";
+  const ate = typeof req.query.ate === "string" ? req.query.ate : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período (de e até)." });
+  }
+  try {
+    res.json(await conferirVendasMl(de, ate));
+  } catch (err) {
+    erro(res, err, "Falha ao buscar as vendas do Mercado Livre.");
+  }
+});
