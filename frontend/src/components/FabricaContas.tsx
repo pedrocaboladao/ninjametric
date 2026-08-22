@@ -117,6 +117,12 @@ export function FabricaContas() {
     return `${hoje().slice(0, 8)}${ultimo}`;
   });
 
+  // natureza de custo nao existe em receita: deixar o filtro ligado ao trocar
+  // pra "a receber" esvaziaria a lista sem dizer por que
+  useEffect(() => {
+    if (filtroTipo === "receber") setFiltroNatureza("");
+  }, [filtroTipo]);
+
   const carregar = useCallback(async () => {
     try {
       const [cs, r] = await Promise.all([
@@ -232,7 +238,7 @@ export function FabricaContas() {
 
   function novo() {
     setEditandoId(null);
-    setForm({ ...VAZIO, vencimento: hoje() });
+    setForm({ ...VAZIO, tipo: filtroTipo, vencimento: hoje() });
     setMostrarForm(true);
     setErro(null);
   }
@@ -364,7 +370,9 @@ export function FabricaContas() {
             onClick={() => setAba(a)}
           >
             {a === "contas"
-              ? "Contas a pagar"
+              ? filtroTipo === "receber"
+                ? "Contas a receber"
+                : "Contas a pagar"
               : a === "dre"
                 ? "DRE"
                 : a === "bens"
@@ -380,6 +388,23 @@ export function FabricaContas() {
 
       {aba === "contas" && (
         <div className="contas-cartoes">
+          {filtroTipo === "receber" ? (
+            <>
+              <div className="contas-cartao">
+                <div className="financeiro-stat-label">FATURADO NO PERÍODO</div>
+                <div className="financeiro-stat-valor">{formatCurrency(totalPeriodo)}</div>
+              </div>
+              <div className="contas-cartao">
+                <div className="financeiro-stat-label">RECEBIDO</div>
+                <div className="financeiro-stat-valor">{formatCurrency(pagoNoPeriodo)}</div>
+              </div>
+              <div className="contas-cartao">
+                <div className="financeiro-stat-label">SALDO DEVEDOR DAS LOJAS</div>
+                <div className="financeiro-stat-valor">{formatCurrency(faltaPagar)}</div>
+              </div>
+            </>
+          ) : (
+            <>
           {(["fixo", "variavel", "revenda"] as const).map((n) => (
             <button
               key={n}
@@ -403,6 +428,8 @@ export function FabricaContas() {
             <div className="financeiro-stat-label">FALTA PAGAR</div>
             <div className="financeiro-stat-valor">{formatCurrency(faltaPagar)}</div>
           </div>
+            </>
+          )}
         </div>
       )}
 
@@ -416,16 +443,18 @@ export function FabricaContas() {
           <option value="pagar">A pagar</option>
           <option value="receber">A receber</option>
         </select>
-        <select
-          className="clonar-input fabricacao-input-pequeno"
-          value={filtroNatureza}
-          onChange={(e) => setFiltroNatureza(e.target.value as Natureza)}
-        >
-          <option value="">Fixo, variável e revenda</option>
-          <option value="fixo">Só custo fixo</option>
-          <option value="variavel">Só custo variável</option>
-          <option value="revenda">Só revenda</option>
-        </select>
+        {filtroTipo === "pagar" && (
+          <select
+            className="clonar-input fabricacao-input-pequeno"
+            value={filtroNatureza}
+            onChange={(e) => setFiltroNatureza(e.target.value as Natureza)}
+          >
+            <option value="">Fixo, variável e revenda</option>
+            <option value="fixo">Só custo fixo</option>
+            <option value="variavel">Só custo variável</option>
+            <option value="revenda">Só revenda</option>
+          </select>
+        )}
         <select
           className="clonar-input fabricacao-input-pequeno"
           value={filtroStatus}
@@ -451,7 +480,8 @@ export function FabricaContas() {
           title="Vencimento até"
         />
         <button type="button" className="btn-responder" onClick={novo}>
-          <IconPlus size={14} /> Nova conta
+          <IconPlus size={14} />{" "}
+          {filtroTipo === "receber" ? "Novo recebimento" : "Nova conta"}
         </button>
         <button type="button" className="btn-excluir" onClick={() => window.print()}>
           Imprimir
@@ -673,7 +703,7 @@ export function FabricaContas() {
               <th>{filtroTipo === "receber" ? "CLIENTE" : "FORNECEDOR"}</th>
               <th>PAGAMENTO</th>
               <th className="financeiro-th-numero">VALOR</th>
-              <th>CUSTO</th>
+              {filtroTipo === "pagar" && <th>CUSTO</th>}
               <th>STATUS</th>
               <th />
             </tr>
@@ -707,7 +737,9 @@ export function FabricaContas() {
                   {c.documento && ` · ${c.documento}`}
                 </td>
                 <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
-                <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
+                {filtroTipo === "pagar" && (
+                  <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
+                )}
                 <td>
                   <select
                     className="clonar-input fabricacao-input-pequeno"
@@ -732,18 +764,18 @@ export function FabricaContas() {
       </div>
       <div className="contas-totais">
         <div className="contas-total-linha">
-          <span>TOTAL DO PERÍODO</span>
+          <span>{filtroTipo === "receber" ? "FATURADO NO PERÍODO" : "TOTAL DO PERÍODO"}</span>
           <strong>{formatCurrency(totalPeriodo)}</strong>
         </div>
         <div className="contas-total-linha">
-          <span>PAGO</span>
+          <span>{filtroTipo === "receber" ? "RECEBIDO" : "PAGO"}</span>
           <strong>{formatCurrency(pagoNoPeriodo)}</strong>
         </div>
         <div className="contas-total-linha">
-          <span>FALTA PAGAR</span>
+          <span>{filtroTipo === "receber" ? "FALTA RECEBER" : "FALTA PAGAR"}</span>
           <strong>{formatCurrency(faltaPagar)}</strong>
         </div>
-        {filtroNatureza === "" && (
+        {filtroTipo === "pagar" && filtroNatureza === "" && (
           <>
             <div className="contas-total-linha contas-total-mudo">
               <span>custo fixo</span>
