@@ -343,8 +343,33 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
     throw new Error("Essa modalidade de promoção não tem um identificador pra confirmar via API — participe direto no Mercado Livre.");
   }
 
+  // offer_id (ref_id) continuou dando "Offer id is required" mesmo depois de
+  // salvo numa varredura — sinal de que não é um id estável, e sim algo
+  // meio sessão/request (o sufixo numérico parece mudar a cada consulta).
+  // Por isso busca AO VIVO, na hora de aprovar, em vez de confiar no valor
+  // salvo — o que casa por promotion_id (esse sim parece estável entre
+  // consultas, é só o ref_id que expira).
+  const candidatasAgora = await consultarPromocoesDoItem(row.loja_id, row.item_id);
+  const candidataAtual = candidatasAgora.find((p) => p.status === "candidate" && p.promotionId === promotionId);
+  if (!candidataAtual) {
+    const mensagem =
+      "Essa proposta não existe mais como candidata no Mercado Livre (pode ter expirado ou sido substituída por outra). Rode 'Buscar oportunidades' de novo pra pegar a atual.";
+    await pool.query(`UPDATE promocoes_oportunidades SET status = 'erro', erro = $2, decidido_em = now() WHERE id = $1`, [
+      id,
+      mensagem,
+    ]);
+    throw new Error(mensagem);
+  }
+
   try {
-    await adicionarItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo, Number(row.preco_escolhido), row.offer_id);
+    await adicionarItemCampanha(
+      row.loja_id,
+      row.item_id,
+      promotionId,
+      row.tipo,
+      Number(row.preco_escolhido),
+      candidataAtual.refId
+    );
     await pool.query(`UPDATE promocoes_oportunidades SET status = 'aprovada', erro = NULL, decidido_em = now() WHERE id = $1`, [id]);
   } catch (err) {
     // Mesmo padrão de erro de criarCampanhaVendedor (promocoesService.ts) —
