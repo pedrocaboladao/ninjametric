@@ -27,6 +27,7 @@ export interface Oportunidade {
   custoUnitario: number | null;
   taxaMl: number | null;
   margem: number | null;
+  percentualMargem: number | null;
   elegivel: boolean;
   meliPercentual: number | null;
   sellerPercentual: number | null;
@@ -245,6 +246,8 @@ interface OportunidadeRow {
 }
 
 function mapearOportunidade(r: OportunidadeRow): Oportunidade {
+  const margem = r.margem === null ? null : Number(r.margem);
+  const precoEscolhido = Number(r.preco_escolhido);
   return {
     id: r.id,
     lojaId: r.loja_id,
@@ -256,10 +259,15 @@ function mapearOportunidade(r: OportunidadeRow): Oportunidade {
     tipo: r.tipo,
     nome: r.nome,
     precoOriginal: Number(r.preco_original),
-    precoEscolhido: Number(r.preco_escolhido),
+    precoEscolhido,
     custoUnitario: r.custo_unitario === null ? null : Number(r.custo_unitario),
     taxaMl: r.taxa_ml === null ? null : Number(r.taxa_ml),
-    margem: r.margem === null ? null : Number(r.margem),
+    margem,
+    // Margem de contribuição em % sobre o preço de venda (mesmo padrão de
+    // fabricaDreService.ts: margem / receita) — receita aqui é o preço que
+    // o cliente paga de fato (precoEscolhido), não o precoEfetivo usado
+    // internamente pra calcular a margem em si.
+    percentualMargem: margem === null || precoEscolhido <= 0 ? null : (margem / precoEscolhido) * 100,
     elegivel: r.elegivel,
     meliPercentual: r.meli_percentual === null ? null : Number(r.meli_percentual),
     sellerPercentual: r.seller_percentual === null ? null : Number(r.seller_percentual),

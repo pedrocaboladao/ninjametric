@@ -79,6 +79,7 @@ export interface Oportunidade {
   custoUnitario: number | null;
   taxaMl: number | null;
   margem: number | null;
+  percentualMargem: number | null;
   elegivel: boolean;
   meliPercentual: number | null;
   sellerPercentual: number | null;

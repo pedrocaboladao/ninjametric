@@ -594,7 +594,9 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
           </span>
         )}
         <span className={o.elegivel ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}>
-          {o.margem === null ? "Sem dados de custo/taxa pra calcular" : `Margem: ${formatCurrency(o.margem)}`}
+          {o.margem === null
+            ? "Sem dados de custo/taxa pra calcular"
+            : `Margem: ${formatCurrency(o.margem)} (${o.percentualMargem?.toFixed(1)}%)`}
         </span>
         {o.status === "pendente" && !confirmando && (
           <>
@@ -629,7 +631,10 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
             Confirma entrar na promoção <b>{o.nome ?? o.tipo}</b> desse item? O cliente vai ver o preço{" "}
             <b>{formatCurrency(o.precoEscolhido)}</b> (era {formatCurrency(o.precoOriginal)}), mas o Mercado Livre banca{" "}
             <b>{o.meliPercentual}%</b> desse desconto — sua margem real fica em{" "}
-            <b>{formatCurrency(o.margem ?? 0)}</b>. Isso muda o preço/participação de verdade no Mercado Livre agora.
+            <b>
+              {formatCurrency(o.margem ?? 0)} ({o.percentualMargem?.toFixed(1)}%)
+            </b>
+            . Isso muda o preço/participação de verdade no Mercado Livre agora.
           </p>
           <div className="fabricacao-editor-acoes">
             <button type="button" className="btn-responder" disabled={enviando} onClick={aprovar}>
