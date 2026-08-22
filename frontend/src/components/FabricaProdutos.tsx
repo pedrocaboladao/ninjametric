@@ -4,9 +4,10 @@ import {
   criarFabricaProduto,
   atualizarFabricaProduto,
   excluirFabricaProduto,
+  importarCatalogo,
 } from "../api/fabricaProdutos";
 import { fetchFormulas, fetchFormula } from "../api/fabricacao";
-import type { FabricaProduto } from "../types/fabricaProdutos";
+import type { FabricaProduto, OrigemProduto } from "../types/fabricaProdutos";
 import type { FormulaResumo, FormulaEmbalagem } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
 import { IconPlus } from "./icons";
@@ -23,7 +24,18 @@ function formatRendimento(v: number, lotes: number): string {
   return `${sinal}${(v * 100).toFixed(1)}%`;
 }
 
-const VAZIO = { sku: "", nome: "", formulaId: "", embalagemId: "", precoVenda: "", ativo: true };
+const VAZIO = {
+  sku: "",
+  nome: "",
+  origem: "FABRICA" as OrigemProduto,
+  ean: "",
+  familia: "",
+  custoCompra: "",
+  formulaId: "",
+  embalagemId: "",
+  precoVenda: "",
+  ativo: true,
+};
 type Rascunho = typeof VAZIO;
 
 export function FabricaProdutos() {
@@ -35,6 +47,9 @@ export function FabricaProdutos() {
   const [erro, setErro] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [busca, setBusca] = useState("");
+  const [filtroOrigem, setFiltroOrigem] = useState<"" | OrigemProduto>("");
+  const [importando, setImportando] = useState(false);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -75,9 +90,45 @@ export function FabricaProdutos() {
 
   const filtrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
-    if (!t || !produtos) return produtos ?? [];
-    return produtos.filter((p) => p.sku.toLowerCase().includes(t) || p.nome.toLowerCase().includes(t));
-  }, [produtos, busca]);
+    let base = produtos ?? [];
+    if (filtroOrigem) base = base.filter((p) => p.origem === filtroOrigem);
+    if (!t) return base;
+    // codigo de barras entra na busca: quem esta com o produto na mao bipa
+    return base.filter(
+      (p) =>
+        p.sku.toLowerCase().includes(t) ||
+        p.nome.toLowerCase().includes(t) ||
+        (p.ean ?? "").includes(t) ||
+        (p.familia ?? "").toLowerCase().includes(t)
+    );
+  }, [produtos, busca, filtroOrigem]);
+
+  const porOrigem = useMemo(() => {
+    const m = { FABRICA: 0, DISTRIBUIDORA: 0 };
+    for (const p of produtos ?? []) m[p.origem] += 1;
+    return m;
+  }, [produtos]);
+
+  // Traz os 5 mil SKUs do catalogo do Mercado Livre como produto de revenda.
+  // SKU que ja existe aqui nao e tocado: o produto de fabrica com o mesmo
+  // codigo tem custo vindo da formula, e sobrescrever apagaria isso.
+  async function importar() {
+    setImportando(true);
+    try {
+      const r = await importarCatalogo();
+      setErro(null);
+      setAviso(
+        `${r.criados} produtos importados em ${r.familias} famílias. ` +
+          `${r.jaExistiam} já existiam e não foram tocados. ` +
+          `Falta preencher o custo de compra de cada um.`
+      );
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao importar o catálogo.");
+    } finally {
+      setImportando(false);
+    }
+  }
 
   const totais = useMemo(() => {
     const lista = filtrados.filter((p) => p.ativo);
@@ -95,6 +146,10 @@ export function FabricaProdutos() {
     setRascunho({
       sku: p.sku,
       nome: p.nome,
+      origem: p.origem,
+      ean: p.ean ?? "",
+      familia: p.familia ?? "",
+      custoCompra: p.custoCompra !== null ? String(p.custoCompra) : "",
       formulaId: p.formulaId ? String(p.formulaId) : "",
       embalagemId: p.embalagemId ? String(p.embalagemId) : "",
       precoVenda: String(p.precoVenda),
@@ -110,11 +165,17 @@ export function FabricaProdutos() {
   }
 
   async function salvar() {
+    const revenda = rascunho.origem === "DISTRIBUIDORA";
     const entrada = {
       sku: rascunho.sku.trim(),
       nome: rascunho.nome.trim(),
-      formulaId: rascunho.formulaId ? Number(rascunho.formulaId) : null,
-      embalagemId: rascunho.embalagemId ? Number(rascunho.embalagemId) : null,
+      origem: rascunho.origem,
+      ean: rascunho.ean.trim() || null,
+      familia: rascunho.familia.trim() || null,
+      // custo digitado só na revenda: no produto de fábrica ele vem da fórmula
+      custoCompra: revenda ? Number(rascunho.custoCompra.replace(",", ".")) || 0 : null,
+      formulaId: revenda || !rascunho.formulaId ? null : Number(rascunho.formulaId),
+      embalagemId: revenda || !rascunho.embalagemId ? null : Number(rascunho.embalagemId),
       precoVenda: Number(rascunho.precoVenda.replace(",", ".")) || 0,
       ativo: rascunho.ativo,
     };
@@ -164,6 +225,7 @@ export function FabricaProdutos() {
       </div>
 
       {erro && <p className="financeiro-td-mudo">{erro}</p>}
+      {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
         <input
@@ -179,30 +241,63 @@ export function FabricaProdutos() {
           onChange={(e) => setRascunho((r) => ({ ...r, sku: e.target.value }))}
         />
         <select
-          className="clonar-input"
-          value={rascunho.formulaId}
-          onChange={(e) => setRascunho((r) => ({ ...r, formulaId: e.target.value, embalagemId: "" }))}
+          className="clonar-input fabricacao-input-pequeno"
+          value={rascunho.origem}
+          onChange={(e) =>
+            setRascunho((r) => ({ ...r, origem: e.target.value as OrigemProduto }))
+          }
+          title="Fábrica: o custo vem da fórmula. Distribuidora: comprado pronto, custo digitado."
         >
-          <option value="">Fórmula (opcional)</option>
-          {formulas.map((f) => (
-            <option key={f.id} value={f.id}>
-              {f.nome}
-            </option>
-          ))}
+          <option value="FABRICA">Fábrica</option>
+          <option value="DISTRIBUIDORA">Distribuidora</option>
         </select>
-        <select
-          className="clonar-input"
-          value={rascunho.embalagemId}
-          disabled={!embalagens.length}
-          onChange={(e) => setRascunho((r) => ({ ...r, embalagemId: e.target.value }))}
-        >
-          <option value="">{embalagens.length ? "Embalagem" : "Escolha a fórmula"}</option>
-          {embalagens.map((e) => (
-            <option key={e.id} value={e.id}>
-              {e.nome} — {e.pesoKg}kg
-            </option>
-          ))}
-        </select>
+        {rascunho.origem === "FABRICA" ? (
+          <>
+            <select
+              className="clonar-input"
+              value={rascunho.formulaId}
+              onChange={(e) =>
+                setRascunho((r) => ({ ...r, formulaId: e.target.value, embalagemId: "" }))
+              }
+            >
+              <option value="">Fórmula (opcional)</option>
+              {formulas.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.nome}
+                </option>
+              ))}
+            </select>
+            <select
+              className="clonar-input"
+              value={rascunho.embalagemId}
+              disabled={!embalagens.length}
+              onChange={(e) => setRascunho((r) => ({ ...r, embalagemId: e.target.value }))}
+            >
+              <option value="">{embalagens.length ? "Embalagem" : "Escolha a fórmula"}</option>
+              {embalagens.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.nome} — {e.pesoKg}kg
+                </option>
+              ))}
+            </select>
+          </>
+        ) : (
+          <>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Custo de compra (R$)"
+              value={rascunho.custoCompra}
+              onChange={(e) => setRascunho((r) => ({ ...r, custoCompra: e.target.value }))}
+              title="O que você pagou ao fornecedor. É este número que dá a sua margem."
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Código de barras"
+              value={rascunho.ean}
+              onChange={(e) => setRascunho((r) => ({ ...r, ean: e.target.value }))}
+            />
+          </>
+        )}
         <input
           className="clonar-input fabricacao-input-pequeno"
           placeholder="Preço venda (R$)"
@@ -219,13 +314,31 @@ export function FabricaProdutos() {
         )}
       </div>
 
-      <div className="financeiro-busca">
+      <div className="financeiro-filtros">
         <input
           className="clonar-input"
-          placeholder="Buscar por nome ou SKU"
+          placeholder="Buscar por nome, SKU, código de barras ou família"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
+        <select
+          className="clonar-input fabricacao-input-pequeno"
+          value={filtroOrigem}
+          onChange={(e) => setFiltroOrigem(e.target.value as "" | OrigemProduto)}
+        >
+          <option value="">Fábrica e distribuidora</option>
+          <option value="FABRICA">Só fábrica ({porOrigem.FABRICA})</option>
+          <option value="DISTRIBUIDORA">Só distribuidora ({porOrigem.DISTRIBUIDORA})</option>
+        </select>
+        <button
+          type="button"
+          className="btn-excluir"
+          onClick={() => void importar()}
+          disabled={importando}
+          title="Traz os produtos de revenda do catálogo do Mercado Livre. A planilha não é alterada, e SKU que já existe aqui não é tocado."
+        >
+          {importando ? "Importando…" : "Importar catálogo"}
+        </button>
       </div>
 
       <div className="financeiro-tabela-wrap">

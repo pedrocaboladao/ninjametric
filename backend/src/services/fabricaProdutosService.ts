@@ -5,12 +5,25 @@ import { listarFormulas } from "./fabricacaoService";
 // do grupo. Fica separado de `produtos` (que é catálogo de anúncio do Mercado
 // Livre, das 20 lojas) de propósito: são operações diferentes.
 //
-// O custo NÃO é guardado: vem sempre da fórmula ligada ao produto. O único
-// número digitado aqui é o preço de venda.
+// Dois tipos de produto convivem aqui:
+//
+// - FABRICA: sai de uma fórmula. O custo NÃO é guardado — vem da fórmula, e se
+//   recalcula sozinho quando a resina muda de preço.
+// - DISTRIBUIDORA: comprado pronto pra revender. Aí o custo é digitado, porque
+//   não há receita pra derivar: o que se sabe é o que se pagou ao fornecedor.
+//
+// Ter as duas regras no mesmo lugar exige que `origem` decida qual vale. Sem
+// isso, produto de revenda ficava com custo zero e a margem aparecia como 100%.
 export interface FabricaProduto {
   id: number;
   sku: string;
   nome: string;
+  origem: "FABRICA" | "DISTRIBUIDORA";
+  ean: string | null;
+  familia: string | null;
+  // só na revenda: no produto de fábrica o custo vem da fórmula, e um número
+  // digitado ao lado dele criaria duas verdades
+  custoCompra: number | null;
   formulaId: number | null;
   formulaNome: string | null;
   embalagemId: number | null;
@@ -34,6 +47,10 @@ export interface FabricaProduto {
 export interface ProdutoEntrada {
   sku: string;
   nome: string;
+  origem: "FABRICA" | "DISTRIBUIDORA";
+  ean: string | null;
+  familia: string | null;
+  custoCompra: number | null;
   formulaId: number | null;
   embalagemId: number | null;
   precoVenda: number;
@@ -44,6 +61,10 @@ interface LinhaBruta {
   id: number;
   sku: string;
   nome: string;
+  origem: string;
+  ean: string | null;
+  familia: string | null;
+  custo_compra: string | null;
   formula_id: number | null;
   formula_nome: string | null;
   embalagem_id: number | null;
@@ -104,6 +125,8 @@ function montar(
   custoTeoricoPorFormula: Map<number, number>,
   rendimentos: Map<number, Rendimento>
 ): FabricaProduto {
+  const revenda = r.origem === "DISTRIBUIDORA";
+  const custoCompra = r.custo_compra !== null ? Number(r.custo_compra) : null;
   const custoPorKgTeorico = r.formula_id !== null ? custoTeoricoPorFormula.get(r.formula_id) ?? 0 : 0;
   const rend = r.formula_id !== null ? rendimentos.get(r.formula_id) : undefined;
 
@@ -116,14 +139,22 @@ function montar(
 
   const pesoKg = r.peso_kg !== null ? Number(r.peso_kg) : 0;
   const custoEmbalagem = r.custo_embalagem !== null ? Number(r.custo_embalagem) : 0;
-  const custoProduto = custoPorKgReal * pesoKg;
-  const custo = custoProduto + custoEmbalagem;
+  // na revenda não há peso nem embalagem a somar: o que se pagou pelo produto
+  // pronto já é o custo inteiro dele
+  const custoProduto = revenda ? custoCompra ?? 0 : custoPorKgReal * pesoKg;
+  const custo = revenda ? custoCompra ?? 0 : custoProduto + custoEmbalagem;
   const precoVenda = Number(r.preco_venda);
 
   return {
     id: r.id,
     sku: r.sku,
     nome: r.nome,
+    origem: (r.origem === "DISTRIBUIDORA" ? "DISTRIBUIDORA" : "FABRICA") as
+      | "FABRICA"
+      | "DISTRIBUIDORA",
+    ean: r.ean,
+    familia: r.familia,
+    custoCompra,
     formulaId: r.formula_id,
     formulaNome: r.formula_nome,
     embalagemId: r.embalagem_id,
@@ -133,7 +164,7 @@ function montar(
     custoPorKgReal,
     rendimento,
     lotes: rend?.lotes ?? 0,
-    custoTeorico: custoPorKgTeorico * pesoKg + custoEmbalagem,
+    custoTeorico: revenda ? custoCompra ?? 0 : custoPorKgTeorico * pesoKg + custoEmbalagem,
     custoProduto,
     custoEmbalagem,
     custo,
@@ -144,7 +175,8 @@ function montar(
 }
 
 const SELECT_BASE = `
-  SELECT p.id, p.sku, p.nome, p.formula_id, f.nome AS formula_nome,
+  SELECT p.id, p.sku, p.nome, p.origem, p.ean, p.familia, p.custo_compra,
+         p.formula_id, f.nome AS formula_nome,
          p.embalagem_id, e.nome AS embalagem_nome, e.peso_kg, e.custo_embalagem,
          p.preco_venda, p.ativo
   FROM fabrica_produtos p
@@ -186,25 +218,136 @@ async function validarEmbalagem(formulaId: number | null, embalagemId: number | 
 }
 
 export async function criarProduto(entrada: ProdutoEntrada): Promise<{ id: number }> {
-  await validarEmbalagem(entrada.formulaId, entrada.embalagemId);
+  // produto de revenda nao tem formula nem embalagem da fabrica pra validar
+  if (entrada.origem === "FABRICA") {
+    await validarEmbalagem(entrada.formulaId, entrada.embalagemId);
+  }
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO fabrica_produtos (sku, nome, formula_id, embalagem_id, preco_venda, ativo)
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [entrada.sku, entrada.nome, entrada.formulaId, entrada.embalagemId, entrada.precoVenda, entrada.ativo]
+    `INSERT INTO fabrica_produtos
+       (sku, nome, formula_id, embalagem_id, preco_venda, ativo,
+        origem, ean, familia, custo_compra)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [
+      entrada.sku,
+      entrada.nome,
+      entrada.formulaId,
+      entrada.embalagemId,
+      entrada.precoVenda,
+      entrada.ativo,
+      entrada.origem,
+      entrada.ean,
+      entrada.familia,
+      entrada.custoCompra,
+    ]
   );
   return { id: rows[0].id };
 }
 
 export async function atualizarProduto(id: number, entrada: ProdutoEntrada): Promise<void> {
-  await validarEmbalagem(entrada.formulaId, entrada.embalagemId);
+  if (entrada.origem === "FABRICA") {
+    await validarEmbalagem(entrada.formulaId, entrada.embalagemId);
+  }
   await pool.query(
     `UPDATE fabrica_produtos
-     SET sku = $2, nome = $3, formula_id = $4, embalagem_id = $5, preco_venda = $6, ativo = $7
+     SET sku = $2, nome = $3, formula_id = $4, embalagem_id = $5, preco_venda = $6,
+         ativo = $7, origem = $8, ean = $9, familia = $10, custo_compra = $11
      WHERE id = $1`,
-    [id, entrada.sku, entrada.nome, entrada.formulaId, entrada.embalagemId, entrada.precoVenda, entrada.ativo]
+    [
+      id,
+      entrada.sku,
+      entrada.nome,
+      entrada.formulaId,
+      entrada.embalagemId,
+      entrada.precoVenda,
+      entrada.ativo,
+      entrada.origem,
+      entrada.ean,
+      entrada.familia,
+      entrada.custoCompra,
+    ]
   );
 }
 
 export async function excluirProduto(id: number): Promise<void> {
   await pool.query("DELETE FROM fabrica_produtos WHERE id = $1", [id]);
+}
+
+// --- importar o catálogo -----------------------------------------------------
+//
+// Os produtos de revenda são os mesmos que o catálogo do Mercado Livre já
+// lista, com o mesmo SKU. Em vez de digitar cinco mil linhas, lê de lá.
+//
+// É leitura pura: o catálogo é uma planilha do Google Sheets que o
+// `produtosService` busca por CSV, e nada aqui escreve nela. O SKU repetido
+// também não colide — `fabrica_produtos` e a planilha são universos separados,
+// e usar o mesmo código é justamente o que deixa a conferência com a loja
+// trivial.
+//
+// O "custo" da planilha é o que a LOJA paga, ou seja, o preço que a fábrica
+// cobra dela: entra como preço de venda. O custo de compra, o que a fábrica
+// pagou ao fornecedor, fica em branco pro Hudson preencher — esse número não
+// existe em lugar nenhum do sistema ainda.
+
+export interface ResultadoImportacaoCatalogo {
+  criados: number;
+  jaExistiam: number;
+  semSku: number;
+  familias: number;
+}
+
+// "706-FITA/FRONTEC-1.10MX20M" -> "706-FITA/FRONTEC". A planilha agrupa por
+// essa família, e é por ela que dá pra filtrar quando são 5 mil SKUs.
+function familiaDoSku(sku: string): string {
+  const semTamanho = sku.replace(/[-/]\d+([.,]\d+)?\s*(KG|L|MX|M|G|ML|PC|UN)\b.*$/i, "");
+  const pedacos = semTamanho.split(/[-/]/).filter(Boolean);
+  return (pedacos.length > 1 ? pedacos.slice(0, -1).join("-") : pedacos[0] || sku).toUpperCase();
+}
+
+export async function importarCatalogo(): Promise<ResultadoImportacaoCatalogo> {
+  const { listarProdutos } = await import("./produtosService");
+  const catalogo = await listarProdutos();
+
+  const { rows } = await pool.query<{ sku: string }>("SELECT sku FROM fabrica_produtos");
+  const existentes = new Set(rows.map((r) => r.sku.trim().toUpperCase()));
+
+  const familias = new Set<string>();
+  let criados = 0;
+  let jaExistiam = 0;
+  let semSku = 0;
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    for (const p of catalogo) {
+      const sku = p.sku.trim();
+      if (!sku) {
+        semSku += 1;
+        continue;
+      }
+      // SKU que já existe não é tocado: o produto de fábrica com o mesmo código
+      // tem custo vindo da fórmula, e sobrescrever apagaria isso
+      if (existentes.has(sku.toUpperCase())) {
+        jaExistiam += 1;
+        continue;
+      }
+      const familia = familiaDoSku(sku);
+      familias.add(familia);
+      await cliente.query(
+        `INSERT INTO fabrica_produtos
+           (sku, nome, formula_id, embalagem_id, preco_venda, ativo, origem, ean, familia, custo_compra)
+         VALUES ($1,$2,NULL,NULL,$3,TRUE,'DISTRIBUIDORA',$4,$5,NULL)`,
+        [sku, sku, p.custo, p.ean || null, familia]
+      );
+      existentes.add(sku.toUpperCase());
+      criados += 1;
+    }
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+
+  return { criados, jaExistiam, semSku, familias: familias.size };
 }

@@ -6,6 +6,7 @@ import {
   atualizarProduto,
   excluirProduto,
   type ProdutoEntrada,
+  importarCatalogo,
 } from "../services/fabricaProdutosService";
 import {
   listarEstoqueProdutos,
@@ -30,14 +31,24 @@ function erro(res: Response, err: unknown, padrao: string) {
 }
 
 function lerEntrada(req: Request): ProdutoEntrada | string {
-  const { sku, nome, formulaId, embalagemId, precoVenda, ativo } = req.body ?? {};
+  const { sku, nome, formulaId, embalagemId, precoVenda, ativo, origem, ean, familia, custoCompra } =
+    req.body ?? {};
   if (typeof sku !== "string" || !sku.trim()) return "Informe o SKU.";
   if (typeof nome !== "string" || !nome.trim()) return "Informe o nome do produto.";
   const preco = Number(precoVenda);
   if (!Number.isFinite(preco) || preco < 0) return "Preço de venda inválido.";
+  const revenda = origem === "DISTRIBUIDORA";
+  const custo = Number(custoCompra);
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
   return {
     sku: sku.trim(),
     nome: nome.trim(),
+    origem: revenda ? "DISTRIBUIDORA" : "FABRICA",
+    ean: texto(ean),
+    familia: texto(familia),
+    // custo digitado só existe na revenda: no produto de fábrica ele vem da
+    // fórmula, e guardar um número ao lado criaria duas verdades
+    custoCompra: revenda && Number.isFinite(custo) && custo >= 0 ? custo : null,
     formulaId: formulaId === null || formulaId === undefined ? null : Number(formulaId),
     embalagemId: embalagemId === null || embalagemId === undefined ? null : Number(embalagemId),
     precoVenda: preco,
@@ -175,5 +186,16 @@ fabricaProdutosRouter.delete("/:id", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao excluir produto.");
+  }
+});
+
+// Traz os produtos de revenda do catálogo do Mercado Livre. Leitura pura: a
+// planilha do Google Sheets não é tocada, e SKU que já existe aqui não é
+// sobrescrito.
+fabricaProdutosRouter.post("/importar-catalogo", async (_req, res) => {
+  try {
+    res.json(await importarCatalogo());
+  } catch (err) {
+    erro(res, err, "Falha ao importar o catálogo.");
   }
 });

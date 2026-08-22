@@ -1,4 +1,6 @@
-import type { FabricaProduto, FabricaProdutoEntrada } from "../types/fabricaProdutos";
+import type { FabricaProduto, FabricaProdutoEntrada,
+  ResultadoImportacaoCatalogo,
+} from "../types/fabricaProdutos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -48,4 +50,15 @@ export async function excluirFabricaProduto(id: number): Promise<void> {
     const data = await res.json().catch(() => null);
     throw new Error(data?.error ?? `Erro ${res.status}`);
   }
+}
+
+// Traz os produtos de revenda do catálogo do Mercado Livre. Leitura pura: a
+// planilha do Google Sheets não é tocada, e SKU já existente não é
+// sobrescrito.
+export async function importarCatalogo(): Promise<ResultadoImportacaoCatalogo> {
+  const res = await fetch(`${API_BASE}/api/fabrica-produtos/importar-catalogo`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return tratarResposta<ResultadoImportacaoCatalogo>(res);
 }
