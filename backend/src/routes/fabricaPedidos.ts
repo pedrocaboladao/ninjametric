@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { conferirVendasMl } from "../services/fabricaVendasMlService";
 import {
   listarPedidos,
   obterPedido,
