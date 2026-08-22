@@ -51,3 +51,19 @@ export interface ResultadoImportacaoCatalogo {
   semSku: number;
   familias: number;
 }
+
+export interface DiferencaPreco {
+  id: number;
+  sku: string;
+  nome: string;
+  precoAtual: number;
+  precoPlanilha: number;
+  diferenca: number;
+}
+
+export interface ConferenciaCatalogo {
+  diferencas: DiferencaPreco[];
+  conferidos: number;
+  // está no cadastro mas sumiu da planilha: produto que saiu de linha
+  foraDaPlanilha: { id: number; sku: string; nome: string }[];
+}
