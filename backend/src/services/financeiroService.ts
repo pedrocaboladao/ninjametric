@@ -1,5 +1,5 @@
 import { listLojas } from "./tokenStore";
-import { searchOrders, getCustoFreteDoEnvio, MlOrder } from "./mercadoLivreApi";
+import { searchOrders, getCustoFreteDoEnvio, getItemsBasicInfo, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre, janelaMesAtual } from "./dateUtils";
 import { obterGastoAdsHistorico } from "./adsService";
@@ -79,6 +79,7 @@ export interface VendaFinanceira {
   lojaNome: string;
   titulo: string;
   sku: string | null;
+  thumbnail: string | null;
   valorUnitario: number;
   quantidade: number;
   receitaTotal: number;
@@ -191,10 +192,34 @@ export async function listarVendasFinanceiras(
     }
   }
 
-  const fretesPorPedido = await comConcorrenciaLimitada(pedidosValidos, 15, async ({ loja, order }) => {
-    if (!order.shipping?.id) return { vendedor: null, comprador: null, itensNoEnvio: 1 };
-    return getCustoFreteDoEnvio(loja.lojaId, order.shipping.id);
-  });
+  // Miniatura por item — busca em lote (getItemsBasicInfo já pagina de 20 em
+  // 20 por loja), não uma chamada por venda. Agrupado por loja porque o
+  // token de acesso é por loja, mesmo a rota de multiget sendo dado público.
+  const itemIdsPorLoja = new Map<number, Set<string>>();
+  for (const { loja, order } of pedidosValidos) {
+    const set = itemIdsPorLoja.get(loja.lojaId) ?? new Set<string>();
+    for (const item of order.order_items) set.add(item.item.id);
+    itemIdsPorLoja.set(loja.lojaId, set);
+  }
+  const thumbnailPorItem = new Map<string, string | null>();
+
+  const [fretesPorPedido] = await Promise.all([
+    comConcorrenciaLimitada(pedidosValidos, 15, async ({ loja, order }) => {
+      if (!order.shipping?.id) return { vendedor: null, comprador: null, itensNoEnvio: 1 };
+      return getCustoFreteDoEnvio(loja.lojaId, order.shipping.id);
+    }),
+    Promise.all(
+      Array.from(itemIdsPorLoja.entries()).map(async ([lojaId, ids]) => {
+        const info = await getItemsBasicInfo(lojaId, Array.from(ids));
+        // O Mercado Livre devolve thumbnail em http:// — o painel é servido
+        // em https, então o navegador bloqueia como conteúdo misto. mlstatic
+        // aceita https normalmente, só troca o protocolo.
+        for (const [itemId, i] of info) {
+          thumbnailPorItem.set(itemId, i.thumbnail ? i.thumbnail.replace(/^http:/, "https:") : null);
+        }
+      })
+    ),
+  ]);
 
   const vendas: VendaFinanceira[] = [];
   pedidosValidos.forEach(({ loja, order }, indice) => {
@@ -247,6 +272,7 @@ export async function listarVendasFinanceiras(
         lojaNome: loja.lojaNome,
         titulo: item.item.title,
         sku,
+        thumbnail: thumbnailPorItem.get(item.item.id) ?? null,
         valorUnitario: item.unit_price,
         quantidade: item.quantity,
         receitaTotal,

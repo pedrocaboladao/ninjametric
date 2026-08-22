@@ -3265,6 +3265,19 @@
   justify-content: center;
 }
 
+.financeiro-top5-foto {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--bg-panel-alt);
+}
+
+.financeiro-top5-foto-vazia {
+  border: 1px solid var(--border);
+}
+
 .financeiro-top5-info {
   flex: 1;
   min-width: 0;

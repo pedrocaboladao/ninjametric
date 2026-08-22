@@ -6,6 +6,7 @@ export interface VendaFinanceira {
   lojaNome: string;
   titulo: string;
   sku: string | null;
+  thumbnail: string | null;
   valorUnitario: number;
   quantidade: number;
   receitaTotal: number;

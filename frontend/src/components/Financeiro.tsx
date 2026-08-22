@@ -368,7 +368,7 @@ function DonutFinanceiro({ fatias, total }: { fatias: FatiaDonut[]; total: numbe
 interface ProdutoAgregado {
   itemId: string;
   titulo: string;
-  sku: string | null;
+  thumbnail: string | null;
   quantidade: number;
   receitaTotal: number;
 }
@@ -382,7 +382,13 @@ function Top5Produtos({ vendas }: { vendas: VendaFinanceira[] }) {
         atual.quantidade += v.quantidade;
         atual.receitaTotal += v.receitaTotal;
       } else {
-        porItem.set(v.itemId, { itemId: v.itemId, titulo: v.titulo, sku: v.sku, quantidade: v.quantidade, receitaTotal: v.receitaTotal });
+        porItem.set(v.itemId, {
+          itemId: v.itemId,
+          titulo: v.titulo,
+          thumbnail: v.thumbnail,
+          quantidade: v.quantidade,
+          receitaTotal: v.receitaTotal,
+        });
       }
     }
     return Array.from(porItem.values())
@@ -399,9 +405,13 @@ function Top5Produtos({ vendas }: { vendas: VendaFinanceira[] }) {
         {top5.map((p, i) => (
           <div key={p.itemId} className="financeiro-top5-item">
             <span className="financeiro-top5-posicao">{i + 1}</span>
+            {p.thumbnail ? (
+              <img src={p.thumbnail} alt="" className="financeiro-top5-foto" />
+            ) : (
+              <div className="financeiro-top5-foto financeiro-top5-foto-vazia" />
+            )}
             <div className="financeiro-top5-info">
               <span className="financeiro-top5-titulo">{p.titulo}</span>
-              {p.sku && <span className="financeiro-td-mudo">{p.sku}</span>}
             </div>
             <div className="financeiro-top5-numeros">
               <b>{p.quantidade} un.</b>
