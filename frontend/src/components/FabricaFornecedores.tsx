@@ -37,14 +37,35 @@ const CATEGORIAS = [
 const VAZIO: FornecedorEntrada = {
   nome: "",
   cnpj: null,
+  inscricaoEstadual: null,
   email: null,
   telefone: null,
+  cep: null,
+  logradouro: null,
+  numero: null,
+  complemento: null,
+  bairro: null,
   cidade: null,
   uf: null,
   categoriaPadrao: null,
   observacao: null,
   ativo: true,
 };
+
+// os mesmos campos do cadastro de cliente, na ordem em que se preenche
+const CAMPOS: Array<[keyof FornecedorEntrada, string]> = [
+  ["cnpj", "CNPJ"],
+  ["inscricaoEstadual", "Inscrição estadual"],
+  ["email", "E-mail"],
+  ["telefone", "Telefone"],
+  ["cep", "CEP"],
+  ["logradouro", "Logradouro"],
+  ["numero", "Número"],
+  ["complemento", "Complemento"],
+  ["bairro", "Bairro"],
+  ["cidade", "Cidade"],
+  ["uf", "UF"],
+];
 
 export function FabricaFornecedores() {
   const [lista, setLista] = useState<Fornecedor[] | null>(null);
@@ -99,17 +120,10 @@ export function FabricaFornecedores() {
 
   function editar(f: Fornecedor) {
     setEditandoId(f.id);
-    setForm({
-      nome: f.nome,
-      cnpj: f.cnpj,
-      email: f.email,
-      telefone: f.telefone,
-      cidade: f.cidade,
-      uf: f.uf,
-      categoriaPadrao: f.categoriaPadrao,
-      observacao: f.observacao,
-      ativo: f.ativo,
-    });
+    // desestrutura o que não é campo de formulário em vez de listar os que são:
+    // assim um campo novo no cadastro não precisa ser lembrado aqui também
+    const { id: _id, contas: _contas, total: _total, ...campos } = f;
+    setForm(campos);
     setMostrarForm(true);
     setErro(null);
   }
@@ -251,7 +265,6 @@ export function FabricaFornecedores() {
         >
           <div className="financeiro-filtros contas-form">
             {campo("nome", "Nome do fornecedor")}
-            {campo("cnpj", "CNPJ", true)}
             <select
               className="clonar-input fabricacao-input-pequeno"
               value={form.categoriaPadrao ?? ""}
@@ -267,13 +280,21 @@ export function FabricaFornecedores() {
               ))}
             </select>
           </div>
-          <div className="financeiro-filtros contas-form">
-            {campo("telefone", "Telefone", true)}
-            {campo("email", "E-mail", true)}
-            {campo("cidade", "Cidade", true)}
-            {campo("uf", "UF", true)}
+          <div className="fornecedor-grade">
+            {CAMPOS.map(([chave, rotulo]) => (
+              <input
+                key={chave}
+                className="clonar-input"
+                placeholder={rotulo}
+                value={(form[chave] as string | null) ?? ""}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, [chave]: e.target.value || null }))
+                }
+              />
+            ))}
           </div>
           <div className="financeiro-filtros contas-form">
+            {campo("observacao", "Observação")}
             <label className="financeiro-td-mudo">
               <input
                 type="checkbox"
@@ -282,7 +303,6 @@ export function FabricaFornecedores() {
               />{" "}
               ativo — desmarque quem você não compra mais
             </label>
-            {campo("observacao", "Observação")}
           </div>
         </Modal>
       )}

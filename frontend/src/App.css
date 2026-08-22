@@ -6079,3 +6079,20 @@ button.contas-cartao:hover {
     display: none !important;
   }
 }
+
+/* Grade dos campos de endereco do fornecedor.
+   Em linha de filtros eles ficavam com 90px cada e "Inscricao estadual" saia
+   cortada no proprio placeholder — o Hudson mandou print. Grade da a cada
+   campo largura de digitar e quebra sozinha na tela pequena. */
+.fornecedor-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.fornecedor-grade .clonar-input {
+  width: 100%;
+  padding: 9px 11px;
+  font-size: 14px;
+}

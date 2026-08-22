@@ -8,8 +8,14 @@ export interface Fornecedor {
   id: number;
   nome: string;
   cnpj: string | null;
+  inscricaoEstadual: string | null;
   email: string | null;
   telefone: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   cidade: string | null;
   uf: string | null;
   // o que ele fornece: sugere a categoria da conta na hora de lançar
