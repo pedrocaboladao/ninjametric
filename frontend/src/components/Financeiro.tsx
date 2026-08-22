@@ -365,6 +365,55 @@ function DonutFinanceiro({ fatias, total }: { fatias: FatiaDonut[]; total: numbe
   );
 }
 
+interface ProdutoAgregado {
+  itemId: string;
+  titulo: string;
+  sku: string | null;
+  quantidade: number;
+  receitaTotal: number;
+}
+
+function Top5Produtos({ vendas }: { vendas: VendaFinanceira[] }) {
+  const top5 = useMemo(() => {
+    const porItem = new Map<string, ProdutoAgregado>();
+    for (const v of vendas) {
+      const atual = porItem.get(v.itemId);
+      if (atual) {
+        atual.quantidade += v.quantidade;
+        atual.receitaTotal += v.receitaTotal;
+      } else {
+        porItem.set(v.itemId, { itemId: v.itemId, titulo: v.titulo, sku: v.sku, quantidade: v.quantidade, receitaTotal: v.receitaTotal });
+      }
+    }
+    return Array.from(porItem.values())
+      .sort((a, b) => b.quantidade - a.quantidade)
+      .slice(0, 5);
+  }, [vendas]);
+
+  if (top5.length === 0) return null;
+
+  return (
+    <div className="financeiro-donut-card">
+      <span className="financeiro-stat-label">Top 5 produtos vendidos</span>
+      <div className="financeiro-top5-lista">
+        {top5.map((p, i) => (
+          <div key={p.itemId} className="financeiro-top5-item">
+            <span className="financeiro-top5-posicao">{i + 1}</span>
+            <div className="financeiro-top5-info">
+              <span className="financeiro-top5-titulo">{p.titulo}</span>
+              {p.sku && <span className="financeiro-td-mudo">{p.sku}</span>}
+            </div>
+            <div className="financeiro-top5-numeros">
+              <b>{p.quantidade} un.</b>
+              <span className="financeiro-td-mudo">{formatCurrency(p.receitaTotal)}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function Financeiro({ usuario }: Props) {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -728,17 +777,20 @@ export function Financeiro({ usuario }: Props) {
           )}
 
           {vendas && vendas.length > 0 && (
-            <DonutFinanceiro
-              total={receitaTotal}
-              fatias={[
-                { label: "Frete Vendedor", valor: freteVendedorTotalGeral, cor: "#38bdf8" },
-                { label: "Tarifa", valor: taxaMlTotalGeral, cor: "#fbbf24" },
-                { label: "Margem Contrib.", valor: Math.max(0, margemTotal), cor: "#4ade80" },
-                { label: "Custo", valor: custoTotalGeral, cor: "#fb923c" },
-                { label: "Imposto", valor: impostoTotalGeral, cor: "#f87171" },
-                { label: "Não calculado", valor: naoCalculadoDonut, cor: "#64748b" },
-              ]}
-            />
+            <div className="financeiro-graficos-linha">
+              <DonutFinanceiro
+                total={receitaTotal}
+                fatias={[
+                  { label: "Frete Vendedor", valor: freteVendedorTotalGeral, cor: "#38bdf8" },
+                  { label: "Tarifa", valor: taxaMlTotalGeral, cor: "#fbbf24" },
+                  { label: "Margem Contrib.", valor: Math.max(0, margemTotal), cor: "#4ade80" },
+                  { label: "Custo", valor: custoTotalGeral, cor: "#fb923c" },
+                  { label: "Imposto", valor: impostoTotalGeral, cor: "#f87171" },
+                  { label: "Não calculado", valor: naoCalculadoDonut, cor: "#64748b" },
+                ]}
+              />
+              <Top5Produtos vendas={vendasFiltradas ?? []} />
+            </div>
           )}
 
           {vendasOrdenadas.length === 0 && (

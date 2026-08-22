@@ -3229,6 +3229,68 @@
   font-weight: 600;
 }
 
+.financeiro-graficos-linha {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.financeiro-graficos-linha .financeiro-donut-card {
+  flex: 1 1 360px;
+}
+
+.financeiro-top5-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.financeiro-top5-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.financeiro-top5-posicao {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--bg-panel-alt);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.financeiro-top5-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.financeiro-top5-titulo {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.financeiro-top5-numeros {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 13px;
+}
+
 .financeiro-donut-card {
   display: flex;
   flex-direction: column;
