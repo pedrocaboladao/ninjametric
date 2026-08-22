@@ -5948,3 +5948,35 @@ button.contas-cartao:hover {
   align-items: center;
   white-space: nowrap;
 }
+
+/* O formulario de conta com campo de respirar.
+   O .fabricacao-input-pequeno tem 90px, que serve pra filtro mas nao pra
+   digitar: "PREFEITURA DE MARINGA" nao cabe em 90px, e o operador digita no
+   escuro. So aqui — a classe e usada em outros modulos, que continuam iguais. */
+.contas-form .clonar-input {
+  min-width: 150px;
+  padding: 9px 11px;
+  font-size: 14px;
+}
+
+/* descricao e observacao sao as que mais precisam: cabe o nome inteiro */
+.contas-form .clonar-input:not(.fabricacao-input-pequeno) {
+  min-width: 320px;
+  flex: 1 1 320px;
+}
+
+.contas-form select.clonar-input {
+  min-width: 165px;
+}
+
+.contas-form label {
+  font-size: 13.5px;
+}
+
+@media (max-width: 720px) {
+  .contas-form .clonar-input,
+  .contas-form .clonar-input:not(.fabricacao-input-pequeno) {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}
