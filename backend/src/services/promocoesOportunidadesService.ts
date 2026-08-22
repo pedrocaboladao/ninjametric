@@ -18,6 +18,7 @@ export interface Oportunidade {
   lojaNome: string;
   itemId: string;
   titulo: string | null;
+  permalink: string | null;
   sku: string | null;
   promotionId: string | null;
   tipo: string;
@@ -142,10 +143,11 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
     try {
       await pool.query(
         `INSERT INTO promocoes_oportunidades
-           (loja_id, item_id, titulo, sku, promotion_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'pendente', now())
+           (loja_id, item_id, titulo, permalink, sku, promotion_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pendente', now())
          ON CONFLICT (loja_id, item_id, tipo, promotion_id) DO UPDATE SET
            titulo = EXCLUDED.titulo,
+           permalink = EXCLUDED.permalink,
            sku = EXCLUDED.sku,
            nome = EXCLUDED.nome,
            preco_original = EXCLUDED.preco_original,
@@ -162,6 +164,7 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
           loja.id,
           itemId,
           info.title,
+          info.permalink,
           skuNorm,
           promo.promotionId || null,
           promo.type,
@@ -227,6 +230,7 @@ interface OportunidadeRow {
   loja_nome: string;
   item_id: string;
   titulo: string | null;
+  permalink: string | null;
   sku: string | null;
   promotion_id: string | null;
   tipo: string;
@@ -254,6 +258,7 @@ function mapearOportunidade(r: OportunidadeRow): Oportunidade {
     lojaNome: r.loja_nome,
     itemId: r.item_id,
     titulo: r.titulo,
+    permalink: r.permalink,
     sku: r.sku,
     promotionId: r.promotion_id,
     tipo: r.tipo,

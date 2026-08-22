@@ -70,6 +70,7 @@ export interface Oportunidade {
   lojaNome: string;
   itemId: string;
   titulo: string | null;
+  permalink: string | null;
   sku: string | null;
   promotionId: string | null;
   tipo: string;

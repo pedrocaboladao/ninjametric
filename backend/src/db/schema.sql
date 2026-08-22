@@ -459,6 +459,7 @@ CREATE TABLE IF NOT EXISTS promocoes_oportunidades (
 CREATE INDEX IF NOT EXISTS idx_promocoes_oportunidades_loja ON promocoes_oportunidades (loja_id, status);
 ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS meli_percentual NUMERIC(5, 2);
 ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS seller_percentual NUMERIC(5, 2);
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS permalink TEXT;
 -- Tabela criada sem dado real em produção ainda (nenhuma varredura rodada
 -- lá) quando a chave era só loja_id+item_id+tipo — trocada pra incluir
 -- promotion_id porque um mesmo item pode ter VÁRIAS propostas SMART

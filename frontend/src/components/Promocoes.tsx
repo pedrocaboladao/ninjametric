@@ -582,7 +582,13 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
   return (
     <div className="promocoes-linha">
       <div className="promocoes-linha-topo">
-        <span className="financeiro-td-titulo">{o.titulo ?? o.itemId}</span>
+        {o.permalink ? (
+          <a href={o.permalink} target="_blank" rel="noreferrer" className="financeiro-td-titulo promocoes-link-anuncio">
+            {o.titulo ?? o.itemId}
+          </a>
+        ) : (
+          <span className="financeiro-td-titulo">{o.titulo ?? o.itemId}</span>
+        )}
         <span className="financeiro-td-mudo">{o.lojaNome}</span>
         <span className="financeiro-td-mudo">{o.nome ?? o.tipo}</span>
         <span className="financeiro-td-mudo">
