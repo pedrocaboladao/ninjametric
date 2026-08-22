@@ -9,8 +9,9 @@ import {
   type MlPromocaoDoItem,
 } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
-import { normalizarSku } from "./financeiroService";
+import { normalizarSku, listarVendasFinanceiras } from "./financeiroService";
 import { calcularMargem } from "./agenteCatalogoService";
+import { janelaHoje } from "./dateUtils";
 
 export interface Oportunidade {
   id: number;
@@ -364,4 +365,91 @@ export async function limparOportunidades(lojaIdFiltro?: number, lojasPermitidas
   if (lojaIds.length === 0) return 0;
   const { rowCount } = await pool.query("DELETE FROM promocoes_oportunidades WHERE loja_id = ANY($1)", [lojaIds]);
   return rowCount ?? 0;
+}
+
+export interface ComparacaoOportunidade {
+  encontrada: boolean;
+  vendaOrderId: number | null;
+  vendaData: string | null;
+  precoRealUnitario: number | null;
+  taxaMlReal: number | null;
+  margemRealUnitaria: number | null;
+  percentualMargemReal: number | null;
+  precoPrevisto: number;
+  margemPrevista: number | null;
+  percentualMargemPrevista: number | null;
+}
+
+// Compara a margem PREVISTA na aprovação com a venda real que aconteceu
+// depois — só existe pra calibrar se a suposição de cálculo (preço
+// original * (1 - seller%), ver buscarOportunidadesNaLoja) bate com o que o
+// Mercado Livre realmente liquida, já que a API nunca confirma isso antes
+// de entrar na promoção. listarVendasFinanceiras já é a mesma fonte que o
+// Financeiro usa (dados reais do pedido, sale_fee de verdade cobrado) —
+// forcarAtualizacao=true porque aqui interessa o dado mais recente possível,
+// não o cache de 15min.
+export async function compararComVendaReal(
+  id: number,
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<ComparacaoOportunidade> {
+  const row = await buscarOportunidade(id);
+  if (!row) throw new Error("Oportunidade não encontrada.");
+  if (lojaIdFiltro !== undefined && row.loja_id !== lojaIdFiltro) throw new Error("Você não tem acesso a essa loja.");
+  if (lojasPermitidas !== undefined && !lojasPermitidas.includes(row.loja_id)) {
+    throw new Error("Você não tem acesso a essa loja.");
+  }
+  const decididoEm = row.decidido_em;
+  if (row.status !== "aprovada" || !decididoEm) {
+    throw new Error("Só dá pra comparar oportunidades já aprovadas.");
+  }
+
+  const precoPrevisto = Number(row.preco_escolhido);
+  const margemPrevista = row.margem === null ? null : Number(row.margem);
+  const percentualMargemPrevista =
+    margemPrevista === null || precoPrevisto <= 0 ? null : (margemPrevista / precoPrevisto) * 100;
+
+  const dataInicio = decididoEm.slice(0, 10);
+  const dataFim = janelaHoje().agora.slice(0, 10);
+  const { vendas } = await listarVendasFinanceiras(row.loja_id, undefined, dataInicio, dataFim, true);
+
+  const decididoEmMs = new Date(decididoEm).getTime();
+  const vendaEncontrada = vendas
+    .filter((v) => v.itemId === row.item_id && new Date(v.dataCriacao).getTime() >= decididoEmMs)
+    .sort((a, b) => new Date(a.dataCriacao).getTime() - new Date(b.dataCriacao).getTime())[0];
+
+  if (!vendaEncontrada) {
+    return {
+      encontrada: false,
+      vendaOrderId: null,
+      vendaData: null,
+      precoRealUnitario: null,
+      taxaMlReal: null,
+      margemRealUnitaria: null,
+      percentualMargemReal: null,
+      precoPrevisto,
+      margemPrevista,
+      percentualMargemPrevista,
+    };
+  }
+
+  const taxaMlRealUnitaria = vendaEncontrada.taxaMlTotal / vendaEncontrada.quantidade;
+  const margemRealUnitaria =
+    vendaEncontrada.margemContribuicao !== null ? vendaEncontrada.margemContribuicao / vendaEncontrada.quantidade : null;
+
+  return {
+    encontrada: true,
+    vendaOrderId: vendaEncontrada.orderId,
+    vendaData: vendaEncontrada.dataCriacao,
+    precoRealUnitario: vendaEncontrada.valorUnitario,
+    taxaMlReal: taxaMlRealUnitaria,
+    margemRealUnitaria,
+    percentualMargemReal:
+      margemRealUnitaria !== null && vendaEncontrada.valorUnitario > 0
+        ? (margemRealUnitaria / vendaEncontrada.valorUnitario) * 100
+        : null,
+    precoPrevisto,
+    margemPrevista,
+    percentualMargemPrevista,
+  };
 }

@@ -90,6 +90,19 @@ export interface Oportunidade {
   decididoEm: string | null;
 }
 
+export interface ComparacaoOportunidade {
+  encontrada: boolean;
+  vendaOrderId: number | null;
+  vendaData: string | null;
+  precoRealUnitario: number | null;
+  taxaMlReal: number | null;
+  margemRealUnitaria: number | null;
+  percentualMargemReal: number | null;
+  precoPrevisto: number;
+  margemPrevista: number | null;
+  percentualMargemPrevista: number | null;
+}
+
 export interface ProgressoBuscaOportunidades {
   emAndamento: boolean;
   lojaAtual: string | null;

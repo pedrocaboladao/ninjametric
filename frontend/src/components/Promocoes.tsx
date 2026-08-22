@@ -14,6 +14,7 @@ import {
   aprovarOportunidade,
   rejeitarOportunidade,
   limparOportunidades,
+  compararComVendaReal,
 } from "../api/promocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type {
@@ -24,6 +25,7 @@ import type {
   ProgressoDescoberta,
   Oportunidade,
   ProgressoBuscaOportunidades,
+  ComparacaoOportunidade,
 } from "../types/promocoes";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -549,7 +551,21 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [comparacao, setComparacao] = useState<ComparacaoOportunidade | null>(null);
+  const [comparando, setComparando] = useState(false);
   const o = oportunidade;
+
+  async function comparar() {
+    setComparando(true);
+    setErro(null);
+    try {
+      setComparacao(await compararComVendaReal(o.id));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao comparar.");
+    } finally {
+      setComparando(false);
+    }
+  }
 
   async function aprovar() {
     setEnviando(true);
@@ -627,9 +643,65 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
             {o.status === "erro" && `Erro: ${o.erro}`}
           </span>
         )}
+        {o.status === "aprovada" && (
+          <button type="button" className="btn-excluir" disabled={comparando} onClick={comparar}>
+            {comparando ? "Comparando..." : "Comparar com venda real"}
+          </button>
+        )}
       </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
+
+      {comparacao && (
+        <div className="promocoes-comparacao">
+          {!comparacao.encontrada && (
+            <div className="financeiro-td-mudo">
+              Ainda não teve nenhuma venda desse item registrada no Financeiro desde que você aprovou. Tenta de novo
+              depois que vender.
+            </div>
+          )}
+          {comparacao.encontrada && (
+            <table className="financeiro-tabela promocoes-comparacao-tabela">
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>Previsto (na aprovação)</th>
+                  <th>Real (venda #{comparacao.vendaOrderId})</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Preço</td>
+                  <td>{formatCurrency(comparacao.precoPrevisto)}</td>
+                  <td>{formatCurrency(comparacao.precoRealUnitario ?? 0)}</td>
+                </tr>
+                <tr>
+                  <td>Taxa do ML</td>
+                  <td>{o.taxaMl !== null ? formatCurrency(o.taxaMl) : "—"}</td>
+                  <td>{comparacao.taxaMlReal !== null ? formatCurrency(comparacao.taxaMlReal) : "—"}</td>
+                </tr>
+                <tr>
+                  <td>Margem</td>
+                  <td>
+                    {formatCurrency(comparacao.margemPrevista ?? 0)} ({comparacao.percentualMargemPrevista?.toFixed(1)}%)
+                  </td>
+                  <td
+                    className={
+                      comparacao.margemRealUnitaria !== null && comparacao.margemPrevista !== null
+                        ? comparacao.margemRealUnitaria >= comparacao.margemPrevista
+                          ? "financeiro-margem-positiva"
+                          : "financeiro-margem-negativa"
+                        : undefined
+                    }
+                  >
+                    {formatCurrency(comparacao.margemRealUnitaria ?? 0)} ({comparacao.percentualMargemReal?.toFixed(1)}%)
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
 
       {confirmando && (
         <div className="promocoes-confirmacao">

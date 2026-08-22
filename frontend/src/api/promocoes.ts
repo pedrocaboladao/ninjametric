@@ -6,6 +6,7 @@ import type {
   ProgressoDescoberta,
   Oportunidade,
   ProgressoBuscaOportunidades,
+  ComparacaoOportunidade,
 } from "../types/promocoes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -120,6 +121,11 @@ export async function rejeitarOportunidade(id: number): Promise<void> {
     credentials: "include",
   });
   await tratarResposta(res);
+}
+
+export async function compararComVendaReal(id: number): Promise<ComparacaoOportunidade> {
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/${id}/comparar`, { credentials: "include" });
+  return tratarResposta<ComparacaoOportunidade>(res);
 }
 
 export async function limparOportunidades(lojaFiltro: number | "todas" | "minhas"): Promise<number> {

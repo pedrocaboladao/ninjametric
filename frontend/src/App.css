@@ -3789,6 +3789,19 @@
   text-decoration: underline;
 }
 
+.promocoes-comparacao {
+  margin-top: 4px;
+}
+
+.promocoes-comparacao-tabela {
+  width: auto;
+}
+
+.promocoes-comparacao-tabela th,
+.promocoes-comparacao-tabela td {
+  padding: 6px 14px;
+}
+
 .promocoes-oportunidades-secao {
   margin-top: 32px;
   padding-top: 24px;
