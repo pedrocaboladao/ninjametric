@@ -5994,3 +5994,88 @@ button.contas-cartao:hover {
     flex: 1 1 100%;
   }
 }
+
+/* Caixa sobreposta de edição.
+   O formulário de conta abria no topo da página: quem clicava em Editar numa
+   linha lá embaixo via a tela não mudar, e não sabia qual conta estava
+   editando. */
+.modal-fundo {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 16px;
+  overflow-y: auto;
+  background: rgba(3, 6, 12, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.modal-caixa {
+  width: 100%;
+  max-width: 880px;
+  background: var(--surface, #0d1220);
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.modal-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 22px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.modal-titulo {
+  margin: 0;
+  font-size: 17px;
+  color: var(--text-primary);
+}
+
+.modal-subtitulo {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.modal-fechar {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 26px;
+  line-height: 1;
+  padding: 0 4px;
+  cursor: pointer;
+}
+
+.modal-fechar:hover {
+  color: var(--text-primary);
+}
+
+.modal-corpo {
+  padding: 16px 22px;
+}
+
+.modal-rodape {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 14px 22px 18px;
+  border-top: 1px solid var(--border);
+}
+
+/* dentro da caixa os campos ocupam a largura toda, em vez de brigar por espaço
+   numa linha de filtros */
+.modal-corpo .financeiro-filtros {
+  margin-bottom: 12px;
+}
+
+@media print {
+  .modal-fundo {
+    display: none !important;
+  }
+}

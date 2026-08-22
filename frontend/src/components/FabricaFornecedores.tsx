@@ -14,6 +14,7 @@ import type {
 import { formatCurrency } from "../utils/format";
 import { IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
+import { Modal } from "./Modal";
 
 // As mesmas do lançamento de conta: escolher aqui já sugere a categoria na
 // hora de lançar, e o nome sai igual todas as vezes.
@@ -214,7 +215,40 @@ export function FabricaFornecedores() {
       </div>
 
       {mostrarForm && (
-        <>
+        <Modal
+          titulo={editandoId ? "Editar fornecedor" : "Novo fornecedor"}
+          subtitulo={
+            editandoId
+              ? "Mudar o nome aqui muda junto o nome nas contas deste fornecedor"
+              : "O nome cadastrado é o que vai aparecer na busca do lançamento"
+          }
+          onFechar={() => {
+            setMostrarForm(false);
+            setEditandoId(null);
+          }}
+          rodape={
+            <>
+              <button
+                type="button"
+                className="btn-responder"
+                onClick={() => void salvar()}
+                disabled={salvando}
+              >
+                {editandoId ? "Salvar" : "Cadastrar"}
+              </button>
+              <button
+                type="button"
+                className="btn-excluir"
+                onClick={() => {
+                  setMostrarForm(false);
+                  setEditandoId(null);
+                }}
+              >
+                Cancelar
+              </button>
+            </>
+          }
+        >
           <div className="financeiro-filtros contas-form">
             {campo("nome", "Nome do fornecedor")}
             {campo("cnpj", "CNPJ", true)}
@@ -250,27 +284,7 @@ export function FabricaFornecedores() {
             </label>
             {campo("observacao", "Observação")}
           </div>
-          <div className="financeiro-filtros">
-            <button
-              type="button"
-              className="btn-responder"
-              onClick={() => void salvar()}
-              disabled={salvando}
-            >
-              {editandoId ? "Salvar" : "Cadastrar"}
-            </button>
-            <button
-              type="button"
-              className="btn-excluir"
-              onClick={() => {
-                setMostrarForm(false);
-                setEditandoId(null);
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </>
+        </Modal>
       )}
 
       <div className="financeiro-tabela-wrap">
