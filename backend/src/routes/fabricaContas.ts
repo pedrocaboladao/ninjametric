@@ -45,6 +45,8 @@ function lerEntrada(req: Request): ContaEntrada | string {
     dataPagamento: typeof b.dataPagamento === "string" && b.dataPagamento ? b.dataPagamento : null,
     custoFixo: b.custoFixo !== false,
     observacao: texto(b.observacao),
+    formaPagamento: texto(b.formaPagamento),
+    documento: texto(b.documento),
   };
 }
 

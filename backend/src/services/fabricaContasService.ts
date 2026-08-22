@@ -26,6 +26,8 @@ export interface Conta {
   dataPagamento: string | null;
   custoFixo: boolean;
   observacao: string | null;
+  formaPagamento: string | null;
+  documento: string | null;
   // derivados
   atrasada: boolean;
   diasParaVencer: number;
@@ -42,6 +44,8 @@ export interface ContaEntrada {
   dataPagamento: string | null;
   custoFixo: boolean;
   observacao: string | null;
+  formaPagamento: string | null;
+  documento: string | null;
 }
 
 // "hoje" pelo fuso de São Paulo, não pelo UTC. O resto do repo usa
@@ -69,6 +73,8 @@ interface Linha {
   data_pagamento: string | null;
   custo_fixo: boolean;
   observacao: string | null;
+  forma_pagamento: string | null;
+  documento: string | null;
 }
 
 function montar(r: Linha): Conta {
@@ -87,6 +93,8 @@ function montar(r: Linha): Conta {
     dataPagamento: dataIsoOuNulo(r.data_pagamento),
     custoFixo: r.custo_fixo,
     observacao: r.observacao,
+    formaPagamento: r.forma_pagamento,
+    documento: r.documento,
     // conta paga ou cancelada não atrasa, por mais antiga que seja
     atrasada: status === "pendente" && diasParaVencer < 0,
     diasParaVencer,
@@ -95,7 +103,8 @@ function montar(r: Linha): Conta {
 
 const SELECT_BASE = `
   SELECT c.id, c.tipo, c.descricao, c.categoria, c.contraparte, c.valor, c.vencimento,
-         c.status, c.data_pagamento, c.custo_fixo, c.observacao
+         c.status, c.data_pagamento, c.custo_fixo, c.observacao,
+         c.forma_pagamento, c.documento
   FROM fabrica_contas c
 `;
 
@@ -148,6 +157,8 @@ function valores(e: ContaEntrada) {
     e.status === "pago" ? (e.dataPagamento ?? hoje()) : null,
     e.custoFixo,
     e.observacao,
+    e.formaPagamento,
+    e.documento,
   ];
 }
 
@@ -178,8 +189,8 @@ export async function criarConta(e: ContaEntrada, repetirMeses = 0): Promise<{ i
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO fabrica_contas
          (tipo, descricao, categoria, contraparte, valor, vencimento, status,
-          data_pagamento, custo_fixo, observacao)
-       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10) RETURNING id`,
+          data_pagamento, custo_fixo, observacao, forma_pagamento, documento)
+       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11,$12) RETURNING id`,
       valores(parcela)
     );
     ids.push(rows[0].id);
@@ -192,7 +203,7 @@ export async function atualizarConta(id: number, e: ContaEntrada): Promise<void>
     `UPDATE fabrica_contas
      SET tipo = $2, descricao = $3, categoria = $4, contraparte = $5, valor = $6,
          vencimento = $7::date, status = $8, data_pagamento = $9::date, custo_fixo = $10,
-         observacao = $11
+         observacao = $11, forma_pagamento = $12, documento = $13
      WHERE id = $1`,
     [id, ...valores(e)]
   );

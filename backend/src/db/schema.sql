@@ -1111,3 +1111,46 @@ CREATE TABLE IF NOT EXISTS fabrica_roteiro_qc (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_roteiro_qc_formula
   ON fabrica_roteiro_qc (formula_id, ordem);
+
+-- Forma de pagamento da conta da Fábrica. A planilha do financeiro separa
+-- Boleto, Cheque e Pix, e não é enfeite: são 62 cheques em aberto de uma vez,
+-- e cheque tem data de compensação própria. Sem esse campo, "quanto tem de
+-- cheque a compensar essa semana" não tem resposta.
+--
+-- Texto livre em vez de CHECK: o banco de hoje é o SICOOB, mas a forma nova
+-- que aparecer amanhã não pode derrubar o INSERT.
+ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS forma_pagamento TEXT;
+
+-- Nº do documento: a planilha traz "352340-1", "NFE 7616", "700235" (o número
+-- do cheque). É por ele que a conciliação bancária vai casar o movimento do
+-- extrato com a conta lançada.
+ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS documento TEXT;
+CREATE INDEX IF NOT EXISTS idx_fabrica_contas_documento
+  ON fabrica_contas (documento) WHERE documento IS NOT NULL;
+
+-- Bens da Fábrica: maquinário, veículos, o que a empresa comprou e continua
+-- tendo. Comprar não é gastar — o dinheiro virou um bem que segue valendo.
+-- O que empobrece é o desgaste, e ele acontece um pouco por mês.
+--
+-- É daqui que sai a linha de depreciação do DRE. A parcela do financiamento
+-- continua no contas a pagar (tem cheque pra pagar dia 17), mas não abate o
+-- lucro: quem abate é o desgaste, senão o mês em que a última parcela cai
+-- pareceria muito melhor que o anterior sem nada ter mudado no negócio.
+--
+-- valor é sempre o de compra, cheio. Não desconta o que já foi pago: o
+-- caminhão vale o que vale, quitado ou não.
+CREATE TABLE IF NOT EXISTS fabrica_bens (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL DEFAULT 'movel' CHECK (tipo IN ('movel', 'imovel')),
+  valor NUMERIC(12, 2) NOT NULL CHECK (valor > 0),
+  data_compra DATE NOT NULL,
+  -- 10 anos pra máquina, 5 pra veículo: o padrão que a contabilidade usa.
+  -- Imóvel costuma ser 25. Editável porque quem manda é o contador.
+  vida_util_anos NUMERIC(5, 2) NOT NULL DEFAULT 10 CHECK (vida_util_anos > 0),
+  observacao TEXT,
+  -- bem vendido ou baixado para de depreciar, mas não some do histórico
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_bens_data ON fabrica_bens (data_compra DESC);

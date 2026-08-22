@@ -25,6 +25,12 @@ export interface Dre {
   ate: string;
 
   receita: number;
+  // Enquanto nao ha produto cadastrado, o faturamento e digitado como conta a
+  // receber. Separado da receita de pedido pra dar pra ver, na virada, qual
+  // das duas fontes esta alimentando o mes.
+  receitaPedidos: number;
+  receitaLancada: number;
+  receitaDeDuasFontes: boolean;
   // credito das devolucoes: reduz a receita porque a venda foi desfeita
   devolucoes: number;
   unidadesDevolvidas: number;
@@ -38,11 +44,17 @@ export interface Dre {
   impostoLancado: number;
   receitaLiquida: number;
   custoProdutos: number;
+  // mercadoria comprada pronta pra revender: CPV da distribuidora
+  custoRevenda: number;
   margemContribuicao: number;
   percentualMargem: number;
 
   despesaFixa: number;
   despesaVariavel: number;
+  // desgaste dos bens no mes, vindo do cadastro de bens. A parcela do
+  // financiamento nao entra aqui: quem representa o bem no DRE e isto.
+  depreciacao: number;
+  depreciacaoPorBem: { nome: string; valor: number }[];
   despesaTotal: number;
   resultado: number;
   percentualResultado: number;
