@@ -55,6 +55,23 @@ const CATEGORIAS = [
 // pode derrubar o lancamento.
 const FORMAS = ["Boleto", "Cheque", "Pix", "Transferência", "Dinheiro"];
 
+// A natureza responde uma pergunta diferente da categoria: categoria diz no
+// que o dinheiro foi (aluguel, luz), natureza diz como ele se comporta.
+type Natureza = "" | "fixo" | "variavel" | "revenda";
+
+const CATEGORIA_REVENDA = "REVENDA";
+
+function naturezaDa(c: Conta): Exclude<Natureza, ""> {
+  if (c.categoria === CATEGORIA_REVENDA) return "revenda";
+  return c.custoFixo ? "fixo" : "variavel";
+}
+
+const ROTULO_NATUREZA: Record<Exclude<Natureza, "">, string> = {
+  fixo: "Custo fixo",
+  variavel: "Custo variável",
+  revenda: "Revenda",
+};
+
 const VAZIO = {
   tipo: "pagar" as TipoConta,
   descricao: "",
@@ -84,11 +101,24 @@ export function FabricaContas() {
 
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
   const [filtroTipo, setFiltroTipo] = useState<TipoConta>("pagar");
+  const [filtroNatureza, setFiltroNatureza] = useState<Natureza>("");
+  // o mes corrente inteiro: e o recorte que o operador quer ver 9 vezes em 10
+  const [de, setDe] = useState(() => hoje().slice(0, 8) + "01");
+  const [ate, setAte] = useState(() => {
+    const [ano, mes] = hoje().split("-").map(Number);
+    const ultimo = new Date(Date.UTC(ano, mes, 0)).getUTCDate();
+    return `${hoje().slice(0, 8)}${ultimo}`;
+  });
 
   const carregar = useCallback(async () => {
     try {
       const [cs, r] = await Promise.all([
-        fetchContas({ tipo: filtroTipo, status: filtroStatus || undefined }),
+        fetchContas({
+          tipo: filtroTipo,
+          status: filtroStatus || undefined,
+          de: de || undefined,
+          ate: ate || undefined,
+        }),
         fetchResumoContas(),
       ]);
       setContas(cs);
@@ -98,13 +128,51 @@ export function FabricaContas() {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
       setContas([]);
     }
-  }, [filtroStatus, filtroTipo]);
+  }, [filtroStatus, filtroTipo, de, ate]);
 
   useEffect(() => {
     void carregar();
   }, [carregar]);
 
-  const atrasadas = useMemo(() => (contas ?? []).filter((c) => c.atrasada), [contas]);
+  // o filtro de natureza e da tela, nao do servidor: a lista ja veio inteira e
+  // filtrar aqui deixa o total por categoria acompanhar na hora
+  const visiveis = useMemo(
+    () => (contas ?? []).filter((c) => !filtroNatureza || naturezaDa(c) === filtroNatureza),
+    [contas, filtroNatureza]
+  );
+
+  const atrasadas = useMemo(() => visiveis.filter((c) => c.atrasada), [visiveis]);
+
+  const porNatureza = useMemo(() => {
+    const m = { fixo: 0, variavel: 0, revenda: 0 };
+    for (const c of contas ?? []) {
+      if (c.status === "cancelado") continue;
+      m[naturezaDa(c)] += c.valor;
+    }
+    return m;
+  }, [contas]);
+
+  const porCategoria = useMemo(() => {
+    const m = new Map<
+      string,
+      { total: number; pago: number; n: number; naturezas: Set<string> }
+    >();
+    for (const c of visiveis) {
+      if (c.status === "cancelado") continue;
+      const k = c.categoria ?? "SEM CATEGORIA";
+      const linha = m.get(k) ?? { total: 0, pago: 0, n: 0, naturezas: new Set<string>() };
+      linha.total += c.valor;
+      if (c.status === "pago") linha.pago += c.valor;
+      linha.n += 1;
+      // a mesma categoria pode ter conta fixa e variavel: mostrar "misto" em
+      // vez de escolher uma evita afirmar o que nao e verdade
+      linha.naturezas.add(naturezaDa(c));
+      m.set(k, linha);
+    }
+    return [...m.entries()]
+      .map(([categoria, v]) => ({ categoria, ...v }))
+      .sort((a, b) => b.total - a.total);
+  }, [visiveis]);
 
   function novo() {
     setEditandoId(null);
@@ -219,10 +287,17 @@ export function FabricaContas() {
         </div>
       </div>
 
-      {erro && <p className="financeiro-td-mudo">{erro}</p>}
-      {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
+      {erro && <p className="financeiro-td-mudo ordem-sem-impressao">{erro}</p>}
+      {aviso && <p className="financeiro-td-mudo ordem-sem-impressao">{aviso}</p>}
 
-      <div className="financeiro-filtros">
+      <p className="contas-cabecalho-impressao">
+        {filtroTipo === "receber" ? "Contas a receber" : "Contas a pagar"} da Fábrica
+        Distribuidora · vencimento de {data(de)} a {data(ate)}
+        {filtroNatureza && ` · só ${ROTULO_NATUREZA[filtroNatureza].toLowerCase()}`}
+        {filtroStatus && ` · só ${filtroStatus}`}
+      </p>
+
+      <div className="financeiro-filtros ordem-sem-impressao">
         {(["contas", "dre", "bens"] as const).map((a) => (
           <button
             key={a}
@@ -240,14 +315,21 @@ export function FabricaContas() {
 
       {aba === "contas" && resumo && (
         <div className="financeiro-filtros">
-          <div>
-            <div className="financeiro-stat-label">CUSTO FIXO</div>
-            <div className="financeiro-stat-valor">{formatCurrency(resumo.custoFixo)}</div>
-          </div>
-          <div>
-            <div className="financeiro-stat-label">CUSTO VARIÁVEL</div>
-            <div className="financeiro-stat-valor">{formatCurrency(resumo.custoVariavel)}</div>
-          </div>
+          {(["fixo", "variavel", "revenda"] as const).map((n) => (
+            <button
+              key={n}
+              type="button"
+              className="fabricacao-envase-nome-editavel"
+              onClick={() => setFiltroNatureza((v) => (v === n ? "" : n))}
+              title="Clique para ver só estas contas"
+            >
+              <div className="financeiro-stat-label">
+                {ROTULO_NATUREZA[n].toUpperCase()}
+                {filtroNatureza === n && " ·"}
+              </div>
+              <div className="financeiro-stat-valor">{formatCurrency(porNatureza[n])}</div>
+            </button>
+          ))}
           <div>
             <div className="financeiro-stat-label">JÁ PAGO</div>
             <div className="financeiro-stat-valor">{formatCurrency(resumo.pago)}</div>
@@ -260,7 +342,7 @@ export function FabricaContas() {
       )}
 
       {aba === "contas" && (
-      <div className="financeiro-filtros">
+      <div className="financeiro-filtros ordem-sem-impressao">
         <select
           className="clonar-input fabricacao-input-pequeno"
           value={filtroTipo}
@@ -268,6 +350,16 @@ export function FabricaContas() {
         >
           <option value="pagar">A pagar</option>
           <option value="receber">A receber</option>
+        </select>
+        <select
+          className="clonar-input fabricacao-input-pequeno"
+          value={filtroNatureza}
+          onChange={(e) => setFiltroNatureza(e.target.value as Natureza)}
+        >
+          <option value="">Fixo, variável e revenda</option>
+          <option value="fixo">Só custo fixo</option>
+          <option value="variavel">Só custo variável</option>
+          <option value="revenda">Só revenda</option>
         </select>
         <select
           className="clonar-input fabricacao-input-pequeno"
@@ -279,8 +371,25 @@ export function FabricaContas() {
           <option value="pago">Pago</option>
           <option value="cancelado">Cancelado</option>
         </select>
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          type="date"
+          value={de}
+          onChange={(e) => setDe(e.target.value)}
+          title="Vencimento a partir de"
+        />
+        <input
+          className="clonar-input fabricacao-input-pequeno"
+          type="date"
+          value={ate}
+          onChange={(e) => setAte(e.target.value)}
+          title="Vencimento até"
+        />
         <button type="button" className="btn-responder" onClick={novo}>
           <IconPlus size={14} /> Nova conta
+        </button>
+        <button type="button" className="btn-excluir" onClick={() => window.print()}>
+          Imprimir
         </button>
       </div>
       )}
@@ -408,8 +517,45 @@ export function FabricaContas() {
 
       {aba === "contas" && (
       <>
+      {aba === "contas" && porCategoria.length > 0 && (
+        <div className="financeiro-tabela-wrap">
+          <table className="financeiro-tabela">
+            <thead>
+              <tr>
+                <th>CATEGORIA</th>
+                <th>NATUREZA</th>
+                <th className="financeiro-th-numero">LANÇAMENTOS</th>
+                <th className="financeiro-th-numero">TOTAL</th>
+                <th className="financeiro-th-numero">JÁ PAGO</th>
+                <th className="financeiro-th-numero">FALTA PAGAR</th>
+              </tr>
+            </thead>
+            <tbody>
+              {porCategoria.map((c) => (
+                <tr key={c.categoria}>
+                  <td>{c.categoria}</td>
+                  <td className="financeiro-td-mudo">
+                    {c.naturezas.size > 1
+                      ? "misto"
+                      : ROTULO_NATUREZA[
+                          [...c.naturezas][0] as Exclude<Natureza, "">
+                        ].toLowerCase()}
+                  </td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">{c.n}</td>
+                  <td className="financeiro-th-numero">{formatCurrency(c.total)}</td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">
+                    {formatCurrency(c.pago)}
+                  </td>
+                  <td className="financeiro-th-numero">{formatCurrency(c.total - c.pago)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
       <div className="financeiro-tabela-wrap">
-        <table className="financeiro-tabela">
+        <table className="financeiro-tabela contas-tabela-lancamentos">
           <thead>
             <tr>
               <th>VENCIMENTO</th>
@@ -429,12 +575,12 @@ export function FabricaContas() {
                 <td colSpan={9}>Carregando…</td>
               </tr>
             )}
-            {contas !== null && !contas.length && (
+            {contas !== null && !visiveis.length && (
               <tr>
                 <td colSpan={9}>Nenhuma conta lançada.</td>
               </tr>
             )}
-            {(contas ?? []).map((c) => (
+            {visiveis.map((c) => (
               <tr key={c.id} style={c.status === "cancelado" ? { opacity: 0.5 } : undefined}>
                 <td className={c.atrasada ? undefined : "financeiro-td-mudo"}>
                   {data(c.vencimento)}

@@ -5766,3 +5766,43 @@
     break-inside: avoid;
   }
 }
+
+/* Cabecalho que so existe no papel: a folha impressa precisa dizer de que
+   periodo ela e, senao vira uma lista de numeros sem contexto. */
+.contas-cabecalho-impressao {
+  display: none;
+}
+
+@media print {
+  .contas-cabecalho-impressao {
+    display: block;
+    color: #000 !important;
+    font-weight: 600;
+    margin: 0 0 12px;
+  }
+
+  /* a tabela do financeiro no papel: preto no branco, com borda visivel */
+  .financeiro-tabela th,
+  .financeiro-tabela td {
+    border: 1px solid #666 !important;
+    color: #000 !important;
+    background: #fff !important;
+    padding: 4px 6px !important;
+  }
+
+  .financeiro-tabela-wrap {
+    overflow: visible !important;
+  }
+
+  /* linha de conta nao pode partir no meio entre duas paginas */
+  .financeiro-tabela tr {
+    break-inside: avoid;
+  }
+
+  /* a coluna de acoes (status e excluir) nao serve no papel. So na tabela de
+     lancamentos: na de categorias a ultima coluna e "falta pagar". */
+  .contas-tabela-lancamentos th:last-child,
+  .contas-tabela-lancamentos td:last-child {
+    display: none;
+  }
+}
