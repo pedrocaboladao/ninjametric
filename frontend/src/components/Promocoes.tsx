@@ -620,7 +620,7 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
             ? "Sem dados de custo/taxa pra calcular"
             : `Margem: ${formatCurrency(o.margem)} (${o.percentualMargem?.toFixed(1)}%)`}
         </span>
-        {o.status === "pendente" && !confirmando && (
+        {(o.status === "pendente" || o.status === "erro") && !confirmando && (
           <>
             <button
               type="button"
@@ -629,20 +629,16 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
               title={semIdentificador ? "Essa modalidade não tem identificador pra confirmar via API — participe direto no Mercado Livre." : undefined}
               onClick={() => setConfirmando(true)}
             >
-              Aprovar
+              {o.status === "erro" ? "Tentar de novo" : "Aprovar"}
             </button>
             <button type="button" className="btn-excluir" disabled={enviando} onClick={rejeitar}>
               Rejeitar
             </button>
           </>
         )}
-        {o.status !== "pendente" && (
-          <span className="financeiro-td-mudo">
-            {o.status === "aprovada" && "Aprovada"}
-            {o.status === "rejeitada" && "Rejeitada"}
-            {o.status === "erro" && `Erro: ${o.erro}`}
-          </span>
-        )}
+        {o.status === "aprovada" && <span className="financeiro-td-mudo">Aprovada</span>}
+        {o.status === "rejeitada" && <span className="financeiro-td-mudo">Rejeitada</span>}
+        {o.status === "erro" && !confirmando && <span className="financeiro-margem-negativa">Erro: {o.erro}</span>}
         {o.status === "aprovada" && (
           <button type="button" className="btn-excluir" disabled={comparando} onClick={comparar}>
             {comparando ? "Comparando..." : "Comparar com venda real"}

@@ -1,3 +1,4 @@
+import axios from "axios";
 import { pool } from "../db/pool";
 import { listLojas, type Loja } from "./tokenStore";
 import {
@@ -326,7 +327,9 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
   if (lojasPermitidas !== undefined && !lojasPermitidas.includes(row.loja_id)) {
     throw new Error("Você não tem acesso a essa loja.");
   }
-  if (row.status !== "pendente") throw new Error("Essa oportunidade já foi decidida.");
+  // "erro" pode tentar de novo (ex.: falha pontual/preço mudou) — só
+  // "aprovada"/"rejeitada" ficam travadas de verdade.
+  if (row.status !== "pendente" && row.status !== "erro") throw new Error("Essa oportunidade já foi decidida.");
   const promotionId = row.promotion_id;
   if (!promotionId) {
     throw new Error("Essa modalidade de promoção não tem um identificador pra confirmar via API — participe direto no Mercado Livre.");
@@ -334,14 +337,24 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
 
   try {
     await adicionarItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo, Number(row.preco_escolhido));
-    await pool.query(`UPDATE promocoes_oportunidades SET status = 'aprovada', decidido_em = now() WHERE id = $1`, [id]);
+    await pool.query(`UPDATE promocoes_oportunidades SET status = 'aprovada', erro = NULL, decidido_em = now() WHERE id = $1`, [id]);
   } catch (err) {
-    const mensagem = err instanceof Error ? err.message : "Falha ao confirmar participação no Mercado Livre.";
+    // Mesmo padrão de erro de criarCampanhaVendedor (promocoesService.ts) —
+    // a mensagem genérica do axios ("Request failed with status code 400")
+    // não diz nada; a mensagem real do Mercado Livre vem no corpo da
+    // resposta.
+    let mensagem = "Falha ao confirmar participação no Mercado Livre.";
+    if (axios.isAxiosError(err)) {
+      const corpo = err.response?.data as { message?: string; error?: string; cause?: unknown } | undefined;
+      mensagem = `HTTP ${err.response?.status}: ${corpo?.message ?? corpo?.error ?? JSON.stringify(corpo) ?? err.message}`;
+    } else if (err instanceof Error) {
+      mensagem = err.message;
+    }
     await pool.query(`UPDATE promocoes_oportunidades SET status = 'erro', erro = $2, decidido_em = now() WHERE id = $1`, [
       id,
       mensagem,
     ]);
-    throw err;
+    throw new Error(mensagem);
   }
 }
 
