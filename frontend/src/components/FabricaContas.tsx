@@ -414,7 +414,7 @@ export function FabricaContas() {
 
       {aba === "contas" && mostrarForm && (
         <>
-          <div className="financeiro-filtros">
+          <div className="financeiro-filtros contas-form">
             <select
               className="clonar-input fabricacao-input-pequeno"
               value={form.tipo}
@@ -470,7 +470,7 @@ export function FabricaContas() {
             </select>
           </div>
 
-          <div className="financeiro-filtros">
+          <div className="financeiro-filtros contas-form">
             <label className="financeiro-td-mudo">
               <input
                 type="checkbox"
@@ -515,7 +515,7 @@ export function FabricaContas() {
             />
           </div>
 
-          <div className="financeiro-filtros">
+          <div className="financeiro-filtros contas-form">
             <button type="button" className="btn-responder" onClick={() => void salvar()} disabled={salvando}>
               {editandoId ? "Salvar" : "Lançar"}
             </button>
