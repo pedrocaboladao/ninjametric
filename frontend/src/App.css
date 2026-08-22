@@ -6179,3 +6179,20 @@ button.contas-cartao:hover {
 .financeiro-topo-numeros > div {
   min-width: 150px;
 }
+
+/* Botoes-pai de origem do produto.
+   Sao dois catalogos convivendo: ~139 fabricados e ~4.900 de revenda. Numa
+   busca so, "resiflex" traz os dois misturados e da pra lancar o errado sem
+   perceber — e produto errado no pedido leva custo errado pro DRE, porque a
+   margem de cada um vem de fonte diferente. */
+.origem-abas {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 12px 0 10px;
+}
+
+.origem-abas span {
+  font-size: 12px;
+}

@@ -314,6 +314,20 @@ export function FabricaProdutos() {
         )}
       </div>
 
+      <div className="origem-abas">
+        {(["", "FABRICA", "DISTRIBUIDORA"] as const).map((o) => (
+          <button
+            key={o || "todos"}
+            type="button"
+            className={filtroOrigem === o ? "btn-responder" : "btn-excluir"}
+            onClick={() => setFiltroOrigem(o)}
+          >
+            {o === "" ? "Todos" : o === "FABRICA" ? "Produto fábrica" : "Produto distribuição"}
+            {o !== "" && ` (${porOrigem[o]})`}
+          </button>
+        ))}
+      </div>
+
       <div className="financeiro-filtros">
         <input
           className="clonar-input"
@@ -321,15 +335,6 @@ export function FabricaProdutos() {
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
-        <select
-          className="clonar-input fabricacao-input-pequeno"
-          value={filtroOrigem}
-          onChange={(e) => setFiltroOrigem(e.target.value as "" | OrigemProduto)}
-        >
-          <option value="">Fábrica e distribuidora</option>
-          <option value="FABRICA">Só fábrica ({porOrigem.FABRICA})</option>
-          <option value="DISTRIBUIDORA">Só distribuidora ({porOrigem.DISTRIBUIDORA})</option>
-        </select>
         <button
           type="button"
           className="btn-excluir"
