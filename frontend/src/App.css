@@ -5939,3 +5939,12 @@ button.contas-cartao:hover {
     font-size: 8.5pt !important;
   }
 }
+
+/* Editar e excluir lado a lado, sem empurrar a largura da coluna. O nome da
+   conta tambem abre a edicao, mas so quem ja sabia disso clicava nele. */
+.contas-acoes {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}

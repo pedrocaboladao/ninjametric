@@ -628,7 +628,10 @@ export function FabricaContas() {
                     <option value="cancelado">Cancelado</option>
                   </select>
                 </td>
-                <td>
+                <td className="contas-acoes">
+                  <button type="button" className="btn-excluir" onClick={() => editar(c)}>
+                    Editar
+                  </button>
                   <BotaoExcluir onConfirmar={() => void apagar(c)} />
                 </td>
               </tr>
@@ -636,9 +639,10 @@ export function FabricaContas() {
           </tbody>
         </table>
       </div>
-      <p className="financeiro-td-mudo">
+      <p className="financeiro-td-mudo ordem-sem-impressao">
         Custo fixo e variável somam o período todo, pago ou não — o DRE olha competência, não caixa.
-        Conta cancelada não entra em nada.
+        Conta cancelada não entra em nada. Para corrigir um valor que subiu ou um lançamento errado,
+        clique em <strong>Editar</strong> (ou no nome da conta).
       </p>
       </>
       )}
