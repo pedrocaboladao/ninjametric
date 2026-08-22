@@ -1192,3 +1192,26 @@ ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS logradouro TEXT;
 ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS numero TEXT;
 ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS complemento TEXT;
 ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS bairro TEXT;
+
+-- Produto de revenda na Fábrica Distribuidora.
+--
+-- Hoje a fábrica vende dois tipos de coisa para as lojas: o que ela fabrica
+-- (sai de uma fórmula, e o custo se recalcula quando a resina muda de preço) e
+-- o que ela compra pronto e revende (o custo é o que se pagou ao fornecedor).
+-- São regras de custo diferentes, e é `origem` que separa as duas.
+--
+-- `custo_compra` só existe para a revenda: no produto de fábrica o custo vem da
+-- fórmula, e ter um número digitado ao lado dele criaria duas verdades.
+ALTER TABLE fabrica_produtos
+  ADD COLUMN IF NOT EXISTS origem TEXT NOT NULL DEFAULT 'FABRICA';
+ALTER TABLE fabrica_produtos
+  ADD COLUMN IF NOT EXISTS custo_compra NUMERIC(12, 2);
+ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS ean TEXT;
+-- família do catálogo (Resiflex, Selaturbo…): a planilha agrupa por ela, e é
+-- o que dá pra filtrar quando são 5 mil SKUs
+ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS familia TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_origem
+  ON fabrica_produtos (origem, familia);
+CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_ean
+  ON fabrica_produtos (ean) WHERE ean IS NOT NULL;

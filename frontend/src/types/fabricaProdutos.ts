@@ -1,3 +1,5 @@
+export type OrigemProduto = "FABRICA" | "DISTRIBUIDORA";
+
 // Produto acabado da Fábrica Distribuidora. Custo, margem, markup e % de lucro
 // vêm calculados do backend — aqui nunca são digitados nem recalculados.
 export interface FabricaProduto {
@@ -17,6 +19,12 @@ export interface FabricaProduto {
   custoProduto: number;
   custoEmbalagem: number;
   custo: number;
+  // FABRICA sai de fórmula e tem custo recalculado; DISTRIBUIDORA é comprado
+  // pronto e tem custo digitado — são duas regras de custo no mesmo cadastro
+  origem: OrigemProduto;
+  ean: string | null;
+  familia: string | null;
+  custoCompra: number | null;
   precoVenda: number;
   margemContribuicao: number;
   markup: number;
@@ -27,8 +35,19 @@ export interface FabricaProduto {
 export interface FabricaProdutoEntrada {
   sku: string;
   nome: string;
+  origem: OrigemProduto;
+  ean: string | null;
+  familia: string | null;
+  custoCompra: number | null;
   formulaId: number | null;
   embalagemId: number | null;
   precoVenda: number;
   ativo: boolean;
+}
+
+export interface ResultadoImportacaoCatalogo {
+  criados: number;
+  jaExistiam: number;
+  semSku: number;
+  familias: number;
 }
