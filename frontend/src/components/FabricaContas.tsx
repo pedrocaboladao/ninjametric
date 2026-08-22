@@ -194,19 +194,18 @@ export function FabricaContas() {
   // "ja pago" vinha do resumo do servidor, que ignora o filtro de periodo: a
   // tela mostrava agosto e o numero falava do ano inteiro
   const pagoNoPeriodo = useMemo(
-    () =>
-      (contas ?? [])
-        .filter((c) => c.status === "pago")
-        .reduce((s, c) => s + c.valor, 0),
-    [contas]
+    () => visiveis.filter((c) => c.status === "pago").reduce((s, c) => s + c.valor, 0),
+    [visiveis]
+  );
+
+  const totalPeriodo = useMemo(
+    () => visiveis.filter((c) => c.status !== "cancelado").reduce((s, c) => s + c.valor, 0),
+    [visiveis]
   );
 
   const faltaPagar = useMemo(
-    () =>
-      (contas ?? [])
-        .filter((c) => c.status === "pendente")
-        .reduce((s, c) => s + c.valor, 0),
-    [contas]
+    () => visiveis.filter((c) => c.status === "pendente").reduce((s, c) => s + c.valor, 0),
+    [visiveis]
   );
 
   const porCategoria = useMemo(() => {
@@ -352,6 +351,8 @@ export function FabricaContas() {
         Distribuidora · vencimento de {data(de)} a {data(ate)}
         {filtroNatureza && ` · só ${ROTULO_NATUREZA[filtroNatureza].toLowerCase()}`}
         {filtroStatus && ` · só ${filtroStatus}`}
+        {" · "}
+        {visiveis.length} lançamentos
       </p>
 
       <div className="financeiro-filtros ordem-sem-impressao">
@@ -729,6 +730,37 @@ export function FabricaContas() {
           </tbody>
         </table>
       </div>
+      <div className="contas-totais">
+        <div className="contas-total-linha">
+          <span>TOTAL DO PERÍODO</span>
+          <strong>{formatCurrency(totalPeriodo)}</strong>
+        </div>
+        <div className="contas-total-linha">
+          <span>PAGO</span>
+          <strong>{formatCurrency(pagoNoPeriodo)}</strong>
+        </div>
+        <div className="contas-total-linha">
+          <span>FALTA PAGAR</span>
+          <strong>{formatCurrency(faltaPagar)}</strong>
+        </div>
+        {filtroNatureza === "" && (
+          <>
+            <div className="contas-total-linha contas-total-mudo">
+              <span>custo fixo</span>
+              <span>{formatCurrency(porNatureza.fixo)}</span>
+            </div>
+            <div className="contas-total-linha contas-total-mudo">
+              <span>custo variável</span>
+              <span>{formatCurrency(porNatureza.variavel)}</span>
+            </div>
+            <div className="contas-total-linha contas-total-mudo">
+              <span>revenda</span>
+              <span>{formatCurrency(porNatureza.revenda)}</span>
+            </div>
+          </>
+        )}
+      </div>
+
       <p className="financeiro-td-mudo ordem-sem-impressao">
         Custo fixo e variável somam o período todo, pago ou não — o DRE olha competência, não caixa.
         Conta cancelada não entra em nada. Para corrigir um valor que subiu ou um lançamento errado,

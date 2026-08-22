@@ -6096,3 +6096,58 @@ button.contas-cartao:hover {
   padding: 9px 11px;
   font-size: 14px;
 }
+
+/* Fecho da lista: o total do que esta na tela.
+   A folha de conferencia terminava na ultima linha, sem soma — quem confere
+   tinha que somar na mao pra saber se bate. E o numero do topo da pagina e o
+   "a pagar" geral, que ignora o filtro de mes. */
+.contas-totais {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px 18px;
+  margin: 14px 0 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.contas-total-linha {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.contas-total-linha span {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.contas-total-linha strong {
+  font-size: 16px;
+  color: var(--text-primary);
+}
+
+.contas-total-mudo span {
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.contas-total-mudo span:last-child {
+  color: var(--text-primary);
+}
+
+@media print {
+  .contas-totais {
+    border: 1px solid #666 !important;
+    break-inside: avoid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .contas-total-linha span,
+  .contas-total-linha strong {
+    color: #000 !important;
+  }
+}
