@@ -44,6 +44,7 @@ import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
 import { BuscaSelecao } from "./BuscaSelecao";
+import type { OrigemProduto } from "../types/fabricaProdutos";
 import type { ItemBusca } from "./BuscaSelecao";
 
 // aceita "1.234,5" e "1234.5" — o operador digita como fala
@@ -160,6 +161,10 @@ export function FabricaPedidos() {
   }, [carregar]);
 
   const produtoPor = useMemo(() => new Map(produtos.map((p) => [p.id, p])), [produtos]);
+
+  // Qual catalogo esta aberto na hora de escolher o item do pedido. Vazio = os
+  // dois, que e como era antes de existir produto de revenda.
+  const [origemItem, setOrigemItem] = useState<"" | OrigemProduto>("");
   const saldoPor = useMemo(() => new Map(estoque.map((e) => [e.produtoId, e])), [estoque]);
 
   const totais = useMemo(() => {
@@ -175,15 +180,23 @@ export function FabricaPedidos() {
   // o produto e "tem quanto?"
   const itensProduto: ItemBusca[] = useMemo(
     () =>
-      produtos.map((p) => ({
-        id: p.id,
-        titulo: p.nome,
-        codigo: p.sku,
-        detalhe: saldoPor.has(p.id) ? `${saldoPor.get(p.id)!.saldo} em estoque` : null,
-        ativo: p.ativo,
-      })),
-    [produtos, saldoPor]
+      produtos
+        .filter((p) => !origemItem || p.origem === origemItem)
+        .map((p) => ({
+          id: p.id,
+          titulo: p.nome,
+          codigo: p.sku,
+          detalhe: saldoPor.has(p.id) ? `${saldoPor.get(p.id)!.saldo} em estoque` : null,
+          ativo: p.ativo,
+        })),
+    [produtos, saldoPor, origemItem]
   );
+
+  const contagemOrigem = useMemo(() => {
+    const m = { FABRICA: 0, DISTRIBUIDORA: 0 };
+    for (const p of produtos) if (p.ativo) m[p.origem] += 1;
+    return m;
+  }, [produtos]);
 
   const itensCliente: ItemBusca[] = useMemo(
     () =>
@@ -710,6 +723,23 @@ export function FabricaPedidos() {
             />
           </div>
 
+          <div className="origem-abas">
+            {(["", "FABRICA", "DISTRIBUIDORA"] as const).map((o) => (
+              <button
+                key={o || "todos"}
+                type="button"
+                className={origemItem === o ? "btn-responder" : "btn-excluir"}
+                onClick={() => setOrigemItem(o)}
+              >
+                {o === "" ? "Todos" : o === "FABRICA" ? "Produto fábrica" : "Produto distribuição"}
+                {o !== "" && ` (${contagemOrigem[o]})`}
+              </button>
+            ))}
+            <span className="financeiro-td-mudo">
+              escolha o catálogo antes de buscar — evita lançar um pelo outro
+            </span>
+          </div>
+
           <div className="financeiro-tabela-wrap financeiro-tabela-wrap-transbordo">
             <table className="financeiro-tabela">
               <thead>
@@ -735,7 +765,13 @@ export function FabricaPedidos() {
                         <BuscaSelecao
                           itens={itensProduto}
                           valor={l.produtoId ? Number(l.produtoId) : null}
-                          placeholder="Buscar por nome ou SKU"
+                          placeholder={
+                            origemItem === "FABRICA"
+                              ? "Buscar produto fabricado"
+                              : origemItem === "DISTRIBUIDORA"
+                                ? "Buscar produto de revenda"
+                                : "Buscar por nome ou SKU"
+                          }
                           onEscolher={(id) => escolherProduto(idx, id ? String(id) : "")}
                         />
                       </td>
