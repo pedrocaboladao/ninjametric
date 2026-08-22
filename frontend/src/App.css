@@ -5875,3 +5875,67 @@ button.contas-cartao:hover {
     color: #000 !important;
   }
 }
+
+/* A folha de conferencia sai em paisagem.
+   Em retrato a tabela de lancamentos nao cabe: o Hudson imprimiu e vieram so
+   as quatro primeiras colunas, sem valor nem status — justamente o que ele
+   precisa conferir. Paisagem, fonte menor e largura fixa fazem as sete colunas
+   entrarem na largura do papel. */
+@page {
+  size: A4 landscape;
+  margin: 10mm;
+}
+
+@media print {
+  .financeiro-tabela {
+    width: 100% !important;
+    table-layout: fixed;
+    font-size: 8.5pt !important;
+    border-collapse: collapse;
+  }
+
+  .financeiro-tabela th,
+  .financeiro-tabela td {
+    padding: 3px 5px !important;
+    /* nome de fornecedor longo quebra em vez de empurrar a tabela pra fora */
+    word-break: break-word;
+    overflow-wrap: anywhere;
+    white-space: normal !important;
+  }
+
+  /* Oito colunas visiveis (a nona, de acoes, sai fora). Data e valor tem
+     tamanho conhecido; o nome do fornecedor e que precisa de espaco — alguns
+     tem 60 caracteres. */
+  .contas-tabela-lancamentos th:nth-child(1),
+  .contas-tabela-lancamentos td:nth-child(1) { width: 9%; }
+  .contas-tabela-lancamentos th:nth-child(2),
+  .contas-tabela-lancamentos td:nth-child(2) { width: 19%; }
+  .contas-tabela-lancamentos th:nth-child(3),
+  .contas-tabela-lancamentos td:nth-child(3) { width: 10%; }
+  .contas-tabela-lancamentos th:nth-child(4),
+  .contas-tabela-lancamentos td:nth-child(4) { width: 24%; }
+  .contas-tabela-lancamentos th:nth-child(5),
+  .contas-tabela-lancamentos td:nth-child(5) { width: 12%; }
+  .contas-tabela-lancamentos th:nth-child(6),
+  .contas-tabela-lancamentos td:nth-child(6) { width: 10%; }
+  .contas-tabela-lancamentos th:nth-child(7),
+  .contas-tabela-lancamentos td:nth-child(7) { width: 7%; }
+  .contas-tabela-lancamentos th:nth-child(8),
+  .contas-tabela-lancamentos td:nth-child(8) { width: 9%; }
+
+  /* o cabecalho se repete no topo de cada pagina: sem isso, da segunda folha
+     em diante e uma tabela de numeros sem titulo de coluna */
+  .financeiro-tabela thead {
+    display: table-header-group;
+  }
+
+  /* o botao de status vira texto: no papel um <select> imprime a caixa vazia */
+  .financeiro-tabela select {
+    border: none !important;
+    background: none !important;
+    color: #000 !important;
+    padding: 0 !important;
+    appearance: none;
+    font-size: 8.5pt !important;
+  }
+}
