@@ -5,9 +5,16 @@ import {
   atualizarFabricaProduto,
   excluirFabricaProduto,
   importarCatalogo,
+  conferirPrecos,
+  aplicarPrecos,
 } from "../api/fabricaProdutos";
 import { fetchFormulas, fetchFormula } from "../api/fabricacao";
-import type { FabricaProduto, OrigemProduto } from "../types/fabricaProdutos";
+import type {
+  FabricaProduto,
+  OrigemProduto,
+  ConferenciaCatalogo,
+} from "../types/fabricaProdutos";
+import { Modal } from "./Modal";
 import type { FormulaResumo, FormulaEmbalagem } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
 import { IconPlus } from "./icons";
@@ -50,6 +57,9 @@ export function FabricaProdutos() {
   const [filtroOrigem, setFiltroOrigem] = useState<"" | OrigemProduto>("");
   const [importando, setImportando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [conferencia, setConferencia] = useState<ConferenciaCatalogo | null>(null);
+  const [conferindo, setConferindo] = useState(false);
+  const [aAplicar, setAAplicar] = useState<Set<number>>(new Set());
 
   const carregar = useCallback(async () => {
     try {
@@ -112,6 +122,39 @@ export function FabricaProdutos() {
   // Traz os 5 mil SKUs do catalogo do Mercado Livre como produto de revenda.
   // SKU que ja existe aqui nao e tocado: o produto de fabrica com o mesmo
   // codigo tem custo vindo da formula, e sobrescrever apagaria isso.
+  // A tela do Pedro le a planilha toda vez, entao muda sozinha. Aqui os
+  // produtos sao copia: ficariam congelados no preco do dia da importacao. O
+  // botao traz a diferenca pra decidir — preco de venda mudando sem ninguem
+  // ver so aparece tres meses depois, no DRE.
+  async function conferir() {
+    setConferindo(true);
+    try {
+      const c = await conferirPrecos();
+      setConferencia(c);
+      setAAplicar(new Set(c.diferencas.map((d) => d.id)));
+      setErro(null);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao conferir os preços.");
+    } finally {
+      setConferindo(false);
+    }
+  }
+
+  async function aplicar() {
+    if (!conferencia) return;
+    setSalvando(true);
+    try {
+      const r = await aplicarPrecos([...aAplicar]);
+      setAviso(`${r.atualizados} preços atualizados pela planilha.`);
+      setConferencia(null);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao aplicar os preços.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   async function importar() {
     setImportando(true);
     try {
@@ -226,6 +269,93 @@ export function FabricaProdutos() {
 
       {erro && <p className="financeiro-td-mudo">{erro}</p>}
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
+
+      {conferencia && (
+        <Modal
+          titulo="Preços da planilha"
+          subtitulo={
+            conferencia.diferencas.length
+              ? `${conferencia.diferencas.length} de ${conferencia.conferidos} produtos mudaram de preço`
+              : `Nenhuma diferença nos ${conferencia.conferidos} produtos de revenda`
+          }
+          onFechar={() => setConferencia(null)}
+          rodape={
+            conferencia.diferencas.length ? (
+              <>
+                <button
+                  type="button"
+                  className="btn-responder"
+                  onClick={() => void aplicar()}
+                  disabled={salvando || !aAplicar.size}
+                >
+                  Aplicar {aAplicar.size} preço{aAplicar.size === 1 ? "" : "s"}
+                </button>
+                <button type="button" className="btn-excluir" onClick={() => setConferencia(null)}>
+                  Cancelar
+                </button>
+              </>
+            ) : (
+              <button type="button" className="btn-responder" onClick={() => setConferencia(null)}>
+                Fechar
+              </button>
+            )
+          }
+        >
+          {conferencia.foraDaPlanilha.length > 0 && (
+            <p className="financeiro-td-mudo">
+              {conferencia.foraDaPlanilha.length} produto
+              {conferencia.foraDaPlanilha.length === 1 ? "" : "s"} do cadastro não aparece
+              {conferencia.foraDaPlanilha.length === 1 ? "" : "m"} mais na planilha — saiu de linha
+              ou mudou de SKU. Não mexi neles.
+            </p>
+          )}
+
+          {conferencia.diferencas.length > 0 && (
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    <th />
+                    <th>PRODUTO</th>
+                    <th className="financeiro-th-numero">HOJE</th>
+                    <th className="financeiro-th-numero">NA PLANILHA</th>
+                    <th className="financeiro-th-numero">DIFERENÇA</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {conferencia.diferencas.map((d) => (
+                    <tr key={d.id}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={aAplicar.has(d.id)}
+                          onChange={(e) =>
+                            setAAplicar((v) => {
+                              const n = new Set(v);
+                              if (e.target.checked) n.add(d.id);
+                              else n.delete(d.id);
+                              return n;
+                            })
+                          }
+                        />
+                      </td>
+                      <td>{d.sku}</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {formatCurrency(d.precoAtual)}
+                      </td>
+                      <td className="financeiro-th-numero">{formatCurrency(d.precoPlanilha)}</td>
+                      <td className="financeiro-th-numero">
+                        {d.diferenca > 0 ? "+" : ""}
+                        {formatCurrency(d.diferenca)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Modal>
+      )}
 
       <div className="financeiro-filtros">
         <input
@@ -344,6 +474,17 @@ export function FabricaProdutos() {
         >
           {importando ? "Importando…" : "Importar catálogo"}
         </button>
+        {porOrigem.DISTRIBUIDORA > 0 && (
+          <button
+            type="button"
+            className="btn-excluir"
+            onClick={() => void conferir()}
+            disabled={conferindo}
+            title="Compara o preço de venda dos produtos de revenda com a planilha e mostra o que mudou"
+          >
+            {conferindo ? "Conferindo…" : "Ajustar preços pela planilha"}
+          </button>
+        )}
       </div>
 
       <div className="financeiro-tabela-wrap">

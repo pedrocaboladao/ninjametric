@@ -351,3 +351,101 @@ export async function importarCatalogo(): Promise<ResultadoImportacaoCatalogo> {
 
   return { criados, jaExistiam, semSku, familias: familias.size };
 }
+
+// --- conferir preços com a planilha -----------------------------------------
+//
+// A tela do Pedro é espelho vivo do Google Sheets: ele muda o custo lá e a tela
+// muda sozinha. Aqui os produtos de revenda são uma cópia, então ficariam
+// congelados no preço do dia da importação.
+//
+// O meio-termo que o Hudson escolheu: o preço continua vindo da planilha, mas
+// passa pelos olhos dele antes. Alterar preço de venda sem ninguém saber é o
+// tipo de coisa que só aparece três meses depois, no DRE.
+
+export interface DiferencaPreco {
+  id: number;
+  sku: string;
+  nome: string;
+  precoAtual: number;
+  precoPlanilha: number;
+  diferenca: number;
+}
+
+export interface ConferenciaCatalogo {
+  diferencas: DiferencaPreco[];
+  conferidos: number;
+  // está no cadastro mas sumiu da planilha: produto que saiu de linha
+  foraDaPlanilha: { id: number; sku: string; nome: string }[];
+}
+
+export async function conferirPrecosCatalogo(): Promise<ConferenciaCatalogo> {
+  const { listarProdutos } = await import("./produtosService");
+  const catalogo = await listarProdutos();
+  const porSku = new Map(catalogo.map((p) => [p.sku.trim().toUpperCase(), p]));
+
+  const { rows } = await pool.query<{
+    id: number;
+    sku: string;
+    nome: string;
+    preco_venda: string;
+  }>(
+    `SELECT id, sku, nome, preco_venda FROM fabrica_produtos
+     WHERE origem = 'DISTRIBUIDORA' ORDER BY nome`
+  );
+
+  const diferencas: DiferencaPreco[] = [];
+  const foraDaPlanilha: { id: number; sku: string; nome: string }[] = [];
+
+  for (const r of rows) {
+    const daPlanilha = porSku.get(r.sku.trim().toUpperCase());
+    if (!daPlanilha) {
+      foraDaPlanilha.push({ id: r.id, sku: r.sku, nome: r.nome });
+      continue;
+    }
+    const atual = Number(r.preco_venda);
+    // centavo de diferença é arredondamento, não reajuste
+    if (Math.abs(atual - daPlanilha.custo) < 0.005) continue;
+    diferencas.push({
+      id: r.id,
+      sku: r.sku,
+      nome: r.nome,
+      precoAtual: atual,
+      precoPlanilha: daPlanilha.custo,
+      diferenca: daPlanilha.custo - atual,
+    });
+  }
+
+  diferencas.sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca));
+  return { diferencas, conferidos: rows.length, foraDaPlanilha };
+}
+
+// Aplica só o que veio na lista: o Hudson viu a diferença antes de mandar.
+export async function aplicarPrecosCatalogo(
+  ids: number[]
+): Promise<{ atualizados: number }> {
+  if (!ids.length) return { atualizados: 0 };
+  const { diferencas } = await conferirPrecosCatalogo();
+  const querer = new Set(ids);
+  const aplicar = diferencas.filter((d) => querer.has(d.id));
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    for (const d of aplicar) {
+      // só produto de revenda: o preço do fabricado é decisão do Hudson, não
+      // da planilha do catálogo
+      await cliente.query(
+        `UPDATE fabrica_produtos SET preco_venda = $2
+         WHERE id = $1 AND origem = 'DISTRIBUIDORA'`,
+        [d.id, d.precoPlanilha]
+      );
+    }
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  return { atualizados: aplicar.length };
+}

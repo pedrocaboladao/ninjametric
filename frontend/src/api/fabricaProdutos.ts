@@ -1,5 +1,8 @@
-import type { FabricaProduto, FabricaProdutoEntrada,
+import type {
+  FabricaProduto,
+  FabricaProdutoEntrada,
   ResultadoImportacaoCatalogo,
+  ConferenciaCatalogo,
 } from "../types/fabricaProdutos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -61,4 +64,22 @@ export async function importarCatalogo(): Promise<ResultadoImportacaoCatalogo> {
     credentials: "include",
   });
   return tratarResposta<ResultadoImportacaoCatalogo>(res);
+}
+
+// O que mudou de preço na planilha. Só consulta — aplicar é outra chamada.
+export async function conferirPrecos(): Promise<ConferenciaCatalogo> {
+  const res = await fetch(`${API_BASE}/api/fabrica-produtos/conferir-precos`, {
+    credentials: "include",
+  });
+  return tratarResposta<ConferenciaCatalogo>(res);
+}
+
+export async function aplicarPrecos(ids: number[]): Promise<{ atualizados: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-produtos/aplicar-precos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ ids }),
+  });
+  return tratarResposta<{ atualizados: number }>(res);
 }

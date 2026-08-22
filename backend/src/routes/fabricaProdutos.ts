@@ -7,6 +7,8 @@ import {
   excluirProduto,
   type ProdutoEntrada,
   importarCatalogo,
+  conferirPrecosCatalogo,
+  aplicarPrecosCatalogo,
 } from "../services/fabricaProdutosService";
 import {
   listarEstoqueProdutos,
@@ -197,5 +199,26 @@ fabricaProdutosRouter.post("/importar-catalogo", async (_req, res) => {
     res.json(await importarCatalogo());
   } catch (err) {
     erro(res, err, "Falha ao importar o catálogo.");
+  }
+});
+
+// O que mudou de preço na planilha desde a última vez. Só mostra — aplicar é
+// outra chamada, porque preço de venda não pode mudar sem ninguém ver.
+fabricaProdutosRouter.get("/conferir-precos", async (_req, res) => {
+  try {
+    res.json(await conferirPrecosCatalogo());
+  } catch (err) {
+    erro(res, err, "Falha ao conferir os preços.");
+  }
+});
+
+fabricaProdutosRouter.post("/aplicar-precos", async (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? req.body.ids.map(Number).filter(Number.isInteger)
+    : [];
+  try {
+    res.json(await aplicarPrecosCatalogo(ids));
+  } catch (err) {
+    erro(res, err, "Falha ao aplicar os preços.");
   }
 });
