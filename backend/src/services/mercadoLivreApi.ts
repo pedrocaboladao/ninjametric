@@ -283,6 +283,17 @@ export interface MlPromocaoDoItem {
   maxDiscountedPrice: number | null;
   suggestedDiscountedPrice: number | null;
   name: string | null;
+  // Só confirmado no tipo SMART ("Impulsione suas vendas"/"Aumente suas
+  // vendas") — e, testado ao vivo, aparece mesmo com status "candidate"
+  // (antes de entrar), não só "started". meliPercentage é o % do preço
+  // original que o próprio Mercado Livre banca, sellerPercentage o % que
+  // sai do bolso do vendedor — nos outros tipos (DEAL, PRICE_DISCOUNT,
+  // SELLER_CAMPAIGN) esses campos nunca vêm, ou seja, não têm ajuda do ML
+  // (ver promocoesOportunidadesService, que só automatiza SMART por causa
+  // disso).
+  meliPercentage: number | null;
+  sellerPercentage: number | null;
+  originalPrice: number | null;
 }
 
 // Versão mais rica de getPromocaoStatus (que só devolve um enum
@@ -303,6 +314,9 @@ export async function consultarPromocoesDoItem(lojaId: number, itemId: string): 
       max_discounted_price?: number;
       suggested_discounted_price?: number;
       name?: string;
+      meli_percentage?: number;
+      seller_percentage?: number;
+      original_price?: number;
     }>
   >(`${ML_API_BASE}/seller-promotions/items/${itemId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -321,6 +335,9 @@ export async function consultarPromocoesDoItem(lojaId: number, itemId: string): 
     maxDiscountedPrice: d.max_discounted_price ?? null,
     name: d.name || null,
     suggestedDiscountedPrice: d.suggested_discounted_price ?? null,
+    meliPercentage: d.meli_percentage ?? null,
+    sellerPercentage: d.seller_percentage ?? null,
+    originalPrice: d.original_price ?? null,
   }));
 }
 

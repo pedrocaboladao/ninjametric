@@ -583,13 +583,15 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
       <div className="promocoes-linha-topo">
         <span className="financeiro-td-titulo">{o.titulo ?? o.itemId}</span>
         <span className="financeiro-td-mudo">{o.lojaNome}</span>
-        <span className="financeiro-td-mudo">
-          {o.tipo}
-          {o.nome ? ` — ${o.nome}` : ""}
-        </span>
+        <span className="financeiro-td-mudo">{o.nome ?? o.tipo}</span>
         <span className="financeiro-td-mudo">
           {formatCurrency(o.precoOriginal)} → {formatCurrency(o.precoEscolhido)}
         </span>
+        {o.sellerPercentual !== null && (
+          <span className="financeiro-td-mudo">
+            ML banca {o.meliPercentual}% · você banca {o.sellerPercentual}%
+          </span>
+        )}
         <span className={o.elegivel ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}>
           {o.margem === null ? "Sem dados de custo/taxa pra calcular" : `Margem: ${formatCurrency(o.margem)}`}
         </span>
@@ -623,10 +625,10 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
       {confirmando && (
         <div className="promocoes-confirmacao">
           <p>
-            Confirma entrar na promoção <b>{o.tipo}</b> desse item por <b>{formatCurrency(o.precoEscolhido)}</b>{" "}
-            (era {formatCurrency(o.precoOriginal)})? Isso muda o preço/participação de verdade no Mercado Livre agora.
-            A margem calculada ({formatCurrency(o.margem ?? 0)}) assume o pior cenário — o Mercado Livre pode acabar
-            bancando parte do desconto, mas isso só se confirma depois de entrar.
+            Confirma entrar na promoção <b>{o.nome ?? o.tipo}</b> desse item? O cliente vai ver o preço{" "}
+            <b>{formatCurrency(o.precoEscolhido)}</b> (era {formatCurrency(o.precoOriginal)}), mas o Mercado Livre banca{" "}
+            <b>{o.meliPercentual}%</b> desse desconto — sua margem real fica em{" "}
+            <b>{formatCurrency(o.margem ?? 0)}</b>. Isso muda o preço/participação de verdade no Mercado Livre agora.
           </p>
           <div className="fabricacao-editor-acoes">
             <button type="button" className="btn-responder" disabled={enviando} onClick={aprovar}>
@@ -729,11 +731,13 @@ function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "mi
       <div className="financeiro-topo">
         <div>
           <span className="painel-eyebrow">Semi-automático</span>
-          <h2>Oportunidades sugeridas pelo Mercado Livre</h2>
+          <h2>Oportunidades com ajuda do Mercado Livre</h2>
           <p className="painel-sub">
-            Promoções que o próprio Mercado Livre propõe (Impulsione suas vendas, ofertas relâmpago, etc.) — calculado
-            no pior cenário (assumindo que o desconto sai inteiro do seu bolso). Nada entra sozinho: você aprova cada
-            uma.
+            Só "Impulsione suas vendas"/"Aumente suas vendas" (tipo SMART) — o único tipo de promoção onde o próprio
+            Mercado Livre banca parte do desconto de verdade (confirmado ao vivo, com dado real). Outras propostas do
+            ML (ofertas relâmpago, descontos por conta própria) não têm ajuda nenhuma, então ficam de fora daqui — são
+            desconto seu mesmo, sem diferença de fazer manual. A margem mostrada já desconta só a parte que sai do seu
+            bolso. Nada entra sozinho: você aprova cada uma.
           </p>
         </div>
       </div>

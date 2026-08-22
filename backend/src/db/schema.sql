@@ -427,13 +427,14 @@ CREATE TABLE IF NOT EXISTS promocoes_itens (
 );
 CREATE INDEX IF NOT EXISTS idx_promocoes_itens_campanha ON promocoes_itens (campanha_id);
 
--- Oportunidades de promoções sugeridas pelo próprio Mercado Livre (SMART,
--- DEAL, PRICE_DISCOUNT — "candidate" em consultarPromocoesDoItem), com
--- margem calculada no cenário conservador (assume que o desconto sai
--- inteiro do bolso da loja, já que o ML só revela quanto banca depois de
--- aceitar). promotion_id fica NULL pra tipos como PRICE_DISCOUNT que não
--- trazem id na resposta candidata — ficam só informativos, sem botão de
--- aprovar (ver promocoesOportunidadesService).
+-- Oportunidades de promoções sugeridas pelo próprio Mercado Livre. Só tipo
+-- SMART ("Impulsione suas vendas"/"Aumente suas vendas") entra aqui —
+-- testado ao vivo em várias lojas do grupo: é o único tipo que revela
+-- meli_percentual/seller_percentual (quanto o ML banca vs. quanto sai do
+-- seu bolso), mesmo antes de aceitar ("candidate"). DEAL, PRICE_DISCOUNT e
+-- SELLER_CAMPAIGN nunca trazem esses campos — ou seja, não têm ajuda real
+-- do ML, só desconto seu mesmo, e o dono pediu pra não automatizar essas
+-- (ver promocoesOportunidadesService).
 CREATE TABLE IF NOT EXISTS promocoes_oportunidades (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id),
@@ -453,13 +454,19 @@ CREATE TABLE IF NOT EXISTS promocoes_oportunidades (
   erro TEXT,
   descoberto_em TIMESTAMPTZ NOT NULL DEFAULT now(),
   decidido_em TIMESTAMPTZ,
-  -- Não inclui promotion_id na chave: é NULL pra tipos como PRICE_DISCOUNT
-  -- (Postgres trata NULLs como distintos entre si num UNIQUE, então não
-  -- bloquearia duplicata nesse caso). Na prática só existe 1 candidata por
-  -- tipo por item de cada vez, então item_id+tipo já é a chave natural.
-  UNIQUE (loja_id, item_id, tipo)
+  CONSTRAINT promocoes_oportunidades_unica UNIQUE (loja_id, item_id, tipo, promotion_id)
 );
 CREATE INDEX IF NOT EXISTS idx_promocoes_oportunidades_loja ON promocoes_oportunidades (loja_id, status);
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS meli_percentual NUMERIC(5, 2);
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS seller_percentual NUMERIC(5, 2);
+-- Tabela criada sem dado real em produção ainda (nenhuma varredura rodada
+-- lá) quando a chave era só loja_id+item_id+tipo — trocada pra incluir
+-- promotion_id porque um mesmo item pode ter VÁRIAS propostas SMART
+-- simultâneas (nomes/preços diferentes), não 1 só por tipo. Par
+-- DROP+ADD é seguro de rodar de novo (drop vira no-op depois da 1ª vez).
+ALTER TABLE promocoes_oportunidades DROP CONSTRAINT IF EXISTS promocoes_oportunidades_loja_id_item_id_tipo_key;
+ALTER TABLE promocoes_oportunidades DROP CONSTRAINT IF EXISTS promocoes_oportunidades_unica;
+ALTER TABLE promocoes_oportunidades ADD CONSTRAINT promocoes_oportunidades_unica UNIQUE (loja_id, item_id, tipo, promotion_id);
 
 -- Agente Analista de Ads: feed persistente das mesmas regras de "Insights"
 -- que já existem na tela de Gestão de Ads (Ads.tsx), só que salvas aqui pra

@@ -80,6 +80,8 @@ export interface Oportunidade {
   taxaMl: number | null;
   margem: number | null;
   elegivel: boolean;
+  meliPercentual: number | null;
+  sellerPercentual: number | null;
   status: string;
   erro: string | null;
   descobertoEm: string;
