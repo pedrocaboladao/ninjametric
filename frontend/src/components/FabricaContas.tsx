@@ -152,6 +152,24 @@ export function FabricaContas() {
     return m;
   }, [contas]);
 
+  // "ja pago" vinha do resumo do servidor, que ignora o filtro de periodo: a
+  // tela mostrava agosto e o numero falava do ano inteiro
+  const pagoNoPeriodo = useMemo(
+    () =>
+      (contas ?? [])
+        .filter((c) => c.status === "pago")
+        .reduce((s, c) => s + c.valor, 0),
+    [contas]
+  );
+
+  const faltaPagar = useMemo(
+    () =>
+      (contas ?? [])
+        .filter((c) => c.status === "pendente")
+        .reduce((s, c) => s + c.valor, 0),
+    [contas]
+  );
+
   const porCategoria = useMemo(() => {
     const m = new Map<
       string,
@@ -313,30 +331,30 @@ export function FabricaContas() {
       {aba === "dre" && <FabricaDre />}
       {aba === "bens" && <FabricaBens />}
 
-      {aba === "contas" && resumo && (
-        <div className="financeiro-filtros">
+      {aba === "contas" && (
+        <div className="contas-cartoes">
           {(["fixo", "variavel", "revenda"] as const).map((n) => (
             <button
               key={n}
               type="button"
-              className="fabricacao-envase-nome-editavel"
+              className={`contas-cartao${filtroNatureza === n ? " contas-cartao-ativo" : ""}`}
               onClick={() => setFiltroNatureza((v) => (v === n ? "" : n))}
-              title="Clique para ver só estas contas"
+              title={
+                filtroNatureza === n ? "Clique para ver tudo de novo" : "Clique para ver só estas"
+              }
             >
-              <div className="financeiro-stat-label">
-                {ROTULO_NATUREZA[n].toUpperCase()}
-                {filtroNatureza === n && " ·"}
-              </div>
+              <div className="financeiro-stat-label">{ROTULO_NATUREZA[n].toUpperCase()}</div>
               <div className="financeiro-stat-valor">{formatCurrency(porNatureza[n])}</div>
+              {filtroNatureza === n && <div className="contas-cartao-marca">filtrando</div>}
             </button>
           ))}
-          <div>
-            <div className="financeiro-stat-label">JÁ PAGO</div>
-            <div className="financeiro-stat-valor">{formatCurrency(resumo.pago)}</div>
+          <div className="contas-cartao">
+            <div className="financeiro-stat-label">PAGO NO PERÍODO</div>
+            <div className="financeiro-stat-valor">{formatCurrency(pagoNoPeriodo)}</div>
           </div>
-          <div>
-            <div className="financeiro-stat-label">AS LOJAS DEVEM</div>
-            <div className="financeiro-stat-valor">{formatCurrency(resumo.aReceber)}</div>
+          <div className="contas-cartao">
+            <div className="financeiro-stat-label">FALTA PAGAR</div>
+            <div className="financeiro-stat-valor">{formatCurrency(faltaPagar)}</div>
           </div>
         </div>
       )}

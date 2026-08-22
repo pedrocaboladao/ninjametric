@@ -5806,3 +5806,72 @@
     display: none;
   }
 }
+
+/* Cartoes de natureza da conta.
+   Eram seis numeros lado a lado numa linha de filtros, sem respiro nenhum:
+   dava pra ler "CUSTO FIXO R$ 0,00 CUSTO VARIAVEL R$ 12.119,07" como se fosse
+   uma frase so. Grid com cartao de verdade resolve — cada numero tem seu
+   quadro, e da pra bater o olho e achar o que procura. */
+.contas-cartoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+.contas-cartao {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2, rgba(255, 255, 255, 0.02));
+  text-align: left;
+  font: inherit;
+  color: inherit;
+}
+
+/* so os tres de natureza filtram; os outros dois sao leitura */
+button.contas-cartao {
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+button.contas-cartao:hover {
+  border-color: var(--accent-2);
+}
+
+.contas-cartao-ativo {
+  border-color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+}
+
+.contas-cartao .financeiro-stat-valor {
+  font-size: 19px;
+}
+
+/* o cartao que esta filtrando diz isso em palavra, nao so na cor: quem nao
+   enxerga a diferenca de borda continua sabendo qual filtro esta ligado */
+.contas-cartao-marca {
+  font-size: 10.5px;
+  color: var(--accent-2);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media print {
+  .contas-cartoes {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .contas-cartao {
+    border: 1px solid #666 !important;
+    background: #fff !important;
+  }
+
+  .contas-cartao .financeiro-stat-valor,
+  .contas-cartao .financeiro-stat-label {
+    color: #000 !important;
+  }
+}
