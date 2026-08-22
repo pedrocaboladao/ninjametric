@@ -6,6 +6,7 @@ import {
   consultarPromocoesDoItem,
   getItemsBasicInfo,
   getTaxaMlParaPreco,
+  getFreteEstimadoPreVenda,
   adicionarItemCampanha,
   type MlPromocaoDoItem,
 } from "./mercadoLivreApi";
@@ -29,6 +30,7 @@ export interface Oportunidade {
   precoEscolhido: number;
   custoUnitario: number | null;
   taxaMl: number | null;
+  freteEstimado: number | null;
   margem: number | null;
   percentualMargem: number | null;
   elegivel: boolean;
@@ -130,23 +132,36 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
     const precoOriginal = promo.originalPrice ?? info.price;
     const sellerPercentage = promo.sellerPercentage as number; // garantido pelo filtro acima
     const meliPercentage = promo.meliPercentage ?? 0;
+    // dealPrice é o preço final que o cliente vê — o que de fato é usado na
+    // hora de aprovar (não é uma faixa pra escolher, é a proposta fixa
+    // daquele offer_id específico).
+    const precoEscolhido = promo.dealPrice ?? arredondarCentavos(precoOriginal * (1 - sellerPercentage / 100));
 
-    // Margem calculada só sobre a parte do desconto que sai do SEU bolso
-    // (sellerPercentage) — a parte que o ML banca (meliPercentage) não
-    // conta contra você. dealPrice (o preço final que o cliente vê) é o
-    // que de fato é usado na hora de aprovar, mas não é a base da margem.
-    const precoEfetivo = arredondarCentavos(precoOriginal * (1 - sellerPercentage / 100));
-    const precoEscolhido = promo.dealPrice ?? precoEfetivo;
+    // Validado contra o "Você recebe" real da tela de promoções do ML
+    // (bateu na casa dos centavos): a taxa do ML é calculada sobre o preço
+    // FINAL (com desconto), e a parte que o ML banca (meliPercentage)
+    // reduz essa taxa ainda mais — não é um preço "efetivo" mais alto pra
+    // recalcular a taxa em cima, como a versão anterior fazia.
+    const taxaNormal = await getTaxaMlParaPreco(loja.id, info.category_id, info.listing_type_id, precoEscolhido);
+    const reducaoMeli = arredondarCentavos(precoOriginal * (meliPercentage / 100));
+    const taxaEfetiva = taxaNormal === null ? null : Math.max(0, taxaNormal - reducaoMeli);
 
-    const taxaMl = await getTaxaMlParaPreco(loja.id, info.category_id, info.listing_type_id, precoEfetivo);
-    const margem = calcularMargem(precoEfetivo, custoUnitario, taxaMl, loja.imposto_percentual);
+    // Frete grátis: custo real só existe depois de um pedido de verdade
+    // (getCustoFreteDoEnvio), então aqui é estimativa (ver
+    // getFreteEstimadoPreVenda) — null (item sem config de frete grátis, ou
+    // falha pontual) vira 0 pra não travar o cálculo, mas fica registrado
+    // separado pra transparência.
+    const freteEstimado = await getFreteEstimadoPreVenda(loja.id, itemId);
+
+    const margemSemFrete = calcularMargem(precoEscolhido, custoUnitario, taxaEfetiva, loja.imposto_percentual);
+    const margem = margemSemFrete === null ? null : arredondarCentavos(margemSemFrete - (freteEstimado ?? 0));
     const elegivel = margem !== null && margem > 0;
 
     try {
       await pool.query(
         `INSERT INTO promocoes_oportunidades
-           (loja_id, item_id, titulo, permalink, sku, promotion_id, offer_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, 'pendente', now())
+           (loja_id, item_id, titulo, permalink, sku, promotion_id, offer_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, frete_estimado, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pendente', now())
          ON CONFLICT (loja_id, item_id, tipo, promotion_id) DO UPDATE SET
            titulo = EXCLUDED.titulo,
            permalink = EXCLUDED.permalink,
@@ -157,6 +172,7 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
            preco_escolhido = EXCLUDED.preco_escolhido,
            custo_unitario = EXCLUDED.custo_unitario,
            taxa_ml = EXCLUDED.taxa_ml,
+           frete_estimado = EXCLUDED.frete_estimado,
            margem = EXCLUDED.margem,
            elegivel = EXCLUDED.elegivel,
            meli_percentual = EXCLUDED.meli_percentual,
@@ -181,7 +197,8 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
           precoOriginal,
           precoEscolhido,
           custoUnitario,
-          taxaMl,
+          taxaEfetiva,
+          freteEstimado,
           margem,
           elegivel,
           meliPercentage,
@@ -249,6 +266,7 @@ interface OportunidadeRow {
   preco_escolhido: string;
   custo_unitario: string | null;
   taxa_ml: string | null;
+  frete_estimado: string | null;
   margem: string | null;
   elegivel: boolean;
   meli_percentual: string | null;
@@ -277,11 +295,11 @@ function mapearOportunidade(r: OportunidadeRow): Oportunidade {
     precoEscolhido,
     custoUnitario: r.custo_unitario === null ? null : Number(r.custo_unitario),
     taxaMl: r.taxa_ml === null ? null : Number(r.taxa_ml),
+    freteEstimado: r.frete_estimado === null ? null : Number(r.frete_estimado),
     margem,
     // Margem de contribuição em % sobre o preço de venda (mesmo padrão de
     // fabricaDreService.ts: margem / receita) — receita aqui é o preço que
-    // o cliente paga de fato (precoEscolhido), não o precoEfetivo usado
-    // internamente pra calcular a margem em si.
+    // o cliente paga de fato (precoEscolhido).
     percentualMargem: margem === null || precoEscolhido <= 0 ? null : (margem / precoEscolhido) * 100,
     elegivel: r.elegivel,
     meliPercentual: r.meli_percentual === null ? null : Number(r.meli_percentual),

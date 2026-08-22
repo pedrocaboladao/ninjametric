@@ -464,6 +464,10 @@ ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS permalink TEXT;
 -- API exige esse campo (como "offer_id") pra confirmar participação; sem
 -- ele, aprovar dá 400 "Offer id is required".
 ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS offer_id TEXT;
+-- Estimativa de frete grátis pré-venda (ver getFreteEstimadoPreVenda) —
+-- descoberto comparando com o "Você recebe" real da tela do ML que a
+-- margem sem contar isso ficava sistematicamente maior que o real.
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS frete_estimado NUMERIC(12, 2);
 -- Tabela criada sem dado real em produção ainda (nenhuma varredura rodada
 -- lá) quando a chave era só loja_id+item_id+tipo — trocada pra incluir
 -- promotion_id porque um mesmo item pode ter VÁRIAS propostas SMART

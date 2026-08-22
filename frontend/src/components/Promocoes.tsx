@@ -615,7 +615,10 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
             ML banca {o.meliPercentual}% · você banca {o.sellerPercentual}%
           </span>
         )}
-        <span className={o.elegivel ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}>
+        <span
+          className={o.elegivel ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}
+          title={o.freteEstimado !== null ? `Já descontando frete grátis estimado de ${formatCurrency(o.freteEstimado)}` : undefined}
+        >
           {o.margem === null
             ? "Sem dados de custo/taxa pra calcular"
             : `Margem: ${formatCurrency(o.margem)} (${o.percentualMargem?.toFixed(1)}%)`}
@@ -704,11 +707,13 @@ function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportun
           <p>
             Confirma entrar na promoção <b>{o.nome ?? o.tipo}</b> desse item? O cliente vai ver o preço{" "}
             <b>{formatCurrency(o.precoEscolhido)}</b> (era {formatCurrency(o.precoOriginal)}), mas o Mercado Livre banca{" "}
-            <b>{o.meliPercentual}%</b> desse desconto — sua margem real fica em{" "}
+            <b>{o.meliPercentual}%</b> desse desconto — sua margem real (já descontando frete grátis estimado de{" "}
+            {formatCurrency(o.freteEstimado ?? 0)}) fica em{" "}
             <b>
               {formatCurrency(o.margem ?? 0)} ({o.percentualMargem?.toFixed(1)}%)
             </b>
-            . Isso muda o preço/participação de verdade no Mercado Livre agora.
+            . O frete é estimado antes da venda — tende a sair um pouco melhor na prática, não pior. Isso muda o
+            preço/participação de verdade no Mercado Livre agora.
           </p>
           <div className="fabricacao-editor-acoes">
             <button type="button" className="btn-responder" disabled={enviando} onClick={aprovar}>

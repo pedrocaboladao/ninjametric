@@ -446,6 +446,36 @@ export async function getCustoFreteDoEnvio(lojaId: number, shippingId: number): 
   }
 }
 
+// CEP fixo só pra ter um destino válido pra cotação — testado com 3 CEPs de
+// regiões bem diferentes (SP/RJ/POA) e o list_cost saiu igual nos 3, então
+// não parece variar por destino pra fins de estimativa (frete grátis
+// costuma ter custo fixo pro vendedor, independente de pra onde vai).
+const CEP_REFERENCIA_FRETE = "01310100";
+
+// Estimativa de frete ANTES de vender (não existe pedido/envio real ainda,
+// então não dá pra usar getCustoFreteDoEnvio). Descoberto comparando com o
+// "Você recebe" real da tela de promoções do Mercado Livre: o list_cost
+// daqui bate quase exato (diferença de centavos) com o que a própria tela
+// do ML usa como estimativa. IMPORTANTE: list_cost é o custo "cheio" —
+// getCustoFreteDoEnvio (envio de verdade, pedido já feito) documenta que o
+// ML aplica um desconto obrigatório nesse valor na hora de cobrar de
+// verdade, então o frete real tende a sair MENOR que essa estimativa (ou
+// seja, a margem real tende a ficar um pouco MELHOR que essa estimativa,
+// não pior) — só confirma de verdade comparando com uma venda real (ver
+// compararComVendaReal em promocoesOportunidadesService).
+export async function getFreteEstimadoPreVenda(lojaId: number, itemId: string): Promise<number | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{ options?: Array<{ list_cost?: number }> }>(
+      `${ML_API_BASE}/items/${itemId}/shipping_options`,
+      { headers: { Authorization: `Bearer ${accessToken}` }, params: { zip_code: CEP_REFERENCIA_FRETE } }
+    );
+    return data.options?.[0]?.list_cost ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export interface MlItemBasicInfo {
   id: string;
   title: string;
