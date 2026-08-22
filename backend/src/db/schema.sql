@@ -1182,3 +1182,13 @@ CREATE TABLE IF NOT EXISTS fabrica_fornecedores (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_fornecedores_nome ON fabrica_fornecedores (nome);
+
+-- Endereço e inscrição do fornecedor: os mesmos campos que o cliente já tem.
+-- A fábrica vai emitir NFe e precisa dos dados do fornecedor tanto quanto dos
+-- do cliente — e é mais barato ter a coluna vazia do que migrar depois.
+ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS inscricao_estadual TEXT;
+ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS cep TEXT;
+ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS logradouro TEXT;
+ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS numero TEXT;
+ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS complemento TEXT;
+ALTER TABLE fabrica_fornecedores ADD COLUMN IF NOT EXISTS bairro TEXT;

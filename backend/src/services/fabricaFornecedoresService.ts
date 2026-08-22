@@ -15,8 +15,14 @@ export interface Fornecedor {
   id: number;
   nome: string;
   cnpj: string | null;
+  inscricaoEstadual: string | null;
   email: string | null;
   telefone: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   cidade: string | null;
   uf: string | null;
   categoriaPadrao: string | null;
@@ -30,8 +36,14 @@ export interface Fornecedor {
 export interface FornecedorEntrada {
   nome: string;
   cnpj: string | null;
+  inscricaoEstadual: string | null;
   email: string | null;
   telefone: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   cidade: string | null;
   uf: string | null;
   categoriaPadrao: string | null;
@@ -43,8 +55,14 @@ interface Linha {
   id: number;
   nome: string;
   cnpj: string | null;
+  inscricao_estadual: string | null;
   email: string | null;
   telefone: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
   cidade: string | null;
   uf: string | null;
   categoria_padrao: string | null;
@@ -59,8 +77,14 @@ function montar(r: Linha): Fornecedor {
     id: r.id,
     nome: r.nome,
     cnpj: r.cnpj,
+    inscricaoEstadual: r.inscricao_estadual,
     email: r.email,
     telefone: r.telefone,
+    cep: r.cep,
+    logradouro: r.logradouro,
+    numero: r.numero,
+    complemento: r.complemento,
+    bairro: r.bairro,
     cidade: r.cidade,
     uf: r.uf,
     categoriaPadrao: r.categoria_padrao,
@@ -73,8 +97,9 @@ function montar(r: Linha): Fornecedor {
 
 export async function listarFornecedores(): Promise<Fornecedor[]> {
   const { rows } = await pool.query<Linha>(
-    `SELECT f.id, f.nome, f.cnpj, f.email, f.telefone, f.cidade, f.uf,
-            f.categoria_padrao, f.observacao, f.ativo,
+    `SELECT f.id, f.nome, f.cnpj, f.inscricao_estadual, f.email, f.telefone,
+            f.cep, f.logradouro, f.numero, f.complemento, f.bairro,
+            f.cidade, f.uf, f.categoria_padrao, f.observacao, f.ativo,
             COALESCE(c.n, 0)     AS contas,
             COALESCE(c.total, 0) AS total
      FROM fabrica_fornecedores f
@@ -123,8 +148,14 @@ function valores(e: FornecedorEntrada) {
   return [
     e.nome,
     e.cnpj,
+    e.inscricaoEstadual,
     e.email,
     e.telefone,
+    e.cep,
+    e.logradouro,
+    e.numero,
+    e.complemento,
+    e.bairro,
     e.cidade,
     e.uf,
     e.categoriaPadrao,
@@ -136,8 +167,9 @@ function valores(e: FornecedorEntrada) {
 export async function criarFornecedor(e: FornecedorEntrada): Promise<{ id: number }> {
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO fabrica_fornecedores
-       (nome, cnpj, email, telefone, cidade, uf, categoria_padrao, observacao, ativo)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+       (nome, cnpj, inscricao_estadual, email, telefone, cep, logradouro, numero,
+        complemento, bairro, cidade, uf, categoria_padrao, observacao, ativo)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
     valores(e)
   );
   return { id: rows[0].id };
@@ -157,8 +189,9 @@ export async function atualizarFornecedor(id: number, e: FornecedorEntrada): Pro
     const antigo = rows[0]?.nome;
     await cliente.query(
       `UPDATE fabrica_fornecedores
-       SET nome = $2, cnpj = $3, email = $4, telefone = $5, cidade = $6, uf = $7,
-           categoria_padrao = $8, observacao = $9, ativo = $10
+       SET nome = $2, cnpj = $3, inscricao_estadual = $4, email = $5, telefone = $6,
+           cep = $7, logradouro = $8, numero = $9, complemento = $10, bairro = $11,
+           cidade = $12, uf = $13, categoria_padrao = $14, observacao = $15, ativo = $16
        WHERE id = $1`,
       [id, ...valores(e)]
     );
