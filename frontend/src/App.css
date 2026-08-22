@@ -5980,3 +5980,17 @@ button.contas-cartao:hover {
     flex: 1 1 100%;
   }
 }
+
+/* a busca de fornecedor precisa de largura pra mostrar o nome inteiro —
+   alguns tem 60 caracteres */
+.contas-busca-fornecedor {
+  min-width: 320px;
+  flex: 1 1 320px;
+}
+
+@media (max-width: 720px) {
+  .contas-busca-fornecedor {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+}

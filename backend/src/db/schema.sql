@@ -1154,3 +1154,31 @@ CREATE TABLE IF NOT EXISTS fabrica_bens (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_bens_data ON fabrica_bens (data_compra DESC);
+
+-- Fornecedor da Fábrica Distribuidora.
+--
+-- O nome do fornecedor era texto digitado em cada conta, e o resultado
+-- apareceu sozinho na primeira carga: "METALLOG" e "MATALLOG BRASIL" são a
+-- mesma empresa, "ATACADAO DO EPI" e "ATACADAO DO EPI0" também. Cada erro de
+-- digitação vira um fornecedor novo no relatório, e o total por fornecedor
+-- deixa de fechar.
+--
+-- A conta continua guardando o nome em `contraparte` (texto): as 271 já
+-- lançadas seguem valendo, e o cadastro entra como a fonte da busca, para o
+-- nome sair sempre igual.
+CREATE TABLE IF NOT EXISTS fabrica_fornecedores (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  cnpj TEXT,
+  email TEXT,
+  telefone TEXT,
+  cidade TEXT,
+  uf TEXT,
+  -- o que ele fornece: REVENDA, MATÉRIA-PRIMA, EMBALAGEM… sugere a categoria
+  -- da conta na hora de lançar
+  categoria_padrao TEXT,
+  observacao TEXT,
+  ativo BOOLEAN NOT NULL DEFAULT TRUE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_fornecedores_nome ON fabrica_fornecedores (nome);

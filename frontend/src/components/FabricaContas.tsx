@@ -19,6 +19,11 @@ import { IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
 import { FabricaDre } from "./FabricaDre";
 import { FabricaBens } from "./FabricaBens";
+import { FabricaFornecedores } from "./FabricaFornecedores";
+import { BuscaSelecao } from "./BuscaSelecao";
+import type { ItemBusca } from "./BuscaSelecao";
+import { fetchFornecedores } from "../api/fabricaFornecedores";
+import type { Fornecedor } from "../types/fabricaFornecedores";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
 function num(v: string): number {
@@ -97,7 +102,8 @@ export function FabricaContas() {
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [form, setForm] = useState({ ...VAZIO });
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [aba, setAba] = useState<"contas" | "dre" | "bens">("contas");
+  const [aba, setAba] = useState<"contas" | "dre" | "bens" | "fornecedores">("contas");
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
 
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
   const [filtroTipo, setFiltroTipo] = useState<TipoConta>("pagar");
@@ -133,6 +139,38 @@ export function FabricaContas() {
   useEffect(() => {
     void carregar();
   }, [carregar]);
+
+  // a lista alimenta a busca do lançamento; falhar aqui não pode impedir de
+  // lançar conta, então o erro só apaga a lista
+  useEffect(() => {
+    fetchFornecedores()
+      .then(setFornecedores)
+      .catch(() => setFornecedores([]));
+  }, [aba]);
+
+  const itensFornecedor: ItemBusca[] = useMemo(() => {
+    const base = fornecedores.map((f) => ({
+      id: f.id,
+      titulo: f.nome,
+      codigo: f.cnpj,
+      detalhe: f.categoriaPadrao,
+      ativo: f.ativo,
+    }));
+    // Editar conta antiga de fornecedor que ainda não foi cadastrado não pode
+    // apagar o nome dela. Entra como item de id negativo — aparece escolhido,
+    // some da lista quando o operador procura outro, e não colide com id real.
+    const atual = form.contraparte.trim();
+    if (atual && !fornecedores.some((f) => f.nome === atual)) {
+      base.unshift({
+        id: -1,
+        titulo: atual,
+        codigo: null,
+        detalhe: "não cadastrado",
+        ativo: true,
+      });
+    }
+    return base;
+  }, [fornecedores, form.contraparte]);
 
   // o filtro de natureza e da tela, nao do servidor: a lista ja veio inteira e
   // filtrar aqui deixa o total por categoria acompanhar na hora
@@ -316,20 +354,27 @@ export function FabricaContas() {
       </p>
 
       <div className="financeiro-filtros ordem-sem-impressao">
-        {(["contas", "dre", "bens"] as const).map((a) => (
+        {(["contas", "dre", "bens", "fornecedores"] as const).map((a) => (
           <button
             key={a}
             type="button"
             className={aba === a ? "btn-responder" : "btn-excluir"}
             onClick={() => setAba(a)}
           >
-            {a === "contas" ? "Contas a pagar" : a === "dre" ? "DRE" : "Bens"}
+            {a === "contas"
+              ? "Contas a pagar"
+              : a === "dre"
+                ? "DRE"
+                : a === "bens"
+                  ? "Bens"
+                  : "Fornecedores"}
           </button>
         ))}
       </div>
 
       {aba === "dre" && <FabricaDre />}
       {aba === "bens" && <FabricaBens />}
+      {aba === "fornecedores" && <FabricaFornecedores />}
 
       {aba === "contas" && (
         <div className="contas-cartoes">
@@ -441,12 +486,36 @@ export function FabricaContas() {
                 </option>
               ))}
             </select>
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              placeholder={form.tipo === "receber" ? "Cliente" : "Fornecedor"}
-              value={form.contraparte}
-              onChange={(e) => setForm((f) => ({ ...f, contraparte: e.target.value }))}
-            />
+            {form.tipo === "pagar" ? (
+              <div className="contas-busca-fornecedor">
+                <BuscaSelecao
+                  itens={itensFornecedor}
+                  valor={
+                    fornecedores.find((f) => f.nome === form.contraparte)?.id ??
+                    (form.contraparte.trim() ? -1 : null)
+                  }
+                  placeholder="Buscar fornecedor"
+                  onEscolher={(id) => {
+                    if (id === -1) return;
+                    const f = fornecedores.find((x) => x.id === id);
+                    setForm((v) => ({
+                      ...v,
+                      contraparte: f?.nome ?? "",
+                      // o que ele fornece já sugere a categoria; só preenche se
+                      // ainda estiver vazia, pra não desfazer escolha do operador
+                      categoria: v.categoria || f?.categoriaPadrao || "",
+                    }));
+                  }}
+                />
+              </div>
+            ) : (
+              <input
+                className="clonar-input fabricacao-input-pequeno"
+                placeholder="Cliente"
+                value={form.contraparte}
+                onChange={(e) => setForm((f) => ({ ...f, contraparte: e.target.value }))}
+              />
+            )}
             <input
               className="clonar-input fabricacao-input-pequeno"
               placeholder="Valor"
