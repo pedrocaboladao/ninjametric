@@ -3780,6 +3780,15 @@
   gap: 6px;
 }
 
+.promocoes-oportunidades-secao {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
 .financeiro-tabela {
   width: 100%;
   border-collapse: collapse;

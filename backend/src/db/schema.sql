@@ -427,6 +427,40 @@ CREATE TABLE IF NOT EXISTS promocoes_itens (
 );
 CREATE INDEX IF NOT EXISTS idx_promocoes_itens_campanha ON promocoes_itens (campanha_id);
 
+-- Oportunidades de promoções sugeridas pelo próprio Mercado Livre (SMART,
+-- DEAL, PRICE_DISCOUNT — "candidate" em consultarPromocoesDoItem), com
+-- margem calculada no cenário conservador (assume que o desconto sai
+-- inteiro do bolso da loja, já que o ML só revela quanto banca depois de
+-- aceitar). promotion_id fica NULL pra tipos como PRICE_DISCOUNT que não
+-- trazem id na resposta candidata — ficam só informativos, sem botão de
+-- aprovar (ver promocoesOportunidadesService).
+CREATE TABLE IF NOT EXISTS promocoes_oportunidades (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  item_id TEXT NOT NULL,
+  titulo TEXT,
+  sku TEXT,
+  promotion_id TEXT,
+  tipo TEXT NOT NULL,
+  nome TEXT,
+  preco_original NUMERIC(12, 2) NOT NULL,
+  preco_escolhido NUMERIC(12, 2) NOT NULL,
+  custo_unitario NUMERIC(12, 2),
+  taxa_ml NUMERIC(12, 2),
+  margem NUMERIC(12, 2),
+  elegivel BOOLEAN NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pendente',
+  erro TEXT,
+  descoberto_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decidido_em TIMESTAMPTZ,
+  -- Não inclui promotion_id na chave: é NULL pra tipos como PRICE_DISCOUNT
+  -- (Postgres trata NULLs como distintos entre si num UNIQUE, então não
+  -- bloquearia duplicata nesse caso). Na prática só existe 1 candidata por
+  -- tipo por item de cada vez, então item_id+tipo já é a chave natural.
+  UNIQUE (loja_id, item_id, tipo)
+);
+CREATE INDEX IF NOT EXISTS idx_promocoes_oportunidades_loja ON promocoes_oportunidades (loja_id, status);
+
 -- Agente Analista de Ads: feed persistente das mesmas regras de "Insights"
 -- que já existem na tela de Gestão de Ads (Ads.tsx), só que salvas aqui pra
 -- parecer observação contínua (não recalculada do zero a cada carregamento

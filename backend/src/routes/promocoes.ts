@@ -10,6 +10,13 @@ import {
   limparCampanhas,
   type ResultadoCriarCampanha,
 } from "../services/promocoesService";
+import {
+  iniciarBuscaOportunidades,
+  obterProgressoBuscaOportunidades,
+  listarOportunidades,
+  aprovarOportunidade,
+  rejeitarOportunidade,
+} from "../services/promocoesOportunidadesService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const promocoesRouter = Router();
@@ -199,5 +206,66 @@ promocoesRouter.post("/:id/recriar", async (req, res) => {
     res.json(await recriarCampanha(id));
   } catch (err) {
     erro(res, err, "Falha ao recriar campanha.");
+  }
+});
+
+// Oportunidades: promoções que o próprio Mercado Livre sugere (SMART/DEAL/
+// PRICE_DISCOUNT candidatas) com margem calculada no cenário conservador —
+// ver promocoesOportunidadesService. Nunca entra sozinho: "aprovar" é a
+// única rota que chama o Mercado Livre de verdade.
+promocoesRouter.post("/oportunidades/buscar", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    await iniciarBuscaOportunidades(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ iniciado: true });
+  } catch (err) {
+    erro(res, err, "Falha ao iniciar busca de oportunidades.");
+  }
+});
+
+promocoesRouter.get("/oportunidades/buscar/status", async (_req, res) => {
+  res.json(obterProgressoBuscaOportunidades());
+});
+
+promocoesRouter.get("/oportunidades", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    res.json({ oportunidades: await listarOportunidades(filtro.lojaId, filtro.lojasPermitidas) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar oportunidades.");
+  }
+});
+
+promocoesRouter.post("/oportunidades/:id/aprovar", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    await aprovarOportunidade(id, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao aprovar oportunidade.");
+  }
+});
+
+promocoesRouter.post("/oportunidades/:id/rejeitar", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    await rejeitarOportunidade(id, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao rejeitar oportunidade.");
   }
 });

@@ -4,6 +4,8 @@ import type {
   RegistroExistenteEntrada,
   ResultadoRegistroLinha,
   ProgressoDescoberta,
+  Oportunidade,
+  ProgressoBuscaOportunidades,
 } from "../types/promocoes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -81,4 +83,41 @@ export async function limparCampanhas(lojaFiltro: number | "todas" | "minhas"): 
   const res = await fetch(`${API_BASE}/api/promocoes?${params}`, { method: "DELETE", credentials: "include" });
   const data = await tratarResposta<{ apagadas: number }>(res);
   return data.apagadas;
+}
+
+export async function iniciarBuscaOportunidades(lojaFiltro: number | "todas" | "minhas"): Promise<void> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/buscar?${params}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  await tratarResposta(res);
+}
+
+export async function fetchProgressoBuscaOportunidades(): Promise<ProgressoBuscaOportunidades> {
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/buscar/status`, { credentials: "include" });
+  return tratarResposta<ProgressoBuscaOportunidades>(res);
+}
+
+export async function fetchOportunidades(lojaFiltro: number | "todas" | "minhas"): Promise<Oportunidade[]> {
+  const params = new URLSearchParams({ lojaId: String(lojaFiltro) });
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades?${params}`, { credentials: "include" });
+  const data = await tratarResposta<{ oportunidades: Oportunidade[] }>(res);
+  return data.oportunidades;
+}
+
+export async function aprovarOportunidade(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/${id}/aprovar`, {
+    method: "POST",
+    credentials: "include",
+  });
+  await tratarResposta(res);
+}
+
+export async function rejeitarOportunidade(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/${id}/rejeitar`, {
+    method: "POST",
+    credentials: "include",
+  });
+  await tratarResposta(res);
 }

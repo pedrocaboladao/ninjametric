@@ -8,6 +8,11 @@ import {
   fetchProgressoDescoberta,
   excluirCampanha,
   limparCampanhas,
+  iniciarBuscaOportunidades,
+  fetchProgressoBuscaOportunidades,
+  fetchOportunidades,
+  aprovarOportunidade,
+  rejeitarOportunidade,
 } from "../api/promocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type {
@@ -16,6 +21,8 @@ import type {
   RegistroExistenteEntrada,
   ResultadoRegistroLinha,
   ProgressoDescoberta,
+  Oportunidade,
+  ProgressoBuscaOportunidades,
 } from "../types/promocoes";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -537,6 +544,218 @@ function DescobertaAutomatica({
   );
 }
 
+function LinhaOportunidade({ oportunidade, onDecidida }: { oportunidade: Oportunidade; onDecidida: () => void }) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const o = oportunidade;
+
+  async function aprovar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await aprovarOportunidade(o.id);
+      setConfirmando(false);
+      onDecidida();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao aprovar.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function rejeitar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await rejeitarOportunidade(o.id);
+      onDecidida();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao rejeitar.");
+      setEnviando(false);
+    }
+  }
+
+  const semIdentificador = !o.promotionId;
+
+  return (
+    <div className="promocoes-linha">
+      <div className="promocoes-linha-topo">
+        <span className="financeiro-td-titulo">{o.titulo ?? o.itemId}</span>
+        <span className="financeiro-td-mudo">{o.lojaNome}</span>
+        <span className="financeiro-td-mudo">
+          {o.tipo}
+          {o.nome ? ` — ${o.nome}` : ""}
+        </span>
+        <span className="financeiro-td-mudo">
+          {formatCurrency(o.precoOriginal)} → {formatCurrency(o.precoEscolhido)}
+        </span>
+        <span className={o.elegivel ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}>
+          {o.margem === null ? "Sem dados de custo/taxa pra calcular" : `Margem: ${formatCurrency(o.margem)}`}
+        </span>
+        {o.status === "pendente" && !confirmando && (
+          <>
+            <button
+              type="button"
+              className="btn-responder"
+              disabled={enviando || semIdentificador}
+              title={semIdentificador ? "Essa modalidade não tem identificador pra confirmar via API — participe direto no Mercado Livre." : undefined}
+              onClick={() => setConfirmando(true)}
+            >
+              Aprovar
+            </button>
+            <button type="button" className="btn-excluir" disabled={enviando} onClick={rejeitar}>
+              Rejeitar
+            </button>
+          </>
+        )}
+        {o.status !== "pendente" && (
+          <span className="financeiro-td-mudo">
+            {o.status === "aprovada" && "Aprovada"}
+            {o.status === "rejeitada" && "Rejeitada"}
+            {o.status === "erro" && `Erro: ${o.erro}`}
+          </span>
+        )}
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      {confirmando && (
+        <div className="promocoes-confirmacao">
+          <p>
+            Confirma entrar na promoção <b>{o.tipo}</b> desse item por <b>{formatCurrency(o.precoEscolhido)}</b>{" "}
+            (era {formatCurrency(o.precoOriginal)})? Isso muda o preço/participação de verdade no Mercado Livre agora.
+            A margem calculada ({formatCurrency(o.margem ?? 0)}) assume o pior cenário — o Mercado Livre pode acabar
+            bancando parte do desconto, mas isso só se confirma depois de entrar.
+          </p>
+          <div className="fabricacao-editor-acoes">
+            <button type="button" className="btn-responder" disabled={enviando} onClick={aprovar}>
+              {enviando ? "Confirmando..." : "Confirmar e entrar"}
+            </button>
+            <button type="button" className="btn-excluir" onClick={() => setConfirmando(false)}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BuscaOportunidades({
+  lojaFiltro,
+  onEncontradas,
+}: {
+  lojaFiltro: number | "todas" | "minhas";
+  onEncontradas: () => void;
+}) {
+  const [progresso, setProgresso] = useState<ProgressoBuscaOportunidades | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  function pararPolling() {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+  }
+
+  function comecarPolling() {
+    if (intervalRef.current) return;
+    intervalRef.current = setInterval(async () => {
+      const p = await fetchProgressoBuscaOportunidades();
+      setProgresso(p);
+      if (!p.emAndamento) {
+        pararPolling();
+        onEncontradas();
+      }
+    }, 3000);
+  }
+
+  useEffect(() => {
+    (async () => {
+      const p = await fetchProgressoBuscaOportunidades();
+      setProgresso(p);
+      if (p.emAndamento) comecarPolling();
+    })();
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, []);
+
+  async function iniciar() {
+    setErro(null);
+    try {
+      await iniciarBuscaOportunidades(lojaFiltro);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao iniciar.");
+      return;
+    }
+    comecarPolling();
+  }
+
+  const emAndamento = progresso?.emAndamento ?? false;
+
+  return (
+    <div className="promocoes-descoberta">
+      {!emAndamento && (
+        <button type="button" className="btn-responder" onClick={iniciar}>
+          Buscar oportunidades
+        </button>
+      )}
+      {emAndamento && progresso && (
+        <div className="financeiro-td-mudo">
+          Verificando {progresso.lojaAtual}... {progresso.itensVerificados}/{progresso.totalItens} anúncios —{" "}
+          {progresso.candidatasEncontradas} oportunidade{progresso.candidatasEncontradas !== 1 ? "s" : ""} encontrada
+          {progresso.candidatasEncontradas !== 1 ? "s" : ""} até agora. Pode levar alguns minutos.
+          {progresso.itensComErro > 0 && ` (${progresso.itensComErro} item(ns) com erro na consulta.)`}
+        </div>
+      )}
+      {progresso?.erro && <div className="state-message state-error">{progresso.erro}</div>}
+      {erro && <div className="state-message state-error">{erro}</div>}
+    </div>
+  );
+}
+
+function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
+  const buscar = useCallback(() => fetchOportunidades(lojaFiltro), [lojaFiltro]);
+  const { dados, erro, atualizarAgora } = useBuscaComCancelamento<Oportunidade[]>(buscar, true);
+
+  const pendentes = dados?.filter((o) => o.status === "pendente") ?? [];
+  const decididas = dados?.filter((o) => o.status !== "pendente") ?? [];
+
+  return (
+    <div className="promocoes-oportunidades-secao">
+      <div className="financeiro-topo">
+        <div>
+          <span className="painel-eyebrow">Semi-automático</span>
+          <h2>Oportunidades sugeridas pelo Mercado Livre</h2>
+          <p className="painel-sub">
+            Promoções que o próprio Mercado Livre propõe (Impulsione suas vendas, ofertas relâmpago, etc.) — calculado
+            no pior cenário (assumindo que o desconto sai inteiro do seu bolso). Nada entra sozinho: você aprova cada
+            uma.
+          </p>
+        </div>
+      </div>
+
+      <BuscaOportunidades lojaFiltro={lojaFiltro} onEncontradas={atualizarAgora} />
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+      {!erro && dados === null && <div className="state-message">Carregando...</div>}
+      {dados?.length === 0 && (
+        <div className="state-message">Nenhuma oportunidade encontrada ainda — clique em "Buscar oportunidades".</div>
+      )}
+
+      {pendentes.map((o) => (
+        <LinhaOportunidade key={o.id} oportunidade={o} onDecidida={atualizarAgora} />
+      ))}
+      {decididas.map((o) => (
+        <LinhaOportunidade key={o.id} oportunidade={o} onDecidida={atualizarAgora} />
+      ))}
+    </div>
+  );
+}
+
 export function Promocoes() {
   const [lojas, setLojas] = useState<Loja[]>([]);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
@@ -597,6 +816,8 @@ export function Promocoes() {
       {dados?.map((c) => (
         <LinhaCampanha key={c.id} campanha={c} onRecriada={atualizarAgora} onExcluida={atualizarAgora} />
       ))}
+
+      <OportunidadesSecao lojaFiltro={lojaFiltro} />
     </div>
   );
 }

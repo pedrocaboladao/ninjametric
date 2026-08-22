@@ -136,19 +136,22 @@ export async function criarCampanhaVendedor(
   return data;
 }
 
-// Adiciona um item à campanha com o preço final já calculado (não manda
+// Adiciona um item a uma promoção com o preço final já calculado (não manda
 // percentual pra API — o Mercado Livre trabalha com preço final em R$ por
-// item, ver deal_price).
+// item, ver deal_price). promotionType aceita qualquer tipo devolvido por
+// consultarPromocoesDoItem (SELLER_CAMPAIGN, SMART, DEAL — não só campanha
+// própria, ver promocoesOportunidadesService).
 export async function adicionarItemCampanha(
   lojaId: number,
   itemId: string,
   promotionId: string,
+  promotionType: string,
   dealPrice: number
 ): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   await axios.post(
     `${ML_API_BASE}/seller-promotions/items/${itemId}`,
-    { promotion_id: promotionId, promotion_type: "SELLER_CAMPAIGN", deal_price: dealPrice },
+    { promotion_id: promotionId, promotion_type: promotionType, deal_price: dealPrice },
     { headers: { Authorization: `Bearer ${accessToken}` }, params: { app_version: "v2" } }
   );
 }
@@ -273,6 +276,13 @@ export interface MlPromocaoDoItem {
   // item-a-item em vez do endpoint de listagem por campanha (paginação por
   // offset pouco confiável em campanha grande — ver obterItensDaCampanha).
   dealPrice: number | null;
+  // Só vêm quando status === "candidate" (proposta ainda não aceita) — o ML
+  // dá uma faixa de preço em vez do preço final, ver
+  // promocoesOportunidadesService pro cálculo de margem em cima disso.
+  minDiscountedPrice: number | null;
+  maxDiscountedPrice: number | null;
+  suggestedDiscountedPrice: number | null;
+  name: string | null;
 }
 
 // Versão mais rica de getPromocaoStatus (que só devolve um enum
@@ -282,7 +292,18 @@ export interface MlPromocaoDoItem {
 export async function consultarPromocoesDoItem(lojaId: number, itemId: string): Promise<MlPromocaoDoItem[]> {
   const accessToken = await getValidAccessToken(lojaId);
   const { data } = await axios.get<
-    Array<{ id?: string; promotion_id?: string; type: string; status: string; deal_price?: number; price?: number }>
+    Array<{
+      id?: string;
+      promotion_id?: string;
+      type: string;
+      status: string;
+      deal_price?: number;
+      price?: number;
+      min_discounted_price?: number;
+      max_discounted_price?: number;
+      suggested_discounted_price?: number;
+      name?: string;
+    }>
   >(`${ML_API_BASE}/seller-promotions/items/${itemId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     params: { app_version: "v2" },
@@ -296,6 +317,10 @@ export async function consultarPromocoesDoItem(lojaId: number, itemId: string): 
     type: d.type,
     status: d.status,
     dealPrice: d.deal_price ?? d.price ?? null,
+    minDiscountedPrice: d.min_discounted_price ?? null,
+    maxDiscountedPrice: d.max_discounted_price ?? null,
+    name: d.name || null,
+    suggestedDiscountedPrice: d.suggested_discounted_price ?? null,
   }));
 }
 

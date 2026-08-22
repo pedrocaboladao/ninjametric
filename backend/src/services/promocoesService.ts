@@ -139,7 +139,7 @@ export async function criarCampanha(
     }
     const dealPrice = arredondarCentavos(info.price * (1 - percentual / 100));
     try {
-      await adicionarItemCampanha(lojaId, itemId, campanhaMl.id, dealPrice);
+      await adicionarItemCampanha(lojaId, itemId, campanhaMl.id, "SELLER_CAMPAIGN", dealPrice);
       itensResultado.push({ itemId, ok: true, precoOriginal: info.price, dealPrice });
     } catch (err) {
       const mensagem =

@@ -63,3 +63,35 @@ export interface ProgressoDescoberta {
   diagnosticos: string[];
   erro: string | null;
 }
+
+export interface Oportunidade {
+  id: number;
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string | null;
+  sku: string | null;
+  promotionId: string | null;
+  tipo: string;
+  nome: string | null;
+  precoOriginal: number;
+  precoEscolhido: number;
+  custoUnitario: number | null;
+  taxaMl: number | null;
+  margem: number | null;
+  elegivel: boolean;
+  status: string;
+  erro: string | null;
+  descobertoEm: string;
+  decididoEm: string | null;
+}
+
+export interface ProgressoBuscaOportunidades {
+  emAndamento: boolean;
+  lojaAtual: string | null;
+  itensVerificados: number;
+  totalItens: number;
+  candidatasEncontradas: number;
+  itensComErro: number;
+  erro: string | null;
+}
