@@ -19,7 +19,14 @@ import { dataIso } from "./fabricaData";
 // O saldo não é guardado. Sai da soma dos lançamentos, como todo o resto da
 // Fábrica: guardar um saldo é criar um número que pode discordar do extrato.
 
-export type OrigemCredito = "ANTECIPACAO" | "BONIFICACAO" | "AJUSTE" | "USO";
+export type OrigemCredito =
+  | "ANTECIPACAO"
+  | "BONIFICACAO"
+  | "AJUSTE"
+  | "USO"
+  // o que a loja já devia quando o sistema começou. Sempre negativo: crédito
+  // negativo é dívida, e o saldo da conta corrente já subtrai esta coluna.
+  | "SALDO_ANTERIOR";
 
 export interface Credito {
   id: number;
@@ -58,6 +65,8 @@ export interface SaldoCliente {
   antecipado: number;
   bonificado: number;
   ajuste: number;
+  // dívida que a loja trouxe de antes do sistema. Sempre negativo.
+  anterior: number;
   usado: number;
   saldo: number;
 }
@@ -131,6 +140,7 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
     antecipado: string;
     bonificado: string;
     ajuste: string;
+    anterior: string;
     usado: string;
     saldo: string;
   }>(
@@ -139,6 +149,7 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'ANTECIPACAO'), 0) AS antecipado,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'BONIFICACAO'), 0) AS bonificado,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'AJUSTE'), 0)      AS ajuste,
+            COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'SALDO_ANTERIOR'), 0) AS anterior,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'USO'), 0)         AS usado,
             COALESCE(SUM(cr.valor), 0)                                          AS saldo
      FROM fabrica_clientes c
@@ -146,6 +157,7 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
      LEFT JOIN fabrica_creditos cr ON cr.cliente_id = c.id
      GROUP BY c.id, c.nome, c.cliente_pai_id, p.nome
      HAVING COALESCE(SUM(cr.valor), 0) <> 0
+         OR COUNT(cr.id) FILTER (WHERE cr.origem = 'SALDO_ANTERIOR') > 0
      ORDER BY COALESCE(SUM(cr.valor), 0) DESC`
   );
   return rows.map((r) => ({
@@ -156,6 +168,7 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
     antecipado: Number(r.antecipado),
     bonificado: Number(r.bonificado),
     ajuste: Number(r.ajuste),
+    anterior: Number(r.anterior),
     usado: Number(r.usado),
     saldo: Number(r.saldo),
   }));
@@ -170,9 +183,16 @@ export async function saldoDoCliente(clienteId: number): Promise<number> {
 }
 
 export async function criarCredito(e: CreditoEntrada): Promise<{ id: number }> {
-  // USO é sempre negativo e o resto sempre positivo: deixar o sinal por conta
-  // de quem digita é convidar o saldo a andar pro lado errado
-  const valor = e.origem === "USO" ? -Math.abs(e.valor) : Math.abs(e.valor);
+  // O sinal sai da origem, nunca de quem digita: deixar isso na mão de quem
+  // lança é convidar o saldo a andar pro lado errado. USO e SALDO_ANTERIOR
+  // sempre tiram; o resto sempre soma. AJUSTE é o único que aceita os dois,
+  // porque é exatamente pra consertar o que os outros erraram.
+  const valor =
+    e.origem === "USO" || e.origem === "SALDO_ANTERIOR"
+      ? -Math.abs(e.valor)
+      : e.origem === "AJUSTE"
+        ? e.valor
+        : Math.abs(e.valor);
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO fabrica_creditos
        (cliente_id, data, origem, valor, pagamento_id, observacao)
