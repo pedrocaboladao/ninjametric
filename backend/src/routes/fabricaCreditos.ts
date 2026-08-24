@@ -27,7 +27,13 @@ function texto(v: unknown): string | null {
   return t === "" ? null : t;
 }
 
-const ORIGENS: OrigemCredito[] = ["ANTECIPACAO", "BONIFICACAO", "AJUSTE", "USO"];
+const ORIGENS: OrigemCredito[] = [
+  "ANTECIPACAO",
+  "BONIFICACAO",
+  "AJUSTE",
+  "USO",
+  "SALDO_ANTERIOR",
+];
 
 // AAAA-MM-DD, ou hoje. Data inventada pelo navegador não entra: o crédito
 // aparece no extrato por data, e uma data errada some do fechamento certo.

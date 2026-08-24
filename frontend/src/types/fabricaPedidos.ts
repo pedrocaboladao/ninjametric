@@ -168,7 +168,13 @@ export interface ConsolidadoRessarcimento {
 // Crédito da loja na fábrica. A antecipação é dinheiro que ela pagou antes de
 // comprar; a bonificação é o prêmio de 3,5% por quitar 100% do fechamento.
 // Nenhum dos dois é desconto sobre a venda — são formas de pagar a próxima.
-export type OrigemCredito = "ANTECIPACAO" | "BONIFICACAO" | "AJUSTE" | "USO";
+export type OrigemCredito =
+  | "ANTECIPACAO"
+  | "BONIFICACAO"
+  | "AJUSTE"
+  | "USO"
+  // o que a loja já devia quando o sistema começou. Sempre negativo.
+  | "SALDO_ANTERIOR";
 
 export interface Credito {
   id: number;
@@ -203,6 +209,8 @@ export interface SaldoCredito {
   antecipado: number;
   bonificado: number;
   ajuste: number;
+  // dívida trazida de antes do sistema. Sempre negativo.
+  anterior: number;
   usado: number;
   saldo: number;
 }

@@ -1405,3 +1405,16 @@ INSERT INTO fabrica_bonificacao (id, percentual) VALUES (1, 3.5)
 ALTER TABLE fabrica_creditos ADD COLUMN IF NOT EXISTS provisorio BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_fabrica_creditos_provisorio
   ON fabrica_creditos (cliente_id) WHERE provisorio;
+
+-- Dívida carregada: o que cada loja já devia quando o sistema começou.
+--
+-- Entra como valor NEGATIVO em fabrica_creditos. Crédito negativo é dívida, e
+-- o saldo da conta corrente já subtrai essa coluna — então não precisa de
+-- tabela nem de caminho novo, só de um sinal.
+--
+-- Fica FORA do DRE de propósito: o DRE só soma origem BONIFICACAO. Essa venda
+-- aconteceu em outro mês, e contá-la agora inventaria receita que não é deste
+-- período.
+ALTER TABLE fabrica_creditos DROP CONSTRAINT IF EXISTS fabrica_creditos_origem_check;
+ALTER TABLE fabrica_creditos ADD CONSTRAINT fabrica_creditos_origem_check
+  CHECK (origem IN ('ANTECIPACAO', 'BONIFICACAO', 'AJUSTE', 'USO', 'SALDO_ANTERIOR'));

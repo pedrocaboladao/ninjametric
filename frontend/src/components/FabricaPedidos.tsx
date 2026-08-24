@@ -107,6 +107,11 @@ export function FabricaPedidos() {
   const [antData, setAntData] = useState("");
   const [antObs, setAntObs] = useState("");
 
+  // divida carregada: o que a loja ja devia quando o sistema comecou
+  const [divCliente, setDivCliente] = useState("");
+  const [divValor, setDivValor] = useState("");
+  const [divData, setDivData] = useState("");
+
   // devolucao recebida no balcao
   const [devCliente, setDevCliente] = useState("");
   const [devProduto, setDevProduto] = useState("");
@@ -394,6 +399,35 @@ export function FabricaPedidos() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao usar o crédito.");
+    }
+  }
+
+  // D\u00edvida carregada: entra como cr\u00e9dito negativo, ent\u00e3o soma na conta
+  // corrente sem inventar pedido nenhum \u2014 e fica fora do DRE, porque a venda
+  // aconteceu em outro m\u00eas.
+  async function lancarDivida() {
+    const id = Number(divCliente);
+    if (!Number.isInteger(id) || !id) return setErro("Escolha a loja.");
+    const valor = num(divValor);
+    if (valor <= 0) return setErro("Informe quanto a loja j\u00e1 devia.");
+    try {
+      await lancarCredito({
+        clienteId: id,
+        valor,
+        origem: "SALDO_ANTERIOR",
+        data: divData || undefined,
+        observacao: "D\u00edvida carregada da planilha",
+      });
+      setErro(null);
+      setAviso(
+        `D\u00edvida carregada de ${formatCurrency(
+          valor
+        )} lan\u00e7ada. Entra na conta corrente e fica fora do DRE \u2014 a venda foi em outro m\u00eas.`
+      );
+      setDivValor("");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao lan\u00e7ar a d\u00edvida.");
     }
   }
 
@@ -1426,6 +1460,36 @@ export function FabricaPedidos() {
           )}
 
           <div className="financeiro-filtros">
+            <span className="financeiro-stat-label">DÍVIDA CARREGADA</span>
+            <BuscaSelecao
+              itens={itensCliente}
+              valor={divCliente ? Number(divCliente) : null}
+              placeholder="Buscar loja"
+              onEscolher={(id) => setDivCliente(id ? String(id) : "")}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Quanto já devia"
+              value={divValor}
+              onChange={(e) => setDivValor(e.target.value)}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              value={divData}
+              onChange={(e) => setDivData(e.target.value)}
+            />
+            <button type="button" className="btn-excluir" onClick={() => void lancarDivida()}>
+              Lançar dívida
+            </button>
+          </div>
+          <p className="financeiro-td-mudo">
+            O que a loja já devia antes do sistema. Entra na conta corrente e{" "}
+            <strong>fica fora do DRE</strong> — a venda aconteceu em outro mês, contá-la agora
+            inventaria receita que não é deste período.
+          </p>
+
+          <div className="financeiro-filtros">
             <span className="financeiro-stat-label">BONIFICAÇÃO POR PAGAR EM DIA</span>
             <input
               className="clonar-input fabricacao-input-pequeno"
@@ -1452,6 +1516,7 @@ export function FabricaPedidos() {
                   <th>QUEM PAGA</th>
                   <th className="financeiro-th-numero">ANTECIPADO</th>
                   <th className="financeiro-th-numero">BONIFICADO</th>
+                  <th className="financeiro-th-numero">DÍVIDA ANTERIOR</th>
                   <th className="financeiro-th-numero">AJUSTES</th>
                   <th className="financeiro-th-numero">USADO</th>
                   <th className="financeiro-th-numero">SALDO</th>
@@ -1461,9 +1526,9 @@ export function FabricaPedidos() {
               <tbody>
                 {!saldosCredito.length && (
                   <tr>
-                    <td colSpan={8}>
-                      Nenhuma loja com crédito. Aparece aqui quando alguém antecipar ou quitar
-                      100% de um fechamento.
+                    <td colSpan={9}>
+                      Nenhuma loja com crédito ou dívida carregada. Aparece aqui quando alguém
+                      antecipar, pagar, ou receber o saldo de abertura.
                     </td>
                   </tr>
                 )}
@@ -1476,6 +1541,9 @@ export function FabricaPedidos() {
                     </td>
                     <td className="financeiro-th-numero financeiro-td-mudo">
                       {sc.bonificado ? formatCurrency(sc.bonificado) : "\u2014"}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {sc.anterior ? formatCurrency(sc.anterior) : "\u2014"}
                     </td>
                     <td className="financeiro-th-numero financeiro-td-mudo">
                       {sc.ajuste ? formatCurrency(sc.ajuste) : "\u2014"}
@@ -1530,7 +1598,9 @@ export function FabricaPedidos() {
                           ? "Bonificação"
                           : c.origem === "USO"
                             ? "Abatido"
-                            : "Ajuste"}
+                            : c.origem === "SALDO_ANTERIOR"
+                              ? "Dívida carregada"
+                              : "Ajuste"}
                       {c.provisorio && <strong> · provisório</strong>}
                     </td>
                     <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
