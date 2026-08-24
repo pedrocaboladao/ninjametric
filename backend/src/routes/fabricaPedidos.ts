@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { conferirVendasMl } from "../services/fabricaVendasMlService";
+import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import {
   listarPedidos,
   obterPedido,
@@ -341,5 +342,22 @@ fabricaPedidosRouter.delete("/:id", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao excluir pedido.");
+  }
+});
+
+// Confere uma planilha de vendas de outro canal antes de virar pedido.
+//
+// A API do Mercado Livre enxerga 65% do que a fábrica vende; o resto é Shopee e
+// venda direta. Só lê e classifica: nada é lançado aqui.
+fabricaPedidosRouter.post("/vendas-planilha", async (req, res) => {
+  const texto = typeof req.body?.texto === "string" ? req.body.texto : "";
+  const origem = typeof req.body?.origem === "string" && req.body.origem.trim()
+    ? req.body.origem.trim().toUpperCase()
+    : "SHOPEE";
+  if (!texto.trim()) return res.status(400).json({ error: "Cole as linhas da planilha." });
+  try {
+    res.json(await conferirPlanilhaVendas(texto, origem));
+  } catch (err) {
+    erro(res, err, "Falha ao ler a planilha.");
   }
 });
