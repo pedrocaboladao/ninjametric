@@ -11,6 +11,11 @@ import {
   registrarAjusteProduto,
   excluirAjusteProduto,
   fetchContaCorrente,
+  fetchCreditos,
+  lancarAntecipacao,
+  lancarCredito,
+  definirPercentualBonificacao,
+  excluirCredito,
   fetchExtrato,
   fetchPagamentos,
   registrarPagamento,
@@ -31,6 +36,8 @@ import type {
   EstoqueProduto,
   AjusteProduto,
   ContaCorrente,
+  Credito,
+  SaldoCredito,
   Pagamento,
   LinhaExtrato,
   Devolucao,
@@ -84,8 +91,18 @@ export function FabricaPedidos() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [aba, setAba] = useState<
-    "pedidos" | "novo" | "estoque" | "fechamento" | "devolucoes"
+    "pedidos" | "novo" | "estoque" | "fechamento" | "creditos" | "devolucoes"
   >("pedidos");
+
+  // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
+  const [creditos, setCreditos] = useState<Credito[]>([]);
+  const [saldosCredito, setSaldosCredito] = useState<SaldoCredito[]>([]);
+  const [percentual, setPercentual] = useState(3.5);
+  const [percentualEdit, setPercentualEdit] = useState("");
+  const [antCliente, setAntCliente] = useState("");
+  const [antValor, setAntValor] = useState("");
+  const [antData, setAntData] = useState("");
+  const [antObs, setAntObs] = useState("");
 
   // devolucao recebida no balcao
   const [devCliente, setDevCliente] = useState("");
@@ -134,12 +151,16 @@ export function FabricaPedidos() {
         fetchEstoqueProdutos(),
         fetchAjustesProduto(),
       ]);
-      const [cc, pg, dv] = await Promise.all([
+      const [cc, pg, dv, cr] = await Promise.all([
         fetchContaCorrente(),
         fetchPagamentos(),
         fetchDevolucoes(),
+        fetchCreditos(),
       ]);
       setContaCorrente(cc);
+      setCreditos(cr.creditos);
+      setSaldosCredito(cr.saldos);
+      setPercentual(cr.percentual);
       setPagamentos(pg);
       setDevolucoes(dv.devolucoes);
       setNotasPendentes(dv.notasPendentes);
@@ -276,6 +297,12 @@ export function FabricaPedidos() {
     );
   }
 
+  // credito parado nas lojas: e desconto ja prometido, nao dinheiro da fabrica
+  const totalCredito = useMemo(
+    () => saldosCredito.reduce((t, c) => t + Math.max(0, c.saldo), 0),
+    [saldosCredito]
+  );
+
   // saldo negativo e loja que pagou adiantado; nao abate a divida das outras
   const totalDevido = useMemo(
     () => contaCorrente.reduce((s, c) => s + Math.max(0, c.saldo), 0),
@@ -307,6 +334,94 @@ export function FabricaPedidos() {
     }
   }
 
+  // Antecipação: a loja manda dinheiro antes de comprar. Vira saldo dela mais
+  // os 3,5% — os dois lançamentos saem juntos do backend.
+  async function antecipar() {
+    const id = Number(antCliente);
+    if (!Number.isInteger(id) || !id) return setErro("Escolha a loja.");
+    const valor = num(antValor);
+    if (valor <= 0) return setErro("Informe o valor antecipado.");
+    try {
+      const r = await lancarAntecipacao({
+        clienteId: id,
+        valor,
+        data: antData || undefined,
+        observacao: antObs.trim() || null,
+      });
+      setErro(null);
+      setAviso(
+        `Antecipação de ${formatCurrency(r.antecipacao)} registrada, mais ${formatCurrency(
+          r.bonificacao
+        )} de bonificação (${r.percentual}%). Crédito total de ${formatCurrency(
+          r.antecipacao + r.bonificacao
+        )} pra abater nas próximas compras.`
+      );
+      setAntValor("");
+      setAntObs("");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao lançar a antecipação.");
+    }
+  }
+
+  async function usarCredito(saldo: SaldoCredito) {
+    const texto = window.prompt(
+      `Quanto do crédito de ${saldo.clienteNome} abater agora? Disponível: ${formatCurrency(
+        saldo.saldo
+      )}`,
+      saldo.saldo.toFixed(2)
+    );
+    if (texto === null) return;
+    const valor = num(texto);
+    if (valor <= 0) return;
+    if (valor > saldo.saldo + 0.005)
+      return setErro(
+        `A loja só tem ${formatCurrency(saldo.saldo)} de crédito. Deixar o saldo negativo esconderia uma dívida.`
+      );
+    try {
+      await lancarCredito({
+        clienteId: saldo.clienteId,
+        valor,
+        origem: "USO",
+        observacao: "Abatido no fechamento",
+      });
+      setErro(null);
+      setAviso(`${formatCurrency(valor)} de crédito abatido de ${saldo.clienteNome}.`);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao usar o crédito.");
+    }
+  }
+
+  async function salvarPercentual() {
+    const p = num(percentualEdit);
+    if (!Number.isFinite(p) || p < 0 || p > 100)
+      return setErro("Percentual deve ficar entre 0 e 100.");
+    try {
+      await definirPercentualBonificacao(p);
+      setPercentual(p);
+      setPercentualEdit("");
+      setErro(null);
+      setAviso(
+        `Bonificação agora é de ${p}%. Créditos já lançados não mudam — só vale daqui pra frente.`
+      );
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar o percentual.");
+    }
+  }
+
+  async function apagarCredito(c: Credito) {
+    if (!window.confirm(`Excluir o crédito de ${formatCurrency(c.valor)} de ${c.clienteNome}?`))
+      return;
+    try {
+      await excluirCredito(c.id);
+      setErro(null);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao excluir o crédito.");
+    }
+  }
+
   async function receber() {
     const id = Number(pagCliente);
     if (!Number.isInteger(id) || !id) return setErro("Escolha a loja.");
@@ -321,8 +436,10 @@ export function FabricaPedidos() {
       });
       setAviso(
         r.saldo > 0.005
-          ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana.`
-          : "PIX registrado. A loja está zerada."
+          ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana. Sem bonificação: ela só sai quitando 100%.`
+          : r.bonificacao > 0
+            ? `PIX registrado, loja zerada. Bonificação de ${formatCurrency(r.bonificacao)} (${percentual}%) creditada pra próxima compra.`
+            : "PIX registrado. A loja está zerada."
       );
       setPagValor("");
       setPagObs("");
@@ -567,7 +684,7 @@ export function FabricaPedidos() {
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
-        {(["pedidos", "novo", "estoque", "fechamento", "devolucoes"] as const).map((a) => (
+        {(["pedidos", "novo", "estoque", "fechamento", "creditos", "devolucoes"] as const).map((a) => (
           <button
             key={a}
             type="button"
@@ -584,7 +701,9 @@ export function FabricaPedidos() {
                   ? `Estoque de produto${alertas.length ? ` (${alertas.length})` : ""}`
                   : a === "fechamento"
                     ? "Fechamento"
-                    : `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`}
+                    : a === "creditos"
+                      ? `Créditos${saldosCredito.length ? ` (${saldosCredito.length})` : ""}`
+                      : `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`}
           </button>
         ))}
       </div>
@@ -1024,7 +1143,8 @@ export function FabricaPedidos() {
                   <th>LOJA</th>
                   <th className="financeiro-th-numero">PEGOU</th>
                   <th className="financeiro-th-numero">PAGOU</th>
-                  <th className="financeiro-th-numero">CRÉDITO</th>
+                  <th className="financeiro-th-numero">DEVOLUÇÃO</th>
+                  <th className="financeiro-th-numero">EM CONTA</th>
                   <th className="financeiro-th-numero">DEVE</th>
                   <th>ÚLTIMO PEDIDO</th>
                   <th>ÚLTIMO PIX</th>
@@ -1033,7 +1153,7 @@ export function FabricaPedidos() {
               <tbody>
                 {!contaCorrente.length && (
                   <tr>
-                    <td colSpan={7}>Nenhum cliente cadastrado.</td>
+                    <td colSpan={8}>Nenhum cliente cadastrado.</td>
                   </tr>
                 )}
                 {contaCorrente
@@ -1059,6 +1179,9 @@ export function FabricaPedidos() {
                       </td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
                         {c.credito ? formatCurrency(c.credito) : "—"}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {c.creditoConta ? formatCurrency(c.creditoConta) : "—"}
                       </td>
                       <td className={c.saldo > 0.005 ? "financeiro-th-numero" : "financeiro-th-numero financeiro-td-mudo"}>
                         {Math.abs(c.saldo) < 0.005
@@ -1154,6 +1277,189 @@ export function FabricaPedidos() {
           </div>
         </>
       )}
+      {aba === "creditos" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Crédito das lojas</h2>
+              <p className="financeiro-td-mudo">
+                Duas coisas viram crédito: a loja <strong>antecipar</strong> dinheiro antes de
+                comprar, e <strong>quitar 100%</strong> do fechamento, que rende{" "}
+                {percentual}% sobre o que ela pagou. Pagou parte? Não ganha nada — é isso que faz
+                o prêmio valer. Nenhum dos dois é desconto sobre a venda: a venda saiu pelo valor
+                cheio, o crédito só muda de onde vem o dinheiro da próxima.
+              </p>
+            </div>
+            <div>
+              <div className="financeiro-stat-label">CRÉDITO EM ABERTO</div>
+              <div className="financeiro-stat-valor">{formatCurrency(totalCredito)}</div>
+            </div>
+          </div>
+
+          <div className="financeiro-filtros">
+            <BuscaSelecao
+              itens={itensCliente}
+              valor={antCliente ? Number(antCliente) : null}
+              placeholder="Buscar loja"
+              onEscolher={(id) => setAntCliente(id ? String(id) : "")}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Valor antecipado"
+              value={antValor}
+              onChange={(e) => setAntValor(e.target.value)}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              value={antData}
+              onChange={(e) => setAntData(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Observação (opcional)"
+              value={antObs}
+              onChange={(e) => setAntObs(e.target.value)}
+            />
+            <button type="button" className="btn-responder" onClick={() => void antecipar()}>
+              <IconPlus size={14} /> Lançar antecipação
+            </button>
+          </div>
+
+          {antValor.trim() !== "" && num(antValor) > 0 && (
+            <p className="financeiro-td-mudo">
+              Vai gerar {formatCurrency(num(antValor))} de antecipação +{" "}
+              {formatCurrency((num(antValor) * percentual) / 100)} de bonificação ({percentual}%) ={" "}
+              <strong>{formatCurrency(num(antValor) * (1 + percentual / 100))}</strong> de crédito.
+            </p>
+          )}
+
+          <div className="financeiro-filtros">
+            <span className="financeiro-stat-label">BONIFICAÇÃO POR PAGAR EM DIA</span>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder={String(percentual)}
+              value={percentualEdit}
+              onChange={(e) => setPercentualEdit(e.target.value)}
+            />
+            <span className="financeiro-td-mudo">%</span>
+            <button
+              type="button"
+              className="btn-excluir"
+              onClick={() => void salvarPercentual()}
+              disabled={percentualEdit.trim() === ""}
+            >
+              Salvar
+            </button>
+          </div>
+
+          <div className="financeiro-tabela-wrap">
+            <table className="financeiro-tabela">
+              <thead>
+                <tr>
+                  <th>LOJA</th>
+                  <th>QUEM PAGA</th>
+                  <th className="financeiro-th-numero">ANTECIPADO</th>
+                  <th className="financeiro-th-numero">BONIFICADO</th>
+                  <th className="financeiro-th-numero">AJUSTES</th>
+                  <th className="financeiro-th-numero">USADO</th>
+                  <th className="financeiro-th-numero">SALDO</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {!saldosCredito.length && (
+                  <tr>
+                    <td colSpan={8}>
+                      Nenhuma loja com crédito. Aparece aqui quando alguém antecipar ou quitar
+                      100% de um fechamento.
+                    </td>
+                  </tr>
+                )}
+                {saldosCredito.map((sc) => (
+                  <tr key={sc.clienteId}>
+                    <td>{sc.clienteNome}</td>
+                    <td className="financeiro-td-mudo">{sc.clientePaiNome ?? "ela mesma"}</td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {sc.antecipado ? formatCurrency(sc.antecipado) : "\u2014"}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {sc.bonificado ? formatCurrency(sc.bonificado) : "\u2014"}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {sc.ajuste ? formatCurrency(sc.ajuste) : "\u2014"}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {sc.usado ? formatCurrency(sc.usado) : "\u2014"}
+                    </td>
+                    <td className="financeiro-th-numero">{formatCurrency(sc.saldo)}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-excluir"
+                        onClick={() => void usarCredito(sc)}
+                        disabled={sc.saldo <= 0.005}
+                      >
+                        Abater
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Lançamentos</h3>
+          <div className="financeiro-tabela-wrap">
+            <table className="financeiro-tabela">
+              <thead>
+                <tr>
+                  <th>DATA</th>
+                  <th>LOJA</th>
+                  <th>ORIGEM</th>
+                  <th className="financeiro-th-numero">VALOR</th>
+                  <th>OBSERVAÇÃO</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {!creditos.length && (
+                  <tr>
+                    <td colSpan={6}>Nenhum lançamento ainda.</td>
+                  </tr>
+                )}
+                {creditos.map((c) => (
+                  <tr key={c.id}>
+                    <td className="financeiro-td-mudo">{data(c.data)}</td>
+                    <td>{c.clienteNome}</td>
+                    <td className="financeiro-td-mudo">
+                      {c.origem === "ANTECIPACAO"
+                        ? "Antecipação"
+                        : c.origem === "BONIFICACAO"
+                          ? "Bonificação"
+                          : c.origem === "USO"
+                            ? "Abatido"
+                            : "Ajuste"}
+                    </td>
+                    <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
+                    <td className="financeiro-td-mudo">{c.observacao ?? "\u2014"}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-excluir"
+                        onClick={() => void apagarCredito(c)}
+                      >
+                        Excluir
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       {aba === "devolucoes" && (
         <>
           <div className="financeiro-topo">

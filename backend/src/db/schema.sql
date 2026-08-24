@@ -1347,3 +1347,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_venda_importada_unica
 ALTER TABLE fabrica_clientes
   ADD COLUMN IF NOT EXISTS cliente_pai_id INTEGER REFERENCES fabrica_clientes(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_pai ON fabrica_clientes (cliente_pai_id);
+
+-- Crédito do cliente na Fábrica Distribuidora.
+--
+-- Duas coisas geram crédito, e as duas viram abatimento na próxima cobrança:
+--
+--   ANTECIPACAO  a loja paga adiantado. O dinheiro entra sem venda
+--                correspondente e fica como saldo dela. A Mestre antecipou
+--                R$ 400 mil em quatro meses.
+--   BONIFICACAO  3,5% sobre o pagamento, só quando ela quita 100% do
+--                fechamento. É o prêmio por pagar em dia.
+--
+-- Devolução também gera crédito, mas fica em fabrica_devolucoes e não entra
+-- aqui: os dois lugares somando no mesmo saldo abateriam a mesma mercadoria
+-- duas vezes.
+--
+-- Valor positivo é crédito gerado; negativo é crédito usado numa cobrança. O
+-- saldo é a soma — não é guardado, como todo o resto da Fábrica.
+--
+-- Isso não é desconto sobre a venda: a venda aconteceu pelo valor cheio.
+-- Tratar como redução de receita faria a fábrica parecer que vendeu menos do
+-- que vendeu — é pagamento vindo de outro lugar.
+CREATE TABLE IF NOT EXISTS fabrica_creditos (
+  id SERIAL PRIMARY KEY,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE RESTRICT,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  origem TEXT NOT NULL DEFAULT 'ANTECIPACAO'
+    CHECK (origem IN ('ANTECIPACAO', 'BONIFICACAO', 'AJUSTE', 'USO')),
+  valor NUMERIC(12, 2) NOT NULL,
+  -- de qual pagamento veio a bonificação, pra dar pra auditar os 3,5%
+  pagamento_id INTEGER REFERENCES fabrica_pagamentos(id) ON DELETE SET NULL,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_creditos_cliente
+  ON fabrica_creditos (cliente_id, data DESC);
+CREATE INDEX IF NOT EXISTS idx_fabrica_creditos_origem
+  ON fabrica_creditos (origem, data DESC);
+
+-- Percentual de bonificação por pagar em dia. Fica em tabela, não fixo no
+-- código: 3,5% é a regra de hoje, e mudar isso não pode exigir deploy.
+CREATE TABLE IF NOT EXISTS fabrica_bonificacao (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  percentual NUMERIC(6, 3) NOT NULL DEFAULT 3.5,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO fabrica_bonificacao (id, percentual) VALUES (1, 3.5)
+  ON CONFLICT (id) DO NOTHING;

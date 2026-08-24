@@ -1,6 +1,7 @@
 import { pool } from "../db/pool";
 import { dataIso, dataIsoOuNulo } from "./fabricaData";
 import { creditoPorCliente } from "./fabricaDevolucoesService";
+import { bonificarSeQuitou } from "./fabricaCreditosService";
 
 // Conta corrente das lojas com a fábrica.
 //
@@ -24,6 +25,9 @@ export interface ContaCorrente {
   pago: number;
   // credito de devolucao — abate no fechamento igual a um pagamento
   credito: number;
+  // saldo em conta: antecipação que a loja pagou adiantado mais a bonificação
+  // de 3,5% por quitar em dia. Abate igual a devolução, e vem de outra tabela.
+  creditoConta: number;
   saldo: number;
   ultimoPedido: string | null;
   ultimoPagamento: string | null;
@@ -51,6 +55,7 @@ export interface LinhaExtrato {
 
 export async function listarContaCorrente(): Promise<ContaCorrente[]> {
   const creditos = await creditoPorCliente();
+  const emConta = await saldosEmConta();
   const { rows } = await pool.query<{
     id: number;
     nome: string;
@@ -88,6 +93,7 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
     // credito de devolucao abate junto com o PIX: pra loja e a mesma coisa,
     // ela pega menos dinheiro do bolso na terca
     const credito = creditos.get(r.id) ?? 0;
+    const creditoConta = emConta.get(r.id) ?? 0;
     return {
       clienteId: r.id,
       clienteNome: r.nome,
@@ -95,11 +101,22 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
       comprado,
       pago,
       credito,
-      saldo: comprado - pago - credito,
+      creditoConta,
+      saldo: comprado - pago - credito - creditoConta,
       ultimoPedido: dataIsoOuNulo(r.ultimo_pedido),
       ultimoPagamento: dataIsoOuNulo(r.ultimo_pagamento),
     };
   });
+}
+
+// Saldo de crédito em conta por loja: antecipação + bonificação − o que já
+// foi usado. Consulta direta em vez de importar o service de créditos: aquele
+// importa este de volta pro cálculo do saldo, e o ciclo trava o build.
+async function saldosEmConta(): Promise<Map<number, number>> {
+  const { rows } = await pool.query<{ cliente_id: number; saldo: string }>(
+    "SELECT cliente_id, SUM(valor) AS saldo FROM fabrica_creditos GROUP BY cliente_id"
+  );
+  return new Map(rows.map((r) => [r.cliente_id, Number(r.saldo)]));
 }
 
 // Quanto todas as lojas devem juntas — o "a receber" da fábrica.
@@ -209,16 +226,45 @@ export async function registrarPagamento(
   valor: number,
   data: string | null,
   observacao: string | null
-): Promise<{ id: number; saldo: number }> {
-  const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO fabrica_pagamentos (cliente_id, data, valor, observacao)
-     VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4) RETURNING id`,
-    [clienteId, data, valor, observacao]
-  );
+): Promise<{ id: number; saldo: number; bonificacao: number }> {
+  // saldo antes do pagamento: é o que diz se este PIX quitou a conta ou só
+  // abateu parte dela, e só quitando 100% a loja ganha os 3,5%
+  const antes = (await listarContaCorrente()).find((c) => c.clienteId === clienteId);
+  const saldoAntes = antes?.saldo ?? 0;
+
+  const cliente = await pool.connect();
+  let id: number;
+  let bonificacao = 0;
+  try {
+    await cliente.query("BEGIN");
+    const { rows } = await cliente.query(
+      `INSERT INTO fabrica_pagamentos (cliente_id, data, valor, observacao)
+       VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4)
+       RETURNING id, data::text AS data`,
+      [clienteId, data, valor, observacao]
+    );
+    id = Number(rows[0].id);
+    bonificacao = await bonificarSeQuitou(
+      cliente,
+      clienteId,
+      id,
+      valor,
+      String(rows[0].data),
+      saldoAntes,
+      saldoAntes - valor
+    );
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+
   // devolve o saldo que sobrou: pagou 90 de 100, ficam 10 pra próxima semana
   const contas = await listarContaCorrente();
   const conta = contas.find((c) => c.clienteId === clienteId);
-  return { id: rows[0].id, saldo: conta?.saldo ?? 0 };
+  return { id, saldo: conta?.saldo ?? 0, bonificacao };
 }
 
 export async function excluirPagamento(id: number): Promise<void> {
