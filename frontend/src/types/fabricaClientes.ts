@@ -18,8 +18,23 @@ export interface FabricaCliente {
   uf: string | null;
   observacao: string | null;
   ativo: boolean;
+  // Quem paga por esta loja. Nulo = ela mesma paga.
+  //
+  // 22 lojas vendem, mas quem fecha a conta são 10: Cores Certas, Hangar,
+  // Inga Collors e Perpétua vendem no próprio nome e a cobrança vai inteira
+  // para a Catedral Impermeabilizantes.
+  clientePaiId: number | null;
   completo: boolean;
   faltando: string[];
 }
 
-export type FabricaClienteEntrada = Omit<FabricaCliente, "id" | "completo" | "faltando">;
+// clientePaiNome e filhas são derivados: vêm do servidor, não se digita
+export interface FabricaCliente {
+  clientePaiNome: string | null;
+  filhas: number;
+}
+
+export type FabricaClienteEntrada = Omit<
+  FabricaCliente,
+  "id" | "completo" | "faltando" | "clientePaiNome" | "filhas"
+>;

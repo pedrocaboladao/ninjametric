@@ -23,6 +23,15 @@ export interface FabricaCliente {
   uf: string | null;
   observacao: string | null;
   ativo: boolean;
+  // Quem paga por esta loja. Nulo = ela mesma paga.
+  //
+  // Vinte e duas lojas vendem, mas quem fecha a conta sao dez. Cores Certas,
+  // Hangar, Inga Collors e Perpetua vendem no proprio nome e a cobranca vai
+  // inteira pra Catedral Impermeabilizantes.
+  clientePaiId: number | null;
+  clientePaiNome: string | null;
+  // quantas lojas pagam por esta — so tem valor em quem e pai
+  filhas: number;
   // quanto falta do cadastro pra conseguir emitir nota
   completo: boolean;
   faltando: string[];
@@ -44,6 +53,7 @@ export interface ClienteEntrada {
   uf: string | null;
   observacao: string | null;
   ativo: boolean;
+  clientePaiId: number | null;
 }
 
 interface Linha {
@@ -63,6 +73,9 @@ interface Linha {
   uf: string | null;
   observacao: string | null;
   ativo: boolean;
+  cliente_pai_id: number | null;
+  cliente_pai_nome: string | null;
+  filhas: string | null;
 }
 
 // O que a NFe exige. Serve pra tela mostrar quem ainda está pela metade,
@@ -101,26 +114,31 @@ function montar(r: Linha): FabricaCliente {
     uf: r.uf,
     observacao: r.observacao,
     ativo: r.ativo,
+    clientePaiId: r.cliente_pai_id,
+    clientePaiNome: r.cliente_pai_nome,
+    filhas: Number(r.filhas ?? 0),
     completo: faltando.length === 0,
     faltando,
   };
 }
 
-const COLUNAS = `id, nome, tipo, cnpj, inscricao_estadual, email, telefone, cep,
-                 logradouro, numero, complemento, bairro, cidade, uf, observacao, ativo`;
+const COLUNAS = `c.id, c.nome, c.tipo, c.cnpj, c.inscricao_estadual, c.email, c.telefone,
+                 c.cep, c.logradouro, c.numero, c.complemento, c.bairro, c.cidade, c.uf,
+                 c.observacao, c.ativo, c.cliente_pai_id,
+                 p.nome AS cliente_pai_nome,
+                 (SELECT COUNT(*) FROM fabrica_clientes f WHERE f.cliente_pai_id = c.id) AS filhas`;
+
+const DE = `FROM fabrica_clientes c LEFT JOIN fabrica_clientes p ON p.id = c.cliente_pai_id`;
 
 export async function listarClientes(): Promise<FabricaCliente[]> {
   const { rows } = await pool.query<Linha>(
-    `SELECT ${COLUNAS} FROM fabrica_clientes ORDER BY tipo, nome`
+    `SELECT ${COLUNAS} ${DE} ORDER BY c.tipo, c.nome`
   );
   return rows.map(montar);
 }
 
 export async function obterCliente(id: number): Promise<FabricaCliente | null> {
-  const { rows } = await pool.query<Linha>(
-    `SELECT ${COLUNAS} FROM fabrica_clientes WHERE id = $1`,
-    [id]
-  );
+  const { rows } = await pool.query<Linha>(`SELECT ${COLUNAS} ${DE} WHERE c.id = $1`, [id]);
   return rows[0] ? montar(rows[0]) : null;
 }
 
@@ -128,27 +146,52 @@ function valores(e: ClienteEntrada) {
   return [
     e.nome, e.tipo, e.cnpj, e.inscricaoEstadual, e.email, e.telefone, e.cep,
     e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.observacao, e.ativo,
+    e.clientePaiId,
   ];
 }
 
 export async function criarCliente(e: ClienteEntrada): Promise<{ id: number }> {
+  await validarPai(null, e.clientePaiId);
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO fabrica_clientes
        (nome, tipo, cnpj, inscricao_estadual, email, telefone, cep,
-        logradouro, numero, complemento, bairro, cidade, uf, observacao, ativo)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        logradouro, numero, complemento, bairro, cidade, uf, observacao, ativo,
+        cliente_pai_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      RETURNING id`,
     valores(e)
   );
   return { id: rows[0].id };
 }
 
+// Pai de si mesmo, ou ciclo A->B->A, faria o agrupamento do fechamento rodar
+// pra sempre procurando quem paga.
+async function validarPai(id: number | null, paiId: number | null): Promise<void> {
+  if (paiId === null) return;
+  if (id !== null && paiId === id) throw new Error("Um cliente não pode pagar por si mesmo.");
+  let atual: number | null = paiId;
+  const visto = new Set<number>(id === null ? [] : [id]);
+  while (atual !== null) {
+    if (visto.has(atual)) throw new Error("Isso criaria um ciclo entre as contas pai.");
+    visto.add(atual);
+    // tipo anotado à mão: `atual` alimenta a consulta e recebe dela, e a
+    // inferência do TS entra em círculo
+    const r: { rows: Array<{ cliente_pai_id: number | null }> } = await pool.query(
+      "SELECT cliente_pai_id FROM fabrica_clientes WHERE id = $1",
+      [atual]
+    );
+    if (!r.rows[0]) throw new Error("Conta pai não encontrada.");
+    atual = r.rows[0].cliente_pai_id;
+  }
+}
+
 export async function atualizarCliente(id: number, e: ClienteEntrada): Promise<void> {
+  await validarPai(id, e.clientePaiId);
   await pool.query(
     `UPDATE fabrica_clientes SET
        nome = $2, tipo = $3, cnpj = $4, inscricao_estadual = $5, email = $6, telefone = $7,
        cep = $8, logradouro = $9, numero = $10, complemento = $11, bairro = $12,
-       cidade = $13, uf = $14, observacao = $15, ativo = $16
+       cidade = $13, uf = $14, observacao = $15, ativo = $16, cliente_pai_id = $17
      WHERE id = $1`,
     [id, ...valores(e)]
   );

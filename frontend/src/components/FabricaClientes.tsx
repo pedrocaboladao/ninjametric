@@ -10,7 +10,8 @@ import { IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
 
 const VAZIO: FabricaClienteEntrada = {
-  nome: "", tipo: "LOJA", cnpj: null, inscricaoEstadual: null, email: null, telefone: null,
+  nome: "", tipo: "LOJA", clientePaiId: null,
+  cnpj: null, inscricaoEstadual: null, email: null, telefone: null,
   cep: null, logradouro: null, numero: null, complemento: null, bairro: null,
   cidade: null, uf: null, observacao: null, ativo: true,
 };
@@ -158,6 +159,26 @@ export function FabricaClientes() {
           <option value="LOJA">Loja do grupo</option>
           <option value="EXTERNO">Cliente externo</option>
         </select>
+        <select
+          className="clonar-input"
+          value={rascunho.clientePaiId ?? ""}
+          onChange={(e) =>
+            setRascunho((r) => ({
+              ...r,
+              clientePaiId: e.target.value ? Number(e.target.value) : null,
+            }))
+          }
+          title="Quem paga por esta loja. Deixe em branco se ela mesma fecha a conta."
+        >
+          <option value="">Paga a própria conta</option>
+          {(clientes ?? [])
+            .filter((c) => c.id !== editandoId)
+            .map((c) => (
+              <option key={c.id} value={c.id}>
+                Quem paga: {c.nome}
+              </option>
+            ))}
+        </select>
         {CAMPOS.map(([chave, rotulo]) => campo(chave, rotulo))}
         <button type="button" className="btn-responder" onClick={() => void salvar()} disabled={salvando}>
           <IconPlus size={14} /> {editandoId ? "Salvar" : "Adicionar"}
@@ -184,6 +205,7 @@ export function FabricaClientes() {
             <tr>
               <th>CLIENTE</th>
               <th>TIPO</th>
+              <th>QUEM PAGA</th>
               <th>CNPJ</th>
               <th>CIDADE/UF</th>
               <th>CONTATO</th>
@@ -210,6 +232,13 @@ export function FabricaClientes() {
                   </button>
                 </td>
                 <td className="financeiro-td-mudo">{c.tipo === "LOJA" ? "Loja do grupo" : "Externo"}</td>
+                <td className="financeiro-td-mudo">
+                  {c.clientePaiNome
+                    ? c.clientePaiNome
+                    : c.filhas > 0
+                      ? `ela mesma · paga por ${c.filhas}`
+                      : "ela mesma"}
+                </td>
                 <td className="financeiro-td-mudo">{c.cnpj ?? "—"}</td>
                 <td className="financeiro-td-mudo">
                   {c.cidade ? `${c.cidade}${c.uf ? "/" + c.uf : ""}` : "—"}
