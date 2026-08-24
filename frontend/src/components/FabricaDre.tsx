@@ -149,19 +149,35 @@ export function FabricaDre() {
               <td className="financeiro-th-numero">{formatCurrency(dre.receita)}</td>
               <td className="financeiro-th-numero financeiro-td-mudo">100%</td>
             </tr>
-            {dre.unidadesDevolvidas > 0 && (
+            {(dre.unidadesDevolvidas > 0 || dre.bonificacao > 0) && (
               <>
-                <tr>
-                  <td className="financeiro-td-mudo">
-                    (−) Devoluções ({dre.unidadesDevolvidas} un, {dre.unidadesPerdidas} perdidas)
-                  </td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">
-                    {formatCurrency(dre.devolucoes)}
-                  </td>
-                  <td className="financeiro-th-numero financeiro-td-mudo">
-                    {dre.receita > 0 ? pct(dre.devolucoes / dre.receita) : "—"}
-                  </td>
-                </tr>
+                {dre.unidadesDevolvidas > 0 && (
+                  <tr>
+                    <td className="financeiro-td-mudo">
+                      (−) Devoluções ({dre.unidadesDevolvidas} un, {dre.unidadesPerdidas}{" "}
+                      perdidas)
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {formatCurrency(dre.devolucoes)}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {dre.receita > 0 ? pct(dre.devolucoes / dre.receita) : "—"}
+                    </td>
+                  </tr>
+                )}
+                {dre.bonificacao > 0 && (
+                  <tr>
+                    <td className="financeiro-td-mudo">
+                      (−) Bonificação por pagar em dia ({dre.percentualBonificacao}%)
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {formatCurrency(dre.bonificacao)}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {dre.receita > 0 ? pct(dre.bonificacao / dre.receita) : "—"}
+                    </td>
+                  </tr>
+                )}
                 <tr>
                   <td>= RECEITA DE VENDAS</td>
                   <td className="financeiro-th-numero">{formatCurrency(dre.receitaVendas)}</td>

@@ -33,6 +33,11 @@ export interface Dre {
   receitaDeDuasFontes: boolean;
   // credito das devolucoes: reduz a receita porque a venda foi desfeita
   devolucoes: number;
+  // Bonificacao por pagar em dia. Nao e desconto sobre a venda — a venda saiu
+  // pelo valor cheio — mas e dinheiro que a fabrica deixa de receber, entao
+  // sai da receita. A antecipacao nao entra: aquilo e a loja pagando antes.
+  bonificacao: number;
+  percentualBonificacao: number;
   unidadesDevolvidas: number;
   unidadesPerdidas: number;
   receitaVendas: number;
