@@ -1328,3 +1328,22 @@ CREATE INDEX IF NOT EXISTS idx_fabrica_venda_importada_pedido
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_venda_importada_unica
   ON fabrica_venda_importada (origem, documento, sku)
   WHERE documento IS NOT NULL;
+
+-- Conta pai do cliente.
+--
+-- Vinte e duas lojas vendem, mas quem paga são dez contas. Cores Certas,
+-- Hangar, Inga Collors e Perpétua vendem no próprio nome e a cobrança inteira
+-- vai para a Catedral Impermeabilizantes; Palazzo e Rosário caem na Pinta e
+-- Constrói. É assim desde sempre, e é por isso que o fechamento tem 15 linhas
+-- para 22 lojas.
+--
+-- Sem esse vínculo, ou se perde de vista quanto cada loja gira (agrupando tudo
+-- no pai, como a planilha faz hoje) ou se cobra de quem não paga. Com ele, o
+-- pedido fica na loja que vendeu e a cobrança vai para o pai — as duas
+-- leituras, sem escolher uma.
+--
+-- Pai nulo significa que a própria loja paga: é o caso da CASG, da Lux Collor
+-- e das outras que fecham em nome próprio.
+ALTER TABLE fabrica_clientes
+  ADD COLUMN IF NOT EXISTS cliente_pai_id INTEGER REFERENCES fabrica_clientes(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_pai ON fabrica_clientes (cliente_pai_id);

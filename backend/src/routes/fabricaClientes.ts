@@ -45,6 +45,11 @@ function lerEntrada(req: Request): ClienteEntrada | string {
     uf: uf ? uf.toUpperCase() : null,
     observacao: texto(b.observacao),
     ativo: b.ativo !== false,
+    // quem paga por esta loja. Zero e vazio viram null: a própria loja paga.
+    clientePaiId:
+      Number.isInteger(Number(b.clientePaiId)) && Number(b.clientePaiId) > 0
+        ? Number(b.clientePaiId)
+        : null,
   };
 }
 
