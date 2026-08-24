@@ -212,5 +212,8 @@ export interface SaldoCredito {
   // dívida trazida de antes do sistema. Sempre negativo.
   anterior: number;
   usado: number;
+  // bonificação pendurada: aparece, mas não abate até a loja quitar
+  provisorio: number;
+  // o que de fato abate hoje — só o que já está confirmado
   saldo: number;
 }

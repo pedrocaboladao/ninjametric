@@ -113,8 +113,15 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
 // foi usado. Consulta direta em vez de importar o service de créditos: aquele
 // importa este de volta pro cálculo do saldo, e o ciclo trava o build.
 async function saldosEmConta(): Promise<Map<number, number>> {
+  // NOT provisorio de proposito: a bonificacao provisoria aparece na lista e
+  // no total da aba, mas nao abate dívida nenhuma enquanto a loja não quitar.
+  //
+  // Se abatesse, esquecer de clicar em "excluir crédito" no fim do mês daria
+  // o desconto de graça pra sempre — e o botão viraria obrigatório. Assim ele
+  // é só faxina da lista, e esquecer nao custa dinheiro.
   const { rows } = await pool.query<{ cliente_id: number; saldo: string }>(
-    "SELECT cliente_id, SUM(valor) AS saldo FROM fabrica_creditos GROUP BY cliente_id"
+    `SELECT cliente_id, SUM(valor) AS saldo
+     FROM fabrica_creditos WHERE NOT provisorio GROUP BY cliente_id`
   );
   return new Map(rows.map((r) => [r.cliente_id, Number(r.saldo)]));
 }
