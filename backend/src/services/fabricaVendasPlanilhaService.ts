@@ -39,6 +39,11 @@ export interface ConferenciaPlanilha {
   totalValor: number;
   // cabeçalhos que reconheci, pro operador ver se leu o arquivo certo
   colunas: Record<string, string>;
+  // Quantas linhas o arquivo tinha depois do cabeçalho e quantas eram vazias.
+  // Sem isso não dá pra conferir o total contra o Excel: some uma linha e
+  // ninguém descobre onde.
+  linhasNoArquivo: number;
+  linhasVazias: number;
 }
 
 // nome que pode aparecer no cabeçalho -> campo interno
@@ -115,7 +120,20 @@ export async function conferirPlanilhaVendas(
       "Não achei o cabeçalho. A primeira linha precisa ter os nomes das colunas — SKU, Quantidade, Valor, Data, Cliente."
     );
   }
-  if (mapa.sku === undefined) throw new Error("Não achei a coluna do SKU.");
+  if (mapa.sku === undefined) {
+    // dizer o que ACHOU é o que permite a pessoa perceber que subiu o
+    // relatório por pedido em vez do relatório por item
+    const achadas = Object.keys(mapa)
+      .map((k) => separar(brutas[iCabecalho])[mapa[k]])
+      .filter(Boolean)
+      .join(", ");
+    throw new Error(
+      `Não achei a coluna do SKU. Reconheci: ${achadas || "nenhuma"}. ` +
+        "Esta tela lê venda por item — precisa de uma coluna de SKU pra saber " +
+        "qual produto saiu. Relatório só com número do pedido, cliente e total " +
+        "não serve aqui."
+    );
+  }
 
   const cabecalho = separar(brutas[iCabecalho]);
   const colunas: Record<string, string> = {};
@@ -139,17 +157,23 @@ export async function conferirPlanilhaVendas(
   );
 
   const linhas: LinhaPlanilha[] = [];
+  let vazias = 0;
   for (let i = iCabecalho + 1; i < brutas.length; i++) {
     const cols = separar(brutas[i]);
     const pega = (campo: string) =>
       mapa[campo] !== undefined ? (cols[mapa[campo]] ?? "").trim() : "";
 
-    const sku = pega("sku");
-    if (!sku) continue;
+    // linha totalmente em branco: fim de planilha, separador entre blocos.
+    // Essa some mesmo, mas fica contada pra soma bater com o Excel.
+    if (cols.every((c) => c === "")) {
+      vazias++;
+      continue;
+    }
 
+    const sku = pega("sku");
     const nomeCliente = pega("cliente");
     const cliente = porCliente.get(normalizarSku(nomeCliente)) ?? null;
-    const produto = porSku.get(normalizarSku(sku)) ?? null;
+    const produto = sku ? (porSku.get(normalizarSku(sku)) ?? null) : null;
     const qtd = mapa.quantidade !== undefined ? numero(pega("quantidade")) : 1;
     const d = data(pega("data"));
     const doc = pega("documento") || null;
@@ -165,7 +189,10 @@ export async function conferirPlanilhaVendas(
     const total = valorPlanilha || unit * qtd;
 
     const problemas: string[] = [];
-    if (!produto) problemas.push("SKU não cadastrado");
+    // sem SKU a linha nao vira pedido, mas aparece: sumir com ela deixava o
+    // operador somando um total que nao fecha com o arquivo dele
+    if (!sku) problemas.push("linha sem SKU");
+    else if (!produto) problemas.push("SKU não cadastrado");
     if (!cliente) problemas.push(nomeCliente ? "cliente não cadastrado" : "sem cliente");
     if (!d) problemas.push("data inválida");
     if (qtd <= 0) problemas.push("quantidade zerada");
@@ -195,5 +222,7 @@ export async function conferirPlanilhaVendas(
     jaImportadas: linhas.filter((l) => l.jaImportada).length,
     totalValor: linhas.filter((l) => !l.jaImportada).reduce((s, l) => s + l.total, 0),
     colunas,
+    linhasNoArquivo: brutas.length - iCabecalho - 1,
+    linhasVazias: vazias,
   };
 }
