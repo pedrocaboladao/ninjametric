@@ -27,6 +27,7 @@ import { fabricaPedidosRouter } from "./routes/fabricaPedidos";
 import { fabricaContasRouter } from "./routes/fabricaContas";
 import { fabricaBensRouter } from "./routes/fabricaBens";
 import { fabricaFornecedoresRouter } from "./routes/fabricaFornecedores";
+import { fabricaCreditosRouter } from "./routes/fabricaCreditos";
 import { fabricaOrdemRouter } from "./routes/fabricaOrdem";
 import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
@@ -92,6 +93,14 @@ app.use(
   requireAuth,
   requirePermissao("fabrica_financeiro"),
   fabricaFornecedoresRouter
+);
+// credito da loja (antecipacao e bonificacao de 3,5%) anda junto com o
+// contas a receber, entao usa a mesma permissao dos pedidos
+app.use(
+  "/api/fabrica-creditos",
+  requireAuth,
+  requirePermissao("fabrica_pedidos"),
+  fabricaCreditosRouter
 );
 app.use("/api/fabrica-ordem", requireAuth, requirePermissao("fabricacao"), fabricaOrdemRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);

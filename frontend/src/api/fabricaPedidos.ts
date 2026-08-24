@@ -5,6 +5,9 @@ import type {
   EstoqueProduto,
   AjusteProduto,
   ContaCorrente,
+  Credito,
+  SaldoCredito,
+  OrigemCredito,
   Pagamento,
   LinhaExtrato,
   Devolucao,
@@ -155,14 +158,14 @@ export async function registrarPagamento(entrada: {
   valor: number;
   data?: string | null;
   observacao?: string | null;
-}): Promise<{ id: number; saldo: number }> {
+}): Promise<{ id: number; saldo: number; bonificacao: number }> {
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify(entrada),
   });
-  return tratarResposta<{ id: number; saldo: number }>(res);
+  return tratarResposta<{ id: number; saldo: number; bonificacao: number }>(res);
 }
 
 export async function excluirPagamento(id: number): Promise<void> {
@@ -256,4 +259,66 @@ export async function excluirDevolucao(id: number): Promise<void> {
     credentials: "include",
   });
   await semConteudo(res);
+}
+
+// ---------------------------------------------------------------- créditos
+
+export async function fetchCreditos(): Promise<{
+  creditos: Credito[];
+  saldos: SaldoCredito[];
+  percentual: number;
+}> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos`, { credentials: "include" });
+  return tratarResposta<{ creditos: Credito[]; saldos: SaldoCredito[]; percentual: number }>(res);
+}
+
+// A antecipação e a bonificação dela saem de uma chamada só: separar deixaria
+// alguém lançar o dinheiro e esquecer os 3,5%.
+export async function lancarAntecipacao(entrada: {
+  clienteId: number;
+  valor: number;
+  data?: string;
+  observacao?: string | null;
+}): Promise<{ antecipacao: number; bonificacao: number; percentual: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos/antecipacao`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ antecipacao: number; bonificacao: number; percentual: number }>(res);
+}
+
+export async function lancarCredito(entrada: {
+  clienteId: number;
+  valor: number;
+  origem: OrigemCredito;
+  data?: string;
+  observacao?: string | null;
+}): Promise<{ id: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number }>(res);
+}
+
+export async function definirPercentualBonificacao(percentual: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos/percentual`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ percentual }),
+  });
+  if (!res.ok) await tratarResposta(res);
+}
+
+export async function excluirCredito(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  if (!res.ok) await tratarResposta(res);
 }

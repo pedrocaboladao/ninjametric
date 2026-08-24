@@ -88,6 +88,9 @@ export interface ContaCorrente {
   pago: number;
   // credito de devolucao — abate no fechamento igual a um pagamento
   credito: number;
+  // saldo em conta: antecipação paga adiantado + bonificação de 3,5% por
+  // quitar em dia. Abate igual a devolução, mas vem de outra tabela.
+  creditoConta: number;
   saldo: number;
   ultimoPedido: string | null;
   ultimoPagamento: string | null;
@@ -160,4 +163,32 @@ export interface ConsolidadoRessarcimento {
   recebidoValor: number;
   creditoDado: number;
   descoberto: number;
+}
+
+// Crédito da loja na fábrica. A antecipação é dinheiro que ela pagou antes de
+// comprar; a bonificação é o prêmio de 3,5% por quitar 100% do fechamento.
+// Nenhum dos dois é desconto sobre a venda — são formas de pagar a próxima.
+export type OrigemCredito = "ANTECIPACAO" | "BONIFICACAO" | "AJUSTE" | "USO";
+
+export interface Credito {
+  id: number;
+  clienteId: number;
+  clienteNome: string;
+  data: string;
+  origem: OrigemCredito;
+  valor: number;
+  pagamentoId: number | null;
+  observacao: string | null;
+}
+
+export interface SaldoCredito {
+  clienteId: number;
+  clienteNome: string;
+  clientePaiId: number | null;
+  clientePaiNome: string | null;
+  antecipado: number;
+  bonificado: number;
+  ajuste: number;
+  usado: number;
+  saldo: number;
 }
