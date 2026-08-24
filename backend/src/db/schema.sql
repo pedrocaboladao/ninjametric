@@ -1299,3 +1299,32 @@ CREATE TABLE IF NOT EXISTS fabrica_ml_importado (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_ml_importado_pedido
   ON fabrica_ml_importado (pedido_id);
+
+-- Venda que não vem da API do Mercado Livre: Shopee e venda direta.
+--
+-- A API só enxerga o que passou pelo ML — medido num período de 7 dias, isso é
+-- 65% do que a fábrica realmente vendeu. O resto sai da Shopee e da venda
+-- direta, e hoje o funcionário digita tudo à mão.
+--
+-- Guarda a origem e a linha crua do que foi colado: se o mesmo arquivo for
+-- importado duas vezes, dá pra ver o que já entrou em vez de duplicar o
+-- faturamento.
+CREATE TABLE IF NOT EXISTS fabrica_venda_importada (
+  id SERIAL PRIMARY KEY,
+  origem TEXT NOT NULL,
+  -- identificador do pedido no canal de origem, quando existe
+  documento TEXT,
+  cliente_id INTEGER REFERENCES fabrica_clientes(id) ON DELETE SET NULL,
+  pedido_id INTEGER REFERENCES fabrica_pedidos(id) ON DELETE CASCADE,
+  data_venda DATE NOT NULL,
+  sku TEXT,
+  quantidade NUMERIC(12, 3) NOT NULL DEFAULT 0,
+  valor NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  importado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_venda_importada_pedido
+  ON fabrica_venda_importada (pedido_id);
+-- a mesma venda não entra duas vezes: canal + documento + sku é a identidade
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_venda_importada_unica
+  ON fabrica_venda_importada (origem, documento, sku)
+  WHERE documento IS NOT NULL;
