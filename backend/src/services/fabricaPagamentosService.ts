@@ -1,7 +1,7 @@
 import { pool } from "../db/pool";
 import { dataIso, dataIsoOuNulo } from "./fabricaData";
 import { creditoPorCliente } from "./fabricaDevolucoesService";
-import { bonificarSeQuitou } from "./fabricaCreditosService";
+import { bonificarPagamento } from "./fabricaCreditosService";
 
 // Conta corrente das lojas com a fábrica.
 //
@@ -226,7 +226,15 @@ export async function registrarPagamento(
   valor: number,
   data: string | null,
   observacao: string | null
-): Promise<{ id: number; saldo: number; bonificacao: number }> {
+): Promise<{
+  id: number;
+  saldo: number;
+  bonificacao: number;
+  // pagou parte: o credito saiu, mas so vira dela quitando
+  provisorio: boolean;
+  // provisorios de pagamentos anteriores que este PIX confirmou
+  confirmados: number;
+}> {
   // saldo antes do pagamento: é o que diz se este PIX quitou a conta ou só
   // abateu parte dela, e só quitando 100% a loja ganha os 3,5%
   const antes = (await listarContaCorrente()).find((c) => c.clienteId === clienteId);
@@ -235,6 +243,8 @@ export async function registrarPagamento(
   const cliente = await pool.connect();
   let id: number;
   let bonificacao = 0;
+  let provisorio = false;
+  let confirmados = 0;
   try {
     await cliente.query("BEGIN");
     const { rows } = await cliente.query(
@@ -244,7 +254,7 @@ export async function registrarPagamento(
       [clienteId, data, valor, observacao]
     );
     id = Number(rows[0].id);
-    bonificacao = await bonificarSeQuitou(
+    const b = await bonificarPagamento(
       cliente,
       clienteId,
       id,
@@ -253,6 +263,9 @@ export async function registrarPagamento(
       saldoAntes,
       saldoAntes - valor
     );
+    bonificacao = b.bonus;
+    provisorio = b.provisorio;
+    confirmados = b.confirmados;
     await cliente.query("COMMIT");
   } catch (err) {
     await cliente.query("ROLLBACK");
@@ -264,9 +277,17 @@ export async function registrarPagamento(
   // devolve o saldo que sobrou: pagou 90 de 100, ficam 10 pra próxima semana
   const contas = await listarContaCorrente();
   const conta = contas.find((c) => c.clienteId === clienteId);
-  return { id, saldo: conta?.saldo ?? 0, bonificacao };
+  return { id, saldo: conta?.saldo ?? 0, bonificacao, provisorio, confirmados };
 }
 
 export async function excluirPagamento(id: number): Promise<void> {
   await pool.query("DELETE FROM fabrica_pagamentos WHERE id = $1", [id]);
+}
+
+// Quanto cada loja deve, pro alerta de crédito provisório saber quem ainda não
+// fechou. Fica aqui e não no service de créditos porque o saldo sai da conta
+// corrente, e o caminho contrário criaria import circular.
+export async function devendoPorCliente(): Promise<Map<number, number>> {
+  const contas = await listarContaCorrente();
+  return new Map(contas.map((c) => [c.clienteId, c.saldo]));
 }

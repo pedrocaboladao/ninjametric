@@ -16,6 +16,7 @@ import {
   lancarCredito,
   definirPercentualBonificacao,
   excluirCredito,
+  excluirProvisorios,
   fetchExtrato,
   fetchPagamentos,
   registrarPagamento,
@@ -38,6 +39,7 @@ import type {
   ContaCorrente,
   Credito,
   SaldoCredito,
+  AlertaProvisorio,
   Pagamento,
   LinhaExtrato,
   Devolucao,
@@ -97,6 +99,7 @@ export function FabricaPedidos() {
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
   const [saldosCredito, setSaldosCredito] = useState<SaldoCredito[]>([]);
+  const [alertasCredito, setAlertasCredito] = useState<AlertaProvisorio[]>([]);
   const [percentual, setPercentual] = useState(3.5);
   const [percentualEdit, setPercentualEdit] = useState("");
   const [antCliente, setAntCliente] = useState("");
@@ -160,6 +163,7 @@ export function FabricaPedidos() {
       setContaCorrente(cc);
       setCreditos(cr.creditos);
       setSaldosCredito(cr.saldos);
+      setAlertasCredito(cr.alertas);
       setPercentual(cr.percentual);
       setPagamentos(pg);
       setDevolucoes(dv.devolucoes);
@@ -393,6 +397,29 @@ export function FabricaPedidos() {
     }
   }
 
+  async function derrubarProvisorio(a: AlertaProvisorio) {
+    if (
+      !window.confirm(
+        `Excluir ${formatCurrency(a.provisorio)} de bonifica\u00e7\u00e3o provis\u00f3ria de ${
+          a.clienteNome
+        }? Ela ainda deve ${formatCurrency(a.devendo)} do m\u00eas ${a.mesMaisAntigo}.`
+      )
+    )
+      return;
+    try {
+      const r = await excluirProvisorios(a.clienteId);
+      setErro(null);
+      setAviso(
+        `${r.excluidos} cr\u00e9dito${r.excluidos > 1 ? "s" : ""} provis\u00f3rio${
+          r.excluidos > 1 ? "s" : ""
+        } de ${a.clienteNome} exclu\u00edd${r.excluidos > 1 ? "os" : "o"}.`
+      );
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao excluir o cr\u00e9dito provis\u00f3rio.");
+    }
+  }
+
   async function salvarPercentual() {
     const p = num(percentualEdit);
     if (!Number.isFinite(p) || p < 0 || p > 100)
@@ -436,10 +463,22 @@ export function FabricaPedidos() {
       });
       setAviso(
         r.saldo > 0.005
-          ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana. Sem bonificação: ela só sai quitando 100%.`
-          : r.bonificacao > 0
-            ? `PIX registrado, loja zerada. Bonificação de ${formatCurrency(r.bonificacao)} (${percentual}%) creditada pra próxima compra.`
-            : "PIX registrado. A loja está zerada."
+          ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana. ${formatCurrency(
+              r.bonificacao
+            )} de bonificação lançada como PROVISÓRIA: só vira dela quitando o mês.`
+          : r.confirmados > 0
+            ? `PIX registrado, loja zerada. ${formatCurrency(
+                r.bonificacao
+              )} de bonificação mais ${r.confirmados} crédito${
+                r.confirmados > 1 ? "s" : ""
+              } provisório${r.confirmados > 1 ? "s" : ""} que agora é${
+                r.confirmados > 1 ? "" : ""
+              } dela de vez.`
+            : r.bonificacao > 0
+              ? `PIX registrado, loja zerada. Bonificação de ${formatCurrency(
+                  r.bonificacao
+                )} (${percentual}%) creditada pra próxima compra.`
+              : "PIX registrado. A loja está zerada."
       );
       setPagValor("");
       setPagObs("");
@@ -1284,10 +1323,12 @@ export function FabricaPedidos() {
               <h2>Crédito das lojas</h2>
               <p className="financeiro-td-mudo">
                 Duas coisas viram crédito: a loja <strong>antecipar</strong> dinheiro antes de
-                comprar, e <strong>quitar 100%</strong> do fechamento, que rende{" "}
-                {percentual}% sobre o que ela pagou. Pagou parte? Não ganha nada — é isso que faz
-                o prêmio valer. Nenhum dos dois é desconto sobre a venda: a venda saiu pelo valor
-                cheio, o crédito só muda de onde vem o dinheiro da próxima.
+                comprar, e <strong>pagar</strong>, que rende {percentual}% sobre o valor pago.
+                Pagou 90 de 100 e já leva os {percentual}% dos 90 — mas como{" "}
+                <strong>provisório</strong>: só vira dela quando quitar. Virou o mês devendo o
+                anterior? O alerta acende e o crédito pode ser excluído. Nada disso é desconto
+                sobre a venda: a venda saiu pelo valor cheio, o crédito só muda de onde vem o
+                dinheiro da próxima.
               </p>
             </div>
             <div>
@@ -1295,6 +1336,56 @@ export function FabricaPedidos() {
               <div className="financeiro-stat-valor">{formatCurrency(totalCredito)}</div>
             </div>
           </div>
+
+          {alertasCredito.length > 0 && (
+            <div className="credito-alerta">
+              <p>
+                <strong>
+                  {alertasCredito.filter((a) => a.venceu).length > 0
+                    ? "Bonificação provisória vencida"
+                    : "Bonificação provisória em aberto"}
+                </strong>{" "}
+                — estas lojas levaram os {percentual}% sobre o que pagaram, mas ainda não
+                quitaram. Quem virou o mês devendo não fechou o anterior: o crédito deveria
+                cair.
+              </p>
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    <th>LOJA</th>
+                    <th>DESDE</th>
+                    <th className="financeiro-th-numero">PROVISÓRIO</th>
+                    <th className="financeiro-th-numero">AINDA DEVE</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {alertasCredito.map((a) => (
+                    <tr key={a.clienteId}>
+                      <td>{a.clienteNome}</td>
+                      <td className="financeiro-td-mudo">
+                        {a.mesMaisAntigo}
+                        {a.venceu && <strong> · virou o mês</strong>}
+                      </td>
+                      <td className="financeiro-th-numero">{formatCurrency(a.provisorio)}</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {formatCurrency(a.devendo)}
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className={a.venceu ? "btn-responder" : "btn-excluir"}
+                          onClick={() => void derrubarProvisorio(a)}
+                        >
+                          Excluir crédito
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           <div className="financeiro-filtros">
             <BuscaSelecao
@@ -1440,6 +1531,7 @@ export function FabricaPedidos() {
                           : c.origem === "USO"
                             ? "Abatido"
                             : "Ajuste"}
+                      {c.provisorio && <strong> · provisório</strong>}
                     </td>
                     <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
                     <td className="financeiro-td-mudo">{c.observacao ?? "\u2014"}</td>
