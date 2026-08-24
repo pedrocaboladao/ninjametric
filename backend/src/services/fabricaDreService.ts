@@ -44,6 +44,15 @@ export interface Dre {
   receitaDeDuasFontes: boolean;
   // credito das devolucoes: reduz a receita porque a venda foi desfeita
   devolucoes: number;
+  // Bonificacao de 3,5% por pagar em dia. Nao e desconto sobre a venda: a
+  // venda saiu pelo valor cheio e o premio vira credito pra proxima compra.
+  // Mas e dinheiro que a fabrica deixa de receber, entao sai da receita aqui
+  // — senao a margem fica alta por causa de um desconto que ja foi dado.
+  //
+  // A antecipacao NAO entra: aquilo e a loja pagando antes, nao a fabrica
+  // ganhando menos.
+  bonificacao: number;
+  percentualBonificacao: number;
   // unidades que voltaram e unidades que viraram perda (estourado/quebrado)
   unidadesDevolvidas: number;
   unidadesPerdidas: number;
@@ -145,11 +154,21 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   const de = deEntrada || padrao.de;
   const ate = ateEntrada || padrao.ate;
 
-  const [aliquota, devolucao, depreciacao] = await Promise.all([
+  const [aliquota, devolucao, depreciacao, bonif] = await Promise.all([
     aliquotaDoMes(de),
     totaisDoPeriodo(de, ate),
     depreciacaoDoMes(de),
+    // so BONIFICACAO: a antecipacao e forma de pagamento, nao custo
+    pool.query<{ total: string; percentual: string }>(
+      `SELECT COALESCE(SUM(cr.valor), 0) AS total,
+              (SELECT percentual FROM fabrica_bonificacao WHERE id = 1) AS percentual
+       FROM fabrica_creditos cr
+       WHERE cr.origem = 'BONIFICACAO' AND cr.data BETWEEN $1::date AND $2::date`,
+      [de, ate]
+    ),
   ]);
+  const bonificacao = Number(bonif.rows[0]?.total ?? 0);
+  const percentualBonif = Number(bonif.rows[0]?.percentual ?? 3.5);
 
   const [vendas, contas, resumoPedidos, receber] = await Promise.all([
     // receita e custo saem do item do pedido, onde ficaram GRAVADOS no
@@ -220,7 +239,7 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   const receitaLancada = Number(receber.rows[0]?.total ?? 0);
   const receita = receitaPedidos + receitaLancada;
   // a venda devolvida foi desfeita: nao pode pagar imposto nem ficar na receita
-  const receitaVendas = receita - devolucao.credito;
+  const receitaVendas = receita - devolucao.credito - bonificacao;
   const imposto = receitaVendas * (aliquota.percentual / 100);
   const receitaLiquida = receitaVendas - imposto;
   // o produto que voltou inteiro esta na prateleira de novo: o custo dele sai
@@ -291,6 +310,8 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     receitaLancada,
     receitaDeDuasFontes: receitaPedidos > 0 && receitaLancada > 0,
     devolucoes: devolucao.credito,
+    bonificacao,
+    percentualBonificacao: percentualBonif,
     unidadesDevolvidas: devolucao.unidades,
     unidadesPerdidas: devolucao.perdidas,
     receitaVendas,
