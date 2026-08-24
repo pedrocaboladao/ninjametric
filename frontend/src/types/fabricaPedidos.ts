@@ -217,3 +217,33 @@ export interface SaldoCredito {
   // o que de fato abate hoje — só o que já está confirmado
   saldo: number;
 }
+
+// Idade do saldo: ha quanto tempo cada loja esta devendo.
+//
+// A conta corrente diz quanto, nunca desde quando — pagamento parcial e a
+// regra e ninguem escolhe qual pedido foi quitado. A convencao usada e a que a
+// fabrica ja pratica: paga-se o mais velho primeiro.
+export interface FaixaIdade {
+  rotulo: string;
+  valor: number;
+}
+
+export interface IdadeCliente {
+  clienteId: number;
+  clienteNome: string;
+  clientePaiId: number | null;
+  clientePaiNome: string | null;
+  total: number;
+  aVencer: number;
+  faixas: FaixaIdade[];
+  maisVelho: string | null;
+  diasMaisVelho: number;
+}
+
+export interface IdadeSaldo {
+  hoje: string;
+  // prazo do ciclo: pega em sete dias, paga no oitavo
+  diasAteVencer: number;
+  clientes: IdadeCliente[];
+  totais: { total: number; aVencer: number; faixas: FaixaIdade[] };
+}

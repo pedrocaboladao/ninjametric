@@ -6345,3 +6345,13 @@ button.contas-cartao:hover {
 .credito-alerta > p {
   margin: 0 0 10px;
 }
+
+/* Faixa de atraso com valor dentro. Marca so a borda: pintar o fundo inteiro
+   deixaria a linha de cartoes parecendo um alarme quando na verdade uma parte
+   do atraso e normal no ciclo semanal. */
+.contas-cartao-alerta {
+  border-color: #b45309;
+}
+.contas-cartao-alerta strong {
+  color: #b45309;
+}

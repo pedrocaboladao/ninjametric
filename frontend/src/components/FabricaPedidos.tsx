@@ -11,6 +11,7 @@ import {
   registrarAjusteProduto,
   excluirAjusteProduto,
   fetchContaCorrente,
+  fetchIdadeDoSaldo,
   fetchCreditos,
   lancarAntecipacao,
   lancarCredito,
@@ -37,6 +38,7 @@ import type {
   EstoqueProduto,
   AjusteProduto,
   ContaCorrente,
+  IdadeSaldo,
   Credito,
   SaldoCredito,
   AlertaProvisorio,
@@ -84,6 +86,7 @@ export function FabricaPedidos() {
   const [estoque, setEstoque] = useState<EstoqueProduto[]>([]);
   const [ajustes, setAjustes] = useState<AjusteProduto[]>([]);
   const [contaCorrente, setContaCorrente] = useState<ContaCorrente[]>([]);
+  const [idade, setIdade] = useState<IdadeSaldo | null>(null);
   const [pagamentos, setPagamentos] = useState<Pagamento[]>([]);
   const [extrato, setExtrato] = useState<LinhaExtrato[] | null>(null);
   const [extratoDe, setExtratoDe] = useState<ContaCorrente | null>(null);
@@ -159,13 +162,15 @@ export function FabricaPedidos() {
         fetchEstoqueProdutos(),
         fetchAjustesProduto(),
       ]);
-      const [cc, pg, dv, cr] = await Promise.all([
+      const [cc, pg, dv, cr, id] = await Promise.all([
         fetchContaCorrente(),
         fetchPagamentos(),
         fetchDevolucoes(),
         fetchCreditos(),
+        fetchIdadeDoSaldo(),
       ]);
       setContaCorrente(cc);
+      setIdade(id);
       setCreditos(cr.creditos);
       setSaldosCredito(cr.saldos);
       setAlertasCredito(cr.alertas);
@@ -1279,6 +1284,84 @@ export function FabricaPedidos() {
               </tbody>
             </table>
           </div>
+
+          {idade && idade.clientes.length > 0 && (
+            <>
+              <h2>Idade do saldo</h2>
+              <p className="financeiro-td-mudo">
+                Há quanto tempo cada loja está devendo. A conta corrente diz quanto, nunca desde
+                quando — pagamento parcial é a regra aqui e ninguém escolhe qual pedido foi
+                quitado. Então vale a convenção que a fábrica já pratica:{" "}
+                <strong>o mais velho é pago primeiro</strong>. O que sobra sem cobertura é o que
+                está velho. Vencimento em {idade.diasAteVencer} dias, que é o ciclo: pega em sete,
+                paga no oitavo.
+              </p>
+
+              <div className="contas-cartoes">
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">A VENCER</span>
+                  <strong>{formatCurrency(idade.totais.aVencer)}</strong>
+                </div>
+                {idade.totais.faixas.map((f) => (
+                  <div
+                    key={f.rotulo}
+                    className={f.valor > 0 ? "contas-cartao contas-cartao-alerta" : "contas-cartao"}
+                  >
+                    <span className="financeiro-stat-label">{f.rotulo.toUpperCase()}</span>
+                    <strong>{f.valor ? formatCurrency(f.valor) : "—"}</strong>
+                  </div>
+                ))}
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">TOTAL</span>
+                  <strong>{formatCurrency(idade.totais.total)}</strong>
+                </div>
+              </div>
+
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>LOJA</th>
+                      <th>QUEM PAGA</th>
+                      <th className="financeiro-th-numero">A VENCER</th>
+                      {idade.totais.faixas.map((f) => (
+                        <th key={f.rotulo} className="financeiro-th-numero">
+                          {f.rotulo.toUpperCase()}
+                        </th>
+                      ))}
+                      <th className="financeiro-th-numero">TOTAL</th>
+                      <th>ATRASO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {idade.clientes.map((c) => (
+                      <tr key={c.clienteId}>
+                        <td>{c.clienteNome}</td>
+                        <td className="financeiro-td-mudo">{c.clientePaiNome ?? "ela mesma"}</td>
+                        <td className="financeiro-th-numero financeiro-td-mudo">
+                          {c.aVencer ? formatCurrency(c.aVencer) : "—"}
+                        </td>
+                        {c.faixas.map((f) => (
+                          <td key={f.rotulo} className="financeiro-th-numero financeiro-td-mudo">
+                            {f.valor ? formatCurrency(f.valor) : "—"}
+                          </td>
+                        ))}
+                        <td className="financeiro-th-numero">{formatCurrency(c.total)}</td>
+                        <td className={c.diasMaisVelho > 30 ? undefined : "financeiro-td-mudo"}>
+                          {c.diasMaisVelho > 0
+                            ? `${c.diasMaisVelho} dia${c.diasMaisVelho === 1 ? "" : "s"}`
+                            : "em dia"}
+                          {c.maisVelho && c.diasMaisVelho > 0 && (
+                            <span className="financeiro-td-mudo"> · desde {data(c.maisVelho)}</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
           {extratoDe && (
             <>

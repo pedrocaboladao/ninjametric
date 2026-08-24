@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { conferirVendasMl } from "../services/fabricaVendasMlService";
+import { idadeDoSaldo } from "../services/fabricaIdadeService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import {
   listarPedidos,
@@ -95,6 +96,17 @@ fabricaPedidosRouter.get("/", async (req, res) => {
 
 // Conta corrente e pagamentos vivem aqui porque sao a mesma tela e a mesma
 // pessoa: quem lanca o pedido e quem fecha na terca e recebe o PIX.
+// Idade do saldo: ha quanto tempo cada loja esta devendo. Fica antes de
+// "/conta-corrente/:clienteId" nao por acaso — uma rota com parametro casaria
+// com "idade-do-saldo" e devolveria "id invalido".
+fabricaPedidosRouter.get("/idade-do-saldo", async (_req, res) => {
+  try {
+    res.json(await idadeDoSaldo());
+  } catch (err) {
+    erro(res, err, "Falha ao calcular a idade do saldo.");
+  }
+});
+
 fabricaPedidosRouter.get("/conta-corrente", async (_req, res) => {
   try {
     res.json({ contas: await listarContaCorrente() });
