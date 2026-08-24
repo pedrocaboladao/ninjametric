@@ -5,6 +5,7 @@ import type {
   EstoqueProduto,
   AjusteProduto,
   ContaCorrente,
+  IdadeSaldo,
   Credito,
   SaldoCredito,
   AlertaProvisorio,
@@ -349,4 +350,11 @@ export async function excluirCredito(id: number): Promise<void> {
     credentials: "include",
   });
   if (!res.ok) await tratarResposta(res);
+}
+
+export async function fetchIdadeDoSaldo(): Promise<IdadeSaldo> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/idade-do-saldo`, {
+    credentials: "include",
+  });
+  return tratarResposta<IdadeSaldo>(res);
 }
