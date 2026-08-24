@@ -6330,3 +6330,18 @@ button.contas-cartao:hover {
 .origem-abas span {
   font-size: 12px;
 }
+
+/* Alerta de bonificacao provisoria: a loja levou os 3,5% e nao quitou. Fica
+   com borda quente porque a acao dele e destrutiva de proposito — apagar um
+   credito que a loja ja viu na conta dela. */
+.credito-alerta {
+  border: 1px solid #b45309;
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: rgba(180, 83, 9, 0.06);
+}
+.credito-alerta > p {
+  margin: 0 0 10px;
+}

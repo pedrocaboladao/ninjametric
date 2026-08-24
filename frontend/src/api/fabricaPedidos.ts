@@ -7,6 +7,7 @@ import type {
   ContaCorrente,
   Credito,
   SaldoCredito,
+  AlertaProvisorio,
   OrigemCredito,
   Pagamento,
   LinhaExtrato,
@@ -158,14 +159,26 @@ export async function registrarPagamento(entrada: {
   valor: number;
   data?: string | null;
   observacao?: string | null;
-}): Promise<{ id: number; saldo: number; bonificacao: number }> {
+}): Promise<{
+  id: number;
+  saldo: number;
+  bonificacao: number;
+  provisorio: boolean;
+  confirmados: number;
+}> {
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify(entrada),
   });
-  return tratarResposta<{ id: number; saldo: number; bonificacao: number }>(res);
+  return tratarResposta<{
+    id: number;
+    saldo: number;
+    bonificacao: number;
+    provisorio: boolean;
+    confirmados: number;
+  }>(res);
 }
 
 export async function excluirPagamento(id: number): Promise<void> {
@@ -267,9 +280,24 @@ export async function fetchCreditos(): Promise<{
   creditos: Credito[];
   saldos: SaldoCredito[];
   percentual: number;
+  alertas: AlertaProvisorio[];
 }> {
   const res = await fetch(`${API_BASE}/api/fabrica-creditos`, { credentials: "include" });
-  return tratarResposta<{ creditos: Credito[]; saldos: SaldoCredito[]; percentual: number }>(res);
+  return tratarResposta<{
+    creditos: Credito[];
+    saldos: SaldoCredito[];
+    percentual: number;
+    alertas: AlertaProvisorio[];
+  }>(res);
+}
+
+// Tira os provisórios de uma loja: ela virou o mês sem quitar, perdeu o prêmio.
+export async function excluirProvisorios(clienteId: number): Promise<{ excluidos: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos/provisorios/${clienteId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return tratarResposta<{ excluidos: number }>(res);
 }
 
 // A antecipação e a bonificação dela saem de uma chamada só: separar deixaria

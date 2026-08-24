@@ -1394,3 +1394,14 @@ CREATE TABLE IF NOT EXISTS fabrica_bonificacao (
 );
 INSERT INTO fabrica_bonificacao (id, percentual) VALUES (1, 3.5)
   ON CONFLICT (id) DO NOTHING;
+
+-- Bonificação provisória: a loja pagou parte e já leva os 3,5% sobre o que
+-- pagou, mas o crédito só é dela de verdade quando quitar. Se virar o mês sem
+-- quitar o anterior, a tela avisa e o crédito pode ser excluído.
+--
+-- Guardado como flag em vez de tabela à parte: é o mesmo crédito, só ainda não
+-- confirmado. Duas tabelas obrigariam a somar as duas em todo lugar que hoje
+-- soma uma.
+ALTER TABLE fabrica_creditos ADD COLUMN IF NOT EXISTS provisorio BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_fabrica_creditos_provisorio
+  ON fabrica_creditos (cliente_id) WHERE provisorio;

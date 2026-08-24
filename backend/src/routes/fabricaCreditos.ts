@@ -8,8 +8,11 @@ import {
   lancarAntecipacao,
   percentualBonificacao,
   definirPercentualBonificacao,
+  alertasProvisorios,
+  excluirProvisorios,
   type OrigemCredito,
 } from "../services/fabricaCreditosService";
+import { devendoPorCliente } from "../services/fabricaPagamentosService";
 
 export const fabricaCreditosRouter = Router();
 
@@ -37,12 +40,14 @@ function data(v: unknown): string {
 fabricaCreditosRouter.get("/", async (req, res) => {
   const clienteId = Number(req.query.clienteId);
   try {
-    const [creditos, saldos, percentual] = await Promise.all([
+    const [creditos, saldos, percentual, devendo] = await Promise.all([
       listarCreditos(Number.isInteger(clienteId) && clienteId > 0 ? clienteId : undefined),
       saldosPorCliente(),
       percentualBonificacao(),
+      devendoPorCliente(),
     ]);
-    res.json({ creditos, saldos, percentual });
+    const alertas = await alertasProvisorios(devendo);
+    res.json({ creditos, saldos, percentual, alertas });
   } catch (err) {
     erro(res, err, "Falha ao carregar créditos.");
   }
@@ -112,6 +117,19 @@ fabricaCreditosRouter.put("/percentual", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao salvar o percentual.");
+  }
+});
+
+// Botão do alerta: a loja virou o mês sem quitar, então perde o prêmio.
+// Apaga só o que está provisório — antecipação e bonificação já confirmada
+// são dela e não entram nessa.
+fabricaCreditosRouter.delete("/provisorios/:clienteId", async (req, res) => {
+  const id = Number(req.params.clienteId);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  try {
+    res.json({ excluidos: await excluirProvisorios(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir os créditos provisórios.");
   }
 });
 

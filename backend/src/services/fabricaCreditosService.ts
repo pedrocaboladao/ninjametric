@@ -30,6 +30,23 @@ export interface Credito {
   valor: number;
   pagamentoId: number | null;
   observacao: string | null;
+  // pagou parte e já levou os 3,5%, mas ainda não quitou. Vira definitivo no
+  // pagamento que zerar a conta, ou some se ela virar o mês devendo.
+  provisorio: boolean;
+}
+
+// Loja que está com crédito provisório e ainda deve. É a lista que aparece no
+// alerta pra decidir se o crédito fica ou sai.
+export interface AlertaProvisorio {
+  clienteId: number;
+  clienteNome: string;
+  provisorio: number;
+  // quanto ela ainda deve — vem do saldo da conta corrente
+  devendo: number;
+  // mês do crédito mais antigo ainda pendurado, "AAAA-MM"
+  mesMaisAntigo: string;
+  // o mês do crédito já virou e a dívida continua: é este que o Hudson quer ver
+  venceu: boolean;
 }
 
 export interface SaldoCliente {
@@ -54,6 +71,7 @@ interface Linha {
   valor: string;
   pagamento_id: number | null;
   observacao: string | null;
+  provisorio: boolean;
 }
 
 export interface CreditoEntrada {
@@ -84,7 +102,7 @@ export async function definirPercentualBonificacao(percentual: number): Promise<
 export async function listarCreditos(clienteId?: number): Promise<Credito[]> {
   const { rows } = await pool.query<Linha>(
     `SELECT cr.id, cr.cliente_id, c.nome AS cliente_nome, cr.data, cr.origem, cr.valor,
-            cr.pagamento_id, cr.observacao
+            cr.pagamento_id, cr.observacao, cr.provisorio
      FROM fabrica_creditos cr
      JOIN fabrica_clientes c ON c.id = cr.cliente_id
      ${clienteId ? "WHERE cr.cliente_id = $1" : ""}
@@ -100,6 +118,7 @@ export async function listarCreditos(clienteId?: number): Promise<Credito[]> {
     valor: Number(r.valor),
     pagamentoId: r.pagamento_id,
     observacao: r.observacao,
+    provisorio: r.provisorio,
   }));
 }
 
@@ -202,13 +221,15 @@ export async function lancarAntecipacao(
   return { antecipacao: Math.abs(valor), bonificacao: bonus, percentual };
 }
 
-// Bonificação por pagar em dia: 3,5% sobre o que a loja pagou, e só quando o
-// pagamento zera a conta. Pagou 90 de 100 e não ganha nada — é essa a regra
-// que faz o prêmio valer alguma coisa.
+// Bonificação: 3,5% sobre o que a loja pagou, em qualquer pagamento.
+//
+// Pagou 90 de 100 e já leva os 3,5% dos 90 — mas marcado como PROVISÓRIO. Vira
+// definitivo no pagamento que zerar a conta. Se ela virar o mês sem quitar, o
+// alerta aparece e o crédito pode ser excluído.
 //
 // Roda dentro da transação do pagamento: bonificar e depois falhar deixaria
 // crédito de um pagamento que não existe.
-export async function bonificarSeQuitou(
+export async function bonificarPagamento(
   cliente: PoolClient,
   clienteId: number,
   pagamentoId: number,
@@ -216,30 +237,102 @@ export async function bonificarSeQuitou(
   data: string,
   saldoAntes: number,
   saldoDepois: number
-): Promise<number> {
+): Promise<{ bonus: number; provisorio: boolean; confirmados: number }> {
   // não havia dívida: isso é antecipação, e a bonificação dela já sai por
   // lancarAntecipacao. Bonificar aqui pagaria o prêmio duas vezes.
-  if (saldoAntes <= 0.01) return 0;
+  if (saldoAntes <= 0.01) return { bonus: 0, provisorio: false, confirmados: 0 };
+
   // um centavo de folga: NUMERIC fecha certinho, mas o saldo passa por Number()
-  if (saldoDepois > 0.01) return 0;
+  const quitou = saldoDepois <= 0.01;
 
   const cfg = await cliente.query<{ percentual: string }>(
     "SELECT percentual FROM fabrica_bonificacao WHERE id = 1"
   );
   const percentual = cfg.rows[0] ? Number(cfg.rows[0].percentual) : 3.5;
   const bonus = Number(((valorPago * percentual) / 100).toFixed(2));
-  if (bonus <= 0) return 0;
+
+  // quitou: os provisórios que ela vinha acumulando viram dela de vez
+  let confirmados = 0;
+  if (quitou) {
+    const r = await cliente.query(
+      "UPDATE fabrica_creditos SET provisorio = FALSE WHERE cliente_id = $1 AND provisorio",
+      [clienteId]
+    );
+    confirmados = r.rowCount ?? 0;
+  }
+
+  if (bonus <= 0) return { bonus: 0, provisorio: false, confirmados };
 
   await cliente.query(
-    `INSERT INTO fabrica_creditos (cliente_id, data, origem, valor, pagamento_id, observacao)
-     VALUES ($1, $2::date, 'BONIFICACAO', $3, $4, $5)`,
+    `INSERT INTO fabrica_creditos
+       (cliente_id, data, origem, valor, pagamento_id, observacao, provisorio)
+     VALUES ($1, $2::date, 'BONIFICACAO', $3, $4, $5, $6)`,
     [
       clienteId,
       data,
       bonus,
       pagamentoId,
-      `${percentual}% por quitar 100% do fechamento`,
+      quitou
+        ? `${percentual}% por quitar 100% do fechamento`
+        : `${percentual}% sobre o pagamento — provisório até quitar`,
+      !quitou,
     ]
   );
-  return bonus;
+  return { bonus, provisorio: !quitou, confirmados };
+}
+
+// Lojas com crédito provisório pendurado e conta ainda aberta.
+//
+// `venceu` é a regra que o Hudson pediu: o mês do crédito já virou e ela não
+// quitou o anterior. Aí o alerta acende e o botão de excluir aparece.
+export async function alertasProvisorios(
+  devendoPorCliente: Map<number, number>
+): Promise<AlertaProvisorio[]> {
+  const { rows } = await pool.query<{
+    cliente_id: number;
+    cliente_nome: string;
+    total: string;
+    mais_antigo: string;
+  }>(
+    `SELECT cr.cliente_id, c.nome AS cliente_nome,
+            SUM(cr.valor) AS total,
+            to_char(MIN(cr.data), 'YYYY-MM') AS mais_antigo
+     FROM fabrica_creditos cr
+     JOIN fabrica_clientes c ON c.id = cr.cliente_id
+     WHERE cr.provisorio
+     GROUP BY cr.cliente_id, c.nome
+     ORDER BY SUM(cr.valor) DESC`
+  );
+
+  // "agora" no fuso da fábrica, não em UTC: no começo da noite o UTC já virou o
+  // dia e o mês, e o alerta acenderia um dia antes da hora
+  const mesAtual = new Date()
+    .toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+    .slice(0, 7);
+
+  return rows
+    .map((r) => {
+      const devendo = devendoPorCliente.get(r.cliente_id) ?? 0;
+      return {
+        clienteId: r.cliente_id,
+        clienteNome: r.cliente_nome,
+        provisorio: Number(r.total),
+        devendo,
+        mesMaisAntigo: r.mais_antigo,
+        venceu: devendo > 0.005 && r.mais_antigo < mesAtual,
+      };
+    })
+    // quem já quitou não deveria ter provisório nenhum, mas se sobrar um por
+    // exclusão de pagamento ele não precisa virar alerta
+    .filter((a) => a.devendo > 0.005);
+}
+
+// Tira os provisórios de uma loja. É o botão do alerta: ela não fechou o mês,
+// então não leva o prêmio.
+export async function excluirProvisorios(clienteId: number): Promise<number> {
+  const r = await pool.query(
+    "DELETE FROM fabrica_creditos WHERE cliente_id = $1 AND provisorio",
+    [clienteId]
+  );
+  return r.rowCount ?? 0;
 }
