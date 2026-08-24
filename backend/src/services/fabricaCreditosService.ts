@@ -68,6 +68,9 @@ export interface SaldoCliente {
   // dívida que a loja trouxe de antes do sistema. Sempre negativo.
   anterior: number;
   usado: number;
+  // bonificação pendurada: aparece, mas não abate até a loja quitar
+  provisorio: number;
+  // o que de fato abate hoje — só o que já está confirmado
   saldo: number;
 }
 
@@ -142,6 +145,7 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
     ajuste: string;
     anterior: string;
     usado: string;
+    provisorio: string;
     saldo: string;
   }>(
     `SELECT c.id AS cliente_id, c.nome AS cliente_nome,
@@ -151,14 +155,15 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'AJUSTE'), 0)      AS ajuste,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'SALDO_ANTERIOR'), 0) AS anterior,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'USO'), 0)         AS usado,
-            COALESCE(SUM(cr.valor), 0)                                          AS saldo
+            COALESCE(SUM(cr.valor) FILTER (WHERE cr.provisorio), 0)             AS provisorio,
+            COALESCE(SUM(cr.valor) FILTER (WHERE NOT cr.provisorio), 0)         AS saldo
      FROM fabrica_clientes c
      LEFT JOIN fabrica_clientes p ON p.id = c.cliente_pai_id
      LEFT JOIN fabrica_creditos cr ON cr.cliente_id = c.id
      GROUP BY c.id, c.nome, c.cliente_pai_id, p.nome
      HAVING COALESCE(SUM(cr.valor), 0) <> 0
          OR COUNT(cr.id) FILTER (WHERE cr.origem = 'SALDO_ANTERIOR') > 0
-     ORDER BY COALESCE(SUM(cr.valor), 0) DESC`
+     ORDER BY COALESCE(SUM(cr.valor) FILTER (WHERE NOT cr.provisorio), 0) DESC`
   );
   return rows.map((r) => ({
     clienteId: r.cliente_id,
@@ -170,13 +175,15 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
     ajuste: Number(r.ajuste),
     anterior: Number(r.anterior),
     usado: Number(r.usado),
+    provisorio: Number(r.provisorio),
     saldo: Number(r.saldo),
   }));
 }
 
 export async function saldoDoCliente(clienteId: number): Promise<number> {
   const { rows } = await pool.query<{ saldo: string }>(
-    "SELECT COALESCE(SUM(valor), 0) AS saldo FROM fabrica_creditos WHERE cliente_id = $1",
+    `SELECT COALESCE(SUM(valor), 0) AS saldo
+     FROM fabrica_creditos WHERE cliente_id = $1 AND NOT provisorio`,
     [clienteId]
   );
   return Number(rows[0]?.saldo ?? 0);

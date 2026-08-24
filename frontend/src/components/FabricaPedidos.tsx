@@ -306,9 +306,14 @@ export function FabricaPedidos() {
     );
   }
 
-  // credito parado nas lojas: e desconto ja prometido, nao dinheiro da fabrica
+  // credito parado nas lojas: e desconto ja prometido, nao dinheiro da fabrica.
+  // So o confirmado entra: o provisorio ainda pode cair no fim do mes.
   const totalCredito = useMemo(
     () => saldosCredito.reduce((t, c) => t + Math.max(0, c.saldo), 0),
+    [saldosCredito]
+  );
+  const totalProvisorio = useMemo(
+    () => saldosCredito.reduce((t, c) => t + c.provisorio, 0),
     [saldosCredito]
   );
 
@@ -499,7 +504,7 @@ export function FabricaPedidos() {
         r.saldo > 0.005
           ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana. ${formatCurrency(
               r.bonificacao
-            )} de bonificação lançada como PROVISÓRIA: só vira dela quitando o mês.`
+            )} de bonificação guardada como PROVISÓRIA: não abate nada até ela quitar.`
           : r.confirmados > 0
             ? `PIX registrado, loja zerada. ${formatCurrency(
                 r.bonificacao
@@ -1359,15 +1364,21 @@ export function FabricaPedidos() {
                 Duas coisas viram crédito: a loja <strong>antecipar</strong> dinheiro antes de
                 comprar, e <strong>pagar</strong>, que rende {percentual}% sobre o valor pago.
                 Pagou 90 de 100 e já leva os {percentual}% dos 90 — mas como{" "}
-                <strong>provisório</strong>: só vira dela quando quitar. Virou o mês devendo o
-                anterior? O alerta acende e o crédito pode ser excluído. Nada disso é desconto
-                sobre a venda: a venda saiu pelo valor cheio, o crédito só muda de onde vem o
-                dinheiro da próxima.
+                <strong>provisório</strong>, e provisório <strong>não abate nada</strong>: fica
+                guardado até ela quitar. Quitou, vira dela e passa a abater. Virou o mês devendo?
+                O alerta acende e o crédito pode ser excluído — mas se você esquecer de clicar,
+                ela também não leva. Nada disso é desconto sobre a venda: a venda saiu pelo valor
+                cheio, o crédito só muda de onde vem o dinheiro da próxima.
               </p>
             </div>
             <div>
-              <div className="financeiro-stat-label">CRÉDITO EM ABERTO</div>
+              <div className="financeiro-stat-label">CRÉDITO QUE ABATE</div>
               <div className="financeiro-stat-valor">{formatCurrency(totalCredito)}</div>
+              {totalProvisorio > 0 && (
+                <div className="financeiro-td-mudo">
+                  + {formatCurrency(totalProvisorio)} provisório, parado
+                </div>
+              )}
             </div>
           </div>
 
@@ -1380,8 +1391,9 @@ export function FabricaPedidos() {
                     : "Bonificação provisória em aberto"}
                 </strong>{" "}
                 — estas lojas levaram os {percentual}% sobre o que pagaram, mas ainda não
-                quitaram. Quem virou o mês devendo não fechou o anterior: o crédito deveria
-                cair.
+                quitaram. <strong>Nada disso está abatendo</strong> — o provisório fica parado
+                até ela quitar. Quem virou o mês devendo não fechou o anterior: aí o crédito
+                pode cair de vez. Se você não clicar, ele só continua parado.
               </p>
               <table className="financeiro-tabela">
                 <thead>
@@ -1519,14 +1531,15 @@ export function FabricaPedidos() {
                   <th className="financeiro-th-numero">DÍVIDA ANTERIOR</th>
                   <th className="financeiro-th-numero">AJUSTES</th>
                   <th className="financeiro-th-numero">USADO</th>
-                  <th className="financeiro-th-numero">SALDO</th>
+                  <th className="financeiro-th-numero">PROVISÓRIO</th>
+                  <th className="financeiro-th-numero">SALDO QUE ABATE</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {!saldosCredito.length && (
                   <tr>
-                    <td colSpan={9}>
+                    <td colSpan={10}>
                       Nenhuma loja com crédito ou dívida carregada. Aparece aqui quando alguém
                       antecipar, pagar, ou receber o saldo de abertura.
                     </td>
@@ -1550,6 +1563,9 @@ export function FabricaPedidos() {
                     </td>
                     <td className="financeiro-th-numero financeiro-td-mudo">
                       {sc.usado ? formatCurrency(sc.usado) : "\u2014"}
+                    </td>
+                    <td className="financeiro-th-numero financeiro-td-mudo">
+                      {sc.provisorio ? formatCurrency(sc.provisorio) : "—"}
                     </td>
                     <td className="financeiro-th-numero">{formatCurrency(sc.saldo)}</td>
                     <td>
