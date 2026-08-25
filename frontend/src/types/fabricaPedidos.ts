@@ -240,6 +240,55 @@ export interface IdadeCliente {
   diasMaisVelho: number;
 }
 
+// Uma linha da planilha de venda depois de conferida.
+export interface LinhaPlanilha {
+  linha: number;
+  cliente: string;
+  clienteId: number | null;
+  data: string | null;
+  documento: string | null;
+  sku: string;
+  produtoId: number | null;
+  produtoNome: string | null;
+  quantidade: number;
+  precoUnitario: number;
+  total: number;
+  problema: string | null;
+  jaImportada: boolean;
+}
+
+// SKU que apareceu na planilha e nao existe no cadastro. E o alerta pra
+// cadastrar na hora, com o preco que a loja pagou de verdade como sugestao.
+export interface SkuFaltando {
+  sku: string;
+  linhas: number;
+  quantidade: number;
+  valor: number;
+  precoUnitario: number;
+  clientes: string[];
+}
+
+export interface ConferenciaPlanilha {
+  origem: string;
+  linhas: LinhaPlanilha[];
+  prontas: number;
+  comProblema: number;
+  jaImportadas: number;
+  totalValor: number;
+  colunas: Record<string, string>;
+  linhasNoArquivo: number;
+  linhasVazias: number;
+  skusFaltando: SkuFaltando[];
+}
+
+export interface ResultadoImportacao {
+  pedidosCriados: number;
+  itensLancados: number;
+  valorLancado: number;
+  puladas: number;
+  motivos: Record<string, number>;
+}
+
 export interface IdadeSaldo {
   hoje: string;
   // prazo do ciclo: pega em sete dias, paga no oitavo
