@@ -6,6 +6,8 @@ import type {
   AjusteProduto,
   ContaCorrente,
   IdadeSaldo,
+  ConferenciaPlanilha,
+  ResultadoImportacao,
   Credito,
   SaldoCredito,
   AlertaProvisorio,
@@ -350,6 +352,32 @@ export async function excluirCredito(id: number): Promise<void> {
     credentials: "include",
   });
   if (!res.ok) await tratarResposta(res);
+}
+
+export async function conferirPlanilha(
+  texto: string,
+  origem: string
+): Promise<ConferenciaPlanilha> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/vendas-planilha`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ texto, origem }),
+  });
+  return tratarResposta<ConferenciaPlanilha>(res);
+}
+
+export async function importarPlanilha(
+  texto: string,
+  origem: string
+): Promise<ResultadoImportacao> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/vendas-planilha/importar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ texto, origem }),
+  });
+  return tratarResposta<ResultadoImportacao>(res);
 }
 
 export async function fetchIdadeDoSaldo(): Promise<IdadeSaldo> {

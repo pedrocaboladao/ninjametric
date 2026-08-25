@@ -12,6 +12,8 @@ import {
   excluirAjusteProduto,
   fetchContaCorrente,
   fetchIdadeDoSaldo,
+  conferirPlanilha,
+  importarPlanilha,
   fetchCreditos,
   lancarAntecipacao,
   lancarCredito,
@@ -30,7 +32,7 @@ import {
   definirCreditoDevolucao,
 } from "../api/fabricaPedidos";
 import { fetchFabricaClientes } from "../api/fabricaClientes";
-import { fetchFabricaProdutos } from "../api/fabricaProdutos";
+import { fetchFabricaProdutos, criarFabricaProduto } from "../api/fabricaProdutos";
 import type {
   Pedido,
   PedidoEntrada,
@@ -39,6 +41,8 @@ import type {
   AjusteProduto,
   ContaCorrente,
   IdadeSaldo,
+  ConferenciaPlanilha,
+  SkuFaltando,
   Credito,
   SaldoCredito,
   AlertaProvisorio,
@@ -96,8 +100,20 @@ export function FabricaPedidos() {
   const [erro, setErro] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
   const [aba, setAba] = useState<
-    "pedidos" | "novo" | "estoque" | "fechamento" | "creditos" | "devolucoes"
+    | "pedidos"
+    | "novo"
+    | "importar"
+    | "estoque"
+    | "fechamento"
+    | "creditos"
+    | "devolucoes"
   >("pedidos");
+
+  // importacao de planilha: cola o relatorio, confere, depois lanca
+  const [impTexto, setImpTexto] = useState("");
+  const [impOrigem, setImpOrigem] = useState("SHOPEE");
+  const [conferencia, setConferencia] = useState<ConferenciaPlanilha | null>(null);
+  const [importando, setImportando] = useState(false);
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -355,6 +371,89 @@ export function FabricaPedidos() {
 
   // Antecipação: a loja manda dinheiro antes de comprar. Vira saldo dela mais
   // os 3,5% — os dois lançamentos saem juntos do backend.
+  async function conferir() {
+    if (!impTexto.trim()) return setErro("Cole as linhas da planilha.");
+    try {
+      const c = await conferirPlanilha(impTexto, impOrigem);
+      setConferencia(c);
+      setErro(null);
+      setAviso(
+        `${c.linhas.length} linha${c.linhas.length === 1 ? "" : "s"} lida${
+          c.linhas.length === 1 ? "" : "s"
+        } de ${c.linhasNoArquivo}. ${c.prontas} pronta${c.prontas === 1 ? "" : "s"}, ${
+          c.comProblema
+        } com problema, ${c.jaImportadas} já importada${c.jaImportadas === 1 ? "" : "s"}.`
+      );
+    } catch (e) {
+      setConferencia(null);
+      setErro(e instanceof Error ? e.message : "Falha ao ler a planilha.");
+    }
+  }
+
+  async function importar() {
+    if (!conferencia || conferencia.prontas === 0)
+      return setErro("Nada pronto pra importar. Confira a planilha primeiro.");
+    if (
+      !window.confirm(
+        `Lançar ${conferencia.prontas} linha${
+          conferencia.prontas === 1 ? "" : "s"
+        } como pedido? As com problema ficam de fora e podem ser subidas depois.`
+      )
+    )
+      return;
+    setImportando(true);
+    try {
+      const r = await importarPlanilha(impTexto, impOrigem);
+      setErro(null);
+      setAviso(
+        `${r.pedidosCriados} pedido${r.pedidosCriados === 1 ? "" : "s"} criado${
+          r.pedidosCriados === 1 ? "" : "s"
+        } com ${r.itensLancados} item${r.itensLancados === 1 ? "" : "ns"}, ${formatCurrency(
+          r.valorLancado
+        )}. ${r.puladas} linha${r.puladas === 1 ? "" : "s"} de fora.`
+      );
+      setConferencia(null);
+      setImpTexto("");
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao importar.");
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  // Cadastra o SKU que faltou sem sair da tela: o preco vem do que a loja pagou
+  // de verdade na planilha, que e melhor chute do que deixar em branco.
+  async function cadastrarSkuFaltando(s: SkuFaltando) {
+    const nome = window.prompt(
+      `Nome do produto pro SKU ${s.sku}? Apareceu ${s.linhas}x, ${s.quantidade} un, ` +
+        `${formatCurrency(s.precoUnitario)} cada.`,
+      s.sku
+    );
+    if (nome === null || !nome.trim()) return;
+    try {
+      await criarFabricaProduto({
+        sku: s.sku,
+        nome: nome.trim(),
+        origem: "DISTRIBUIDORA",
+        ean: null,
+        familia: null,
+        custoCompra: null,
+        formulaId: null,
+        embalagemId: null,
+        precoVenda: s.precoUnitario,
+        ativo: true,
+      });
+      setErro(null);
+      setAviso(`${s.sku} cadastrado. Confira a planilha de novo pra ele entrar.`);
+      await carregar();
+      const c = await conferirPlanilha(impTexto, impOrigem);
+      setConferencia(c);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao cadastrar o produto.");
+    }
+  }
+
   async function antecipar() {
     const id = Number(antCliente);
     if (!Number.isInteger(id) || !id) return setErro("Escolha a loja.");
@@ -767,7 +866,17 @@ export function FabricaPedidos() {
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
       <div className="financeiro-filtros">
-        {(["pedidos", "novo", "estoque", "fechamento", "creditos", "devolucoes"] as const).map((a) => (
+        {(
+          [
+            "pedidos",
+            "novo",
+            "importar",
+            "estoque",
+            "fechamento",
+            "creditos",
+            "devolucoes",
+          ] as const
+        ).map((a) => (
           <button
             key={a}
             type="button"
@@ -780,13 +889,19 @@ export function FabricaPedidos() {
                 ? editandoId
                   ? `Editando ${editandoId}`
                   : "Novo pedido"
-                : a === "estoque"
-                  ? `Estoque de produto${alertas.length ? ` (${alertas.length})` : ""}`
-                  : a === "fechamento"
-                    ? "Fechamento"
-                    : a === "creditos"
-                      ? `Créditos${saldosCredito.length ? ` (${saldosCredito.length})` : ""}`
-                      : `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`}
+                : a === "importar"
+                  ? `Importar planilha${
+                      conferencia?.skusFaltando.length
+                        ? ` (${conferencia.skusFaltando.length} SKU)`
+                        : ""
+                    }`
+                  : a === "estoque"
+                    ? `Estoque de produto${alertas.length ? ` (${alertas.length})` : ""}`
+                    : a === "fechamento"
+                      ? "Fechamento"
+                      : a === "creditos"
+                        ? `Créditos${saldosCredito.length ? ` (${saldosCredito.length})` : ""}`
+                        : `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`}
           </button>
         ))}
       </div>
@@ -1038,6 +1153,198 @@ export function FabricaPedidos() {
             que não tem tanto em estoque, mas não impede o lançamento: o pedido pode ser separado
             antes da produção terminar.
           </p>
+        </>
+      )}
+
+      {aba === "importar" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Importar planilha de venda</h2>
+              <p className="financeiro-td-mudo">
+                Cole o relatório direto do Excel — pode ser Shopee, venda direta, ou o que o
+                ERP exporta. Ele descobre as colunas pelo cabeçalho, então não precisa
+                reorganizar nada. Precisa ter <strong>SKU</strong>, porque é o SKU que diz qual
+                produto saiu do estoque; relatório só com número do pedido e total não serve
+                aqui. Nada é lançado antes de você conferir.
+              </p>
+            </div>
+          </div>
+
+          <div className="financeiro-filtros">
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Origem (SHOPEE, ERP...)"
+              value={impOrigem}
+              onChange={(e) => setImpOrigem(e.target.value.toUpperCase())}
+            />
+            <button type="button" className="btn-excluir" onClick={() => void conferir()}>
+              Conferir
+            </button>
+            <button
+              type="button"
+              className="btn-responder"
+              onClick={() => void importar()}
+              disabled={!conferencia || conferencia.prontas === 0 || importando}
+            >
+              {importando
+                ? "Lançando..."
+                : `Lançar ${conferencia?.prontas ?? 0} como pedido`}
+            </button>
+          </div>
+
+          <textarea
+            className="clonar-input"
+            rows={8}
+            placeholder="Cole aqui as linhas da planilha, com o cabeçalho na primeira linha."
+            value={impTexto}
+            onChange={(e) => setImpTexto(e.target.value)}
+            style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
+          />
+
+          {conferencia && (
+            <>
+              <div className="contas-cartoes">
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">PRONTAS</span>
+                  <strong>{conferencia.prontas}</strong>
+                </div>
+                <div
+                  className={
+                    conferencia.comProblema
+                      ? "contas-cartao contas-cartao-alerta"
+                      : "contas-cartao"
+                  }
+                >
+                  <span className="financeiro-stat-label">COM PROBLEMA</span>
+                  <strong>{conferencia.comProblema}</strong>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">JÁ IMPORTADAS</span>
+                  <strong>{conferencia.jaImportadas}</strong>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">VALOR</span>
+                  <strong>{formatCurrency(conferencia.totalValor)}</strong>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">LINHAS NO ARQUIVO</span>
+                  <strong>
+                    {conferencia.linhasNoArquivo}
+                    {conferencia.linhasVazias > 0 && (
+                      <span className="financeiro-td-mudo">
+                        {" "}
+                        · {conferencia.linhasVazias} em branco
+                      </span>
+                    )}
+                  </strong>
+                </div>
+              </div>
+
+              <p className="financeiro-td-mudo">
+                Colunas que reconheci:{" "}
+                {Object.entries(conferencia.colunas)
+                  .map(([campo, titulo]) => `${campo} = "${titulo}"`)
+                  .join(" · ")}
+              </p>
+
+              {conferencia.skusFaltando.length > 0 && (
+                <div className="credito-alerta">
+                  <p>
+                    <strong>
+                      {conferencia.skusFaltando.length} SKU
+                      {conferencia.skusFaltando.length === 1 ? "" : "s"} sem cadastro
+                    </strong>{" "}
+                    — estas linhas não viram pedido enquanto o produto não existir. Cadastre
+                    aqui mesmo: o preço sugerido é o que a loja pagou de verdade na planilha.
+                  </p>
+                  <table className="financeiro-tabela">
+                    <thead>
+                      <tr>
+                        <th>SKU</th>
+                        <th>QUEM COMPROU</th>
+                        <th className="financeiro-th-numero">LINHAS</th>
+                        <th className="financeiro-th-numero">QTD</th>
+                        <th className="financeiro-th-numero">PREÇO UN.</th>
+                        <th className="financeiro-th-numero">VALOR</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conferencia.skusFaltando.map((sf) => (
+                        <tr key={sf.sku}>
+                          <td>
+                            <strong>{sf.sku}</strong>
+                          </td>
+                          <td className="financeiro-td-mudo">{sf.clientes.join(", ")}</td>
+                          <td className="financeiro-th-numero financeiro-td-mudo">{sf.linhas}</td>
+                          <td className="financeiro-th-numero financeiro-td-mudo">
+                            {sf.quantidade}
+                          </td>
+                          <td className="financeiro-th-numero financeiro-td-mudo">
+                            {formatCurrency(sf.precoUnitario)}
+                          </td>
+                          <td className="financeiro-th-numero">{formatCurrency(sf.valor)}</td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-responder"
+                              onClick={() => void cadastrarSkuFaltando(sf)}
+                            >
+                              Cadastrar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th className="financeiro-th-numero">LINHA</th>
+                      <th>DATA</th>
+                      <th>CLIENTE</th>
+                      <th>SKU</th>
+                      <th>PRODUTO</th>
+                      <th className="financeiro-th-numero">QTD</th>
+                      <th className="financeiro-th-numero">VALOR</th>
+                      <th>SITUAÇÃO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {conferencia.linhas.slice(0, 300).map((l) => (
+                      <tr key={l.linha}>
+                        <td className="financeiro-th-numero financeiro-td-mudo">{l.linha}</td>
+                        <td className="financeiro-td-mudo">{l.data ? data(l.data) : "—"}</td>
+                        <td className={l.clienteId ? undefined : "financeiro-td-mudo"}>
+                          {l.cliente || "—"}
+                        </td>
+                        <td>{l.sku || "—"}</td>
+                        <td className="financeiro-td-mudo">{l.produtoNome ?? "—"}</td>
+                        <td className="financeiro-th-numero financeiro-td-mudo">
+                          {l.quantidade}
+                        </td>
+                        <td className="financeiro-th-numero">{formatCurrency(l.total)}</td>
+                        <td className={l.problema ? undefined : "financeiro-td-mudo"}>
+                          {l.jaImportada ? "já importada" : (l.problema ?? "pronta")}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {conferencia.linhas.length > 300 && (
+                <p className="financeiro-td-mudo">
+                  Mostrando as 300 primeiras de {conferencia.linhas.length}. A importação
+                  pega todas.
+                </p>
+              )}
+            </>
+          )}
         </>
       )}
 

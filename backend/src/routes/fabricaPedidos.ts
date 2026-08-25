@@ -3,6 +3,10 @@ import { conferirVendasMl } from "../services/fabricaVendasMlService";
 import { idadeDoSaldo } from "../services/fabricaIdadeService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import {
+  importarPlanilhaVendas,
+  skusFaltando,
+} from "../services/fabricaImportarVendasService";
+import {
   listarPedidos,
   obterPedido,
   criarPedido,
@@ -368,8 +372,28 @@ fabricaPedidosRouter.post("/vendas-planilha", async (req, res) => {
     : "SHOPEE";
   if (!texto.trim()) return res.status(400).json({ error: "Cole as linhas da planilha." });
   try {
-    res.json(await conferirPlanilhaVendas(texto, origem));
+    const conf = await conferirPlanilhaVendas(texto, origem);
+    // os SKUs que faltam vem junto da conferencia: sem isso o operador ve
+    // "SKU nao cadastrado" espalhado por 200 linhas e tem que cacar quais sao
+    res.json({ ...conf, skusFaltando: skusFaltando(conf.linhas) });
   } catch (err) {
     erro(res, err, "Falha ao ler a planilha.");
+  }
+});
+
+// Lanca de verdade o que a conferencia marcou como pronto. Linha com problema
+// nao entra: o operador cadastra o que falta e sobe de novo, e o que ja entrou
+// e reconhecido pelo numero do pedido e nao duplica.
+fabricaPedidosRouter.post("/vendas-planilha/importar", async (req, res) => {
+  const texto = typeof req.body?.texto === "string" ? req.body.texto : "";
+  const origem =
+    typeof req.body?.origem === "string" && req.body.origem.trim()
+      ? req.body.origem.trim().toUpperCase()
+      : "SHOPEE";
+  if (!texto.trim()) return res.status(400).json({ error: "Cole as linhas da planilha." });
+  try {
+    res.json(await importarPlanilhaVendas(texto, origem));
+  } catch (err) {
+    erro(res, err, "Falha ao importar a planilha.");
   }
 });
