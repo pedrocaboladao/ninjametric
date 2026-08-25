@@ -94,14 +94,25 @@ export async function conferirPlanilhaVendas(
   texto: string,
   origem: string
 ): Promise<ConferenciaPlanilha> {
-  const brutas = texto.split(/\r?\n/).filter((l) => l.trim());
-  if (!brutas.length) throw new Error("Cole as linhas da planilha.");
+  // Percorre o texto ORIGINAL, sem filtrar branco antes. O filtro que existia
+  // aqui tirava a linha vazia da frente de qualquer contagem, entao nao havia
+  // como dizer quantas linhas o arquivo tinha de verdade — e conferir o total
+  // contra o Excel virava adivinhacao.
+  const todas = texto.split(/\r?\n/);
+  // "a\nb\n" termina em string vazia; ela nao e linha de planilha
+  while (todas.length && !todas[todas.length - 1].trim()) todas.pop();
+  if (!todas.length) throw new Error("Cole as linhas da planilha.");
 
-  // acha o cabeçalho: a primeira linha que reconhece pelo menos duas colunas
+  // acha o cabeçalho: a primeira linha que reconhece pelo menos duas colunas.
+  // Conta so as linhas com conteudo, senao planilha que comeca com espaco em
+  // branco gasta as dez tentativas antes de chegar no cabeçalho.
   let iCabecalho = -1;
   const mapa: Record<string, number> = {};
-  for (let i = 0; i < Math.min(brutas.length, 10); i++) {
-    const cols = separar(brutas[i]);
+  let examinadas = 0;
+  for (let i = 0; i < todas.length && examinadas < 10; i++) {
+    if (!todas[i].trim()) continue;
+    examinadas++;
+    const cols = separar(todas[i]);
     const achou: Record<string, number> = {};
     cols.forEach((c, idx) => {
       const k = chave(c);
@@ -124,7 +135,7 @@ export async function conferirPlanilhaVendas(
     // dizer o que ACHOU é o que permite a pessoa perceber que subiu o
     // relatório por pedido em vez do relatório por item
     const achadas = Object.keys(mapa)
-      .map((k) => separar(brutas[iCabecalho])[mapa[k]])
+      .map((k) => separar(todas[iCabecalho])[mapa[k]])
       .filter(Boolean)
       .join(", ");
     throw new Error(
@@ -135,7 +146,7 @@ export async function conferirPlanilhaVendas(
     );
   }
 
-  const cabecalho = separar(brutas[iCabecalho]);
+  const cabecalho = separar(todas[iCabecalho]);
   const colunas: Record<string, string> = {};
   for (const [campo, idx] of Object.entries(mapa)) colunas[campo] = cabecalho[idx] ?? "";
 
@@ -158,8 +169,12 @@ export async function conferirPlanilhaVendas(
 
   const linhas: LinhaPlanilha[] = [];
   let vazias = 0;
-  for (let i = iCabecalho + 1; i < brutas.length; i++) {
-    const cols = separar(brutas[i]);
+  for (let i = iCabecalho + 1; i < todas.length; i++) {
+    if (!todas[i].trim()) {
+      vazias++;
+      continue;
+    }
+    const cols = separar(todas[i]);
     const pega = (campo: string) =>
       mapa[campo] !== undefined ? (cols[mapa[campo]] ?? "").trim() : "";
 
@@ -222,7 +237,7 @@ export async function conferirPlanilhaVendas(
     jaImportadas: linhas.filter((l) => l.jaImportada).length,
     totalValor: linhas.filter((l) => !l.jaImportada).reduce((s, l) => s + l.total, 0),
     colunas,
-    linhasNoArquivo: brutas.length - iCabecalho - 1,
+    linhasNoArquivo: todas.length - iCabecalho - 1,
     linhasVazias: vazias,
   };
 }
