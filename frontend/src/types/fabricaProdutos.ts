@@ -29,6 +29,11 @@ export interface FabricaProduto {
   margemContribuicao: number;
   markup: number;
   percentualLucro: number;
+  // Por que o custo deu zero. Vazio quando não deu.
+  //
+  // Custo zero não avisa sozinho: vira margem de 100%, e margem de 100% parece
+  // o melhor produto do catálogo em vez de um cadastro pela metade.
+  semCusto: string[];
   ativo: boolean;
 }
 

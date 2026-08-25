@@ -6355,3 +6355,15 @@ button.contas-cartao:hover {
 .contas-cartao-alerta strong {
   color: #b45309;
 }
+
+/* Motivo do custo zero, embaixo do valor na tabela de produtos. Pequeno e
+   discreto: quem esta so conferindo preco nao precisa tropecar nele, mas quem
+   parou naquela linha porque a margem estava estranha acha a resposta ali. */
+.produto-sem-custo {
+  font-size: 11px;
+  font-weight: 600;
+  color: #b45309;
+  margin-top: 2px;
+  white-space: normal;
+  text-align: right;
+}

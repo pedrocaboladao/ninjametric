@@ -41,6 +41,8 @@ export interface FabricaProduto {
   margemContribuicao: number;
   markup: number;
   percentualLucro: number;
+  // por que o custo deu zero: lista vazia quando não deu
+  semCusto: string[];
   ativo: boolean;
 }
 
@@ -145,6 +147,24 @@ function montar(
   const custo = revenda ? custoCompra ?? 0 : custoProduto + custoEmbalagem;
   const precoVenda = Number(r.preco_venda);
 
+  // Por que o custo deu zero.
+  //
+  // Custo zero não avisa: ele vira margem de 100%, e produto com margem de 100%
+  // parece o melhor do catálogo. Seis EMBORRACHADO CERÂMICA ficaram meses
+  // assim — a fórmula tinha as seis embalagens calculadas, mas o produto não
+  // estava ligado a nenhuma, então o site não sabia qual custo puxar.
+  const semCusto: string[] = [];
+  if (custo <= 0) {
+    if (revenda) {
+      semCusto.push("custo de compra não preenchido");
+    } else {
+      if (r.formula_id === null) semCusto.push("sem fórmula");
+      else if (custoPorKgTeorico <= 0) semCusto.push("a fórmula está com custo zero");
+      if (r.embalagem_id === null) semCusto.push("sem embalagem ligada");
+      else if (pesoKg <= 0) semCusto.push("a embalagem está sem peso");
+    }
+  }
+
   return {
     id: r.id,
     sku: r.sku,
@@ -159,6 +179,8 @@ function montar(
     formulaNome: r.formula_nome,
     embalagemId: r.embalagem_id,
     embalagemNome: r.embalagem_nome,
+    // o que falta pro custo sair de zero; vazio quando está tudo certo
+    semCusto,
     pesoKg,
     custoPorKgTeorico,
     custoPorKgReal,

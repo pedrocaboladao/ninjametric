@@ -113,6 +113,11 @@ export function FabricaProdutos() {
     );
   }, [produtos, busca, filtroOrigem]);
 
+  // Produto com custo zero nao se denuncia: ele aparece com 100% de margem, o
+  // que passa por otimo em vez de cadastro pela metade. Seis EMBORRACHADO
+  // CERAMICA ficaram meses assim.
+  const semCusto = useMemo(() => filtrados.filter((p) => p.semCusto.length > 0), [filtrados]);
+
   const porOrigem = useMemo(() => {
     const m = { FABRICA: 0, DISTRIBUIDORA: 0 };
     for (const p of produtos ?? []) m[p.origem] += 1;
@@ -487,6 +492,26 @@ export function FabricaProdutos() {
         )}
       </div>
 
+      {semCusto.length > 0 && (
+        <div className="credito-alerta">
+          <p>
+            <strong>
+              {semCusto.length} produto{semCusto.length === 1 ? "" : "s"} com custo zerado
+            </strong>{" "}
+            — eles aparecem com 100% de margem, que parece ótimo e não é: é cadastro pela
+            metade. O motivo de cada um está na coluna CUSTO.
+          </p>
+          <p className="financeiro-td-mudo">
+            {[...new Set(semCusto.flatMap((p) => p.semCusto))].map((motivo) => (
+              <span key={motivo}>
+                {motivo}: {semCusto.filter((p) => p.semCusto.includes(motivo)).length}
+                {"   "}
+              </span>
+            ))}
+          </p>
+        </div>
+      )}
+
       <div className="financeiro-tabela-wrap">
         <table className="financeiro-tabela">
           <thead>
@@ -532,7 +557,15 @@ export function FabricaProdutos() {
                 <td className="financeiro-th-numero financeiro-td-mudo" title={p.lotes ? `${p.lotes} lote(s) lançado(s)` : "sem lote lançado"}>
                   {formatRendimento(p.rendimento, p.lotes)}
                 </td>
-                <td className="financeiro-th-numero">{formatCurrency(p.custo)}</td>
+                <td
+                  className="financeiro-th-numero"
+                  title={p.semCusto.length ? p.semCusto.join(" · ") : undefined}
+                >
+                  {formatCurrency(p.custo)}
+                  {p.semCusto.length > 0 && (
+                    <div className="produto-sem-custo">{p.semCusto.join(" · ")}</div>
+                  )}
+                </td>
                 <td className="financeiro-th-numero">{formatCurrency(p.precoVenda)}</td>
                 <td className="financeiro-th-numero">{formatCurrency(p.margemContribuicao)}</td>
                 <td className="financeiro-th-numero">{formatPercent(p.markup)}</td>
