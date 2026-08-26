@@ -308,6 +308,43 @@ fabricaPedidosRouter.get("/vendas-ml", async (req, res) => {
   }
 });
 
+// Fica antes do GET "/:id" de propósito: registrada depois, o Express lê
+// "apelidos" como id de pedido e devolve "Id inválido".
+// Apelido de cliente: como o ERP escreve o nome dele.
+//
+// Mora neste router, e não no de clientes, porque quem cria apelido é quem está
+// importando venda e vê o nome que não casou — exigir a permissão de cadastro
+// de clientes pra isso travaria a importação na mão de quem só importa.
+fabricaPedidosRouter.get("/apelidos", async (_req, res) => {
+  try {
+    res.json(await listarApelidos());
+  } catch (err) {
+    erro(res, err, "Falha ao listar os apelidos.");
+  }
+});
+
+fabricaPedidosRouter.post("/apelidos", async (req, res) => {
+  const b = req.body ?? {};
+  const clienteId = Number(b.clienteId);
+  if (!Number.isFinite(clienteId) || clienteId <= 0) {
+    return res.status(400).json({ error: "Escolha o cliente." });
+  }
+  try {
+    res.status(201).json(await criarApelido(clienteId, String(b.apelido ?? "")));
+  } catch (err) {
+    erro(res, err, "Falha ao gravar o apelido.");
+  }
+});
+
+fabricaPedidosRouter.delete("/apelidos/:id", async (req, res) => {
+  try {
+    await excluirApelido(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao apagar o apelido.");
+  }
+});
+
 fabricaPedidosRouter.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
@@ -441,40 +478,5 @@ fabricaPedidosRouter.post("/vendas-planilha/importar", async (req, res) => {
     res.json(await importarPlanilhaVendas(texto, origem));
   } catch (err) {
     erro(res, err, "Falha ao importar a planilha.");
-  }
-});
-
-// Apelido de cliente: como o ERP escreve o nome dele.
-//
-// Mora neste router, e não no de clientes, porque quem cria apelido é quem está
-// importando venda e vê o nome que não casou — exigir a permissão de cadastro
-// de clientes pra isso travaria a importação na mão de quem só importa.
-fabricaPedidosRouter.get("/apelidos", async (_req, res) => {
-  try {
-    res.json(await listarApelidos());
-  } catch (err) {
-    erro(res, err, "Falha ao listar os apelidos.");
-  }
-});
-
-fabricaPedidosRouter.post("/apelidos", async (req, res) => {
-  const b = req.body ?? {};
-  const clienteId = Number(b.clienteId);
-  if (!Number.isFinite(clienteId) || clienteId <= 0) {
-    return res.status(400).json({ error: "Escolha o cliente." });
-  }
-  try {
-    res.status(201).json(await criarApelido(clienteId, String(b.apelido ?? "")));
-  } catch (err) {
-    erro(res, err, "Falha ao gravar o apelido.");
-  }
-});
-
-fabricaPedidosRouter.delete("/apelidos/:id", async (req, res) => {
-  try {
-    await excluirApelido(Number(req.params.id));
-    res.json({ ok: true });
-  } catch (err) {
-    erro(res, err, "Falha ao apagar o apelido.");
   }
 });
