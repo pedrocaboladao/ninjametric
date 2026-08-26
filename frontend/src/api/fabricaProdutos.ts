@@ -83,3 +83,34 @@ export async function aplicarPrecos(ids: number[]): Promise<{ atualizados: numbe
   });
   return tratarResposta<{ atualizados: number }>(res);
 }
+
+// Baixa o catalogo em .xlsx. Nao usa <a download> apontando pra rota: o
+// arquivo exige sessao, e o link solto nao manda o cookie. Busca com
+// credentials e entrega o blob pro navegador salvar.
+export async function baixarCatalogo(
+  origem?: "FABRICA" | "DISTRIBUIDORA",
+  somenteAtivos = false
+): Promise<void> {
+  const q = new URLSearchParams();
+  if (origem) q.set("origem", origem);
+  if (somenteAtivos) q.set("ativos", "1");
+  const res = await fetch(`${API_BASE}/api/fabrica-produtos/exportar?${q}`, {
+    credentials: "include",
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? "Falha ao exportar o catálogo.");
+  }
+  const nome =
+    res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+    "catalogo.xlsx";
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nome;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // o revoke imediato cancela o download em alguns navegadores
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
