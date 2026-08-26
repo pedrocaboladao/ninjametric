@@ -1461,3 +1461,45 @@ CREATE TABLE IF NOT EXISTS fabrica_pix_recebido (
 );
 
 CREATE INDEX IF NOT EXISTS fabrica_pix_recebido_data ON fabrica_pix_recebido (data);
+
+-- Entrada de mercadoria comprada.
+--
+-- O estoque de produto acabado só sabia somar produção: lote de fábrica
+-- enchendo N baldes. Mas a Fábrica Distribuidora é 93% revenda — esses
+-- produtos são comprados de fornecedor, não fabricados. Sem lugar pra
+-- registrar a compra, a venda baixava o estoque e nada subia, e todo saldo
+-- ficava negativo: 712 produtos, 27.191 unidades em agosto de 2026.
+--
+-- Cabeçalho e item separados porque a nota do fornecedor traz dezenas de
+-- linhas, e o que se confere é a nota inteira, não a linha solta.
+CREATE TABLE IF NOT EXISTS fabrica_entradas (
+  id SERIAL PRIMARY KEY,
+  fornecedor_id INTEGER REFERENCES fabrica_fornecedores(id) ON DELETE SET NULL,
+  -- o fornecedor pode não estar cadastrado ainda; o nome escrito basta pra
+  -- não travar o lançamento na hora que a mercadoria chega
+  fornecedor_nome TEXT,
+  documento TEXT,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS fabrica_entrada_itens (
+  id SERIAL PRIMARY KEY,
+  entrada_id INTEGER NOT NULL REFERENCES fabrica_entradas(id) ON DELETE CASCADE,
+  produto_id INTEGER NOT NULL REFERENCES fabrica_produtos(id) ON DELETE RESTRICT,
+  quantidade NUMERIC(14,3) NOT NULL CHECK (quantidade > 0),
+  -- custo desta compra. Fica gravado na linha em vez de só atualizar o
+  -- cadastro: preço de fornecedor muda, e depois ninguém lembra por quanto
+  -- entrou o lote de agosto
+  custo_unitario NUMERIC(14,4) NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS fabrica_entrada_itens_produto
+  ON fabrica_entrada_itens (produto_id);
+CREATE INDEX IF NOT EXISTS fabrica_entradas_data ON fabrica_entradas (data);
+
+-- documento repetido do mesmo fornecedor é a mesma nota lançada duas vezes
+CREATE UNIQUE INDEX IF NOT EXISTS fabrica_entradas_doc
+  ON fabrica_entradas (COALESCE(fornecedor_nome, ''), documento)
+  WHERE documento IS NOT NULL AND documento <> '';
