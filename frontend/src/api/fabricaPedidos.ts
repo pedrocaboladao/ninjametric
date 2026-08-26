@@ -441,3 +441,21 @@ export function conferirPix(arquivo: File): Promise<ConferenciaPix> {
 export function importarPix(arquivo: File): Promise<ResultadoPix> {
   return enviarPix<ResultadoPix>("importar", arquivo);
 }
+
+// Sobe a planilha de vendas como arquivo. Devolve a mesma conferência de
+// sempre, mais o texto convertido — o lançamento continua indo pela rota de
+// texto, então arquivo e cola nunca divergem.
+export async function conferirPlanilhaArquivo(
+  arquivo: File,
+  origem: string
+): Promise<ConferenciaPlanilha & { texto: string }> {
+  const form = new FormData();
+  form.append("arquivo", arquivo);
+  form.append("origem", origem);
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/vendas-planilha/arquivo`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  return tratarResposta<ConferenciaPlanilha & { texto: string }>(res);
+}
