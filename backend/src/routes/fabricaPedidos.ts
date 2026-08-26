@@ -1,3 +1,5 @@
+import multer from "multer";
+import { planilhaParaTexto } from "../services/fabricaPlanilhaArquivoService";
 import { Router, Request, Response } from "express";
 import { conferirVendasMl } from "../services/fabricaVendasMlService";
 import { idadeDoSaldo } from "../services/fabricaIdadeService";
@@ -360,6 +362,35 @@ fabricaPedidosRouter.delete("/:id", async (req, res) => {
     erro(res, err, "Falha ao excluir pedido.");
   }
 });
+
+// Sobe a planilha como arquivo em vez de texto colado.
+//
+// Converte e devolve o texto — quem confere e quem importa continuam sendo as
+// mesmas rotas. Duas mil linhas coladas na tela travam o navegador, e o
+// fechamento de um mes passa disso.
+const uploadPlanilha = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+fabricaPedidosRouter.post(
+  "/vendas-planilha/arquivo",
+  uploadPlanilha.single("arquivo"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "Envie o arquivo." });
+    try {
+      const texto = await planilhaParaTexto(req.file.buffer, req.file.originalname);
+      const origem =
+        typeof req.body?.origem === "string" && req.body.origem.trim()
+          ? req.body.origem.trim().toUpperCase()
+          : "SHOPEE";
+      const conf = await conferirPlanilhaVendas(texto, origem);
+      res.json({ ...conf, skusFaltando: skusFaltando(conf.linhas), texto });
+    } catch (err) {
+      erro(res, err, "Falha ao ler o arquivo.");
+    }
+  }
+);
 
 // Confere uma planilha de vendas de outro canal antes de virar pedido.
 //

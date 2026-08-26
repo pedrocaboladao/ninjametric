@@ -26,6 +26,7 @@ import {
   salvarOrigemPix,
   excluirOrigemPix,
   conferirPix,
+  conferirPlanilhaArquivo,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -134,6 +135,7 @@ export function FabricaPedidos() {
   // "APORTE" / "AVULSA" / "IGNORAR" sao destinos que nao abatem divida
   const [pixEscolha, setPixEscolha] = useState<Record<string, string>>({});
   const pixInputRef = useRef<HTMLInputElement | null>(null);
+  const impInputRef = useRef<HTMLInputElement | null>(null);
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -1287,6 +1289,39 @@ export function FabricaPedidos() {
               value={impOrigem}
               onChange={(e) => setImpOrigem(e.target.value.toUpperCase())}
             />
+            <input
+              ref={impInputRef}
+              type="file"
+              accept=".xlsx,.csv,.tsv,.txt"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                setImportando(true);
+                setErro(null);
+                try {
+                  const c = await conferirPlanilhaArquivo(f, impOrigem);
+                  // guarda o texto convertido: quem lanca e a rota de texto,
+                  // entao arquivo e cola seguem o mesmo caminho
+                  setImpTexto(c.texto);
+                  setConferencia(c);
+                } catch (err) {
+                  setErro(err instanceof Error ? err.message : "Falha ao ler o arquivo.");
+                } finally {
+                  setImportando(false);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={importando}
+              onClick={() => impInputRef.current?.click()}
+              title="Sobe a planilha como arquivo .xlsx ou .csv — mais de mil linhas travam ao colar"
+            >
+              Escolher arquivo
+            </button>
             <button type="button" className="btn-excluir" onClick={() => void conferir()}>
               Conferir
             </button>
