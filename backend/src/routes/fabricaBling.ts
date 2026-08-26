@@ -211,9 +211,14 @@ fabricaBlingRouter.get("/sincronizacao", (_req, res) => {
 // Nasce em simulação: `simular: false` no corpo é o que grava. Escrever no ERP
 // mexe em cadastro que emite nota, e ver a lista antes custa uma chamada.
 fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
-  const simulacao = (req.body ?? {}).simular !== false;
+  const b = req.body ?? {};
+  const simulacao = b.simular !== false;
+  // `criar: true` cadastra no Bling o cliente que não existe lá. Fica de fora
+  // por padrão: cliente sem contato costuma ser nome escrito diferente, e
+  // cadastrar em cima disso cria a duplicata em vez de resolver.
+  const criar = b.criar === true;
   try {
-    res.json(await sincronizarContatos(simulacao));
+    res.json(await sincronizarContatos(simulacao, criar));
   } catch (err) {
     erro(res, err, "Falha ao sincronizar os contatos do Bling.");
   }

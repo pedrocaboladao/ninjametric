@@ -36,7 +36,7 @@ async function vez(): Promise<void> {
 }
 
 async function chamar<T>(
-  metodo: "get" | "put",
+  metodo: "get" | "put" | "post",
   caminho: string,
   params?: Record<string, unknown>,
   corpo?: unknown
@@ -156,7 +156,7 @@ export interface LinhaSincronia {
   contatoId: number | null;
   contatoNome: string | null;
   campos: MudancaCampo[];
-  situacao: "atualizado" | "sem mudança" | "não achei no Bling" | "erro";
+  situacao: "atualizado" | "criado" | "sem mudança" | "não achei no Bling" | "erro";
   erro?: string;
 }
 
@@ -185,7 +185,45 @@ function separarFones(t: string | null): { fixo: string; celular: string } {
   return { fixo, celular };
 }
 
-export async function sincronizarContatos(simulacao: boolean): Promise<ResultadoSincronia> {
+// Monta o contato do jeito que o Bling aceita no cadastro novo.
+//
+// O nome e a **razao social**, nao o nome de porta: o contato do ERP e o
+// destinatario da nota, e no resto do cadastro ele ja esta assim. A razao
+// social e o apelido que a importacao usa pra reconhecer o cliente, entao vem
+// de la — cadastrar "Cidade Cancao" quando o Bling escreve "CIDADE CANCAO
+// LTDA" criaria a divergencia que a tabela de apelidos existe pra resolver.
+function corpoNovo(cl: ClienteCadastro, razaoSocial: string): Record<string, unknown> {
+  const ie = (cl.inscricao_estadual ?? "").trim();
+  const { fixo, celular } = separarFones(cl.telefone);
+  return {
+    nome: razaoSocial,
+    tipo: "J",
+    numeroDocumento: digitos(cl.cnpj),
+    situacao: "A",
+    // 1 contribuinte, 9 nao contribuinte: sem IE o Bling recusa o 1
+    indicadorIe: ie ? 1 : 9,
+    ...(ie ? { ie } : {}),
+    ...(cl.email ? { email: cl.email } : {}),
+    ...(fixo ? { telefone: fixo } : {}),
+    ...(celular ? { celular } : {}),
+    endereco: {
+      geral: {
+        endereco: cl.logradouro ?? "",
+        numero: cl.numero ?? "",
+        complemento: cl.complemento ?? "",
+        bairro: cl.bairro ?? "",
+        cep: cl.cep ?? "",
+        municipio: cl.cidade ?? "",
+        uf: cl.uf ?? "",
+      },
+    },
+  };
+}
+
+export async function sincronizarContatos(
+  simulacao: boolean,
+  criarFaltantes = false
+): Promise<ResultadoSincronia> {
   const { rows: clientes } = await pool.query<ClienteCadastro>(
     `SELECT id, nome, cnpj, inscricao_estadual, email, telefone, cep,
             logradouro, numero, complemento, bairro, cidade, uf
@@ -194,6 +232,14 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
       ORDER BY nome`
   );
 
+  // razao social de cada cliente, pra nomear o contato novo do mesmo jeito que
+  // a importacao reconhece
+  const { rows: apelidos } = await pool.query<{ cliente_id: number; apelido: string }>(
+    "SELECT cliente_id, apelido FROM fabrica_cliente_apelidos ORDER BY id"
+  );
+  const razao = new Map<number, string>();
+  for (const a of apelidos) if (!razao.has(a.cliente_id)) razao.set(a.cliente_id, a.apelido);
+
   const linhas: LinhaSincronia[] = [];
   let encontrados = 0;
   for (const cl of clientes) {
@@ -201,13 +247,52 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
     const achado = await acharPorDocumento(doc);
     if (achado) encontrados++;
     if (!achado) {
-      linhas.push({
-        cliente: cl.nome,
-        contatoId: null,
-        contatoNome: null,
-        campos: [],
-        situacao: "não achei no Bling",
-      });
+      if (!criarFaltantes) {
+        linhas.push({
+          cliente: cl.nome,
+          contatoId: null,
+          contatoNome: null,
+          campos: [],
+          situacao: "não achei no Bling",
+        });
+        continue;
+      }
+      const nome = razao.get(cl.id) ?? cl.nome;
+      const novo = corpoNovo(cl, nome);
+      if (simulacao) {
+        linhas.push({
+          cliente: cl.nome,
+          contatoId: null,
+          contatoNome: nome,
+          campos: [{ campo: "contato novo", antes: "", depois: nome }],
+          situacao: "criado",
+        });
+        continue;
+      }
+      try {
+        const r = await chamar<{ data?: { id?: number } }>(
+          "post",
+          "/contatos",
+          undefined,
+          novo
+        );
+        linhas.push({
+          cliente: cl.nome,
+          contatoId: r.data?.id ?? null,
+          contatoNome: nome,
+          campos: [{ campo: "contato novo", antes: "", depois: nome }],
+          situacao: "criado",
+        });
+      } catch (err) {
+        linhas.push({
+          cliente: cl.nome,
+          contatoId: null,
+          contatoNome: nome,
+          campos: [],
+          situacao: "erro",
+          erro: err instanceof Error ? err.message : "falha ao criar o contato",
+        });
+      }
       continue;
     }
 
