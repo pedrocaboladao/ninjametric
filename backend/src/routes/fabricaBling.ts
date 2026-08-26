@@ -10,7 +10,7 @@ import {
 } from "../services/blingAuth";
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
-import { skusFaltando } from "../services/fabricaImportarVendasService";
+import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
 export const fabricaBlingRouter = Router();
 
@@ -141,6 +141,7 @@ async function rodarSincronizacao(job: Sincronizacao): Promise<void> {
       texto,
       ...conf,
       skusFaltando: skusFaltando(conf.linhas),
+      clientesFaltando: clientesFaltando(conf.linhas),
     };
     job.estado = "pronto";
   } catch (err) {
