@@ -100,18 +100,30 @@ function digitos(t: string | null | undefined): string {
   return String(t ?? "").replace(/\D/g, "");
 }
 
-export async function listarContatos(): Promise<ContatoBling[]> {
-  const saida: ContatoBling[] = [];
-  for (let pagina = 1; ; pagina++) {
-    const r = await chamar<{ data?: ContatoBling[] }>("get", "/contatos", {
-      pagina,
-      limite: POR_PAGINA,
-    });
-    const lote = r.data ?? [];
-    saida.push(...lote);
-    if (lote.length < POR_PAGINA) break;
+// Procura um contato pelo documento em vez de varrer a base inteira.
+//
+// Varrer nao serve: o Bling da Fabrica guarda tambem os clientes finais da
+// Fabrica Loja, que vende no Mercado Livre. Sao milhares de contatos, e a
+// 3 chamadas por segundo a listagem completa passou de quatro minutos sem
+// terminar. Sao 21 lojas — buscar cada uma custa uma chamada.
+//
+// Tenta o filtro de documento e cai pra busca livre: os dois existem, e qual
+// deles o Bling aceita depende de versao. De todo jeito o que vale e a
+// conferencia do documento na volta, nao a confianca no filtro.
+async function acharPorDocumento(doc: string): Promise<ContatoBling | null> {
+  for (const chave of ["numeroDocumento", "pesquisa"]) {
+    try {
+      const r = await chamar<{ data?: ContatoBling[] }>("get", "/contatos", {
+        [chave]: doc,
+        limite: POR_PAGINA,
+      });
+      const achado = (r.data ?? []).find((c) => digitos(c.numeroDocumento) === doc);
+      if (achado) return achado;
+    } catch {
+      // filtro que o Bling nao conhece vira 400: tenta o proximo jeito
+    }
   }
-  return saida;
+  return null;
 }
 
 interface ClienteCadastro {
@@ -173,17 +185,12 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
       ORDER BY nome`
   );
 
-  const contatos = await listarContatos();
-  const porDoc = new Map<string, ContatoBling>();
-  for (const c of contatos) {
-    const d = digitos(c.numeroDocumento);
-    if (d) porDoc.set(d, c);
-  }
-
   const linhas: LinhaSincronia[] = [];
+  let encontrados = 0;
   for (const cl of clientes) {
     const doc = digitos(cl.cnpj);
-    const achado = porDoc.get(doc);
+    const achado = await acharPorDocumento(doc);
+    if (achado) encontrados++;
     if (!achado) {
       linhas.push({
         cliente: cl.nome,
@@ -307,7 +314,7 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
   return {
     simulacao,
     clientes: clientes.length,
-    contatosBling: contatos.length,
+    contatosBling: encontrados,
     linhas,
   };
 }
