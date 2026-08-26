@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { casarCliente } from "./fabricaClienteApelidosService";
 import { normalizarSku } from "./financeiroService";
 
 // Vendas que a API do Mercado Livre não vê: Shopee e venda direta.
@@ -150,11 +151,16 @@ export async function conferirPlanilhaVendas(
   const colunas: Record<string, string> = {};
   for (const [campo, idx] of Object.entries(mapa)) colunas[campo] = cabecalho[idx] ?? "";
 
-  const [produtos, clientes, importadas] = await Promise.all([
+  const [produtos, clientes, apelidos, importadas] = await Promise.all([
     pool.query<{ id: number; sku: string; nome: string; preco_venda: string }>(
       "SELECT id, sku, nome, preco_venda FROM fabrica_produtos WHERE ativo = TRUE"
     ),
     pool.query<{ id: number; nome: string }>("SELECT id, nome FROM fabrica_clientes"),
+    pool.query<{ chave: string; cliente_id: number; nome: string }>(
+      `SELECT a.chave, a.cliente_id, c.nome
+         FROM fabrica_cliente_apelidos a
+         JOIN fabrica_clientes c ON c.id = a.cliente_id`
+    ),
     pool.query<{ documento: string | null; sku: string | null }>(
       "SELECT documento, sku FROM fabrica_venda_importada WHERE origem = $1",
       [origem]
@@ -163,6 +169,9 @@ export async function conferirPlanilhaVendas(
 
   const porSku = new Map(produtos.rows.map((p) => [normalizarSku(p.sku), p]));
   const porCliente = new Map(clientes.rows.map((c) => [normalizarSku(c.nome), c]));
+  const porApelido = new Map(
+    apelidos.rows.map((a) => [a.chave, { id: a.cliente_id, nome: a.nome }])
+  );
   const jaEntrou = new Set(
     importadas.rows.map((i) => `${i.documento ?? ""}|${normalizarSku(i.sku ?? "")}`)
   );
@@ -187,7 +196,9 @@ export async function conferirPlanilhaVendas(
 
     const sku = pega("sku");
     const nomeCliente = pega("cliente");
-    const cliente = porCliente.get(normalizarSku(nomeCliente)) ?? null;
+    // nome igual, depois apelido, depois prefixo — ver fabricaClienteApelidosService
+    const achado = casarCliente(nomeCliente, porCliente, porApelido, clientes.rows);
+    const cliente = achado.cliente;
     const produto = sku ? (porSku.get(normalizarSku(sku)) ?? null) : null;
     const qtd = mapa.quantidade !== undefined ? numero(pega("quantidade")) : 1;
     const d = data(pega("data"));
@@ -208,7 +219,18 @@ export async function conferirPlanilhaVendas(
     // operador somando um total que nao fecha com o arquivo dele
     if (!sku) problemas.push("linha sem SKU");
     else if (!produto) problemas.push("SKU não cadastrado");
-    if (!cliente) problemas.push(nomeCliente ? "cliente não cadastrado" : "sem cliente");
+    if (!cliente) {
+      // ambíguo é diferente de desconhecido: o nome casou com mais de um
+      // cliente, e dizer "não cadastrado" mandaria cadastrar de novo o que já
+      // existe duas vezes
+      problemas.push(
+        !nomeCliente
+          ? "sem cliente"
+          : achado.ambiguo
+            ? "cliente ambíguo"
+            : "cliente não cadastrado"
+      );
+    }
     if (!d) problemas.push("data inválida");
     if (qtd <= 0) problemas.push("quantidade zerada");
 

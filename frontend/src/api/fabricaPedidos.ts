@@ -26,6 +26,7 @@ import type {
   ConferenciaNota,
   StatusBling,
   ProgressoBling,
+  ClienteApelido,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -549,4 +550,19 @@ export async function progressoBling(): Promise<ProgressoBling> {
     credentials: "include",
   });
   return tratarResposta<ProgressoBling>(res);
+}
+
+// Ensina ao sistema como o ERP escreve o nome de um cliente. Vale pra sempre:
+// da próxima importação em diante o nome casa sozinho.
+export async function criarApelidoCliente(
+  clienteId: number,
+  apelido: string
+): Promise<ClienteApelido> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/apelidos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ clienteId, apelido }),
+  });
+  return tratarResposta<ClienteApelido>(res);
 }
