@@ -404,6 +404,19 @@ export interface StatusBling {
   diasParaVencer: number | null;
 }
 
+// Puxar um mês leva mais de dez minutos, então a sincronização roda no servidor
+// e a tela vai perguntando como está indo.
+export interface ProgressoBling {
+  estado: "nenhuma" | "listando" | "puxando" | "pronto" | "erro";
+  id?: string;
+  de?: string;
+  ate?: string;
+  feitos?: number;
+  total?: number;
+  erro?: string | null;
+  resultado?: SincronizacaoBling | null;
+}
+
 export interface SincronizacaoBling extends ConferenciaPlanilha {
   pedidos: number;
   itensLidos: number;
