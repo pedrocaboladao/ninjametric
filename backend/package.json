@@ -46,5 +46,8 @@
     "baileys@7.0.0-rc14": true,
     "esbuild@0.28.1": true,
     "protobufjs@7.6.5": true
+  },
+  "overrides": {
+    "whatsapp-rust-bridge": "0.5.5"
   }
 }
