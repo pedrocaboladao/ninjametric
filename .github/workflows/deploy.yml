@@ -48,8 +48,7 @@ jobs:
               if grep -q "^${chave}=" .env; then
                 sed -i "s|^${chave}=.*|${chave}=${valor}|" .env
               else
-                printf '%s=%s
-' "$chave" "$valor" >> .env
+                echo "${chave}=${valor}" >> .env
               fi
               echo "  .env: $chave atualizado"
             }
