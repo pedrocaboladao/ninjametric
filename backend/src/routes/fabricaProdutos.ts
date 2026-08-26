@@ -10,6 +10,7 @@ import {
   conferirPrecosCatalogo,
   aplicarPrecosCatalogo,
 } from "../services/fabricaProdutosService";
+import { exportarProdutos } from "../services/fabricaProdutosExportService";
 import {
   listarEstoqueProdutos,
   definirEstoqueMinimoProduto,
@@ -142,6 +143,34 @@ fabricaProdutosRouter.delete("/estoque/ajustes/:id", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao excluir ajuste.");
+  }
+});
+
+// antes de "/:id" de proposito: o Express casa na ordem, e depois dele
+// "exportar" viraria um id invalido
+fabricaProdutosRouter.get("/exportar", async (req, res) => {
+  const origem =
+    req.query.origem === "FABRICA" || req.query.origem === "DISTRIBUIDORA"
+      ? req.query.origem
+      : undefined;
+  const somenteAtivos = req.query.ativos === "1";
+  try {
+    const buf = await exportarProdutos({ origem, somenteAtivos });
+    const parte = origem ? (origem === "FABRICA" ? "-fabrica" : "-distribuicao") : "";
+    const hoje = new Date()
+      .toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
+      .replace(/-/g, "");
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="catalogo${parte}-${hoje}.xlsx"`
+    );
+    res.send(buf);
+  } catch (err) {
+    erro(res, err, "Falha ao exportar o catalogo.");
   }
 });
 

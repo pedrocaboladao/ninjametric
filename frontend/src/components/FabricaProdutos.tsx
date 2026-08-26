@@ -5,6 +5,7 @@ import {
   atualizarFabricaProduto,
   excluirFabricaProduto,
   importarCatalogo,
+  baixarCatalogo,
   conferirPrecos,
   aplicarPrecos,
 } from "../api/fabricaProdutos";
@@ -56,6 +57,7 @@ export function FabricaProdutos() {
   const [busca, setBusca] = useState("");
   const [filtroOrigem, setFiltroOrigem] = useState<"" | OrigemProduto>("");
   const [importando, setImportando] = useState(false);
+  const [exportando, setExportando] = useState(false);
   const [aviso, setAviso] = useState<string | null>(null);
   const [conferencia, setConferencia] = useState<ConferenciaCatalogo | null>(null);
   const [conferindo, setConferindo] = useState(false);
@@ -157,6 +159,20 @@ export function FabricaProdutos() {
       setErro(e instanceof Error ? e.message : "Falha ao aplicar os preços.");
     } finally {
       setSalvando(false);
+    }
+  }
+
+  async function exportar() {
+    setExportando(true);
+    setErro(null);
+    try {
+      // leva o filtro de origem que está na tela: quem filtrou distribuição
+      // quer a distribuição no arquivo, não os cinco mil
+      await baixarCatalogo(filtroOrigem || undefined);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao exportar o catálogo.");
+    } finally {
+      setExportando(false);
     }
   }
 
@@ -470,6 +486,15 @@ export function FabricaProdutos() {
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
         />
+        <button
+          type="button"
+          className="btn-responder"
+          onClick={() => void exportar()}
+          disabled={exportando || !produtos?.length}
+          title="Baixa a lista em Excel: nome, SKU, custo, venda e margem. Fábrica e distribuição na mesma aba, com a coluna ORIGEM separando. O filtro em cima segue pro arquivo."
+        >
+          {exportando ? "Gerando…" : "Exportar .xlsx"}
+        </button>
         <button
           type="button"
           className="btn-excluir"
