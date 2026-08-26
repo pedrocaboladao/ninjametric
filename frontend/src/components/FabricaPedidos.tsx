@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchPedidos,
   criarPedido,
@@ -22,6 +22,11 @@ import {
   excluirProvisorios,
   fetchExtrato,
   fetchPagamentos,
+  fetchOrigensPix,
+  salvarOrigemPix,
+  excluirOrigemPix,
+  conferirPix,
+  importarPix,
   registrarPagamento,
   excluirPagamento,
   fetchDevolucoes,
@@ -52,6 +57,9 @@ import type {
   CondicaoDevolucao,
   StatusRessarcimento,
   ConsolidadoRessarcimento,
+  OrigemPix,
+  ConferenciaPix,
+  DestinoPix,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -107,6 +115,7 @@ export function FabricaPedidos() {
     | "fechamento"
     | "creditos"
     | "devolucoes"
+    | "pix"
   >("pedidos");
 
   // importacao de planilha: cola o relatorio, confere, depois lanca
@@ -114,6 +123,17 @@ export function FabricaPedidos() {
   const [impOrigem, setImpOrigem] = useState("SHOPEE");
   const [conferencia, setConferencia] = useState<ConferenciaPlanilha | null>(null);
   const [importando, setImportando] = useState(false);
+
+  // conciliacao do PIX: o relatorio de recebimento do Sicoob, um PIX por linha.
+  // O extrato de conta corrente nao serve — ele agrupa e some com o pagador.
+  const [pixArquivo, setPixArquivo] = useState<File | null>(null);
+  const [confPix, setConfPix] = useState<ConferenciaPix | null>(null);
+  const [origensPix, setOrigensPix] = useState<OrigemPix[]>([]);
+  const [pixOcupado, setPixOcupado] = useState(false);
+  // o que o Hudson escolheu pra cada pendente antes de gravar: "12" e uma loja,
+  // "APORTE" / "AVULSA" / "IGNORAR" sao destinos que nao abatem divida
+  const [pixEscolha, setPixEscolha] = useState<Record<string, string>>({});
+  const pixInputRef = useRef<HTMLInputElement | null>(null);
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -841,6 +861,90 @@ export function FabricaPedidos() {
     }
   }
 
+  const carregarOrigensPix = useCallback(async () => {
+    try {
+      setOrigensPix(await fetchOrigensPix());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao carregar as origens do PIX.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aba === "pix") void carregarOrigensPix();
+  }, [aba, carregarOrigensPix]);
+
+  async function conferirArquivoPix(arquivo: File) {
+    setPixOcupado(true);
+    setErro(null);
+    try {
+      const c = await conferirPix(arquivo);
+      setConfPix(c);
+      setPixEscolha({});
+      if (c.pendentes.length === 0 && c.novos.length === 0 && c.jaImportados.transacoes > 0) {
+        setAviso("Este relatório já tinha sido importado inteiro. Nada novo pra lançar.");
+      }
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao conferir o relatório PIX.");
+      setConfPix(null);
+    } finally {
+      setPixOcupado(false);
+    }
+  }
+
+  // grava a origem de um pagador que apareceu sem dono e confere de novo: o
+  // pendente some da lista e o valor dele entra no bloco da loja
+  async function apontarPendente(pagador: string) {
+    const escolha = pixEscolha[pagador];
+    if (!escolha) return;
+    const destino: DestinoPix = ["APORTE", "AVULSA", "IGNORAR"].includes(escolha)
+      ? (escolha as DestinoPix)
+      : "CLIENTE";
+    setPixOcupado(true);
+    setErro(null);
+    try {
+      setOrigensPix(
+        await salvarOrigemPix(pagador, destino === "CLIENTE" ? Number(escolha) : null, destino)
+      );
+      if (pixArquivo) await conferirArquivoPix(pixArquivo);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar a origem.");
+    } finally {
+      setPixOcupado(false);
+    }
+  }
+
+  async function lancarPix() {
+    if (!pixArquivo || !confPix) return;
+    const quantos = confPix.novos.reduce((t, n) => t + n.transacoes, 0);
+    const valor = confPix.novos.reduce((t, n) => t + n.valor, 0);
+    if (
+      !window.confirm(
+        `Lançar ${quantos} PIX, ${formatCurrency(valor)}, abatendo a dívida de ` +
+          `${confPix.novos.length} loja(s)? Isso muda o saldo de todas elas.`
+      )
+    ) {
+      return;
+    }
+    setPixOcupado(true);
+    setErro(null);
+    try {
+      const r = await importarPix(pixArquivo);
+      setAviso(
+        `${r.pagamentosCriados} pagamento(s) lançado(s), ${formatCurrency(r.valorLancado)}.` +
+          (r.pagamentosAdotados
+            ? ` ${r.pagamentosAdotados} já estavam lançados na mão e foram amarrados ao PIX em vez de duplicar.`
+            : "") +
+          (r.pendentes ? ` ${r.pendentes} continuam sem origem apontada.` : "")
+      );
+      await carregar();
+      await conferirArquivoPix(pixArquivo);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao importar o PIX.");
+    } finally {
+      setPixOcupado(false);
+    }
+  }
+
   return (
     <div className="financeiro-page">
       <div className="financeiro-topo">
@@ -875,6 +979,7 @@ export function FabricaPedidos() {
             "fechamento",
             "creditos",
             "devolucoes",
+            "pix",
           ] as const
         ).map((a) => (
           <button
@@ -901,7 +1006,11 @@ export function FabricaPedidos() {
                       ? "Fechamento"
                       : a === "creditos"
                         ? `Créditos${saldosCredito.length ? ` (${saldosCredito.length})` : ""}`
-                        : `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`}
+                        : a === "devolucoes"
+                          ? `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`
+                          : `Conciliar PIX${
+                              confPix?.pendentes.length ? ` (${confPix.pendentes.length})` : ""
+                            }`}
           </button>
         ))}
       </div>
@@ -2271,6 +2380,284 @@ export function FabricaPedidos() {
             marca aqui que foi feito, pra pendência sair da lista. Esquecer de cancelar significa
             pagar imposto sobre uma venda que foi desfeita.
           </p>
+        </>
+      )}
+
+      {aba === "pix" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Conciliar PIX recebido</h2>
+              <p className="financeiro-td-mudo">
+                Suba o <strong>relatório de Recebimento Pix</strong> do Sicoob — no app, em{" "}
+                <em>Pix, Extrato Pix, Recebidos</em>, formato .xlsx. Não é o extrato de conta
+                corrente: o extrato empacota os PIX de outros bancos numa linha por dia e perde
+                o pagador. Em julho e agosto de 2026 foram 41 linhas escondendo 152 PIX, 83% do
+                dinheiro entrando sem nome.
+              </p>
+              <p className="financeiro-td-mudo">
+                O relatório não traz CNPJ, então a ligação é pelo nome do pagador. Você aponta
+                uma vez quem é cada um e fica gravado — no mês seguinte entra sozinho. Nada é
+                lançado antes de você conferir.
+              </p>
+            </div>
+          </div>
+
+          <div className="financeiro-filtros">
+            <input
+              ref={pixInputRef}
+              type="file"
+              accept=".xlsx"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                setPixArquivo(f);
+                if (f) void conferirArquivoPix(f);
+                e.target.value = "";
+              }}
+            />
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={pixOcupado}
+              onClick={() => pixInputRef.current?.click()}
+            >
+              {pixArquivo ? `Trocar arquivo (${pixArquivo.name})` : "Escolher relatório .xlsx"}
+            </button>
+            <button
+              type="button"
+              className="btn-responder"
+              disabled={!confPix || confPix.novos.length === 0 || pixOcupado}
+              onClick={() => void lancarPix()}
+            >
+              {pixOcupado
+                ? "Processando..."
+                : `Lançar ${confPix?.novos.reduce((t, n) => t + n.transacoes, 0) ?? 0} PIX`}
+            </button>
+          </div>
+
+          {confPix && (
+            <>
+              <div className="contas-cartoes">
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">NO ARQUIVO</span>
+                  <strong>{confPix.linhasNoArquivo}</strong>
+                  <span className="financeiro-td-mudo">
+                    {confPix.periodo
+                      ? `${confPix.periodo.de} a ${confPix.periodo.ate}`
+                      : "sem período"}
+                  </span>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">TOTAL RECEBIDO</span>
+                  <strong>{formatCurrency(confPix.total)}</strong>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">VAI ABATER DÍVIDA</span>
+                  <strong>
+                    {formatCurrency(confPix.novos.reduce((t, n) => t + n.valor, 0))}
+                  </strong>
+                  <span className="financeiro-td-mudo">{confPix.novos.length} loja(s)</span>
+                </div>
+                <div
+                  className={
+                    confPix.pendentes.length
+                      ? "contas-cartao contas-cartao-alerta"
+                      : "contas-cartao"
+                  }
+                >
+                  <span className="financeiro-stat-label">SEM DONO</span>
+                  <strong>{confPix.pendentes.length}</strong>
+                  <span className="financeiro-td-mudo">
+                    {formatCurrency(confPix.pendentes.reduce((t, p) => t + p.valor, 0))}
+                  </span>
+                </div>
+                {confPix.jaImportados.transacoes > 0 && (
+                  <div className="contas-cartao">
+                    <span className="financeiro-stat-label">JÁ IMPORTADO</span>
+                    <strong>{confPix.jaImportados.transacoes}</strong>
+                    <span className="financeiro-td-mudo">
+                      {formatCurrency(confPix.jaImportados.valor)} — não entra de novo
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {confPix.adotaveis.transacoes > 0 && (
+                <div className="credito-alerta">
+                  <p>
+                    <strong>
+                      {confPix.adotaveis.transacoes} PIX já tinham pagamento lançado na mão
+                    </strong>{" "}
+                    — {formatCurrency(confPix.adotaveis.valor)}. Eles não viram pagamento novo:
+                    o PIX se amarra no que já existe, então o valor não conta duas vezes.
+                  </p>
+                </div>
+              )}
+
+              {confPix.pendentes.length > 0 && (
+                <>
+                  <h3>Quem são estes? ({confPix.pendentes.length})</h3>
+                  <p className="financeiro-td-mudo">
+                    Apareceram no relatório e o sistema não sabe de quem são. Aponte cada um: se
+                    for loja, abate a dívida dela; aporte e venda avulsa entram no caixa sem
+                    abater ninguém; transferência entre contas próprias fica de fora do
+                    faturamento.
+                  </p>
+                  <div className="financeiro-tabela-wrap">
+                    <table className="financeiro-tabela">
+                      <thead>
+                        <tr>
+                          <th>PAGADOR</th>
+                          <th>BANCO</th>
+                          <th className="financeiro-th-numero">PIX</th>
+                          <th className="financeiro-th-numero">VALOR</th>
+                          <th>PERÍODO</th>
+                          <th>É DE QUEM?</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confPix.pendentes.map((p) => (
+                          <tr key={p.pagador}>
+                            <td>{p.pagador}</td>
+                            <td className="financeiro-td-mudo">{p.instituicao}</td>
+                            <td className="financeiro-th-numero">{p.transacoes}</td>
+                            <td className="financeiro-th-numero">{formatCurrency(p.valor)}</td>
+                            <td className="financeiro-td-mudo">
+                              {p.primeira === p.ultima
+                                ? p.primeira
+                                : `${p.primeira} a ${p.ultima}`}
+                            </td>
+                            <td>
+                              <select
+                                className="clonar-input fabricacao-input-pequeno"
+                                value={pixEscolha[p.pagador] ?? ""}
+                                onChange={(e) =>
+                                  setPixEscolha((v) => ({ ...v, [p.pagador]: e.target.value }))
+                                }
+                              >
+                                <option value="">escolha...</option>
+                                {clientes.map((c) => (
+                                  <option key={c.id} value={String(c.id)}>
+                                    {c.nome}
+                                  </option>
+                                ))}
+                                <option value="APORTE">— aporte de sócio</option>
+                                <option value="AVULSA">— venda avulsa</option>
+                                <option value="IGNORAR">— transferência própria</option>
+                              </select>{" "}
+                              <button
+                                type="button"
+                                className="btn-responder"
+                                disabled={!pixEscolha[p.pagador] || pixOcupado}
+                                onClick={() => void apontarPendente(p.pagador)}
+                              >
+                                Gravar
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {confPix.novos.length > 0 && (
+                <>
+                  <h3>Vai abater a dívida destas lojas</h3>
+                  <div className="financeiro-tabela-wrap">
+                    <table className="financeiro-tabela">
+                      <thead>
+                        <tr>
+                          <th>LOJA</th>
+                          <th className="financeiro-th-numero">PIX</th>
+                          <th className="financeiro-th-numero">VALOR</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confPix.novos.map((n) => (
+                          <tr key={n.clienteId}>
+                            <td>{n.clienteNome}</td>
+                            <td className="financeiro-th-numero">{n.transacoes}</td>
+                            <td className="financeiro-th-numero">{formatCurrency(n.valor)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {confPix.semDivida.length > 0 && (
+                <p className="financeiro-td-mudo">
+                  Fora da dívida:{" "}
+                  {confPix.semDivida
+                    .map(
+                      (d) =>
+                        `${d.destino.toLowerCase()} ${d.transacoes} PIX ${formatCurrency(d.valor)}`
+                    )
+                    .join(" · ")}
+                  . Entram no caixa, mas não abatem a conta de ninguém.
+                </p>
+              )}
+            </>
+          )}
+
+          {origensPix.length > 0 && (
+            <>
+              <h3>Origens já conhecidas ({origensPix.length})</h3>
+              <p className="financeiro-td-mudo">
+                Uma loja pode pagar por mais de um CNPJ — a Modal manda pela MODALTINTAS e pela
+                GOMES E TAVARES, a Truck por duas empresas. Cada nome vira uma origem apontando
+                pra mesma loja.
+              </p>
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>PAGADOR NO BANCO</th>
+                      <th>VAI PARA</th>
+                      <th className="financeiro-th-numero">PIX</th>
+                      <th className="financeiro-th-numero">RECEBIDO</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {origensPix.map((o) => (
+                      <tr key={o.id}>
+                        <td>{o.nome}</td>
+                        <td>
+                          {o.destino === "CLIENTE"
+                            ? (o.clienteNome ?? "loja apagada")
+                            : o.destino === "APORTE"
+                              ? "aporte de sócio"
+                              : o.destino === "AVULSA"
+                                ? "venda avulsa"
+                                : "transferência própria"}
+                        </td>
+                        <td className="financeiro-th-numero">{o.transacoes}</td>
+                        <td className="financeiro-th-numero">{formatCurrency(o.recebido)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-excluir"
+                            disabled={pixOcupado}
+                            onClick={async () => {
+                              if (!window.confirm(`Esquecer a origem ${o.nome}?`)) return;
+                              setOrigensPix(await excluirOrigemPix(o.id));
+                            }}
+                          >
+                            Esquecer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </>
       )}
     </div>

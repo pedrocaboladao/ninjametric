@@ -18,6 +18,10 @@ import type {
   CondicaoDevolucao,
   StatusRessarcimento,
   ConsolidadoRessarcimento,
+  OrigemPix,
+  DestinoPix,
+  ConferenciaPix,
+  ResultadoPix,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -385,4 +389,55 @@ export async function fetchIdadeDoSaldo(): Promise<IdadeSaldo> {
     credentials: "include",
   });
   return tratarResposta<IdadeSaldo>(res);
+}
+
+export async function fetchOrigensPix(): Promise<OrigemPix[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pix/origens`, { credentials: "include" });
+  const { origens } = await tratarResposta<{ origens: OrigemPix[] }>(res);
+  return origens;
+}
+
+export async function salvarOrigemPix(
+  nome: string,
+  clienteId: number | null,
+  destino: DestinoPix
+): Promise<OrigemPix[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pix/origens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ nome, clienteId, destino }),
+  });
+  const { origens } = await tratarResposta<{ origens: OrigemPix[] }>(res);
+  return origens;
+}
+
+export async function excluirOrigemPix(id: number): Promise<OrigemPix[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pix/origens/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  const { origens } = await tratarResposta<{ origens: OrigemPix[] }>(res);
+  return origens;
+}
+
+// confere e importa mandam o mesmo arquivo: o conferir não grava nada, e é
+// sempre ele primeiro — o importar mexe no saldo de todas as lojas de uma vez
+async function enviarPix<T>(caminho: string, arquivo: File): Promise<T> {
+  const form = new FormData();
+  form.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/fabrica-pix/${caminho}`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  return tratarResposta<T>(res);
+}
+
+export function conferirPix(arquivo: File): Promise<ConferenciaPix> {
+  return enviarPix<ConferenciaPix>("conferir", arquivo);
+}
+
+export function importarPix(arquivo: File): Promise<ResultadoPix> {
+  return enviarPix<ResultadoPix>("importar", arquivo);
 }

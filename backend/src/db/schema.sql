@@ -1418,3 +1418,46 @@ CREATE INDEX IF NOT EXISTS idx_fabrica_creditos_provisorio
 ALTER TABLE fabrica_creditos DROP CONSTRAINT IF EXISTS fabrica_creditos_origem_check;
 ALTER TABLE fabrica_creditos ADD CONSTRAINT fabrica_creditos_origem_check
   CHECK (origem IN ('ANTECIPACAO', 'BONIFICACAO', 'AJUSTE', 'USO', 'SALDO_ANTERIOR'));
+
+-- De quem veio o PIX. O relatório de recebimento do Sicoob traz o nome do
+-- pagador e mais nada que identifique — sem CNPJ, sem código. E o mesmo
+-- cliente paga por mais de uma empresa: a Modal manda pela MODALTINTAS e pela
+-- GOMES E TAVARES, a Truck por duas, a Fábrica Loja pelo Mercado Pago e pela
+-- Shopee. Por isso a origem é uma tabela e não uma coluna no cliente.
+CREATE TABLE IF NOT EXISTS fabrica_pix_origem (
+  id SERIAL PRIMARY KEY,
+  -- nome do pagador sem acento, sem pontuação e em caixa alta: é o que
+  -- sobrevive a "Modaltintas Ltda" voltar como "MODALTINTAS LTDA" no mês
+  -- seguinte. O nome original fica em nome, só pra mostrar na tela.
+  chave TEXT NOT NULL UNIQUE,
+  nome TEXT NOT NULL,
+  cliente_id INTEGER REFERENCES fabrica_clientes(id) ON DELETE SET NULL,
+  -- CLIENTE abate a dívida da loja. APORTE e AVULSA entram no caixa mas não
+  -- abatem ninguém — aporte de sócio não é venda. IGNORAR é transferência
+  -- entre contas próprias, que não é nem caixa novo.
+  destino TEXT NOT NULL DEFAULT 'CLIENTE'
+    CHECK (destino IN ('CLIENTE', 'APORTE', 'AVULSA', 'IGNORAR')),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Um PIX já importado. A chave é o EndToEndId do Banco Central: é único por
+-- transação e vem igual em toda exportação, então subir o mesmo relatório
+-- duas vezes não duplica nada — e subir agosto de novo depois de corrigir uma
+-- origem só mexe no que faltava.
+CREATE TABLE IF NOT EXISTS fabrica_pix_recebido (
+  e2e TEXT PRIMARY KEY,
+  data DATE NOT NULL,
+  pagador TEXT NOT NULL,
+  instituicao TEXT,
+  descricao TEXT,
+  valor NUMERIC(14,2) NOT NULL,
+  cliente_id INTEGER REFERENCES fabrica_clientes(id) ON DELETE SET NULL,
+  destino TEXT NOT NULL,
+  -- o pagamento que este PIX gerou. Fica nulo quando o destino não é CLIENTE,
+  -- e volta a nulo se alguém apagar o pagamento na tela — aí o PIX aparece
+  -- de novo como pendente na próxima importação, em vez de sumir calado.
+  pagamento_id INTEGER REFERENCES fabrica_pagamentos(id) ON DELETE SET NULL,
+  importado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS fabrica_pix_recebido_data ON fabrica_pix_recebido (data);
