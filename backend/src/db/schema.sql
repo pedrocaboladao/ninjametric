@@ -840,6 +840,32 @@ CREATE TABLE IF NOT EXISTS fabrica_clientes (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_tipo ON fabrica_clientes (tipo, nome);
 
+-- Como o ERP chama cada cliente.
+--
+-- O Bling escreve razão social — "MESTRE DO IMPERMEABILIZANTE E PRODUTOS LTDA"
+-- — e aqui o cadastro é o nome de porta, "Mestre do Impermeabilizante". Casar
+-- por nome exato deixava 1.673 de 1.832 linhas de agosto/2026 sem cliente, e
+-- linha sem cliente não vira pedido: a importação inteira parava.
+--
+-- A maioria o prefixo resolve sozinho, sem apelido nenhum. Esta tabela é pros
+-- que não têm nada a ver: Truck Ponto Com é "F.A. CADORIN", Modal Tech é
+-- "GOMES E TAVARES", Fábrica de Tintas é "IMPETRUS".
+--
+-- A chave é única no banco todo, não por cliente: um nome de fora aponta pra
+-- um cliente só, senão a importação teria que escolher.
+CREATE TABLE IF NOT EXISTS fabrica_cliente_apelidos (
+  id SERIAL PRIMARY KEY,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE CASCADE,
+  apelido TEXT NOT NULL,
+  -- o apelido sem acento, sem espaço e sem pontuação: é por ele que casa
+  chave TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_cliente_apelidos_chave
+  ON fabrica_cliente_apelidos (chave);
+CREATE INDEX IF NOT EXISTS idx_fabrica_cliente_apelidos_cliente
+  ON fabrica_cliente_apelidos (cliente_id);
+
 -- Cadastro de embalagem da Fábrica Distribuidora: o balde, a bombona, o galão.
 -- Antes disso o custo da embalagem era um número digitado dentro de cada
 -- fórmula — o mesmo balde de 18 kg tinha o preço repetido em 23 lugares, e

@@ -268,6 +268,24 @@ export interface SkuFaltando {
   clientes: string[];
 }
 
+// Nome que veio do ERP e não casou com cliente nenhum. É o par do SkuFaltando:
+// sem cliente a linha também não vira pedido.
+export interface ClienteFaltando {
+  nome: string;
+  linhas: number;
+  valor: number;
+  // casou com mais de um cliente: não falta cadastro, falta escolher
+  ambiguo: boolean;
+  documentos: string[];
+}
+
+export interface ClienteApelido {
+  id: number;
+  clienteId: number;
+  clienteNome: string;
+  apelido: string;
+}
+
 export interface ConferenciaPlanilha {
   origem: string;
   linhas: LinhaPlanilha[];
@@ -279,6 +297,7 @@ export interface ConferenciaPlanilha {
   linhasNoArquivo: number;
   linhasVazias: number;
   skusFaltando: SkuFaltando[];
+  clientesFaltando: ClienteFaltando[];
 }
 
 export interface ResultadoImportacao {
@@ -423,4 +442,5 @@ export interface SincronizacaoBling extends ConferenciaPlanilha {
   falhas: Array<{ id: number; motivo: string }>;
   texto: string;
   skusFaltando: SkuFaltando[];
+  clientesFaltando: ClienteFaltando[];
 }

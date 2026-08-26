@@ -36,6 +36,7 @@ import {
   desconectarBling,
   sincronizarBling,
   progressoBling,
+  criarApelidoCliente,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -74,6 +75,7 @@ import type {
   ConferenciaNota,
   StatusBling,
   ProgressoBling,
+  ClienteFaltando,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -167,6 +169,9 @@ export function FabricaPedidos() {
   const [blingAte, setBlingAte] = useState("");
   const [blingOcupado, setBlingOcupado] = useState(false);
   const [blingProgresso, setBlingProgresso] = useState<ProgressoBling | null>(null);
+
+  // nome que veio do ERP -> cliente escolhido pra ligar nele
+  const [apelidoEscolha, setApelidoEscolha] = useState<Record<string, number>>({});
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -504,6 +509,24 @@ export function FabricaPedidos() {
       setConferencia(c);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao cadastrar o produto.");
+    }
+  }
+
+  async function ligarApelido(c: ClienteFaltando) {
+    const clienteId = apelidoEscolha[c.nome];
+    if (!clienteId) {
+      setErro(`Escolha de qual cliente é "${c.nome}".`);
+      return;
+    }
+    try {
+      const a = await criarApelidoCliente(clienteId, c.nome);
+      setErro(null);
+      setAviso(`"${c.nome}" agora é ${a.clienteNome}. Vale pras próximas importações também.`);
+      // reconfere na hora: sem isso o operador teria que subir o arquivo de
+      // novo pra ver as linhas saindo do vermelho
+      setConferencia(await conferirPlanilha(impTexto, impOrigem));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gravar o apelido.");
     }
   }
 
@@ -1674,6 +1697,81 @@ export function FabricaPedidos() {
                   .map(([campo, titulo]) => `${campo} = "${titulo}"`)
                   .join(" · ")}
               </p>
+
+              {conferencia.clientesFaltando.length > 0 && (
+                <div className="credito-alerta">
+                  <p>
+                    <strong>
+                      {conferencia.clientesFaltando.length} nome
+                      {conferencia.clientesFaltando.length === 1 ? "" : "s"} do ERP sem cliente
+                    </strong>{" "}
+                    — o Bling escreve razão social e aqui o cadastro é o nome de porta. Diga uma
+                    vez de quem é cada um e o sistema passa a reconhecer sozinho daqui pra
+                    frente.
+                  </p>
+                  <table className="financeiro-tabela">
+                    <thead>
+                      <tr>
+                        <th>NOME NO ERP</th>
+                        <th>PEDIDOS</th>
+                        <th className="financeiro-th-numero">LINHAS</th>
+                        <th className="financeiro-th-numero">VALOR</th>
+                        <th>É QUAL CLIENTE?</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conferencia.clientesFaltando.map((cf) => (
+                        <tr key={cf.nome}>
+                          <td>
+                            <strong>{cf.nome}</strong>
+                            {cf.ambiguo && (
+                              <>
+                                {" "}
+                                <span className="financeiro-td-mudo">
+                                  (casou com mais de um cliente)
+                                </span>
+                              </>
+                            )}
+                          </td>
+                          <td className="financeiro-td-mudo">{cf.documentos.join(", ")}</td>
+                          <td className="financeiro-th-numero financeiro-td-mudo">{cf.linhas}</td>
+                          <td className="financeiro-th-numero">{formatCurrency(cf.valor)}</td>
+                          <td>
+                            <select
+                              className="clonar-input"
+                              value={apelidoEscolha[cf.nome] ?? ""}
+                              onChange={(e) =>
+                                setApelidoEscolha((a) => ({
+                                  ...a,
+                                  [cf.nome]: Number(e.target.value),
+                                }))
+                              }
+                            >
+                              <option value="">Escolha o cliente</option>
+                              {clientes.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.nome}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-responder"
+                              disabled={!apelidoEscolha[cf.nome]}
+                              onClick={() => void ligarApelido(cf)}
+                            >
+                              Ligar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {conferencia.skusFaltando.length > 0 && (
                 <div className="credito-alerta">
