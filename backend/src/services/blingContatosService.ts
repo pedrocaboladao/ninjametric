@@ -142,11 +142,20 @@ interface ClienteCadastro {
   uf: string | null;
 }
 
+// Cada campo que muda vai com o valor de antes junto. Simulacao que so diz
+// "e-mail" nao deixa ninguem decidir nada: o que importa e o que vai ser
+// apagado. E depois de gravado, e por aqui que da pra voltar atras.
+export interface MudancaCampo {
+  campo: string;
+  antes: string;
+  depois: string;
+}
+
 export interface LinhaSincronia {
   cliente: string;
   contatoId: number | null;
   contatoNome: string | null;
-  campos: string[];
+  campos: MudancaCampo[];
   situacao: "atualizado" | "sem mudança" | "não achei no Bling" | "erro";
   erro?: string;
 }
@@ -220,29 +229,31 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
       continue;
     }
 
-    const campos: string[] = [];
+    const campos: MudancaCampo[] = [];
     const corpo: ContatoBling = { ...inteiro };
+    const anotar = (campo: string, antes: unknown, depois: string) =>
+      campos.push({ campo, antes: String(antes ?? "").trim(), depois });
 
     const ie = (cl.inscricao_estadual ?? "").trim();
     if (ie && digitos(inteiro.ie) !== digitos(ie)) {
+      anotar("IE", inteiro.ie, ie);
       corpo.ie = ie;
       // sem isento marcado o Bling recusa IE preenchida
       corpo.indicadorIe = 1;
-      campos.push("IE");
     }
     if (cl.email && (inteiro.email ?? "").toLowerCase() !== cl.email.toLowerCase()) {
+      anotar("e-mail", inteiro.email, cl.email);
       corpo.email = cl.email;
-      campos.push("e-mail");
     }
 
     const { fixo, celular } = separarFones(cl.telefone);
     if (fixo && digitos(inteiro.telefone) !== fixo) {
+      anotar("telefone", inteiro.telefone, fixo);
       corpo.telefone = fixo;
-      campos.push("telefone");
     }
     if (celular && digitos(inteiro.celular) !== celular) {
+      anotar("celular", inteiro.celular, celular);
       corpo.celular = celular;
-      campos.push("celular");
     }
 
     const geral = (inteiro.endereco?.geral ?? {}) as Record<string, unknown>;
@@ -251,8 +262,8 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
       if (!valor) return;
       const atual = String(novoEndereco[chave] ?? "").trim();
       if (atual.toUpperCase() === valor.trim().toUpperCase()) return;
+      anotar(rotulo, atual, valor.trim());
       novoEndereco[chave] = valor.trim();
-      campos.push(rotulo);
     };
     trocar("endereco", cl.logradouro, "logradouro");
     trocar("numero", cl.numero, "número");
@@ -261,10 +272,10 @@ export async function sincronizarContatos(simulacao: boolean): Promise<Resultado
     trocar("municipio", cl.cidade, "município");
     trocar("uf", cl.uf, "UF");
     if (cl.cep && digitos(novoEndereco.cep as string) !== digitos(cl.cep)) {
+      anotar("CEP", novoEndereco.cep, cl.cep);
       novoEndereco.cep = cl.cep;
-      campos.push("CEP");
     }
-    if (campos.some((c) => ENDERECO.has(c))) {
+    if (campos.some((c) => ENDERECO.has(c.campo))) {
       corpo.endereco = { ...(inteiro.endereco ?? {}), geral: novoEndereco };
     }
 
