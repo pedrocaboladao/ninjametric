@@ -296,3 +296,52 @@ export interface IdadeSaldo {
   clientes: IdadeCliente[];
   totais: { total: number; aVencer: number; faixas: FaixaIdade[] };
 }
+
+// --- conciliação do PIX recebido ---
+//
+// O extrato de conta corrente do Sicoob agrupa os PIX de outras instituições
+// numa linha por dia, sem o pagador. O relatório de Recebimento Pix traz um
+// por linha, com nome — é ele que alimenta esta tela.
+
+export type DestinoPix = "CLIENTE" | "APORTE" | "AVULSA" | "IGNORAR";
+
+export interface OrigemPix {
+  id: number;
+  chave: string;
+  nome: string;
+  clienteId: number | null;
+  clienteNome: string | null;
+  destino: DestinoPix;
+  recebido: number;
+  transacoes: number;
+}
+
+export interface PendentePix {
+  pagador: string;
+  instituicao: string;
+  transacoes: number;
+  valor: number;
+  primeira: string;
+  ultima: string;
+}
+
+export interface ConferenciaPix {
+  linhasNoArquivo: number;
+  ignoradas: number;
+  periodo: { de: string; ate: string } | null;
+  total: number;
+  jaImportados: { transacoes: number; valor: number };
+  adotaveis: { transacoes: number; valor: number };
+  novos: Array<{ clienteId: number; clienteNome: string; transacoes: number; valor: number }>;
+  semDivida: Array<{ destino: DestinoPix; transacoes: number; valor: number }>;
+  pendentes: PendentePix[];
+}
+
+export interface ResultadoPix {
+  pagamentosCriados: number;
+  pagamentosAdotados: number;
+  valorLancado: number;
+  registrados: number;
+  jaImportados: number;
+  pendentes: number;
+}
