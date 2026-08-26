@@ -25,7 +25,7 @@ import type {
   Entrada,
   ConferenciaNota,
   StatusBling,
-  SincronizacaoBling,
+  ProgressoBling,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -527,18 +527,26 @@ export async function desconectarBling(): Promise<void> {
   await tratarResposta<{ ok: boolean }>(res);
 }
 
-// Puxa as vendas do período direto do Bling. Devolve a mesma conferência da
-// planilha mais o texto — quem lança continua sendo a rota de importar, então
-// o caminho do ERP e o do arquivo terminam iguais.
+// Começa a puxada das vendas do período. Não espera terminar: um mês passa de
+// dez minutos e o proxy corta muito antes. Quem acompanha é progressoBling, e
+// quem lança continua sendo a rota de importar planilha — o caminho do ERP e o
+// do arquivo terminam iguais.
 export async function sincronizarBling(
   dataInicial: string,
   dataFinal: string
-): Promise<SincronizacaoBling> {
+): Promise<ProgressoBling> {
   const res = await fetch(`${API_BASE}/api/fabrica-bling/sincronizar`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ dataInicial, dataFinal }),
   });
-  return tratarResposta<SincronizacaoBling>(res);
+  return tratarResposta<ProgressoBling>(res);
+}
+
+export async function progressoBling(): Promise<ProgressoBling> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/sincronizacao`, {
+    credentials: "include",
+  });
+  return tratarResposta<ProgressoBling>(res);
 }

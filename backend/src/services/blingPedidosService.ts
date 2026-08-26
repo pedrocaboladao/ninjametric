@@ -12,9 +12,17 @@ import { tokenValido } from "./blingAuth";
 
 const BASE = "https://api.bling.com.br/Api/v3";
 const POR_PAGINA = 100;
-// 3 req/s é o teto do Bling; 4 em paralelo com pausa fica abaixo com folga
-const LOTE = 4;
-const PAUSA_MS = 1500;
+
+// O Bling deixa passar 3 chamadas por segundo. Disparar 4 juntas e esperar
+// 1,5s dá 2,7/s na média e mesmo assim estoura: o teto é instantâneo, não
+// médio. E o pedido que toma 429 volta sem itens, calado — numa janela de três
+// dias de agosto de 2026 isso comeu 85 dos 207 pedidos, 41% da venda, sem erro
+// nenhum aparecer na tela.
+//
+// Então as chamadas saem enfileiradas, uma a cada 350ms, e quem toma 429 tenta
+// de novo com espera crescente em vez de virar buraco no resultado.
+const ESPACO_MS = 350;
+const TENTATIVAS = 4;
 
 export interface PedidoBling {
   id: number;
@@ -37,14 +45,40 @@ export interface ItemBling {
 
 const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// Marca quando a próxima chamada pode sair. Cada uma reserva seu lugar antes de
+// esperar, então duas chamadas concorrentes pegam horários diferentes em vez de
+// acordarem juntas.
+let proximaLivre = 0;
+
+async function vez(): Promise<void> {
+  const agora = Date.now();
+  const quando = Math.max(agora, proximaLivre);
+  proximaLivre = quando + ESPACO_MS;
+  if (quando > agora) await dormir(quando - agora);
+}
+
 async function get<T>(caminho: string, params?: Record<string, unknown>): Promise<T> {
-  const token = await tokenValido();
-  const { data } = await axios.get<T>(`${BASE}${caminho}`, {
-    params,
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    timeout: 30000,
-  });
-  return data;
+  let espera = 2000;
+  for (let tentativa = 1; ; tentativa++) {
+    await vez();
+    const token = await tokenValido();
+    try {
+      const { data } = await axios.get<T>(`${BASE}${caminho}`, {
+        params,
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        timeout: 30000,
+      });
+      return data;
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 429 && tentativa < TENTATIVAS) {
+        await dormir(espera);
+        espera *= 2;
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 interface RespostaLista {
@@ -83,7 +117,6 @@ export async function listarPedidos(
     }
     // página incompleta é a última: o Bling não devolve total de registros
     if (lote.length < POR_PAGINA) break;
-    await dormir(PAUSA_MS);
   }
   return saida;
 }
@@ -142,27 +175,16 @@ export async function buscarVendas(
   const itens: ItemBling[] = [];
   const falhas: Array<{ id: number; motivo: string }> = [];
 
-  for (let i = 0; i < pedidos.length; i += LOTE) {
-    const fatia = pedidos.slice(i, i + LOTE);
-    const r = await Promise.all(
-      fatia.map(async (p) => {
-        try {
-          return { ok: true as const, itens: await itensDoPedido(p.id) };
-        } catch (err) {
-          return {
-            ok: false as const,
-            id: p.id,
-            motivo: err instanceof Error ? err.message : "erro",
-          };
-        }
-      })
-    );
-    for (const x of r) {
-      if (x.ok) itens.push(...x.itens);
-      else falhas.push({ id: x.id, motivo: x.motivo });
+  // Um pedido por vez: quem espaça as chamadas é o enfileirador do get, e
+  // paralelizar aqui só criaria a rajada que o Bling recusa.
+  for (let i = 0; i < pedidos.length; i++) {
+    const p = pedidos[i];
+    try {
+      itens.push(...(await itensDoPedido(p.id)));
+    } catch (err) {
+      falhas.push({ id: p.id, motivo: err instanceof Error ? err.message : "erro" });
     }
-    if (aoAndar) aoAndar(Math.min(i + LOTE, pedidos.length), pedidos.length);
-    if (i + LOTE < pedidos.length) await dormir(PAUSA_MS);
+    if (aoAndar) aoAndar(i + 1, pedidos.length);
   }
 
   return { pedidos: pedidos.length, itens, falhas };

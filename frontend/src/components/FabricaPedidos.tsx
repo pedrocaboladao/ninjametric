@@ -35,6 +35,7 @@ import {
   autorizarBling,
   desconectarBling,
   sincronizarBling,
+  progressoBling,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -72,6 +73,7 @@ import type {
   Entrada,
   ConferenciaNota,
   StatusBling,
+  ProgressoBling,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -164,6 +166,7 @@ export function FabricaPedidos() {
   const [blingDe, setBlingDe] = useState("");
   const [blingAte, setBlingAte] = useState("");
   const [blingOcupado, setBlingOcupado] = useState(false);
+  const [blingProgresso, setBlingProgresso] = useState<ProgressoBling | null>(null);
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -929,23 +932,61 @@ export function FabricaPedidos() {
     }
   }
 
+  // Recolhe o que a sincronização já produziu. Fica separado do laço que
+  // pergunta porque a mesma coisa acontece quando a tela abre no meio de uma
+  // puxada que começou antes — fechar a aba não cancela nada no servidor.
+  const acolherBling = useCallback((p: ProgressoBling) => {
+    setBlingProgresso(p);
+    if (p.estado === "erro") {
+      setErro(p.erro ?? "Falha ao sincronizar com o Bling.");
+      setBlingOcupado(false);
+      return;
+    }
+    if (p.estado !== "pronto" || !p.resultado) return;
+    const r = p.resultado;
+    // o texto entra no mesmo campo do arquivo: o botão de lançar é o mesmo
+    setImpTexto(r.texto);
+    setImpOrigem("BLING");
+    setConferencia(r);
+    setAviso(
+      `${r.pedidos} pedido(s) lidos do Bling, ${r.itensLidos} itens.` +
+        (r.falhas.length ? ` ${r.falhas.length} pedido(s) não abriram.` : "")
+    );
+    setBlingOcupado(false);
+  }, []);
+
+  // Enquanto estiver rodando, pergunta de cinco em cinco segundos. Um mês passa
+  // de dez minutos e a resposta não cabe numa requisição só.
+  useEffect(() => {
+    const rodando =
+      blingProgresso?.estado === "listando" || blingProgresso?.estado === "puxando";
+    if (!rodando) return;
+    const t = window.setInterval(() => {
+      void progressoBling().then(acolherBling).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [blingProgresso?.estado, acolherBling]);
+
+  // Ao abrir a aba, pega uma puxada que já esteja em andamento.
+  useEffect(() => {
+    if (aba !== "importar" || blingProgresso) return;
+    void progressoBling()
+      .then((p) => {
+        if (p.estado === "nenhuma") return;
+        if (p.estado === "listando" || p.estado === "puxando") setBlingOcupado(true);
+        acolherBling(p);
+      })
+      .catch(() => undefined);
+  }, [aba, blingProgresso, acolherBling]);
+
   async function puxarDoBling() {
     setBlingOcupado(true);
     setErro(null);
     setConferencia(null);
     try {
-      const r = await sincronizarBling(blingDe, blingAte);
-      // o texto entra no mesmo campo do arquivo: o botão de lançar é o mesmo
-      setImpTexto(r.texto);
-      setImpOrigem("BLING");
-      setConferencia(r);
-      setAviso(
-        `${r.pedidos} pedido(s) lidos do Bling, ${r.itensLidos} itens.` +
-          (r.falhas.length ? ` ${r.falhas.length} pedido(s) não abriram.` : "")
-      );
+      setBlingProgresso(await sincronizarBling(blingDe, blingAte));
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.");
-    } finally {
       setBlingOcupado(false);
     }
   }
@@ -1471,7 +1512,9 @@ export function FabricaPedidos() {
                 <>
                   <p>
                     <strong>Bling conectado.</strong> Escolha o período e puxe as vendas — vem
-                    item a item, com SKU, e cai na mesma conferência do arquivo.
+                    item a item, com SKU, e cai na mesma conferência do arquivo. O Bling só
+                    entrega três pedidos por segundo, então um mês leva uns dez minutos; pode
+                    sair da tela, a busca continua no servidor.
                     {bling.diasParaVencer !== null && bling.diasParaVencer < 7 && (
                       <>
                         {" "}
@@ -1498,7 +1541,11 @@ export function FabricaPedidos() {
                     disabled={blingOcupado || !blingDe || !blingAte}
                     onClick={() => void puxarDoBling()}
                   >
-                    {blingOcupado ? "Puxando do Bling..." : "Puxar vendas do Bling"}
+                    {!blingOcupado
+                      ? "Puxar vendas do Bling"
+                      : blingProgresso?.estado === "puxando" && blingProgresso.total
+                        ? `Puxando ${blingProgresso.feitos} de ${blingProgresso.total} pedidos...`
+                        : "Listando os pedidos..."}
                   </button>{" "}
                   <button
                     type="button"

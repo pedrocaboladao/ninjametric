@@ -101,29 +101,104 @@ fabricaBlingRouter.delete("/conexao", async (_req, res) => {
   }
 });
 
-// Puxa as vendas do período e devolve a conferência de sempre, mais o texto.
-// Nada é lançado aqui — quem lança é a rota de importar planilha, com o texto
-// que volta daqui. Assim o caminho do Bling e o do arquivo terminam iguais.
-fabricaBlingRouter.post("/sincronizar", async (req, res) => {
-  const b = req.body ?? {};
-  const de = typeof b.dataInicial === "string" ? b.dataInicial : "";
-  const ate = typeof b.dataFinal === "string" ? b.dataFinal : "";
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
-    return res.status(400).json({ error: "Informe o período no formato aaaa-mm-dd." });
-  }
+// Puxar um mês de vendas leva mais de dez minutos: são uns dois mil pedidos e o
+// Bling só deixa passar três chamadas por segundo. Nenhuma requisição HTTP
+// sobrevive a isso — o proxy corta antes. Então a sincronização roda solta no
+// servidor e a tela pergunta como está indo.
+//
+// Uma de cada vez, guardada em memória: são dois usuários, o trabalho é do mês
+// inteiro e duas sincronizações ao mesmo tempo só dividiriam a cota do Bling
+// pela metade.
+
+interface Sincronizacao {
+  id: string;
+  de: string;
+  ate: string;
+  estado: "listando" | "puxando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  iniciadoEm: number;
+  terminadoEm: number | null;
+  resultado: Record<string, unknown> | null;
+  erro: string | null;
+}
+
+let sinc: Sincronizacao | null = null;
+
+async function rodarSincronizacao(job: Sincronizacao): Promise<void> {
   try {
-    const r = await buscarVendas(de, ate);
+    const r = await buscarVendas(job.de, job.ate, (feitos, total) => {
+      job.estado = "puxando";
+      job.feitos = feitos;
+      job.total = total;
+    });
     const texto = paraTexto(r.itens);
     const conf = await conferirPlanilhaVendas(texto, "BLING");
-    res.json({
+    job.resultado = {
       pedidos: r.pedidos,
       itensLidos: r.itens.length,
       falhas: r.falhas,
       texto,
       ...conf,
       skusFaltando: skusFaltando(conf.linhas),
-    });
+    };
+    job.estado = "pronto";
   } catch (err) {
-    erro(res, err, "Falha ao sincronizar com o Bling.");
+    console.error("[fabrica-bling] sincronizar", err);
+    job.erro = err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.";
+    job.estado = "erro";
+  } finally {
+    job.terminadoEm = Date.now();
   }
+}
+
+// O que a tela precisa saber sem carregar o resultado inteiro junto.
+function resumo(j: Sincronizacao) {
+  return {
+    id: j.id,
+    de: j.de,
+    ate: j.ate,
+    estado: j.estado,
+    feitos: j.feitos,
+    total: j.total,
+    erro: j.erro,
+  };
+}
+
+fabricaBlingRouter.post("/sincronizar", (req, res) => {
+  const b = req.body ?? {};
+  const de = typeof b.dataInicial === "string" ? b.dataInicial : "";
+  const ate = typeof b.dataFinal === "string" ? b.dataFinal : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período no formato aaaa-mm-dd." });
+  }
+  if (sinc && (sinc.estado === "listando" || sinc.estado === "puxando")) {
+    return res.status(409).json({
+      error: `Já tem uma sincronização rodando (${sinc.de} a ${sinc.ate}). Espere terminar.`,
+      ...resumo(sinc),
+    });
+  }
+  const job: Sincronizacao = {
+    id: crypto.randomBytes(8).toString("hex"),
+    de,
+    ate,
+    estado: "listando",
+    feitos: 0,
+    total: 0,
+    iniciadoEm: Date.now(),
+    terminadoEm: null,
+    resultado: null,
+    erro: null,
+  };
+  sinc = job;
+  // solta de propósito: quem acompanha é o GET abaixo
+  void rodarSincronizacao(job);
+  res.status(202).json(resumo(job));
+});
+
+// Como está indo. Quando termina, vem o resultado inteiro junto — a mesma
+// conferência que a importação por arquivo devolve.
+fabricaBlingRouter.get("/sincronizacao", (_req, res) => {
+  if (!sinc) return res.json({ estado: "nenhuma" });
+  res.json({ ...resumo(sinc), resultado: sinc.resultado });
 });
