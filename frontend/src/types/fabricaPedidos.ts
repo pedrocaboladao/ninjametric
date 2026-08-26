@@ -345,3 +345,50 @@ export interface ResultadoPix {
   jaImportados: number;
   pendentes: number;
 }
+
+// --- entrada de mercadoria comprada ---
+//
+// O estoque só somava produção. A distribuidora é 93% revenda: o produto é
+// comprado, e sem onde registrar a compra todo saldo ficava negativo.
+
+export interface EntradaItem {
+  id: number;
+  produtoId: number;
+  sku: string;
+  produtoNome: string;
+  quantidade: number;
+  custoUnitario: number;
+  total: number;
+}
+
+export interface Entrada {
+  id: number;
+  fornecedorId: number | null;
+  fornecedorNome: string | null;
+  documento: string | null;
+  data: string;
+  observacao: string | null;
+  itens: EntradaItem[];
+  quantidade: number;
+  total: number;
+}
+
+export interface LinhaNota {
+  linha: number;
+  sku: string;
+  produtoId: number | null;
+  produtoNome: string | null;
+  quantidade: number;
+  custoUnitario: number;
+  total: number;
+  problema?: string;
+}
+
+export interface ConferenciaNota {
+  linhasNoArquivo: number;
+  linhasVazias: number;
+  prontas: LinhaNota[];
+  pendentes: LinhaNota[];
+  total: number;
+  quantidade: number;
+}

@@ -22,6 +22,8 @@ import type {
   DestinoPix,
   ConferenciaPix,
   ResultadoPix,
+  Entrada,
+  ConferenciaNota,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -458,4 +460,48 @@ export async function conferirPlanilhaArquivo(
     body: form,
   });
   return tratarResposta<ConferenciaPlanilha & { texto: string }>(res);
+}
+
+export async function fetchEntradas(): Promise<Entrada[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas`, { credentials: "include" });
+  const { entradas } = await tratarResposta<{ entradas: Entrada[] }>(res);
+  return entradas;
+}
+
+// Confere a nota do fornecedor sem gravar: mostra o que entra e o que ficou
+// sem SKU. Nota de compra tem dezenas de linhas, e digitar uma a uma é onde o
+// estoque começa a errar.
+export async function conferirNota(arquivo: File): Promise<ConferenciaNota> {
+  const form = new FormData();
+  form.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas/conferir`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  return tratarResposta<ConferenciaNota>(res);
+}
+
+export async function lancarEntrada(entrada: {
+  fornecedorNome: string | null;
+  documento: string | null;
+  data: string | null;
+  observacao: string | null;
+  itens: Array<{ produtoId: number; quantidade: number; custoUnitario: number }>;
+}): Promise<{ id: number; itens: number; total: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number; itens: number; total: number }>(res);
+}
+
+export async function excluirEntrada(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta<{ ok: boolean }>(res);
 }

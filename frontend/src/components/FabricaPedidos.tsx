@@ -27,6 +27,10 @@ import {
   excluirOrigemPix,
   conferirPix,
   conferirPlanilhaArquivo,
+  fetchEntradas,
+  conferirNota,
+  lancarEntrada,
+  excluirEntrada,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -61,6 +65,8 @@ import type {
   OrigemPix,
   ConferenciaPix,
   DestinoPix,
+  Entrada,
+  ConferenciaNota,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -117,6 +123,7 @@ export function FabricaPedidos() {
     | "creditos"
     | "devolucoes"
     | "pix"
+    | "entrada"
   >("pedidos");
 
   // importacao de planilha: cola o relatorio, confere, depois lanca
@@ -136,6 +143,16 @@ export function FabricaPedidos() {
   const [pixEscolha, setPixEscolha] = useState<Record<string, string>>({});
   const pixInputRef = useRef<HTMLInputElement | null>(null);
   const impInputRef = useRef<HTMLInputElement | null>(null);
+
+  // entrada de mercadoria: a nota do fornecedor que alimenta o estoque
+  const [entradas, setEntradas] = useState<Entrada[]>([]);
+  const [notaArquivo, setNotaArquivo] = useState<File | null>(null);
+  const [confNota, setConfNota] = useState<ConferenciaNota | null>(null);
+  const [notaFornecedor, setNotaFornecedor] = useState("");
+  const [notaDocumento, setNotaDocumento] = useState("");
+  const [notaData, setNotaData] = useState("");
+  const [notaOcupada, setNotaOcupada] = useState(false);
+  const notaInputRef = useRef<HTMLInputElement | null>(null);
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -863,6 +880,71 @@ export function FabricaPedidos() {
     }
   }
 
+  const carregarEntradas = useCallback(async () => {
+    try {
+      setEntradas(await fetchEntradas());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao carregar as entradas.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aba === "entrada") void carregarEntradas();
+  }, [aba, carregarEntradas]);
+
+  async function conferirArquivoNota(arquivo: File) {
+    setNotaOcupada(true);
+    setErro(null);
+    try {
+      setConfNota(await conferirNota(arquivo));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao ler a nota.");
+      setConfNota(null);
+    } finally {
+      setNotaOcupada(false);
+    }
+  }
+
+  async function lancarNota() {
+    if (!confNota || !confNota.prontas.length) return;
+    if (
+      !window.confirm(
+        `Lançar ${confNota.prontas.length} item(ns), ${confNota.quantidade} unidades, ` +
+          `${formatCurrency(confNota.total)}? Isso entra no estoque.`
+      )
+    ) {
+      return;
+    }
+    setNotaOcupada(true);
+    setErro(null);
+    try {
+      const r = await lancarEntrada({
+        fornecedorNome: notaFornecedor.trim() || null,
+        documento: notaDocumento.trim() || null,
+        data: notaData || null,
+        observacao: null,
+        itens: confNota.prontas.map((l) => ({
+          produtoId: l.produtoId as number,
+          quantidade: l.quantidade,
+          custoUnitario: l.custoUnitario,
+        })),
+      });
+      setAviso(
+        `Entrada ${r.id} lançada: ${r.itens} itens, ${formatCurrency(r.total)}. ` +
+          `O estoque já subiu.`
+      );
+      setConfNota(null);
+      setNotaArquivo(null);
+      setNotaDocumento("");
+      await carregarEntradas();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao lançar a entrada.");
+    } finally {
+      setNotaOcupada(false);
+    }
+  }
+
   const carregarOrigensPix = useCallback(async () => {
     try {
       setOrigensPix(await fetchOrigensPix());
@@ -982,6 +1064,7 @@ export function FabricaPedidos() {
             "creditos",
             "devolucoes",
             "pix",
+            "entrada",
           ] as const
         ).map((a) => (
           <button
@@ -1010,9 +1093,11 @@ export function FabricaPedidos() {
                         ? `Créditos${saldosCredito.length ? ` (${saldosCredito.length})` : ""}`
                         : a === "devolucoes"
                           ? `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`
-                          : `Conciliar PIX${
-                              confPix?.pendentes.length ? ` (${confPix.pendentes.length})` : ""
-                            }`}
+                          : a === "pix"
+                            ? `Conciliar PIX${
+                                confPix?.pendentes.length ? ` (${confPix.pendentes.length})` : ""
+                              }`
+                            : "Entrada de mercadoria"}
           </button>
         ))}
       </div>
@@ -2684,6 +2769,238 @@ export function FabricaPedidos() {
                             }}
                           >
                             Esquecer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {aba === "entrada" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Entrada de mercadoria</h2>
+              <p className="financeiro-td-mudo">
+                É por aqui que o estoque sobe. O cálculo do saldo é{" "}
+                <strong>produzido + entrado − vendido</strong>, e até agora só existia o
+                produzido — que vem de lote de fábrica. Como 93% do que a distribuidora vende
+                é comprado e não fabricado, a venda baixava e nada subia: em agosto de 2026
+                eram 712 produtos com saldo negativo, 27.191 unidades.
+              </p>
+              <p className="financeiro-td-mudo">
+                Suba a nota do fornecedor como arquivo. Precisa ter <strong>SKU</strong> e{" "}
+                <strong>quantidade</strong>; o custo pode vir unitário ou como total da linha —
+                com a quantidade, um resolve o outro. Nada entra antes de você conferir.
+              </p>
+            </div>
+          </div>
+
+          <div className="financeiro-filtros">
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Fornecedor"
+              value={notaFornecedor}
+              onChange={(e) => setNotaFornecedor(e.target.value)}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Nº da nota"
+              value={notaDocumento}
+              onChange={(e) => setNotaDocumento(e.target.value)}
+            />
+            <input
+              type="date"
+              className="clonar-input fabricacao-input-pequeno"
+              value={notaData}
+              onChange={(e) => setNotaData(e.target.value)}
+            />
+            <input
+              ref={notaInputRef}
+              type="file"
+              accept=".xlsx,.csv,.tsv,.txt"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                e.target.value = "";
+                setNotaArquivo(f);
+                if (f) void conferirArquivoNota(f);
+              }}
+            />
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={notaOcupada}
+              onClick={() => notaInputRef.current?.click()}
+            >
+              {notaArquivo ? `Trocar nota (${notaArquivo.name})` : "Escolher nota .xlsx"}
+            </button>
+            <button
+              type="button"
+              className="btn-responder"
+              disabled={!confNota?.prontas.length || notaOcupada}
+              onClick={() => void lancarNota()}
+            >
+              {notaOcupada ? "Processando..." : `Lançar ${confNota?.prontas.length ?? 0} itens`}
+            </button>
+          </div>
+
+          {confNota && (
+            <>
+              <div className="contas-cartoes">
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">NO ARQUIVO</span>
+                  <strong>{confNota.linhasNoArquivo}</strong>
+                  {confNota.linhasVazias > 0 && (
+                    <span className="financeiro-td-mudo">
+                      {confNota.linhasVazias} em branco
+                    </span>
+                  )}
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">ENTRA NO ESTOQUE</span>
+                  <strong>{confNota.quantidade}</strong>
+                  <span className="financeiro-td-mudo">
+                    {confNota.prontas.length} produto(s)
+                  </span>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">CUSTO DA NOTA</span>
+                  <strong>{formatCurrency(confNota.total)}</strong>
+                </div>
+                <div
+                  className={
+                    confNota.pendentes.length
+                      ? "contas-cartao contas-cartao-alerta"
+                      : "contas-cartao"
+                  }
+                >
+                  <span className="financeiro-stat-label">NÃO ENTRA</span>
+                  <strong>{confNota.pendentes.length}</strong>
+                </div>
+              </div>
+
+              {confNota.pendentes.length > 0 && (
+                <>
+                  <h3>Estas linhas não entram ({confNota.pendentes.length})</h3>
+                  <div className="financeiro-tabela-wrap">
+                    <table className="financeiro-tabela">
+                      <thead>
+                        <tr>
+                          <th>LINHA</th>
+                          <th>SKU NA NOTA</th>
+                          <th className="financeiro-th-numero">QTDE</th>
+                          <th>O QUE IMPEDE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confNota.pendentes.map((l) => (
+                          <tr key={l.linha}>
+                            <td>{l.linha}</td>
+                            <td>{l.sku || <em>vazio</em>}</td>
+                            <td className="financeiro-th-numero">{l.quantidade}</td>
+                            <td>{l.problema}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="financeiro-td-mudo">
+                    SKU não cadastrado: cadastre o produto e suba a nota de novo. O resto da
+                    nota entra normalmente — só estas ficam de fora.
+                  </p>
+                </>
+              )}
+
+              {confNota.prontas.length > 0 && (
+                <>
+                  <h3>Vai entrar no estoque</h3>
+                  <div className="financeiro-tabela-wrap">
+                    <table className="financeiro-tabela">
+                      <thead>
+                        <tr>
+                          <th>SKU</th>
+                          <th>PRODUTO</th>
+                          <th className="financeiro-th-numero">QTDE</th>
+                          <th className="financeiro-th-numero">CUSTO UNIT.</th>
+                          <th className="financeiro-th-numero">TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confNota.prontas.map((l) => (
+                          <tr key={l.linha}>
+                            <td>{l.sku}</td>
+                            <td className="financeiro-td-mudo">{l.produtoNome}</td>
+                            <td className="financeiro-th-numero">{l.quantidade}</td>
+                            <td className="financeiro-th-numero">
+                              {formatCurrency(l.custoUnitario)}
+                            </td>
+                            <td className="financeiro-th-numero">{formatCurrency(l.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {entradas.length > 0 && (
+            <>
+              <h3>Notas lançadas ({entradas.length})</h3>
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>FORNECEDOR</th>
+                      <th>Nº DA NOTA</th>
+                      <th className="financeiro-th-numero">ITENS</th>
+                      <th className="financeiro-th-numero">QTDE</th>
+                      <th className="financeiro-th-numero">CUSTO</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entradas.map((e) => (
+                      <tr key={e.id}>
+                        <td>{e.data}</td>
+                        <td>{e.fornecedorNome ?? <em>sem fornecedor</em>}</td>
+                        <td>{e.documento ?? "—"}</td>
+                        <td className="financeiro-th-numero">{e.itens.length}</td>
+                        <td className="financeiro-th-numero">{e.quantidade}</td>
+                        <td className="financeiro-th-numero">{formatCurrency(e.total)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-excluir"
+                            onClick={async () => {
+                              if (
+                                !window.confirm(
+                                  `Excluir a entrada de ${e.data}? O estoque desce ${e.quantidade} unidades.`
+                                )
+                              ) {
+                                return;
+                              }
+                              try {
+                                await excluirEntrada(e.id);
+                                await carregarEntradas();
+                                await carregar();
+                                setAviso("Entrada excluída. O estoque voltou.");
+                              } catch (err) {
+                                setErro(
+                                  err instanceof Error ? err.message : "Falha ao excluir."
+                                );
+                              }
+                            }}
+                          >
+                            Excluir
                           </button>
                         </td>
                       </tr>
