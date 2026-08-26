@@ -24,6 +24,8 @@ import type {
   ResultadoPix,
   Entrada,
   ConferenciaNota,
+  StatusBling,
+  SincronizacaoBling,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -504,4 +506,39 @@ export async function excluirEntrada(id: number): Promise<void> {
     credentials: "include",
   });
   await tratarResposta<{ ok: boolean }>(res);
+}
+
+export async function statusBling(): Promise<StatusBling> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/status`, { credentials: "include" });
+  return tratarResposta<StatusBling>(res);
+}
+
+export async function autorizarBling(): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/autorizar`, { credentials: "include" });
+  const { url } = await tratarResposta<{ url: string }>(res);
+  return url;
+}
+
+export async function desconectarBling(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/conexao`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta<{ ok: boolean }>(res);
+}
+
+// Puxa as vendas do período direto do Bling. Devolve a mesma conferência da
+// planilha mais o texto — quem lança continua sendo a rota de importar, então
+// o caminho do ERP e o do arquivo terminam iguais.
+export async function sincronizarBling(
+  dataInicial: string,
+  dataFinal: string
+): Promise<SincronizacaoBling> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/sincronizar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ dataInicial, dataFinal }),
+  });
+  return tratarResposta<SincronizacaoBling>(res);
 }

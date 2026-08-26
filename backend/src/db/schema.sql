@@ -1503,3 +1503,17 @@ CREATE INDEX IF NOT EXISTS fabrica_entradas_data ON fabrica_entradas (data);
 CREATE UNIQUE INDEX IF NOT EXISTS fabrica_entradas_doc
   ON fabrica_entradas (COALESCE(fornecedor_nome, ''), documento)
   WHERE documento IS NOT NULL AND documento <> '';
+
+-- Token OAuth do Bling. Uma linha só (id = 1): é uma conta de ERP, não uma
+-- por loja como no Mercado Livre.
+--
+-- O access_token dura poucas horas e o refresh_token trinta dias. Guardar os
+-- dois no banco em vez de memória é o que faz a integração sobreviver a
+-- deploy — o processo reinicia toda vez que sobe código.
+CREATE TABLE IF NOT EXISTS fabrica_bling_token (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expira_em TIMESTAMPTZ NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
