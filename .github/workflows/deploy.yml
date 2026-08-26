@@ -28,10 +28,34 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key_path: /tmp/deploy_key
           command_timeout: 15m
+          # As credenciais do Bling viajam como secret do GitHub e o deploy as
+          # grava no .env do VPS. Sem isso alguém teria que abrir o servidor
+          # por SSH e colar à mão toda vez que o secret mudar — e credencial
+          # digitada em terminal é credencial que acaba num histórico de shell.
+          envs: BLING_CLIENT_ID,BLING_CLIENT_SECRET,BLING_REDIRECT_URI
           script: |
             set -e
             cd ~/ninjametric
             git pull
+
+            # Grava a chave no .env sem apagar o que já existe. Secret vazio
+            # não mexe em nada: rodar o deploy sem ter cadastrado o segredo
+            # ainda não pode desconfigurar o que já estava funcionando.
+            gravar_env() {
+              chave="$1"; valor="$2"
+              [ -z "$valor" ] && return 0
+              touch .env
+              if grep -q "^${chave}=" .env; then
+                sed -i "s|^${chave}=.*|${chave}=${valor}|" .env
+              else
+                printf '%s=%s
+' "$chave" "$valor" >> .env
+              fi
+              echo "  .env: $chave atualizado"
+            }
+            gravar_env BLING_CLIENT_ID "$BLING_CLIENT_ID"
+            gravar_env BLING_CLIENT_SECRET "$BLING_CLIENT_SECRET"
+            gravar_env BLING_REDIRECT_URI "$BLING_REDIRECT_URI"
             docker compose up -d --build
             docker compose exec -T backend node dist/db/migrate.js
             docker compose exec -T backend node dist/db/seed.js
@@ -65,3 +89,7 @@ jobs:
             else
               echo "AVISO: $NGINX_CONF nao encontrado -- ajuste de timeout do Nginx pulado."
             fi
+        env:
+          BLING_CLIENT_ID: ${{ secrets.BLING_CLIENT_ID }}
+          BLING_CLIENT_SECRET: ${{ secrets.BLING_CLIENT_SECRET }}
+          BLING_REDIRECT_URI: ${{ secrets.BLING_REDIRECT_URI }}
