@@ -9,6 +9,7 @@ import {
   urlDeAutorizacao,
 } from "../services/blingAuth";
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
+import { sincronizarContatos } from "../services/blingContatosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
@@ -202,4 +203,18 @@ fabricaBlingRouter.post("/sincronizar", (req, res) => {
 fabricaBlingRouter.get("/sincronizacao", (_req, res) => {
   if (!sinc) return res.json({ estado: "nenhuma" });
   res.json({ ...resumo(sinc), resultado: sinc.resultado });
+});
+
+// Espelha o cadastro de cliente daqui no contato do Bling — IE, e-mail,
+// telefone e endereço. Casa por CNPJ, que é o que não muda de grafia.
+//
+// Nasce em simulação: `simular: false` no corpo é o que grava. Escrever no ERP
+// mexe em cadastro que emite nota, e ver a lista antes custa uma chamada.
+fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
+  const simulacao = (req.body ?? {}).simular !== false;
+  try {
+    res.json(await sincronizarContatos(simulacao));
+  } catch (err) {
+    erro(res, err, "Falha ao sincronizar os contatos do Bling.");
+  }
 });
