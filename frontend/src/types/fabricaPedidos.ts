@@ -392,3 +392,22 @@ export interface ConferenciaNota {
   total: number;
   quantidade: number;
 }
+
+// --- integração com o Bling, o ERP da Fábrica ---
+
+export interface StatusBling {
+  configurado: boolean;
+  conectado: boolean;
+  expiraEm: string | null;
+  atualizadoEm: string | null;
+  // o refresh_token do Bling vence em 30 dias: avisa antes de virar problema
+  diasParaVencer: number | null;
+}
+
+export interface SincronizacaoBling extends ConferenciaPlanilha {
+  pedidos: number;
+  itensLidos: number;
+  falhas: Array<{ id: number; motivo: string }>;
+  texto: string;
+  skusFaltando: SkuFaltando[];
+}

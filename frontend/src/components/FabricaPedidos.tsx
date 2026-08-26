@@ -31,6 +31,10 @@ import {
   conferirNota,
   lancarEntrada,
   excluirEntrada,
+  statusBling,
+  autorizarBling,
+  desconectarBling,
+  sincronizarBling,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -67,6 +71,7 @@ import type {
   DestinoPix,
   Entrada,
   ConferenciaNota,
+  StatusBling,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -153,6 +158,12 @@ export function FabricaPedidos() {
   const [notaData, setNotaData] = useState("");
   const [notaOcupada, setNotaOcupada] = useState(false);
   const notaInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Bling: o site puxa as vendas em vez de esperar o arquivo exportado
+  const [bling, setBling] = useState<StatusBling | null>(null);
+  const [blingDe, setBlingDe] = useState("");
+  const [blingAte, setBlingAte] = useState("");
+  const [blingOcupado, setBlingOcupado] = useState(false);
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -880,6 +891,65 @@ export function FabricaPedidos() {
     }
   }
 
+  const carregarBling = useCallback(async () => {
+    try {
+      setBling(await statusBling());
+    } catch {
+      // integração não configurada não é erro de tela: o bloco some sozinho
+      setBling(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aba === "importar") void carregarBling();
+  }, [aba, carregarBling]);
+
+  // primeiro e último dia do mês corrente, que é o período que se puxa
+  useEffect(() => {
+    if (blingDe || blingAte) return;
+    const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const [a, m] = hoje.split("-");
+    const ultimo = new Date(Number(a), Number(m), 0).getDate();
+    setBlingDe(`${a}-${m}-01`);
+    setBlingAte(`${a}-${m}-${String(ultimo).padStart(2, "0")}`);
+  }, [blingDe, blingAte]);
+
+  async function conectarBling() {
+    setBlingOcupado(true);
+    setErro(null);
+    try {
+      const url = await autorizarBling();
+      // janela separada: o Bling pede login e não abre dentro de iframe
+      window.open(url, "bling", "width=980,height=760");
+      setAviso("Autorize na janela do Bling e depois clique em Atualizar status.");
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao conectar o Bling.");
+    } finally {
+      setBlingOcupado(false);
+    }
+  }
+
+  async function puxarDoBling() {
+    setBlingOcupado(true);
+    setErro(null);
+    setConferencia(null);
+    try {
+      const r = await sincronizarBling(blingDe, blingAte);
+      // o texto entra no mesmo campo do arquivo: o botão de lançar é o mesmo
+      setImpTexto(r.texto);
+      setImpOrigem("BLING");
+      setConferencia(r);
+      setAviso(
+        `${r.pedidos} pedido(s) lidos do Bling, ${r.itensLidos} itens.` +
+          (r.falhas.length ? ` ${r.falhas.length} pedido(s) não abriram.` : "")
+      );
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.");
+    } finally {
+      setBlingOcupado(false);
+    }
+  }
+
   const carregarEntradas = useCallback(async () => {
     try {
       setEntradas(await fetchEntradas());
@@ -1366,6 +1436,87 @@ export function FabricaPedidos() {
               </p>
             </div>
           </div>
+
+          {bling && (
+            <div className="credito-alerta">
+              {!bling.configurado ? (
+                <p>
+                  <strong>Bling não configurado no servidor.</strong> Falta gerar o aplicativo
+                  em Configurações, Cadastro de aplicativos, e pôr as credenciais no .env do
+                  backend. Enquanto isso, a importação por arquivo funciona normal.
+                </p>
+              ) : !bling.conectado ? (
+                <>
+                  <p>
+                    <strong>Puxe as vendas direto do Bling</strong> em vez de exportar o
+                    relatório e subir o arquivo. Autorize uma vez e o site busca sozinho.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-responder"
+                    disabled={blingOcupado}
+                    onClick={() => void conectarBling()}
+                  >
+                    Conectar o Bling
+                  </button>{" "}
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    onClick={() => void carregarBling()}
+                  >
+                    Atualizar status
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <strong>Bling conectado.</strong> Escolha o período e puxe as vendas — vem
+                    item a item, com SKU, e cai na mesma conferência do arquivo.
+                    {bling.diasParaVencer !== null && bling.diasParaVencer < 7 && (
+                      <>
+                        {" "}
+                        A autorização vence em {bling.diasParaVencer} dia(s); sincronizar
+                        renova sozinho.
+                      </>
+                    )}
+                  </p>
+                  <input
+                    type="date"
+                    className="clonar-input fabricacao-input-pequeno"
+                    value={blingDe}
+                    onChange={(e) => setBlingDe(e.target.value)}
+                  />{" "}
+                  <input
+                    type="date"
+                    className="clonar-input fabricacao-input-pequeno"
+                    value={blingAte}
+                    onChange={(e) => setBlingAte(e.target.value)}
+                  />{" "}
+                  <button
+                    type="button"
+                    className="btn-responder"
+                    disabled={blingOcupado || !blingDe || !blingAte}
+                    onClick={() => void puxarDoBling()}
+                  >
+                    {blingOcupado ? "Puxando do Bling..." : "Puxar vendas do Bling"}
+                  </button>{" "}
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    disabled={blingOcupado}
+                    onClick={async () => {
+                      if (!window.confirm("Desconectar o Bling? Vai precisar autorizar de novo."))
+                        return;
+                      await desconectarBling();
+                      await carregarBling();
+                    }}
+                  >
+                    Desconectar
+                  </button>
+                </>
+              )}
+            </div>
+          )}
 
           <div className="financeiro-filtros">
             <input
