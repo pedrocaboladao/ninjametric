@@ -56,15 +56,28 @@ export function urlDeAutorizacao(state: string): string {
 
 async function pedirToken(corpo: Record<string, string>): Promise<BlingToken> {
   exigirConfig();
-  const { data } = await axios.post<BlingToken>(TOKEN, new URLSearchParams(corpo), {
-    headers: {
-      Authorization: `Basic ${basic()}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
-    },
-    timeout: 20000,
-  });
-  return data;
+  try {
+    const { data } = await axios.post<BlingToken>(TOKEN, new URLSearchParams(corpo), {
+      headers: {
+        Authorization: `Basic ${basic()}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      timeout: 20000,
+    });
+    return data;
+  } catch (err) {
+    // O Bling responde 400 com um corpo que diz o que está errado — código
+    // expirado, redirect diferente do cadastrado, credencial inválida. Sem
+    // repassar isso, todo problema vira "não deu para conectar" e a única
+    // saída é adivinhar. O corpo não traz segredo: é a descrição do erro.
+    if (axios.isAxiosError(err) && err.response) {
+      const d = err.response.data as unknown;
+      const texto = typeof d === "string" ? d : JSON.stringify(d);
+      throw new Error(`Bling respondeu ${err.response.status}: ${texto.slice(0, 400)}`);
+    }
+    throw err;
+  }
 }
 
 export async function trocarCodigo(code: string): Promise<BlingToken> {
