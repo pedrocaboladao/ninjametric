@@ -78,12 +78,15 @@ fabricaBlingRouter.get("/callback", async (req: Request, res: Response) => {
     res.send(pagina("Bling conectado", "A sincronização de vendas já pode ser usada."));
   } catch (err) {
     console.error("[fabrica-bling] callback", err);
+    const motivo =
+      err instanceof Error ? err.message : "Erro desconhecido ao trocar o código.";
     res
       .status(400)
       .send(
         pagina(
           "Não deu para conectar",
-          "O código do Bling vale um minuto. Tente autorizar de novo."
+          `<code style="opacity:.85">${motivo.replace(/[<>]/g, "")}</code>` +
+            "<br><br>O código do Bling vale um minuto — se demorou, autorize de novo."
         )
       );
   }
