@@ -185,34 +185,53 @@ export async function lerRelatorioPix(
 }
 
 export async function listarOrigens(): Promise<OrigemPix[]> {
-  const { rows } = await pool.query<{
-    id: number;
-    chave: string;
-    nome: string;
-    cliente_id: number | null;
-    cliente_nome: string | null;
-    destino: DestinoPix;
-    recebido: string | null;
-    transacoes: string;
-  }>(
-    `SELECT o.id, o.chave, o.nome, o.cliente_id, c.nome AS cliente_nome, o.destino,
-            COALESCE(SUM(p.valor), 0) AS recebido, COUNT(p.e2e) AS transacoes
-       FROM fabrica_pix_origem o
-       LEFT JOIN fabrica_clientes c ON c.id = o.cliente_id
-       LEFT JOIN fabrica_pix_recebido p ON p.pagador = o.nome
-      GROUP BY o.id, c.nome
-      ORDER BY COALESCE(SUM(p.valor), 0) DESC, o.nome`
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    chave: r.chave,
-    nome: r.nome,
-    clienteId: r.cliente_id,
-    clienteNome: r.cliente_nome,
-    destino: r.destino,
-    recebido: Number(r.recebido),
-    transacoes: Number(r.transacoes),
-  }));
+  // o total não sai por JOIN: uma origem cobre várias grafias do mesmo
+  // pagador — MODALTINTAS LTDA e Modaltintas Ltda —, e a origem guarda só uma
+  // delas no campo nome. Casar por nome literal deixaria as outras de fora.
+  // Agrupa por pagador aqui e soma pela mesma chave que a importação usa.
+  const [origens, recebidos] = await Promise.all([
+    pool.query<{
+      id: number;
+      chave: string;
+      nome: string;
+      cliente_id: number | null;
+      cliente_nome: string | null;
+      destino: DestinoPix;
+    }>(
+      `SELECT o.id, o.chave, o.nome, o.cliente_id, c.nome AS cliente_nome, o.destino
+         FROM fabrica_pix_origem o
+         LEFT JOIN fabrica_clientes c ON c.id = o.cliente_id`
+    ),
+    pool.query<{ pagador: string; total: string; transacoes: string }>(
+      `SELECT pagador, SUM(valor) AS total, COUNT(*) AS transacoes
+         FROM fabrica_pix_recebido GROUP BY pagador`
+    ),
+  ]);
+
+  const porChave = new Map<string, { valor: number; transacoes: number }>();
+  for (const r of recebidos.rows) {
+    const k = chaveOrigem(r.pagador);
+    const a = porChave.get(k) ?? { valor: 0, transacoes: 0 };
+    a.valor += Number(r.total);
+    a.transacoes += Number(r.transacoes);
+    porChave.set(k, a);
+  }
+
+  return origens.rows
+    .map((r) => {
+      const t = porChave.get(r.chave) ?? { valor: 0, transacoes: 0 };
+      return {
+        id: r.id,
+        chave: r.chave,
+        nome: r.nome,
+        clienteId: r.cliente_id,
+        clienteNome: r.cliente_nome,
+        destino: r.destino,
+        recebido: t.valor,
+        transacoes: t.transacoes,
+      };
+    })
+    .sort((a, b) => b.recebido - a.recebido || a.nome.localeCompare(b.nome));
 }
 
 export async function salvarOrigem(
