@@ -1,10 +1,13 @@
 import { pool } from "../db/pool";
 import { dataIso } from "./fabricaData";
 import { retornoPorProduto } from "./fabricaDevolucoesService";
+import { entradaPorProduto } from "./fabricaEntradasService";
 
 // Estoque de produto acabado da Fábrica Distribuidora.
 //
 //   produzido  formula_lote_envases — o lote encheu 40 baldes de 18 kg
+//   entrado    fabrica_entrada_itens — a nota do fornecedor. 93% do que a
+//              distribuidora vende é comprado, não fabricado
 //   vendido    itens dos pedidos que não foram cancelados
 //   ajuste     fabrica_produto_ajustes (inventário, quebra, amostra, devolução)
 //
@@ -22,6 +25,8 @@ export interface EstoqueProduto {
   sku: string;
   nome: string;
   produzido: number;
+  // comprado de fornecedor: para revenda, é esta a entrada, não a produção
+  entrado: number;
   vendido: number;
   // devolucao que chegou inteira e voltou pra prateleira
   devolvido: number;
@@ -71,7 +76,7 @@ export async function vendaPorProduto(): Promise<Map<number, number>> {
 export async function listarEstoqueProdutos(
   custoPor: Map<number, number> = new Map()
 ): Promise<EstoqueProduto[]> {
-  const [produtos, producao, venda, retorno, ajustes] = await Promise.all([
+  const [produtos, producao, entrada, venda, retorno, ajustes] = await Promise.all([
     pool.query<{
       id: number;
       sku: string;
@@ -84,6 +89,7 @@ export async function listarEstoqueProdutos(
        FROM fabrica_produtos ORDER BY nome, sku`
     ),
     producaoPorProduto(),
+    entradaPorProduto(),
     vendaPorProduto(),
     retornoPorProduto(),
     pool.query<{ produto_id: number; total: string }>(
@@ -95,10 +101,11 @@ export async function listarEstoqueProdutos(
 
   return produtos.rows.map((r) => {
     const produzido = producao.get(r.id) ?? 0;
+    const entrado = entrada.get(r.id) ?? 0;
     const vendido = venda.get(r.id) ?? 0;
     const devolvido = retorno.get(r.id) ?? 0;
     const ajuste = ajustePor.get(r.id) ?? 0;
-    const saldo = produzido - vendido + devolvido + ajuste;
+    const saldo = produzido + entrado - vendido + devolvido + ajuste;
     const estoqueMinimo = Number(r.estoque_minimo);
     const custoUnitario = custoPor.get(r.id) ?? 0;
     return {
@@ -106,6 +113,7 @@ export async function listarEstoqueProdutos(
       sku: r.sku,
       nome: r.nome,
       produzido,
+      entrado,
       vendido,
       devolvido,
       ajustes: ajuste,

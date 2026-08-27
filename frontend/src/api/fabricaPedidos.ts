@@ -22,6 +22,11 @@ import type {
   DestinoPix,
   ConferenciaPix,
   ResultadoPix,
+  Entrada,
+  ConferenciaNota,
+  StatusBling,
+  ProgressoBling,
+  ClienteApelido,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -440,4 +445,124 @@ export function conferirPix(arquivo: File): Promise<ConferenciaPix> {
 
 export function importarPix(arquivo: File): Promise<ResultadoPix> {
   return enviarPix<ResultadoPix>("importar", arquivo);
+}
+
+// Sobe a planilha de vendas como arquivo. Devolve a mesma conferência de
+// sempre, mais o texto convertido — o lançamento continua indo pela rota de
+// texto, então arquivo e cola nunca divergem.
+export async function conferirPlanilhaArquivo(
+  arquivo: File,
+  origem: string
+): Promise<ConferenciaPlanilha & { texto: string }> {
+  const form = new FormData();
+  form.append("arquivo", arquivo);
+  form.append("origem", origem);
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/vendas-planilha/arquivo`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  return tratarResposta<ConferenciaPlanilha & { texto: string }>(res);
+}
+
+export async function fetchEntradas(): Promise<Entrada[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas`, { credentials: "include" });
+  const { entradas } = await tratarResposta<{ entradas: Entrada[] }>(res);
+  return entradas;
+}
+
+// Confere a nota do fornecedor sem gravar: mostra o que entra e o que ficou
+// sem SKU. Nota de compra tem dezenas de linhas, e digitar uma a uma é onde o
+// estoque começa a errar.
+export async function conferirNota(arquivo: File): Promise<ConferenciaNota> {
+  const form = new FormData();
+  form.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas/conferir`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  return tratarResposta<ConferenciaNota>(res);
+}
+
+export async function lancarEntrada(entrada: {
+  fornecedorNome: string | null;
+  documento: string | null;
+  data: string | null;
+  observacao: string | null;
+  itens: Array<{ produtoId: number; quantidade: number; custoUnitario: number }>;
+}): Promise<{ id: number; itens: number; total: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(entrada),
+  });
+  return tratarResposta<{ id: number; itens: number; total: number }>(res);
+}
+
+export async function excluirEntrada(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-entradas/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta<{ ok: boolean }>(res);
+}
+
+export async function statusBling(): Promise<StatusBling> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/status`, { credentials: "include" });
+  return tratarResposta<StatusBling>(res);
+}
+
+export async function autorizarBling(): Promise<string> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/autorizar`, { credentials: "include" });
+  const { url } = await tratarResposta<{ url: string }>(res);
+  return url;
+}
+
+export async function desconectarBling(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/conexao`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta<{ ok: boolean }>(res);
+}
+
+// Começa a puxada das vendas do período. Não espera terminar: um mês passa de
+// dez minutos e o proxy corta muito antes. Quem acompanha é progressoBling, e
+// quem lança continua sendo a rota de importar planilha — o caminho do ERP e o
+// do arquivo terminam iguais.
+export async function sincronizarBling(
+  dataInicial: string,
+  dataFinal: string
+): Promise<ProgressoBling> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/sincronizar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ dataInicial, dataFinal }),
+  });
+  return tratarResposta<ProgressoBling>(res);
+}
+
+export async function progressoBling(): Promise<ProgressoBling> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/sincronizacao`, {
+    credentials: "include",
+  });
+  return tratarResposta<ProgressoBling>(res);
+}
+
+// Ensina ao sistema como o ERP escreve o nome de um cliente. Vale pra sempre:
+// da próxima importação em diante o nome casa sozinho.
+export async function criarApelidoCliente(
+  clienteId: number,
+  apelido: string
+): Promise<ClienteApelido> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/apelidos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ clienteId, apelido }),
+  });
+  return tratarResposta<ClienteApelido>(res);
 }

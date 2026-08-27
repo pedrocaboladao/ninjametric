@@ -128,6 +128,43 @@ export interface SkuFaltando {
   clientes: string[];
 }
 
+// Os nomes que vieram do ERP e não casaram com cliente nenhum. É o par do
+// skusFaltando: sem cliente a linha também não vira pedido, e antes disso o
+// operador só via "cliente não cadastrado" repetido mil vezes sem saber quantos
+// nomes diferentes estavam por trás.
+export interface ClienteFaltando {
+  nome: string;
+  linhas: number;
+  valor: number;
+  // o nome casou com mais de um cliente: não é cadastro que falta, é escolha
+  ambiguo: boolean;
+  documentos: string[];
+}
+
+export function clientesFaltando(linhas: LinhaPlanilha[]): ClienteFaltando[] {
+  const mapa = new Map<string, ClienteFaltando>();
+  for (const l of linhas) {
+    if (l.clienteId !== null || !l.cliente) continue;
+    const c = mapa.get(l.cliente) ?? {
+      nome: l.cliente,
+      linhas: 0,
+      valor: 0,
+      ambiguo: false,
+      documentos: [],
+    };
+    c.linhas++;
+    c.valor += l.total;
+    if (l.problema?.includes("ambíguo")) c.ambiguo = true;
+    // os primeiros pedidos servem de conferência: dá pra abrir no ERP e ver
+    // que é a loja mesmo antes de ligar o apelido
+    if (l.documento && c.documentos.length < 3 && !c.documentos.includes(l.documento)) {
+      c.documentos.push(l.documento);
+    }
+    mapa.set(l.cliente, c);
+  }
+  return [...mapa.values()].sort((a, b) => b.valor - a.valor);
+}
+
 export function skusFaltando(linhas: LinhaPlanilha[]): SkuFaltando[] {
   const mapa = new Map<string, SkuFaltando>();
   for (const l of linhas) {

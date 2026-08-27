@@ -84,6 +84,9 @@ export interface ContaCorrente {
   clienteId: number;
   clienteNome: string;
   clienteTipo: string;
+  // quem fecha a conta desta loja; quando ela paga por si, é ela mesma
+  paganteId: number;
+  paganteNome: string;
   comprado: number;
   pago: number;
   // credito de devolucao — abate no fechamento igual a um pagamento
@@ -268,6 +271,24 @@ export interface SkuFaltando {
   clientes: string[];
 }
 
+// Nome que veio do ERP e não casou com cliente nenhum. É o par do SkuFaltando:
+// sem cliente a linha também não vira pedido.
+export interface ClienteFaltando {
+  nome: string;
+  linhas: number;
+  valor: number;
+  // casou com mais de um cliente: não falta cadastro, falta escolher
+  ambiguo: boolean;
+  documentos: string[];
+}
+
+export interface ClienteApelido {
+  id: number;
+  clienteId: number;
+  clienteNome: string;
+  apelido: string;
+}
+
 export interface ConferenciaPlanilha {
   origem: string;
   linhas: LinhaPlanilha[];
@@ -279,6 +300,7 @@ export interface ConferenciaPlanilha {
   linhasNoArquivo: number;
   linhasVazias: number;
   skusFaltando: SkuFaltando[];
+  clientesFaltando: ClienteFaltando[];
 }
 
 export interface ResultadoImportacao {
@@ -344,4 +366,84 @@ export interface ResultadoPix {
   registrados: number;
   jaImportados: number;
   pendentes: number;
+}
+
+// --- entrada de mercadoria comprada ---
+//
+// O estoque só somava produção. A distribuidora é 93% revenda: o produto é
+// comprado, e sem onde registrar a compra todo saldo ficava negativo.
+
+export interface EntradaItem {
+  id: number;
+  produtoId: number;
+  sku: string;
+  produtoNome: string;
+  quantidade: number;
+  custoUnitario: number;
+  total: number;
+}
+
+export interface Entrada {
+  id: number;
+  fornecedorId: number | null;
+  fornecedorNome: string | null;
+  documento: string | null;
+  data: string;
+  observacao: string | null;
+  itens: EntradaItem[];
+  quantidade: number;
+  total: number;
+}
+
+export interface LinhaNota {
+  linha: number;
+  sku: string;
+  produtoId: number | null;
+  produtoNome: string | null;
+  quantidade: number;
+  custoUnitario: number;
+  total: number;
+  problema?: string;
+}
+
+export interface ConferenciaNota {
+  linhasNoArquivo: number;
+  linhasVazias: number;
+  prontas: LinhaNota[];
+  pendentes: LinhaNota[];
+  total: number;
+  quantidade: number;
+}
+
+// --- integração com o Bling, o ERP da Fábrica ---
+
+export interface StatusBling {
+  configurado: boolean;
+  conectado: boolean;
+  expiraEm: string | null;
+  atualizadoEm: string | null;
+  // o refresh_token do Bling vence em 30 dias: avisa antes de virar problema
+  diasParaVencer: number | null;
+}
+
+// Puxar um mês leva mais de dez minutos, então a sincronização roda no servidor
+// e a tela vai perguntando como está indo.
+export interface ProgressoBling {
+  estado: "nenhuma" | "listando" | "puxando" | "pronto" | "erro";
+  id?: string;
+  de?: string;
+  ate?: string;
+  feitos?: number;
+  total?: number;
+  erro?: string | null;
+  resultado?: SincronizacaoBling | null;
+}
+
+export interface SincronizacaoBling extends ConferenciaPlanilha {
+  pedidos: number;
+  itensLidos: number;
+  falhas: Array<{ id: number; motivo: string }>;
+  texto: string;
+  skusFaltando: SkuFaltando[];
+  clientesFaltando: ClienteFaltando[];
 }

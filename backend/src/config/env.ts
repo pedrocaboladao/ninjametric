@@ -35,6 +35,12 @@ export const env = {
   mlClientId: process.env.ML_CLIENT_ID ?? "",
   mlClientSecret: process.env.ML_CLIENT_SECRET ?? "",
   mlRedirectUri: process.env.ML_REDIRECT_URI ?? "",
+  // Bling, o ERP da Fábrica. Fica vazio até alguém gerar o aplicativo lá:
+  // sem isso a tela de integração diz o que falta em vez de derrubar o
+  // backend na subida, que é como o Mercado Livre já se comporta aqui.
+  blingClientId: process.env.BLING_CLIENT_ID ?? "",
+  blingClientSecret: process.env.BLING_CLIENT_SECRET ?? "",
+  blingRedirectUri: process.env.BLING_REDIRECT_URI ?? "",
   authUsername: required("AUTH_USERNAME"),
   authPasswordHash: required("AUTH_PASSWORD_HASH"),
   jwtSecret: required("JWT_SECRET"),

@@ -26,6 +26,17 @@ import {
   salvarOrigemPix,
   excluirOrigemPix,
   conferirPix,
+  conferirPlanilhaArquivo,
+  fetchEntradas,
+  conferirNota,
+  lancarEntrada,
+  excluirEntrada,
+  statusBling,
+  autorizarBling,
+  desconectarBling,
+  sincronizarBling,
+  progressoBling,
+  criarApelidoCliente,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -60,6 +71,11 @@ import type {
   OrigemPix,
   ConferenciaPix,
   DestinoPix,
+  Entrada,
+  ConferenciaNota,
+  StatusBling,
+  ProgressoBling,
+  ClienteFaltando,
 } from "../types/fabricaPedidos";
 import type { FabricaCliente } from "../types/fabricaClientes";
 import type { FabricaProduto } from "../types/fabricaProdutos";
@@ -116,6 +132,7 @@ export function FabricaPedidos() {
     | "creditos"
     | "devolucoes"
     | "pix"
+    | "entrada"
   >("pedidos");
 
   // importacao de planilha: cola o relatorio, confere, depois lanca
@@ -134,6 +151,27 @@ export function FabricaPedidos() {
   // "APORTE" / "AVULSA" / "IGNORAR" sao destinos que nao abatem divida
   const [pixEscolha, setPixEscolha] = useState<Record<string, string>>({});
   const pixInputRef = useRef<HTMLInputElement | null>(null);
+  const impInputRef = useRef<HTMLInputElement | null>(null);
+
+  // entrada de mercadoria: a nota do fornecedor que alimenta o estoque
+  const [entradas, setEntradas] = useState<Entrada[]>([]);
+  const [notaArquivo, setNotaArquivo] = useState<File | null>(null);
+  const [confNota, setConfNota] = useState<ConferenciaNota | null>(null);
+  const [notaFornecedor, setNotaFornecedor] = useState("");
+  const [notaDocumento, setNotaDocumento] = useState("");
+  const [notaData, setNotaData] = useState("");
+  const [notaOcupada, setNotaOcupada] = useState(false);
+  const notaInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Bling: o site puxa as vendas em vez de esperar o arquivo exportado
+  const [bling, setBling] = useState<StatusBling | null>(null);
+  const [blingDe, setBlingDe] = useState("");
+  const [blingAte, setBlingAte] = useState("");
+  const [blingOcupado, setBlingOcupado] = useState(false);
+  const [blingProgresso, setBlingProgresso] = useState<ProgressoBling | null>(null);
+
+  // nome que veio do ERP -> cliente escolhido pra ligar nele
+  const [apelidoEscolha, setApelidoEscolha] = useState<Record<string, number>>({});
 
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
@@ -471,6 +509,24 @@ export function FabricaPedidos() {
       setConferencia(c);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao cadastrar o produto.");
+    }
+  }
+
+  async function ligarApelido(c: ClienteFaltando) {
+    const clienteId = apelidoEscolha[c.nome];
+    if (!clienteId) {
+      setErro(`Escolha de qual cliente é "${c.nome}".`);
+      return;
+    }
+    try {
+      const a = await criarApelidoCliente(clienteId, c.nome);
+      setErro(null);
+      setAviso(`"${c.nome}" agora é ${a.clienteNome}. Vale pras próximas importações também.`);
+      // reconfere na hora: sem isso o operador teria que subir o arquivo de
+      // novo pra ver as linhas saindo do vermelho
+      setConferencia(await conferirPlanilha(impTexto, impOrigem));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gravar o apelido.");
     }
   }
 
@@ -861,6 +917,197 @@ export function FabricaPedidos() {
     }
   }
 
+  // Agrupa a conta corrente por quem fecha a conta. Várias lojas vendem no
+  // próprio nome e a cobrança vai inteira pra outra — quem manda o PIX na terça
+  // precisa ver um número só, não cinco linhas soltas pra somar na mão.
+  const gruposFechamento = useMemo(() => {
+    const g = new Map<
+      number,
+      { paganteId: number; pagante: string; total: number; linhas: ContaCorrente[] }
+    >();
+    for (const c of contaCorrente) {
+      const atual = g.get(c.paganteId) ?? {
+        paganteId: c.paganteId,
+        pagante: c.paganteNome,
+        total: 0,
+        linhas: [],
+      };
+      atual.total += c.saldo;
+      atual.linhas.push(c);
+      g.set(c.paganteId, atual);
+    }
+    for (const x of g.values()) {
+      // o pagante primeiro, depois as lojas dele por quanto devem
+      x.linhas.sort((a, b) =>
+        a.clienteId === x.paganteId ? -1 : b.clienteId === x.paganteId ? 1 : b.saldo - a.saldo
+      );
+    }
+    // quem deve mais aparece primeiro: é a ordem em que se cobra
+    return [...g.values()].sort((a, b) => b.total - a.total);
+  }, [contaCorrente]);
+
+  const carregarBling = useCallback(async () => {
+    try {
+      setBling(await statusBling());
+    } catch {
+      // integração não configurada não é erro de tela: o bloco some sozinho
+      setBling(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aba === "importar") void carregarBling();
+  }, [aba, carregarBling]);
+
+  // primeiro e último dia do mês corrente, que é o período que se puxa
+  useEffect(() => {
+    if (blingDe || blingAte) return;
+    const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const [a, m] = hoje.split("-");
+    const ultimo = new Date(Number(a), Number(m), 0).getDate();
+    setBlingDe(`${a}-${m}-01`);
+    setBlingAte(`${a}-${m}-${String(ultimo).padStart(2, "0")}`);
+  }, [blingDe, blingAte]);
+
+  async function conectarBling() {
+    setBlingOcupado(true);
+    setErro(null);
+    try {
+      const url = await autorizarBling();
+      // janela separada: o Bling pede login e não abre dentro de iframe
+      window.open(url, "bling", "width=980,height=760");
+      setAviso("Autorize na janela do Bling e depois clique em Atualizar status.");
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao conectar o Bling.");
+    } finally {
+      setBlingOcupado(false);
+    }
+  }
+
+  // Recolhe o que a sincronização já produziu. Fica separado do laço que
+  // pergunta porque a mesma coisa acontece quando a tela abre no meio de uma
+  // puxada que começou antes — fechar a aba não cancela nada no servidor.
+  const acolherBling = useCallback((p: ProgressoBling) => {
+    setBlingProgresso(p);
+    if (p.estado === "erro") {
+      setErro(p.erro ?? "Falha ao sincronizar com o Bling.");
+      setBlingOcupado(false);
+      return;
+    }
+    if (p.estado !== "pronto" || !p.resultado) return;
+    const r = p.resultado;
+    // o texto entra no mesmo campo do arquivo: o botão de lançar é o mesmo
+    setImpTexto(r.texto);
+    setImpOrigem("BLING");
+    setConferencia(r);
+    setAviso(
+      `${r.pedidos} pedido(s) lidos do Bling, ${r.itensLidos} itens.` +
+        (r.falhas.length ? ` ${r.falhas.length} pedido(s) não abriram.` : "")
+    );
+    setBlingOcupado(false);
+  }, []);
+
+  // Enquanto estiver rodando, pergunta de cinco em cinco segundos. Um mês passa
+  // de dez minutos e a resposta não cabe numa requisição só.
+  useEffect(() => {
+    const rodando =
+      blingProgresso?.estado === "listando" || blingProgresso?.estado === "puxando";
+    if (!rodando) return;
+    const t = window.setInterval(() => {
+      void progressoBling().then(acolherBling).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(t);
+  }, [blingProgresso?.estado, acolherBling]);
+
+  // Ao abrir a aba, pega uma puxada que já esteja em andamento.
+  useEffect(() => {
+    if (aba !== "importar" || blingProgresso) return;
+    void progressoBling()
+      .then((p) => {
+        if (p.estado === "nenhuma") return;
+        if (p.estado === "listando" || p.estado === "puxando") setBlingOcupado(true);
+        acolherBling(p);
+      })
+      .catch(() => undefined);
+  }, [aba, blingProgresso, acolherBling]);
+
+  async function puxarDoBling() {
+    setBlingOcupado(true);
+    setErro(null);
+    setConferencia(null);
+    try {
+      setBlingProgresso(await sincronizarBling(blingDe, blingAte));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.");
+      setBlingOcupado(false);
+    }
+  }
+
+  const carregarEntradas = useCallback(async () => {
+    try {
+      setEntradas(await fetchEntradas());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao carregar as entradas.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (aba === "entrada") void carregarEntradas();
+  }, [aba, carregarEntradas]);
+
+  async function conferirArquivoNota(arquivo: File) {
+    setNotaOcupada(true);
+    setErro(null);
+    try {
+      setConfNota(await conferirNota(arquivo));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao ler a nota.");
+      setConfNota(null);
+    } finally {
+      setNotaOcupada(false);
+    }
+  }
+
+  async function lancarNota() {
+    if (!confNota || !confNota.prontas.length) return;
+    if (
+      !window.confirm(
+        `Lançar ${confNota.prontas.length} item(ns), ${confNota.quantidade} unidades, ` +
+          `${formatCurrency(confNota.total)}? Isso entra no estoque.`
+      )
+    ) {
+      return;
+    }
+    setNotaOcupada(true);
+    setErro(null);
+    try {
+      const r = await lancarEntrada({
+        fornecedorNome: notaFornecedor.trim() || null,
+        documento: notaDocumento.trim() || null,
+        data: notaData || null,
+        observacao: null,
+        itens: confNota.prontas.map((l) => ({
+          produtoId: l.produtoId as number,
+          quantidade: l.quantidade,
+          custoUnitario: l.custoUnitario,
+        })),
+      });
+      setAviso(
+        `Entrada ${r.id} lançada: ${r.itens} itens, ${formatCurrency(r.total)}. ` +
+          `O estoque já subiu.`
+      );
+      setConfNota(null);
+      setNotaArquivo(null);
+      setNotaDocumento("");
+      await carregarEntradas();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao lançar a entrada.");
+    } finally {
+      setNotaOcupada(false);
+    }
+  }
+
   const carregarOrigensPix = useCallback(async () => {
     try {
       setOrigensPix(await fetchOrigensPix());
@@ -980,6 +1227,7 @@ export function FabricaPedidos() {
             "creditos",
             "devolucoes",
             "pix",
+            "entrada",
           ] as const
         ).map((a) => (
           <button
@@ -1008,9 +1256,11 @@ export function FabricaPedidos() {
                         ? `Créditos${saldosCredito.length ? ` (${saldosCredito.length})` : ""}`
                         : a === "devolucoes"
                           ? `Devoluções${notasPendentes ? ` (${notasPendentes} NF)` : ""}`
-                          : `Conciliar PIX${
-                              confPix?.pendentes.length ? ` (${confPix.pendentes.length})` : ""
-                            }`}
+                          : a === "pix"
+                            ? `Conciliar PIX${
+                                confPix?.pendentes.length ? ` (${confPix.pendentes.length})` : ""
+                              }`
+                            : "Entrada de mercadoria"}
           </button>
         ))}
       </div>
@@ -1280,6 +1530,93 @@ export function FabricaPedidos() {
             </div>
           </div>
 
+          {bling && (
+            <div className="credito-alerta">
+              {!bling.configurado ? (
+                <p>
+                  <strong>Bling não configurado no servidor.</strong> Falta gerar o aplicativo
+                  em Configurações, Cadastro de aplicativos, e pôr as credenciais no .env do
+                  backend. Enquanto isso, a importação por arquivo funciona normal.
+                </p>
+              ) : !bling.conectado ? (
+                <>
+                  <p>
+                    <strong>Puxe as vendas direto do Bling</strong> em vez de exportar o
+                    relatório e subir o arquivo. Autorize uma vez e o site busca sozinho.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-responder"
+                    disabled={blingOcupado}
+                    onClick={() => void conectarBling()}
+                  >
+                    Conectar o Bling
+                  </button>{" "}
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    onClick={() => void carregarBling()}
+                  >
+                    Atualizar status
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>
+                    <strong>Bling conectado.</strong> Escolha o período e puxe as vendas — vem
+                    item a item, com SKU, e cai na mesma conferência do arquivo. O Bling só
+                    entrega três pedidos por segundo, então um mês leva uns dez minutos; pode
+                    sair da tela, a busca continua no servidor.
+                    {bling.diasParaVencer !== null && bling.diasParaVencer < 7 && (
+                      <>
+                        {" "}
+                        A autorização vence em {bling.diasParaVencer} dia(s); sincronizar
+                        renova sozinho.
+                      </>
+                    )}
+                  </p>
+                  <input
+                    type="date"
+                    className="clonar-input fabricacao-input-pequeno"
+                    value={blingDe}
+                    onChange={(e) => setBlingDe(e.target.value)}
+                  />{" "}
+                  <input
+                    type="date"
+                    className="clonar-input fabricacao-input-pequeno"
+                    value={blingAte}
+                    onChange={(e) => setBlingAte(e.target.value)}
+                  />{" "}
+                  <button
+                    type="button"
+                    className="btn-responder"
+                    disabled={blingOcupado || !blingDe || !blingAte}
+                    onClick={() => void puxarDoBling()}
+                  >
+                    {!blingOcupado
+                      ? "Puxar vendas do Bling"
+                      : blingProgresso?.estado === "puxando" && blingProgresso.total
+                        ? `Puxando ${blingProgresso.feitos} de ${blingProgresso.total} pedidos...`
+                        : "Listando os pedidos..."}
+                  </button>{" "}
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    disabled={blingOcupado}
+                    onClick={async () => {
+                      if (!window.confirm("Desconectar o Bling? Vai precisar autorizar de novo."))
+                        return;
+                      await desconectarBling();
+                      await carregarBling();
+                    }}
+                  >
+                    Desconectar
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="financeiro-filtros">
             <input
               className="clonar-input fabricacao-input-pequeno"
@@ -1287,6 +1624,39 @@ export function FabricaPedidos() {
               value={impOrigem}
               onChange={(e) => setImpOrigem(e.target.value.toUpperCase())}
             />
+            <input
+              ref={impInputRef}
+              type="file"
+              accept=".xlsx,.csv,.tsv,.txt"
+              style={{ display: "none" }}
+              onChange={async (e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (!f) return;
+                setImportando(true);
+                setErro(null);
+                try {
+                  const c = await conferirPlanilhaArquivo(f, impOrigem);
+                  // guarda o texto convertido: quem lanca e a rota de texto,
+                  // entao arquivo e cola seguem o mesmo caminho
+                  setImpTexto(c.texto);
+                  setConferencia(c);
+                } catch (err) {
+                  setErro(err instanceof Error ? err.message : "Falha ao ler o arquivo.");
+                } finally {
+                  setImportando(false);
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={importando}
+              onClick={() => impInputRef.current?.click()}
+              title="Sobe a planilha como arquivo .xlsx ou .csv — mais de mil linhas travam ao colar"
+            >
+              Escolher arquivo
+            </button>
             <button type="button" className="btn-excluir" onClick={() => void conferir()}>
               Conferir
             </button>
@@ -1356,6 +1726,81 @@ export function FabricaPedidos() {
                   .map(([campo, titulo]) => `${campo} = "${titulo}"`)
                   .join(" · ")}
               </p>
+
+              {conferencia.clientesFaltando.length > 0 && (
+                <div className="credito-alerta">
+                  <p>
+                    <strong>
+                      {conferencia.clientesFaltando.length} nome
+                      {conferencia.clientesFaltando.length === 1 ? "" : "s"} do ERP sem cliente
+                    </strong>{" "}
+                    — o Bling escreve razão social e aqui o cadastro é o nome de porta. Diga uma
+                    vez de quem é cada um e o sistema passa a reconhecer sozinho daqui pra
+                    frente.
+                  </p>
+                  <table className="financeiro-tabela">
+                    <thead>
+                      <tr>
+                        <th>NOME NO ERP</th>
+                        <th>PEDIDOS</th>
+                        <th className="financeiro-th-numero">LINHAS</th>
+                        <th className="financeiro-th-numero">VALOR</th>
+                        <th>É QUAL CLIENTE?</th>
+                        <th />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {conferencia.clientesFaltando.map((cf) => (
+                        <tr key={cf.nome}>
+                          <td>
+                            <strong>{cf.nome}</strong>
+                            {cf.ambiguo && (
+                              <>
+                                {" "}
+                                <span className="financeiro-td-mudo">
+                                  (casou com mais de um cliente)
+                                </span>
+                              </>
+                            )}
+                          </td>
+                          <td className="financeiro-td-mudo">{cf.documentos.join(", ")}</td>
+                          <td className="financeiro-th-numero financeiro-td-mudo">{cf.linhas}</td>
+                          <td className="financeiro-th-numero">{formatCurrency(cf.valor)}</td>
+                          <td>
+                            <select
+                              className="clonar-input"
+                              value={apelidoEscolha[cf.nome] ?? ""}
+                              onChange={(e) =>
+                                setApelidoEscolha((a) => ({
+                                  ...a,
+                                  [cf.nome]: Number(e.target.value),
+                                }))
+                              }
+                            >
+                              <option value="">Escolha o cliente</option>
+                              {clientes.map((c) => (
+                                <option key={c.id} value={c.id}>
+                                  {c.nome}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-responder"
+                              disabled={!apelidoEscolha[cf.nome]}
+                              onClick={() => void ligarApelido(cf)}
+                            >
+                              Ligar
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {conferencia.skusFaltando.length > 0 && (
                 <div className="credito-alerta">
@@ -1655,11 +2100,8 @@ export function FabricaPedidos() {
                     <td colSpan={8}>Nenhum cliente cadastrado.</td>
                   </tr>
                 )}
-                {contaCorrente
-                  .slice()
-                  // quem deve mais aparece primeiro: e a ordem em que se cobra
-                  .sort((a, b) => b.saldo - a.saldo)
-                  .map((c) => (
+                {gruposFechamento.flatMap((g) =>
+                  g.linhas.map((c, i) => (
                     <tr key={c.clienteId}>
                       <td>
                         <button
@@ -1667,8 +2109,15 @@ export function FabricaPedidos() {
                           className="fabricacao-envase-nome-editavel"
                           onClick={() => void abrirExtrato(c)}
                         >
-                          {c.clienteNome}
+                          {c.clienteId === g.paganteId ? c.clienteNome : `↳ ${c.clienteNome}`}
                         </button>
+                        {i === 0 && g.linhas.length > 1 && (
+                          <div className="financeiro-td-mudo">
+                            fecha por {g.linhas.length - 1} loja
+                            {g.linhas.length === 2 ? "" : "s"} ·{" "}
+                            <strong>{formatCurrency(Math.max(0, g.total))}</strong> no total
+                          </div>
+                        )}
                       </td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
                         {c.comprado ? formatCurrency(c.comprado) : "—"}
@@ -1696,7 +2145,8 @@ export function FabricaPedidos() {
                         {c.ultimoPagamento ? data(c.ultimoPagamento) : "—"}
                       </td>
                     </tr>
-                  ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -2649,6 +3099,238 @@ export function FabricaPedidos() {
                             }}
                           >
                             Esquecer
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {aba === "entrada" && (
+        <>
+          <div className="financeiro-topo">
+            <div>
+              <h2>Entrada de mercadoria</h2>
+              <p className="financeiro-td-mudo">
+                É por aqui que o estoque sobe. O cálculo do saldo é{" "}
+                <strong>produzido + entrado − vendido</strong>, e até agora só existia o
+                produzido — que vem de lote de fábrica. Como 93% do que a distribuidora vende
+                é comprado e não fabricado, a venda baixava e nada subia: em agosto de 2026
+                eram 712 produtos com saldo negativo, 27.191 unidades.
+              </p>
+              <p className="financeiro-td-mudo">
+                Suba a nota do fornecedor como arquivo. Precisa ter <strong>SKU</strong> e{" "}
+                <strong>quantidade</strong>; o custo pode vir unitário ou como total da linha —
+                com a quantidade, um resolve o outro. Nada entra antes de você conferir.
+              </p>
+            </div>
+          </div>
+
+          <div className="financeiro-filtros">
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Fornecedor"
+              value={notaFornecedor}
+              onChange={(e) => setNotaFornecedor(e.target.value)}
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder="Nº da nota"
+              value={notaDocumento}
+              onChange={(e) => setNotaDocumento(e.target.value)}
+            />
+            <input
+              type="date"
+              className="clonar-input fabricacao-input-pequeno"
+              value={notaData}
+              onChange={(e) => setNotaData(e.target.value)}
+            />
+            <input
+              ref={notaInputRef}
+              type="file"
+              accept=".xlsx,.csv,.tsv,.txt"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const f = e.target.files?.[0] ?? null;
+                e.target.value = "";
+                setNotaArquivo(f);
+                if (f) void conferirArquivoNota(f);
+              }}
+            />
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={notaOcupada}
+              onClick={() => notaInputRef.current?.click()}
+            >
+              {notaArquivo ? `Trocar nota (${notaArquivo.name})` : "Escolher nota .xlsx"}
+            </button>
+            <button
+              type="button"
+              className="btn-responder"
+              disabled={!confNota?.prontas.length || notaOcupada}
+              onClick={() => void lancarNota()}
+            >
+              {notaOcupada ? "Processando..." : `Lançar ${confNota?.prontas.length ?? 0} itens`}
+            </button>
+          </div>
+
+          {confNota && (
+            <>
+              <div className="contas-cartoes">
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">NO ARQUIVO</span>
+                  <strong>{confNota.linhasNoArquivo}</strong>
+                  {confNota.linhasVazias > 0 && (
+                    <span className="financeiro-td-mudo">
+                      {confNota.linhasVazias} em branco
+                    </span>
+                  )}
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">ENTRA NO ESTOQUE</span>
+                  <strong>{confNota.quantidade}</strong>
+                  <span className="financeiro-td-mudo">
+                    {confNota.prontas.length} produto(s)
+                  </span>
+                </div>
+                <div className="contas-cartao">
+                  <span className="financeiro-stat-label">CUSTO DA NOTA</span>
+                  <strong>{formatCurrency(confNota.total)}</strong>
+                </div>
+                <div
+                  className={
+                    confNota.pendentes.length
+                      ? "contas-cartao contas-cartao-alerta"
+                      : "contas-cartao"
+                  }
+                >
+                  <span className="financeiro-stat-label">NÃO ENTRA</span>
+                  <strong>{confNota.pendentes.length}</strong>
+                </div>
+              </div>
+
+              {confNota.pendentes.length > 0 && (
+                <>
+                  <h3>Estas linhas não entram ({confNota.pendentes.length})</h3>
+                  <div className="financeiro-tabela-wrap">
+                    <table className="financeiro-tabela">
+                      <thead>
+                        <tr>
+                          <th>LINHA</th>
+                          <th>SKU NA NOTA</th>
+                          <th className="financeiro-th-numero">QTDE</th>
+                          <th>O QUE IMPEDE</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confNota.pendentes.map((l) => (
+                          <tr key={l.linha}>
+                            <td>{l.linha}</td>
+                            <td>{l.sku || <em>vazio</em>}</td>
+                            <td className="financeiro-th-numero">{l.quantidade}</td>
+                            <td>{l.problema}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="financeiro-td-mudo">
+                    SKU não cadastrado: cadastre o produto e suba a nota de novo. O resto da
+                    nota entra normalmente — só estas ficam de fora.
+                  </p>
+                </>
+              )}
+
+              {confNota.prontas.length > 0 && (
+                <>
+                  <h3>Vai entrar no estoque</h3>
+                  <div className="financeiro-tabela-wrap">
+                    <table className="financeiro-tabela">
+                      <thead>
+                        <tr>
+                          <th>SKU</th>
+                          <th>PRODUTO</th>
+                          <th className="financeiro-th-numero">QTDE</th>
+                          <th className="financeiro-th-numero">CUSTO UNIT.</th>
+                          <th className="financeiro-th-numero">TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {confNota.prontas.map((l) => (
+                          <tr key={l.linha}>
+                            <td>{l.sku}</td>
+                            <td className="financeiro-td-mudo">{l.produtoNome}</td>
+                            <td className="financeiro-th-numero">{l.quantidade}</td>
+                            <td className="financeiro-th-numero">
+                              {formatCurrency(l.custoUnitario)}
+                            </td>
+                            <td className="financeiro-th-numero">{formatCurrency(l.total)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {entradas.length > 0 && (
+            <>
+              <h3>Notas lançadas ({entradas.length})</h3>
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>FORNECEDOR</th>
+                      <th>Nº DA NOTA</th>
+                      <th className="financeiro-th-numero">ITENS</th>
+                      <th className="financeiro-th-numero">QTDE</th>
+                      <th className="financeiro-th-numero">CUSTO</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {entradas.map((e) => (
+                      <tr key={e.id}>
+                        <td>{e.data}</td>
+                        <td>{e.fornecedorNome ?? <em>sem fornecedor</em>}</td>
+                        <td>{e.documento ?? "—"}</td>
+                        <td className="financeiro-th-numero">{e.itens.length}</td>
+                        <td className="financeiro-th-numero">{e.quantidade}</td>
+                        <td className="financeiro-th-numero">{formatCurrency(e.total)}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="btn-excluir"
+                            onClick={async () => {
+                              if (
+                                !window.confirm(
+                                  `Excluir a entrada de ${e.data}? O estoque desce ${e.quantidade} unidades.`
+                                )
+                              ) {
+                                return;
+                              }
+                              try {
+                                await excluirEntrada(e.id);
+                                await carregarEntradas();
+                                await carregar();
+                                setAviso("Entrada excluída. O estoque voltou.");
+                              } catch (err) {
+                                setErro(
+                                  err instanceof Error ? err.message : "Falha ao excluir."
+                                );
+                              }
+                            }}
+                          >
+                            Excluir
                           </button>
                         </td>
                       </tr>

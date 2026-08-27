@@ -22,6 +22,8 @@ import { fabricacaoRouter } from "./routes/fabricacao";
 import { fabricaProdutosRouter } from "./routes/fabricaProdutos";
 import { fabricaClientesRouter } from "./routes/fabricaClientes";
 import { fabricaPixRouter } from "./routes/fabricaPix";
+import { fabricaEntradasRouter } from "./routes/fabricaEntradas";
+import { fabricaBlingRouter } from "./routes/fabricaBling";
 import { fabricaEmbalagensRouter } from "./routes/fabricaEmbalagens";
 import { fabricaEstoqueRouter } from "./routes/fabricaEstoque";
 import { fabricaPedidosRouter } from "./routes/fabricaPedidos";
@@ -87,6 +89,12 @@ app.use("/api/fabrica-estoque", requireAuth, requirePermissao("fabrica_estoque")
 app.use("/api/fabrica-pedidos", requireAuth, requirePermissao("fabrica_pedidos"), fabricaPedidosRouter);
 app.use("/api/fabrica-contas", requireAuth, requirePermissao("fabrica_financeiro"), fabricaContasRouter);
 app.use("/api/fabrica-pix", requireAuth, requirePermissao("fabrica_financeiro"), fabricaPixRouter);
+app.use("/api/fabrica-entradas", requireAuth, requirePermissao("fabrica_estoque"), fabricaEntradasRouter);
+// O callback do Bling chega pelo navegador vindo de fora, sem o cookie da
+// sessão — por isso fica antes do requireAuth. O que protege é o state, que
+// só existe se alguém autenticado começou a autorização.
+app.use("/api/fabrica-bling/callback", fabricaBlingRouter);
+app.use("/api/fabrica-bling", requireAuth, requirePermissao("fabrica_pedidos"), fabricaBlingRouter);
 // mesma permissao do financeiro da fabrica: o cadastro de bens existe pra
 // alimentar a depreciacao do DRE, nao e modulo separado
 app.use("/api/fabrica-bens", requireAuth, requirePermissao("fabrica_financeiro"), fabricaBensRouter);

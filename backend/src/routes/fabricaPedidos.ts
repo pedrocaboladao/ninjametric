@@ -1,10 +1,18 @@
+import multer from "multer";
+import { planilhaParaTexto } from "../services/fabricaPlanilhaArquivoService";
 import { Router, Request, Response } from "express";
 import { conferirVendasMl } from "../services/fabricaVendasMlService";
 import { idadeDoSaldo } from "../services/fabricaIdadeService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import {
+  listarApelidos,
+  criarApelido,
+  excluirApelido,
+} from "../services/fabricaClienteApelidosService";
+import {
   importarPlanilhaVendas,
   skusFaltando,
+  clientesFaltando,
 } from "../services/fabricaImportarVendasService";
 import {
   listarPedidos,
@@ -300,6 +308,43 @@ fabricaPedidosRouter.get("/vendas-ml", async (req, res) => {
   }
 });
 
+// Fica antes do GET "/:id" de propósito: registrada depois, o Express lê
+// "apelidos" como id de pedido e devolve "Id inválido".
+// Apelido de cliente: como o ERP escreve o nome dele.
+//
+// Mora neste router, e não no de clientes, porque quem cria apelido é quem está
+// importando venda e vê o nome que não casou — exigir a permissão de cadastro
+// de clientes pra isso travaria a importação na mão de quem só importa.
+fabricaPedidosRouter.get("/apelidos", async (_req, res) => {
+  try {
+    res.json(await listarApelidos());
+  } catch (err) {
+    erro(res, err, "Falha ao listar os apelidos.");
+  }
+});
+
+fabricaPedidosRouter.post("/apelidos", async (req, res) => {
+  const b = req.body ?? {};
+  const clienteId = Number(b.clienteId);
+  if (!Number.isFinite(clienteId) || clienteId <= 0) {
+    return res.status(400).json({ error: "Escolha o cliente." });
+  }
+  try {
+    res.status(201).json(await criarApelido(clienteId, String(b.apelido ?? "")));
+  } catch (err) {
+    erro(res, err, "Falha ao gravar o apelido.");
+  }
+});
+
+fabricaPedidosRouter.delete("/apelidos/:id", async (req, res) => {
+  try {
+    await excluirApelido(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao apagar o apelido.");
+  }
+});
+
 fabricaPedidosRouter.get("/:id", async (req, res) => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
@@ -361,6 +406,40 @@ fabricaPedidosRouter.delete("/:id", async (req, res) => {
   }
 });
 
+// Sobe a planilha como arquivo em vez de texto colado.
+//
+// Converte e devolve o texto — quem confere e quem importa continuam sendo as
+// mesmas rotas. Duas mil linhas coladas na tela travam o navegador, e o
+// fechamento de um mes passa disso.
+const uploadPlanilha = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+});
+
+fabricaPedidosRouter.post(
+  "/vendas-planilha/arquivo",
+  uploadPlanilha.single("arquivo"),
+  async (req, res) => {
+    if (!req.file) return res.status(400).json({ error: "Envie o arquivo." });
+    try {
+      const texto = await planilhaParaTexto(req.file.buffer, req.file.originalname);
+      const origem =
+        typeof req.body?.origem === "string" && req.body.origem.trim()
+          ? req.body.origem.trim().toUpperCase()
+          : "SHOPEE";
+      const conf = await conferirPlanilhaVendas(texto, origem);
+      res.json({
+        ...conf,
+        skusFaltando: skusFaltando(conf.linhas),
+        clientesFaltando: clientesFaltando(conf.linhas),
+        texto,
+      });
+    } catch (err) {
+      erro(res, err, "Falha ao ler o arquivo.");
+    }
+  }
+);
+
 // Confere uma planilha de vendas de outro canal antes de virar pedido.
 //
 // A API do Mercado Livre enxerga 65% do que a fábrica vende; o resto é Shopee e
@@ -375,7 +454,11 @@ fabricaPedidosRouter.post("/vendas-planilha", async (req, res) => {
     const conf = await conferirPlanilhaVendas(texto, origem);
     // os SKUs que faltam vem junto da conferencia: sem isso o operador ve
     // "SKU nao cadastrado" espalhado por 200 linhas e tem que cacar quais sao
-    res.json({ ...conf, skusFaltando: skusFaltando(conf.linhas) });
+    res.json({
+      ...conf,
+      skusFaltando: skusFaltando(conf.linhas),
+      clientesFaltando: clientesFaltando(conf.linhas),
+    });
   } catch (err) {
     erro(res, err, "Falha ao ler a planilha.");
   }

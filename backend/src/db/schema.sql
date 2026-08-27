@@ -840,6 +840,32 @@ CREATE TABLE IF NOT EXISTS fabrica_clientes (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_clientes_tipo ON fabrica_clientes (tipo, nome);
 
+-- Como o ERP chama cada cliente.
+--
+-- O Bling escreve razão social — "MESTRE DO IMPERMEABILIZANTE E PRODUTOS LTDA"
+-- — e aqui o cadastro é o nome de porta, "Mestre do Impermeabilizante". Casar
+-- por nome exato deixava 1.673 de 1.832 linhas de agosto/2026 sem cliente, e
+-- linha sem cliente não vira pedido: a importação inteira parava.
+--
+-- A maioria o prefixo resolve sozinho, sem apelido nenhum. Esta tabela é pros
+-- que não têm nada a ver: Truck Ponto Com é "F.A. CADORIN", Modal Tech é
+-- "GOMES E TAVARES", Fábrica de Tintas é "IMPETRUS".
+--
+-- A chave é única no banco todo, não por cliente: um nome de fora aponta pra
+-- um cliente só, senão a importação teria que escolher.
+CREATE TABLE IF NOT EXISTS fabrica_cliente_apelidos (
+  id SERIAL PRIMARY KEY,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE CASCADE,
+  apelido TEXT NOT NULL,
+  -- o apelido sem acento, sem espaço e sem pontuação: é por ele que casa
+  chave TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_cliente_apelidos_chave
+  ON fabrica_cliente_apelidos (chave);
+CREATE INDEX IF NOT EXISTS idx_fabrica_cliente_apelidos_cliente
+  ON fabrica_cliente_apelidos (cliente_id);
+
 -- Cadastro de embalagem da Fábrica Distribuidora: o balde, a bombona, o galão.
 -- Antes disso o custo da embalagem era um número digitado dentro de cada
 -- fórmula — o mesmo balde de 18 kg tinha o preço repetido em 23 lugares, e
@@ -1461,3 +1487,59 @@ CREATE TABLE IF NOT EXISTS fabrica_pix_recebido (
 );
 
 CREATE INDEX IF NOT EXISTS fabrica_pix_recebido_data ON fabrica_pix_recebido (data);
+
+-- Entrada de mercadoria comprada.
+--
+-- O estoque de produto acabado só sabia somar produção: lote de fábrica
+-- enchendo N baldes. Mas a Fábrica Distribuidora é 93% revenda — esses
+-- produtos são comprados de fornecedor, não fabricados. Sem lugar pra
+-- registrar a compra, a venda baixava o estoque e nada subia, e todo saldo
+-- ficava negativo: 712 produtos, 27.191 unidades em agosto de 2026.
+--
+-- Cabeçalho e item separados porque a nota do fornecedor traz dezenas de
+-- linhas, e o que se confere é a nota inteira, não a linha solta.
+CREATE TABLE IF NOT EXISTS fabrica_entradas (
+  id SERIAL PRIMARY KEY,
+  fornecedor_id INTEGER REFERENCES fabrica_fornecedores(id) ON DELETE SET NULL,
+  -- o fornecedor pode não estar cadastrado ainda; o nome escrito basta pra
+  -- não travar o lançamento na hora que a mercadoria chega
+  fornecedor_nome TEXT,
+  documento TEXT,
+  data DATE NOT NULL DEFAULT CURRENT_DATE,
+  observacao TEXT,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS fabrica_entrada_itens (
+  id SERIAL PRIMARY KEY,
+  entrada_id INTEGER NOT NULL REFERENCES fabrica_entradas(id) ON DELETE CASCADE,
+  produto_id INTEGER NOT NULL REFERENCES fabrica_produtos(id) ON DELETE RESTRICT,
+  quantidade NUMERIC(14,3) NOT NULL CHECK (quantidade > 0),
+  -- custo desta compra. Fica gravado na linha em vez de só atualizar o
+  -- cadastro: preço de fornecedor muda, e depois ninguém lembra por quanto
+  -- entrou o lote de agosto
+  custo_unitario NUMERIC(14,4) NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS fabrica_entrada_itens_produto
+  ON fabrica_entrada_itens (produto_id);
+CREATE INDEX IF NOT EXISTS fabrica_entradas_data ON fabrica_entradas (data);
+
+-- documento repetido do mesmo fornecedor é a mesma nota lançada duas vezes
+CREATE UNIQUE INDEX IF NOT EXISTS fabrica_entradas_doc
+  ON fabrica_entradas (COALESCE(fornecedor_nome, ''), documento)
+  WHERE documento IS NOT NULL AND documento <> '';
+
+-- Token OAuth do Bling. Uma linha só (id = 1): é uma conta de ERP, não uma
+-- por loja como no Mercado Livre.
+--
+-- O access_token dura poucas horas e o refresh_token trinta dias. Guardar os
+-- dois no banco em vez de memória é o que faz a integração sobreviver a
+-- deploy — o processo reinicia toda vez que sobe código.
+CREATE TABLE IF NOT EXISTS fabrica_bling_token (
+  id INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expira_em TIMESTAMPTZ NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
