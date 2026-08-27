@@ -14,6 +14,7 @@ import type {
   FabricaProduto,
   OrigemProduto,
   ConferenciaCatalogo,
+  TipoProduto,
 } from "../types/fabricaProdutos";
 import { Modal } from "./Modal";
 import type { FormulaResumo, FormulaEmbalagem } from "../types/fabricacao";
@@ -36,6 +37,7 @@ const VAZIO = {
   sku: "",
   nome: "",
   origem: "FABRICA" as OrigemProduto,
+  tipo: "REVENDA" as TipoProduto,
   ean: "",
   familia: "",
   custoCompra: "",
@@ -211,6 +213,7 @@ export function FabricaProdutos() {
       sku: p.sku,
       nome: p.nome,
       origem: p.origem,
+      tipo: p.tipo,
       ean: p.ean ?? "",
       familia: p.familia ?? "",
       custoCompra: p.custoCompra !== null ? String(p.custoCompra) : "",
@@ -234,6 +237,7 @@ export function FabricaProdutos() {
       sku: rascunho.sku.trim(),
       nome: rascunho.nome.trim(),
       origem: rascunho.origem,
+      tipo: rascunho.tipo,
       ean: rascunho.ean.trim() || null,
       familia: rascunho.familia.trim() || null,
       // custo digitado só na revenda: no produto de fábrica ele vem da fórmula
@@ -401,6 +405,15 @@ export function FabricaProdutos() {
         >
           <option value="FABRICA">Fábrica</option>
           <option value="DISTRIBUIDORA">Distribuidora</option>
+        </select>
+        <select
+          className="clonar-input fabricacao-input-pequeno"
+          value={rascunho.tipo}
+          onChange={(e) => setRascunho((r) => ({ ...r, tipo: e.target.value as TipoProduto }))}
+          title="Revenda: a loja compra pra anunciar e vender. Insumo: a expedição consome — caixa, saco, fita — e não entra no SKU MASTER."
+        >
+          <option value="REVENDA">Revenda</option>
+          <option value="INSUMO">Insumo</option>
         </select>
         {rascunho.origem === "FABRICA" ? (
           <>

@@ -1,3 +1,5 @@
+export type TipoProduto = "REVENDA" | "INSUMO";
+
 export type OrigemProduto = "FABRICA" | "DISTRIBUIDORA";
 
 // Produto acabado da Fábrica Distribuidora. Custo, margem, markup e % de lucro
@@ -22,6 +24,9 @@ export interface FabricaProduto {
   // FABRICA sai de fórmula e tem custo recalculado; DISTRIBUIDORA é comprado
   // pronto e tem custo digitado — são duas regras de custo no mesmo cadastro
   origem: OrigemProduto;
+  // REVENDA vira anúncio no Mercado Livre; INSUMO a expedição consome — caixa,
+  // saco, fita. É por isso que insumo não pertence ao SKU MASTER.
+  tipo: TipoProduto;
   ean: string | null;
   familia: string | null;
   custoCompra: number | null;
@@ -41,6 +46,7 @@ export interface FabricaProdutoEntrada {
   sku: string;
   nome: string;
   origem: OrigemProduto;
+  tipo: TipoProduto;
   ean: string | null;
   familia: string | null;
   custoCompra: number | null;

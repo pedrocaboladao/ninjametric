@@ -1310,8 +1310,22 @@ ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS ean TEXT;
 -- o que dá pra filtrar quando são 5 mil SKUs
 ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS familia TEXT;
 
+-- Pra que serve o produto.
+--
+-- REVENDA vai pro catálogo do Mercado Livre — a loja compra pra anunciar e
+-- revender. INSUMO a fábrica consome na expedição: caixa, saco, fita, filme
+-- stretch. Nunca vai virar anúncio.
+--
+-- Sem essa distinção todo insumo aparecia como "falta no SKU MASTER", quando
+-- na verdade ele nunca deveria estar lá — e a conferência contra o master
+-- nunca ia fechar, por construção.
+ALTER TABLE fabrica_produtos
+  ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'REVENDA';
+
 CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_origem
   ON fabrica_produtos (origem, familia);
+CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_tipo
+  ON fabrica_produtos (tipo);
 CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_ean
   ON fabrica_produtos (ean) WHERE ean IS NOT NULL;
 
