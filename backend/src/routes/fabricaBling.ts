@@ -10,6 +10,7 @@ import {
 } from "../services/blingAuth";
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
 import { sincronizarContatos } from "../services/blingContatosService";
+import { padronizarCodigos } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
@@ -221,5 +222,25 @@ fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
     res.json(await sincronizarContatos(simulacao, criar));
   } catch (err) {
     erro(res, err, "Falha ao sincronizar os contatos do Bling.");
+  }
+});
+
+// Padroniza o código do produto no Bling pelo código do site.
+//
+// Nasce em simulação, igual à sincronia de contato: código de produto é o que
+// liga a venda ao cadastro, e trocar errado quebra o histórico dos dois lados.
+fabricaBlingRouter.post("/produtos/padronizar", async (req, res) => {
+  const b = req.body ?? {};
+  const pares = Array.isArray(b.pares) ? b.pares : [];
+  if (!pares.length) {
+    return res.status(400).json({ error: "Mande os pares { de, para }." });
+  }
+  if (pares.length > 500) {
+    return res.status(400).json({ error: "No máximo 500 códigos por vez." });
+  }
+  try {
+    res.json(await padronizarCodigos(pares, b.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao padronizar os códigos.");
   }
 });
