@@ -10,7 +10,10 @@ import {
 } from "../services/blingAuth";
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
 import { sincronizarContatos } from "../services/blingContatosService";
-import { padronizarCodigos } from "../services/blingProdutosService";
+import {
+  padronizarCodigos,
+  listarProdutos as listarProdutosBling,
+} from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
@@ -243,4 +246,49 @@ fabricaBlingRouter.post("/produtos/padronizar", async (req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao padronizar os códigos.");
   }
+});
+
+// O catalogo inteiro do ERP, pra conferir contra o site e contra o SKU MASTER.
+// Roda solto igual a sincronizacao de vendas: sao ~6 mil produtos a 3 chamadas
+// por segundo.
+let catalogoBling: {
+  estado: "rodando" | "pronto" | "erro";
+  lidos: number;
+  erro: string | null;
+  produtos: unknown[] | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/catalogo", (_req, res) => {
+  if (catalogoBling && catalogoBling.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma leitura rodando.", ...catalogoBling });
+  }
+  const job = {
+    estado: "rodando" as const,
+    lidos: 0,
+    erro: null as string | null,
+    produtos: null as unknown[] | null,
+  };
+  catalogoBling = job;
+  void (async () => {
+    try {
+      const lista = await listarProdutosBling((n) => {
+        job.lidos = n;
+      });
+      catalogoBling = { estado: "pronto", lidos: lista.length, erro: null, produtos: lista };
+    } catch (err) {
+      console.error("[fabrica-bling] catalogo", err);
+      catalogoBling = {
+        estado: "erro",
+        lidos: job.lidos,
+        erro: err instanceof Error ? err.message : "falha ao ler o catálogo",
+        produtos: null,
+      };
+    }
+  })();
+  res.status(202).json({ estado: "rodando" });
+});
+
+fabricaBlingRouter.get("/produtos/catalogo", (_req, res) => {
+  if (!catalogoBling) return res.json({ estado: "nenhuma" });
+  res.json(catalogoBling);
 });

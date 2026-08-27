@@ -113,6 +113,53 @@ async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
   return null;
 }
 
+// Lista o catalogo inteiro do Bling.
+//
+// Diferente dos contatos, aqui varrer compensa: sao ~6 mil produtos, 100 por
+// pagina, e o enfileirador de 350ms fecha em menos de meio minuto. O que nao
+// termina e a base de contatos, que carrega tambem o cliente final da Fabrica
+// Loja — dezenas de milhares.
+export interface ProdutoDoBling {
+  id: number;
+  codigo: string;
+  nome: string;
+  preco: number | null;
+  situacao: string;
+  tipo: string;
+  formato: string;
+}
+
+export async function listarProdutos(
+  aoAndar?: (lidos: number) => void
+): Promise<ProdutoDoBling[]> {
+  const saida: ProdutoDoBling[] = [];
+  for (let pagina = 1; ; pagina++) {
+    const r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
+      pagina,
+      limite: POR_PAGINA,
+      // o catalogo tem produto pai e variacao; os dois interessam, porque o
+      // codigo que vai na venda e o da variacao
+      criterio: 2,
+    });
+    const lote = r.data ?? [];
+    for (const p of lote) {
+      saida.push({
+        id: p.id,
+        codigo: String(p.codigo ?? "").trim(),
+        nome: String(p.nome ?? "").trim(),
+        preco: typeof p.preco === "number" ? p.preco : Number(p.preco ?? 0) || null,
+        situacao: String(p.situacao ?? ""),
+        tipo: String(p.tipo ?? ""),
+        formato: String(p.formato ?? ""),
+      });
+    }
+    if (aoAndar) aoAndar(saida.length);
+    // pagina incompleta e a ultima: o Bling nao devolve total de registros
+    if (lote.length < POR_PAGINA) break;
+  }
+  return saida;
+}
+
 export interface ParPadronizacao {
   de: string;
   para: string;
