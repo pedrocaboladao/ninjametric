@@ -14,6 +14,7 @@ import {
   padronizarCodigos,
   listarProdutos as listarProdutosBling,
   conferirContraSite,
+  criarNoErpOqueFalta,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -306,4 +307,64 @@ fabricaBlingRouter.get("/produtos/conferir", async (_req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao conferir o catálogo.");
   }
+});
+
+// Cadastra no ERP o que existe no site e nao la. Roda solto: sao milhares de
+// produtos a 3 chamadas por segundo.
+//
+// `simular: true` (o padrao) so lista. `limite` corta a lista — serve pra
+// mandar cinco primeiro e conferir no Bling antes de soltar o resto.
+let criacaoErp: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/criar-faltantes", (req, res) => {
+  if (criacaoErp && criacaoErp.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem um cadastro rodando.", ...criacaoErp });
+  }
+  if (!catalogoBling || catalogoBling.estado !== "pronto" || !catalogoBling.produtos) {
+    return res.status(400).json({
+      error: "Leia o catálogo do ERP primeiro (POST /produtos/catalogo).",
+    });
+  }
+  const b = req.body ?? {};
+  const simulacao = b.simular !== false;
+  const limite = Number.isFinite(Number(b.limite)) ? Number(b.limite) : 0;
+  const job = {
+    estado: "rodando" as const,
+    feitos: 0,
+    total: 0,
+    erro: null as string | null,
+    resultado: null as unknown,
+  };
+  criacaoErp = job;
+  const produtos = catalogoBling.produtos as never[];
+  void (async () => {
+    try {
+      const r = await criarNoErpOqueFalta(produtos, simulacao, limite, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      criacaoErp = {
+        estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r,
+      };
+    } catch (err) {
+      console.error("[fabrica-bling] criar", err);
+      criacaoErp = {
+        estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha ao cadastrar", resultado: null,
+      };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/criar-faltantes", (_req, res) => {
+  if (!criacaoErp) return res.json({ estado: "nenhuma" });
+  res.json(criacaoErp);
 });

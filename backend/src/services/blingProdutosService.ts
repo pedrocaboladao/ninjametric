@@ -41,7 +41,7 @@ async function vez(): Promise<void> {
 }
 
 async function chamar<T>(
-  metodo: "get" | "put",
+  metodo: "get" | "put" | "post",
   caminho: string,
   params?: Record<string, unknown>,
   corpo?: unknown
@@ -212,6 +212,93 @@ export async function conferirContraSite(
   }
   divergencias.sort((a, b) => a.sku.localeCompare(b.sku));
   return { erp: noErp.size, site: noSite.size, nosDois, divergencias };
+}
+
+// Cadastra no ERP o que existe no site e nao la.
+//
+// O site e o SKU MASTER sao os catalogos completos; o ERP ficou pra tras, com
+// um terco do tamanho. Sem o produto la, a venda do dia a dia nao entra.
+//
+// Nao unifica nada por parecer igual. A EMBORRACHADA que o ERP chama de
+// EMBORRACHADA-18KG e fisicamente a mesma tinta de RESIFLEX, INGAFLEX,
+// SELATURBO e TELHAFLEX EMBORRACHADA — a fabrica compra sem rotulo e rotula
+// conforme o SKU do anuncio. Cada marca tem que ser produto proprio, porque e
+// isso que diz quantos rotulos comprar de cada.
+//
+// Fica de fora o que esta inativo no site: 209 de revenda e os 139 de
+// fabricacao. Inativo nao vende, e cadastrar no ERP so aumenta a lista.
+
+export interface LinhaCriacao {
+  sku: string;
+  nome: string;
+  preco: number;
+  situacao: "criado" | "já existia" | "erro";
+  produtoId?: number;
+  erro?: string;
+}
+
+export interface ResultadoCriacao {
+  simulacao: boolean;
+  candidatos: number;
+  linhas: LinhaCriacao[];
+}
+
+interface ProdutoDoSite {
+  sku: string;
+  nome: string;
+  preco_venda: string;
+}
+
+export async function criarNoErpOqueFalta(
+  produtosErp: ProdutoDoBling[],
+  simulacao: boolean,
+  limite: number,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<ResultadoCriacao> {
+  const { rows } = await pool.query<ProdutoDoSite>(
+    `SELECT sku, nome, preco_venda
+       FROM fabrica_produtos
+      WHERE ativo = TRUE AND origem = 'DISTRIBUIDORA'
+      ORDER BY sku`
+  );
+  const noErp = new Set(produtosErp.map((p) => normalizarSku(p.codigo)).filter(Boolean));
+  const faltam = rows.filter((r) => !noErp.has(normalizarSku(r.sku)));
+  const alvo = limite > 0 ? faltam.slice(0, limite) : faltam;
+
+  const linhas: LinhaCriacao[] = [];
+  for (let i = 0; i < alvo.length; i++) {
+    const r = alvo[i];
+    const preco = Number(r.preco_venda) || 0;
+    if (simulacao) {
+      linhas.push({ sku: r.sku, nome: r.nome, preco, situacao: "criado" });
+      continue;
+    }
+    try {
+      const resp = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
+        nome: r.nome,
+        codigo: r.sku,
+        preco,
+        tipo: "P",
+        situacao: "A",
+        formato: "S",
+        unidade: "UN",
+      });
+      linhas.push({
+        sku: r.sku, nome: r.nome, preco, situacao: "criado",
+        produtoId: resp.data?.id,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "falha ao cadastrar";
+      // codigo repetido nao e erro: e produto que ja estava la com outra grafia
+      linhas.push({
+        sku: r.sku, nome: r.nome, preco,
+        situacao: /já existe|duplicad|VALIDATION_ERROR/i.test(msg) ? "já existia" : "erro",
+        erro: msg.slice(0, 200),
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, alvo.length);
+  }
+  return { simulacao, candidatos: faltam.length, linhas };
 }
 
 export interface ParPadronizacao {
