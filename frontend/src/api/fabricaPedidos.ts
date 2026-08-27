@@ -27,6 +27,7 @@ import type {
   StatusBling,
   ProgressoBling,
   ClienteApelido,
+  ProdutoApelido,
 } from "../types/fabricaPedidos";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -565,4 +566,20 @@ export async function criarApelidoCliente(
     body: JSON.stringify({ clienteId, apelido }),
   });
   return tratarResposta<ClienteApelido>(res);
+}
+
+// Ensina ao sistema como o ERP escreve o código de um produto. O ERP grava o
+// código dentro do pedido, congelado na venda — renomear lá não conserta o que
+// já foi vendido, e é isto que conserta.
+export async function criarApelidoSku(
+  produtoId: number,
+  apelido: string
+): Promise<ProdutoApelido> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/apelidos-sku`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ produtoId, apelido }),
+  });
+  return tratarResposta<ProdutoApelido>(res);
 }
