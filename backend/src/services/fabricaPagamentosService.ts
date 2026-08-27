@@ -21,6 +21,11 @@ export interface ContaCorrente {
   clienteId: number;
   clienteNome: string;
   clienteTipo: string;
+  // Quem fecha a conta desta loja. Várias vendem no próprio nome e a cobrança
+  // vai inteira pra outra — Catedral Ferramentas paga por Lux Collor, Imperium
+  // e Fábrica de Tintas. Quando a loja paga por si, o pagante é ela mesma.
+  paganteId: number;
+  paganteNome: string;
   comprado: number;
   pago: number;
   // credito de devolucao — abate no fechamento igual a um pagamento
@@ -60,17 +65,22 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
     id: number;
     nome: string;
     tipo: string;
+    pagante_id: number;
+    pagante_nome: string;
     comprado: string;
     pago: string;
     ultimo_pedido: string | null;
     ultimo_pagamento: string | null;
   }>(
     `SELECT c.id, c.nome, c.tipo,
+            COALESCE(c.cliente_pai_id, c.id) AS pagante_id,
+            COALESCE(pai.nome, c.nome)       AS pagante_nome,
             COALESCE(ped.total, 0)  AS comprado,
             COALESCE(pag.total, 0)  AS pago,
             ped.ultima              AS ultimo_pedido,
             pag.ultima              AS ultimo_pagamento
      FROM fabrica_clientes c
+     LEFT JOIN fabrica_clientes pai ON pai.id = c.cliente_pai_id
      LEFT JOIN (
        SELECT p.cliente_id,
               SUM(i.quantidade * i.preco_unitario) AS total,
@@ -98,6 +108,8 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
       clienteId: r.id,
       clienteNome: r.nome,
       clienteTipo: r.tipo,
+      paganteId: Number(r.pagante_id),
+      paganteNome: r.pagante_nome,
       comprado,
       pago,
       credito,
@@ -129,8 +141,15 @@ async function saldosEmConta(): Promise<Map<number, number>> {
 // Quanto todas as lojas devem juntas — o "a receber" da fábrica.
 export async function totalAReceber(): Promise<number> {
   const contas = await listarContaCorrente();
-  // saldo negativo é loja que pagou adiantado; não abate a dívida das outras
-  return contas.reduce((s, c) => s + Math.max(0, c.saldo), 0);
+  // Soma por quem paga, não por quem compra: se a Lux adiantou e a Fábrica de
+  // Tintas atrasou, quem manda o PIX é a Catedral Ferramentas e pra ela isso é
+  // uma conta só. Somar loja a loja cobraria o atraso e ignoraria o adiantado.
+  const porPagante = new Map<number, number>();
+  for (const c of contas) {
+    porPagante.set(c.paganteId, (porPagante.get(c.paganteId) ?? 0) + c.saldo);
+  }
+  // grupo negativo é quem pagou adiantado; não abate a dívida dos outros
+  return [...porPagante.values()].reduce((s, v) => s + Math.max(0, v), 0);
 }
 
 export async function extratoDoCliente(clienteId: number): Promise<LinhaExtrato[]> {

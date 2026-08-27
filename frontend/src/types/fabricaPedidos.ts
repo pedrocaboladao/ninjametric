@@ -84,6 +84,9 @@ export interface ContaCorrente {
   clienteId: number;
   clienteNome: string;
   clienteTipo: string;
+  // quem fecha a conta desta loja; quando ela paga por si, é ela mesma
+  paganteId: number;
+  paganteNome: string;
   comprado: number;
   pago: number;
   // credito de devolucao — abate no fechamento igual a um pagamento

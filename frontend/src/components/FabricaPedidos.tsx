@@ -917,6 +917,35 @@ export function FabricaPedidos() {
     }
   }
 
+  // Agrupa a conta corrente por quem fecha a conta. Várias lojas vendem no
+  // próprio nome e a cobrança vai inteira pra outra — quem manda o PIX na terça
+  // precisa ver um número só, não cinco linhas soltas pra somar na mão.
+  const gruposFechamento = useMemo(() => {
+    const g = new Map<
+      number,
+      { paganteId: number; pagante: string; total: number; linhas: ContaCorrente[] }
+    >();
+    for (const c of contaCorrente) {
+      const atual = g.get(c.paganteId) ?? {
+        paganteId: c.paganteId,
+        pagante: c.paganteNome,
+        total: 0,
+        linhas: [],
+      };
+      atual.total += c.saldo;
+      atual.linhas.push(c);
+      g.set(c.paganteId, atual);
+    }
+    for (const x of g.values()) {
+      // o pagante primeiro, depois as lojas dele por quanto devem
+      x.linhas.sort((a, b) =>
+        a.clienteId === x.paganteId ? -1 : b.clienteId === x.paganteId ? 1 : b.saldo - a.saldo
+      );
+    }
+    // quem deve mais aparece primeiro: é a ordem em que se cobra
+    return [...g.values()].sort((a, b) => b.total - a.total);
+  }, [contaCorrente]);
+
   const carregarBling = useCallback(async () => {
     try {
       setBling(await statusBling());
@@ -2071,11 +2100,8 @@ export function FabricaPedidos() {
                     <td colSpan={8}>Nenhum cliente cadastrado.</td>
                   </tr>
                 )}
-                {contaCorrente
-                  .slice()
-                  // quem deve mais aparece primeiro: e a ordem em que se cobra
-                  .sort((a, b) => b.saldo - a.saldo)
-                  .map((c) => (
+                {gruposFechamento.flatMap((g) =>
+                  g.linhas.map((c, i) => (
                     <tr key={c.clienteId}>
                       <td>
                         <button
@@ -2083,8 +2109,15 @@ export function FabricaPedidos() {
                           className="fabricacao-envase-nome-editavel"
                           onClick={() => void abrirExtrato(c)}
                         >
-                          {c.clienteNome}
+                          {c.clienteId === g.paganteId ? c.clienteNome : `↳ ${c.clienteNome}`}
                         </button>
+                        {i === 0 && g.linhas.length > 1 && (
+                          <div className="financeiro-td-mudo">
+                            fecha por {g.linhas.length - 1} loja
+                            {g.linhas.length === 2 ? "" : "s"} ·{" "}
+                            <strong>{formatCurrency(Math.max(0, g.total))}</strong> no total
+                          </div>
+                        )}
                       </td>
                       <td className="financeiro-th-numero financeiro-td-mudo">
                         {c.comprado ? formatCurrency(c.comprado) : "—"}
@@ -2112,7 +2145,8 @@ export function FabricaPedidos() {
                         {c.ultimoPagamento ? data(c.ultimoPagamento) : "—"}
                       </td>
                     </tr>
-                  ))}
+                  ))
+                )}
               </tbody>
             </table>
           </div>
