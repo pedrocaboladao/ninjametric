@@ -160,6 +160,60 @@ export async function listarProdutos(
   return saida;
 }
 
+// Confere o catalogo do ERP contra o do site.
+//
+// Devolve so a divergencia, nao os 5 mil que batem: a lista inteira nao passa
+// pela tela, e o que interessa e o que esta diferente.
+//
+// O preco do Bling e o preco de venda no anuncio, nao o que a Fabrica cobra da
+// loja — sao numeros diferentes por natureza, entao aqui so o SKU e comparado.
+export interface DivergenciaProduto {
+  sku: string;
+  ondeEsta: "só no ERP" | "só no site";
+  nome: string;
+  // no ERP: variacao ou simples. Ajuda a entender pai x filha.
+  formato?: string;
+  ativoNoSite?: boolean;
+}
+
+export interface ConferenciaErp {
+  erp: number;
+  site: number;
+  nosDois: number;
+  divergencias: DivergenciaProduto[];
+}
+
+export async function conferirContraSite(
+  produtosErp: ProdutoDoBling[]
+): Promise<ConferenciaErp> {
+  const { rows } = await pool.query<{ sku: string; nome: string; ativo: boolean }>(
+    "SELECT sku, nome, ativo FROM fabrica_produtos"
+  );
+  const noSite = new Map(rows.map((r) => [normalizarSku(r.sku), r]));
+  const noErp = new Map<string, ProdutoDoBling>();
+  for (const p of produtosErp) {
+    if (p.codigo) noErp.set(normalizarSku(p.codigo), p);
+  }
+
+  const divergencias: DivergenciaProduto[] = [];
+  let nosDois = 0;
+  for (const [k, p] of noErp) {
+    if (noSite.has(k)) nosDois++;
+    else divergencias.push({
+      sku: p.codigo, ondeEsta: "só no ERP", nome: p.nome, formato: p.formato,
+    });
+  }
+  for (const [k, r] of noSite) {
+    if (!noErp.has(k)) {
+      divergencias.push({
+        sku: r.sku, ondeEsta: "só no site", nome: r.nome, ativoNoSite: r.ativo,
+      });
+    }
+  }
+  divergencias.sort((a, b) => a.sku.localeCompare(b.sku));
+  return { erp: noErp.size, site: noSite.size, nosDois, divergencias };
+}
+
 export interface ParPadronizacao {
   de: string;
   para: string;

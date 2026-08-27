@@ -13,6 +13,7 @@ import { sincronizarContatos } from "../services/blingContatosService";
 import {
   padronizarCodigos,
   listarProdutos as listarProdutosBling,
+  conferirContraSite,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -291,4 +292,18 @@ fabricaBlingRouter.post("/produtos/catalogo", (_req, res) => {
 fabricaBlingRouter.get("/produtos/catalogo", (_req, res) => {
   if (!catalogoBling) return res.json({ estado: "nenhuma" });
   res.json(catalogoBling);
+});
+
+// A conferencia do que ja foi lido: ERP contra site, so as divergencias.
+fabricaBlingRouter.get("/produtos/conferir", async (_req, res) => {
+  if (!catalogoBling || catalogoBling.estado !== "pronto" || !catalogoBling.produtos) {
+    return res.status(400).json({
+      error: "Leia o catálogo do ERP primeiro (POST /produtos/catalogo).",
+    });
+  }
+  try {
+    res.json(await conferirContraSite(catalogoBling.produtos as never[]));
+  } catch (err) {
+    erro(res, err, "Falha ao conferir o catálogo.");
+  }
 });
