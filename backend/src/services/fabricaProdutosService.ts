@@ -19,6 +19,9 @@ export interface FabricaProduto {
   sku: string;
   nome: string;
   origem: "FABRICA" | "DISTRIBUIDORA";
+  // REVENDA vira anúncio no Mercado Livre; INSUMO a expedição consome — caixa,
+  // saco, fita. É por isso que insumo não pertence ao SKU MASTER.
+  tipo: "REVENDA" | "INSUMO";
   ean: string | null;
   familia: string | null;
   // só na revenda: no produto de fábrica o custo vem da fórmula, e um número
@@ -50,6 +53,7 @@ export interface ProdutoEntrada {
   sku: string;
   nome: string;
   origem: "FABRICA" | "DISTRIBUIDORA";
+  tipo: "REVENDA" | "INSUMO";
   ean: string | null;
   familia: string | null;
   custoCompra: number | null;
@@ -61,6 +65,7 @@ export interface ProdutoEntrada {
 
 interface LinhaBruta {
   id: number;
+  tipo: string;
   sku: string;
   nome: string;
   origem: string;
@@ -172,6 +177,9 @@ function montar(
     origem: (r.origem === "DISTRIBUIDORA" ? "DISTRIBUIDORA" : "FABRICA") as
       | "FABRICA"
       | "DISTRIBUIDORA",
+    // o padrão é revenda: insumo é a exceção, e marcar errado pra menos só
+    // deixa a coisa no catálogo — marcar errado pra mais some com ela
+    tipo: (r.tipo === "INSUMO" ? "INSUMO" : "REVENDA") as "REVENDA" | "INSUMO",
     ean: r.ean,
     familia: r.familia,
     custoCompra,
@@ -197,7 +205,7 @@ function montar(
 }
 
 const SELECT_BASE = `
-  SELECT p.id, p.sku, p.nome, p.origem, p.ean, p.familia, p.custo_compra,
+  SELECT p.id, p.sku, p.nome, p.origem, p.tipo, p.ean, p.familia, p.custo_compra,
          p.formula_id, f.nome AS formula_nome,
          p.embalagem_id, e.nome AS embalagem_nome, e.peso_kg, e.custo_embalagem,
          p.preco_venda, p.ativo
@@ -247,8 +255,8 @@ export async function criarProduto(entrada: ProdutoEntrada): Promise<{ id: numbe
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO fabrica_produtos
        (sku, nome, formula_id, embalagem_id, preco_venda, ativo,
-        origem, ean, familia, custo_compra)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+        origem, ean, familia, custo_compra, tipo)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
     [
       entrada.sku,
       entrada.nome,
@@ -260,6 +268,7 @@ export async function criarProduto(entrada: ProdutoEntrada): Promise<{ id: numbe
       entrada.ean,
       entrada.familia,
       entrada.custoCompra,
+      entrada.tipo,
     ]
   );
   return { id: rows[0].id };
@@ -272,7 +281,8 @@ export async function atualizarProduto(id: number, entrada: ProdutoEntrada): Pro
   await pool.query(
     `UPDATE fabrica_produtos
      SET sku = $2, nome = $3, formula_id = $4, embalagem_id = $5, preco_venda = $6,
-         ativo = $7, origem = $8, ean = $9, familia = $10, custo_compra = $11
+         ativo = $7, origem = $8, ean = $9, familia = $10, custo_compra = $11,
+         tipo = $12
      WHERE id = $1`,
     [
       id,
@@ -286,6 +296,7 @@ export async function atualizarProduto(id: number, entrada: ProdutoEntrada): Pro
       entrada.ean,
       entrada.familia,
       entrada.custoCompra,
+      entrada.tipo,
     ]
   );
 }

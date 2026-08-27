@@ -495,6 +495,7 @@ export function FabricaPedidos() {
         sku: s.sku,
         nome: nome.trim(),
         origem: "DISTRIBUIDORA",
+        tipo: "REVENDA",
         ean: null,
         familia: null,
         custoCompra: null,

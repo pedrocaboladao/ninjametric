@@ -34,8 +34,10 @@ function erro(res: Response, err: unknown, padrao: string) {
 }
 
 function lerEntrada(req: Request): ProdutoEntrada | string {
-  const { sku, nome, formulaId, embalagemId, precoVenda, ativo, origem, ean, familia, custoCompra } =
-    req.body ?? {};
+  const {
+    sku, nome, formulaId, embalagemId, precoVenda, ativo, origem, ean, familia,
+    custoCompra, tipo,
+  } = req.body ?? {};
   if (typeof sku !== "string" || !sku.trim()) return "Informe o SKU.";
   if (typeof nome !== "string" || !nome.trim()) return "Informe o nome do produto.";
   const preco = Number(precoVenda);
@@ -47,6 +49,9 @@ function lerEntrada(req: Request): ProdutoEntrada | string {
     sku: sku.trim(),
     nome: nome.trim(),
     origem: revenda ? "DISTRIBUIDORA" : "FABRICA",
+    // insumo é o que a expedição consome — caixa, saco, fita. Só entra se vier
+    // dito; o resto do catálogo é revenda.
+    tipo: tipo === "INSUMO" ? "INSUMO" : "REVENDA",
     ean: texto(ean),
     familia: texto(familia),
     // custo digitado só existe na revenda: no produto de fábrica ele vem da
