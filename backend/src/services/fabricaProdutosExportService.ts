@@ -20,6 +20,9 @@ export interface FiltroExport {
 
 const CABECALHO: Array<{ titulo: string; largura: number }> = [
   { titulo: "ORIGEM", largura: 15 },
+  // revenda vira anúncio no Mercado Livre; insumo a expedição consome. Sem essa
+  // coluna a conferência contra o SKU MASTER cobra insumo que nunca vai estar lá
+  { titulo: "TIPO", largura: 12 },
   { titulo: "SKU", largura: 38 },
   { titulo: "PRODUTO", largura: 40 },
   { titulo: "FAMÍLIA", largura: 24 },
@@ -57,6 +60,7 @@ export async function exportarProdutos(filtro: FiltroExport = {}): Promise<Buffe
   for (const p of produtos) {
     ws.addRow([
       p.origem === "FABRICA" ? "Fábrica" : "Distribuição",
+      p.tipo === "INSUMO" ? "Insumo" : "Revenda",
       p.sku,
       p.nome,
       p.familia ?? "",

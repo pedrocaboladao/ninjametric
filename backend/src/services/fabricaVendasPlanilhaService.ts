@@ -1,5 +1,9 @@
 import { pool } from "../db/pool";
 import { casarCliente } from "./fabricaClienteApelidosService";
+import {
+  casarProduto,
+  indiceFrouxo,
+} from "./fabricaProdutoApelidosService";
 import { normalizarSku } from "./financeiroService";
 
 // Vendas que a API do Mercado Livre não vê: Shopee e venda direta.
@@ -151,7 +155,7 @@ export async function conferirPlanilhaVendas(
   const colunas: Record<string, string> = {};
   for (const [campo, idx] of Object.entries(mapa)) colunas[campo] = cabecalho[idx] ?? "";
 
-  const [produtos, clientes, apelidos, importadas] = await Promise.all([
+  const [produtos, clientes, apelidos, apelidosSku, importadas] = await Promise.all([
     pool.query<{ id: number; sku: string; nome: string; preco_venda: string }>(
       "SELECT id, sku, nome, preco_venda FROM fabrica_produtos WHERE ativo = TRUE"
     ),
@@ -161,6 +165,9 @@ export async function conferirPlanilhaVendas(
          FROM fabrica_cliente_apelidos a
          JOIN fabrica_clientes c ON c.id = a.cliente_id`
     ),
+    pool.query<{ chave: string; produto_id: number }>(
+      "SELECT chave, produto_id FROM fabrica_produto_apelidos"
+    ),
     pool.query<{ documento: string | null; sku: string | null }>(
       "SELECT documento, sku FROM fabrica_venda_importada WHERE origem = $1",
       [origem]
@@ -168,6 +175,13 @@ export async function conferirPlanilhaVendas(
   ]);
 
   const porSku = new Map(produtos.rows.map((p) => [normalizarSku(p.sku), p]));
+  const porId = new Map(produtos.rows.map((p) => [p.id, p]));
+  const porApelidoSku = new Map(
+    apelidosSku.rows
+      .map((a) => [a.chave, porId.get(a.produto_id)] as const)
+      .filter((x): x is [string, (typeof produtos.rows)[number]] => Boolean(x[1]))
+  );
+  const porFrouxa = indiceFrouxo(produtos.rows);
   const porCliente = new Map(clientes.rows.map((c) => [normalizarSku(c.nome), c]));
   const porApelido = new Map(
     apelidos.rows.map((a) => [a.chave, { id: a.cliente_id, nome: a.nome }])
@@ -199,7 +213,11 @@ export async function conferirPlanilhaVendas(
     // nome igual, depois apelido, depois prefixo — ver fabricaClienteApelidosService
     const achado = casarCliente(nomeCliente, porCliente, porApelido, clientes.rows);
     const cliente = achado.cliente;
-    const produto = sku ? (porSku.get(normalizarSku(sku)) ?? null) : null;
+    // SKU igual, depois apelido, depois frouxo — ver fabricaProdutoApelidosService
+    const achadoSku = sku
+      ? casarProduto(sku, porSku, porApelidoSku, porFrouxa)
+      : { produto: null, ambiguo: false };
+    const produto = achadoSku.produto;
     const qtd = mapa.quantidade !== undefined ? numero(pega("quantidade")) : 1;
     const d = data(pega("data"));
     const doc = pega("documento") || null;
@@ -218,7 +236,9 @@ export async function conferirPlanilhaVendas(
     // sem SKU a linha nao vira pedido, mas aparece: sumir com ela deixava o
     // operador somando um total que nao fecha com o arquivo dele
     if (!sku) problemas.push("linha sem SKU");
-    else if (!produto) problemas.push("SKU não cadastrado");
+    else if (!produto) {
+      problemas.push(achadoSku.ambiguo ? "SKU ambíguo" : "SKU não cadastrado");
+    }
     if (!cliente) {
       // ambíguo é diferente de desconhecido: o nome casou com mais de um
       // cliente, e dizer "não cadastrado" mandaria cadastrar de novo o que já

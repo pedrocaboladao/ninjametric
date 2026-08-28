@@ -289,6 +289,13 @@ export interface ClienteApelido {
   apelido: string;
 }
 
+export interface ProdutoApelido {
+  id: number;
+  produtoId: number;
+  produtoSku: string;
+  apelido: string;
+}
+
 export interface ConferenciaPlanilha {
   origem: string;
   linhas: LinhaPlanilha[];

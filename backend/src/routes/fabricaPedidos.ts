@@ -10,6 +10,11 @@ import {
   excluirApelido,
 } from "../services/fabricaClienteApelidosService";
 import {
+  listarApelidosSku,
+  criarApelidoSku,
+  excluirApelidoSku,
+} from "../services/fabricaProdutoApelidosService";
+import {
   importarPlanilhaVendas,
   skusFaltando,
   clientesFaltando,
@@ -342,6 +347,44 @@ fabricaPedidosRouter.delete("/apelidos/:id", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao apagar o apelido.");
+  }
+});
+
+// Apelido de SKU: como o ERP escreve o código do produto.
+//
+// Fica junto do apelido de cliente e pela mesma razão — quem cria é quem está
+// importando venda e vê o código que não casou.
+//
+// Tem que vir antes do "/:id" logo abaixo: senão o Express casa "apelidos-sku"
+// com o parâmetro e devolve "Id inválido". Mesma armadilha do "exportar" e do
+// "idade-do-saldo".
+fabricaPedidosRouter.get("/apelidos-sku", async (_req, res) => {
+  try {
+    res.json(await listarApelidosSku());
+  } catch (err) {
+    erro(res, err, "Falha ao listar os apelidos de SKU.");
+  }
+});
+
+fabricaPedidosRouter.post("/apelidos-sku", async (req, res) => {
+  const b = req.body ?? {};
+  const produtoId = Number(b.produtoId);
+  if (!Number.isFinite(produtoId) || produtoId <= 0) {
+    return res.status(400).json({ error: "Escolha o produto." });
+  }
+  try {
+    res.status(201).json(await criarApelidoSku(produtoId, String(b.apelido ?? "")));
+  } catch (err) {
+    erro(res, err, "Falha ao gravar o apelido de SKU.");
+  }
+});
+
+fabricaPedidosRouter.delete("/apelidos-sku/:id", async (req, res) => {
+  try {
+    await excluirApelidoSku(Number(req.params.id));
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao apagar o apelido de SKU.");
   }
 });
 

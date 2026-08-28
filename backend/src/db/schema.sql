@@ -879,6 +879,29 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_cliente_apelidos_chave
 CREATE INDEX IF NOT EXISTS idx_fabrica_cliente_apelidos_cliente
   ON fabrica_cliente_apelidos (cliente_id);
 
+-- Como o ERP chama cada produto.
+--
+-- O par do apelido de cliente, e pela mesma razão: o Bling escreve
+-- RECICLADA-18KG-PRETO onde o catálogo tem RECICLADA-18L-PRETO, e a linha não
+-- casa. Em agosto/2026 foram 88 códigos, R$ 424.857, 15% da venda do mês.
+--
+-- Renomear no ERP não resolve o passado: o Bling **grava o código dentro do
+-- pedido**, congelado na hora da venda. Os 74 códigos padronizados em
+-- 27/08/2026 valem da próxima venda em diante; agosto continua com a foto do
+-- código velho, e quem resolve é esta tabela.
+CREATE TABLE IF NOT EXISTS fabrica_produto_apelidos (
+  id SERIAL PRIMARY KEY,
+  produto_id INTEGER NOT NULL REFERENCES fabrica_produtos(id) ON DELETE CASCADE,
+  apelido TEXT NOT NULL,
+  -- o apelido normalizado; é por ele que casa
+  chave TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_produto_apelidos_chave
+  ON fabrica_produto_apelidos (chave);
+CREATE INDEX IF NOT EXISTS idx_fabrica_produto_apelidos_produto
+  ON fabrica_produto_apelidos (produto_id);
+
 -- Cadastro de embalagem da Fábrica Distribuidora: o balde, a bombona, o galão.
 -- Antes disso o custo da embalagem era um número digitado dentro de cada
 -- fórmula — o mesmo balde de 18 kg tinha o preço repetido em 23 lugares, e
@@ -1300,8 +1323,22 @@ ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS ean TEXT;
 -- o que dá pra filtrar quando são 5 mil SKUs
 ALTER TABLE fabrica_produtos ADD COLUMN IF NOT EXISTS familia TEXT;
 
+-- Pra que serve o produto.
+--
+-- REVENDA vai pro catálogo do Mercado Livre — a loja compra pra anunciar e
+-- revender. INSUMO a fábrica consome na expedição: caixa, saco, fita, filme
+-- stretch. Nunca vai virar anúncio.
+--
+-- Sem essa distinção todo insumo aparecia como "falta no SKU MASTER", quando
+-- na verdade ele nunca deveria estar lá — e a conferência contra o master
+-- nunca ia fechar, por construção.
+ALTER TABLE fabrica_produtos
+  ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'REVENDA';
+
 CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_origem
   ON fabrica_produtos (origem, familia);
+CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_tipo
+  ON fabrica_produtos (tipo);
 CREATE INDEX IF NOT EXISTS idx_fabrica_produtos_ean
   ON fabrica_produtos (ean) WHERE ean IS NOT NULL;
 

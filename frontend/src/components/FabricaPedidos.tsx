@@ -37,6 +37,7 @@ import {
   sincronizarBling,
   progressoBling,
   criarApelidoCliente,
+  criarApelidoSku,
   importarPix,
   registrarPagamento,
   excluirPagamento,
@@ -494,6 +495,7 @@ export function FabricaPedidos() {
         sku: s.sku,
         nome: nome.trim(),
         origem: "DISTRIBUIDORA",
+        tipo: "REVENDA",
         ean: null,
         familia: null,
         custoCompra: null,
@@ -509,6 +511,34 @@ export function FabricaPedidos() {
       setConferencia(c);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao cadastrar o produto.");
+    }
+  }
+
+  // O ERP grava o código dentro do pedido, congelado na hora da venda. Renomear
+  // o produto lá não conserta o que já foi vendido — quem casa o passado é o
+  // apelido.
+  async function ligarApelidoSku(sf: SkuFaltando) {
+    const alvo = window.prompt(
+      `O código ${sf.sku} do ERP é qual SKU daqui?
+` +
+        `Apareceu ${sf.linhas}x, ${sf.quantidade} un, ${formatCurrency(sf.valor)}.`,
+      sf.sku
+    );
+    if (alvo === null || !alvo.trim()) return;
+    const p = produtos.find(
+      (x) => x.sku.toUpperCase().trim() === alvo.toUpperCase().trim()
+    );
+    if (!p) {
+      setErro(`Não achei o SKU "${alvo.trim()}" no catálogo.`);
+      return;
+    }
+    try {
+      const a = await criarApelidoSku(p.id, sf.sku);
+      setErro(null);
+      setAviso(`"${sf.sku}" agora é ${a.produtoSku}. Vale pras próximas importações também.`);
+      setConferencia(await conferirPlanilha(impTexto, impOrigem));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gravar o apelido.");
     }
   }
 
@@ -1809,8 +1839,11 @@ export function FabricaPedidos() {
                       {conferencia.skusFaltando.length} SKU
                       {conferencia.skusFaltando.length === 1 ? "" : "s"} sem cadastro
                     </strong>{" "}
-                    — estas linhas não viram pedido enquanto o produto não existir. Cadastre
-                    aqui mesmo: o preço sugerido é o que a loja pagou de verdade na planilha.
+                    — estas linhas não viram pedido enquanto o produto não existir. Quase
+                    sempre é o mesmo produto escrito de outro jeito no ERP: <strong>É outro
+                    SKU</strong> liga ao código daqui e vale pra sempre. <strong>Cadastrar</strong>
+                    é pra produto que realmente não existe — o preço sugerido é o que a loja
+                    pagou de verdade.
                   </p>
                   <table className="financeiro-tabela">
                     <thead>
@@ -1840,6 +1873,13 @@ export function FabricaPedidos() {
                           </td>
                           <td className="financeiro-th-numero">{formatCurrency(sf.valor)}</td>
                           <td>
+                            <button
+                              type="button"
+                              className="btn-excluir"
+                              onClick={() => void ligarApelidoSku(sf)}
+                            >
+                              É outro SKU
+                            </button>{" "}
                             <button
                               type="button"
                               className="btn-responder"

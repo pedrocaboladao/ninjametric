@@ -41,7 +41,7 @@ async function vez(): Promise<void> {
 }
 
 async function chamar<T>(
-  metodo: "get" | "put",
+  metodo: "get" | "put" | "post",
   caminho: string,
   params?: Record<string, unknown>,
   corpo?: unknown
@@ -111,6 +111,327 @@ async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
     }
   }
   return null;
+}
+
+// Lista o catalogo inteiro do Bling.
+//
+// Diferente dos contatos, aqui varrer compensa: sao ~6 mil produtos, 100 por
+// pagina, e o enfileirador de 350ms fecha em menos de meio minuto. O que nao
+// termina e a base de contatos, que carrega tambem o cliente final da Fabrica
+// Loja — dezenas de milhares.
+export interface ProdutoDoBling {
+  id: number;
+  codigo: string;
+  nome: string;
+  preco: number | null;
+  situacao: string;
+  tipo: string;
+  formato: string;
+}
+
+// O Bling nao devolve o produto inativo na listagem padrao — nem com
+// criterio 1, que a documentacao chama de "todos". Entao a leitura roda uma vez
+// por filtro e junta: sem isso a conferencia acusa "falta no ERP" pra sempre e
+// o cadastro em massa recria o que ja esta la.
+//
+// `filtros` fica parametrizavel porque qual combinacao funciona depende da
+// versao da API, e descobrir isso custa um deploy por tentativa.
+export async function listarProdutos(
+  aoAndar?: (lidos: number) => void,
+  filtros?: Array<Record<string, unknown>>
+): Promise<ProdutoDoBling[]> {
+  const combinacoes = filtros?.length
+    ? filtros
+    : [{ criterio: 2 }, { criterio: 3 }, { situacao: "I" }];
+  const saida: ProdutoDoBling[] = [];
+  const vistos = new Set<number>();
+  for (const filtro of combinacoes) {
+  for (let pagina = 1; ; pagina++) {
+    let r: { data?: ProdutoBling[] };
+    try {
+      r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
+        pagina,
+        limite: POR_PAGINA,
+        ...filtro,
+      });
+    } catch {
+      // filtro que a API nao conhece vira 400: tenta o proximo
+      break;
+    }
+    const lote = r.data ?? [];
+    for (const p of lote) {
+      if (vistos.has(p.id)) continue;
+      vistos.add(p.id);
+      saida.push({
+        id: p.id,
+        codigo: String(p.codigo ?? "").trim(),
+        nome: String(p.nome ?? "").trim(),
+        preco: typeof p.preco === "number" ? p.preco : Number(p.preco ?? 0) || null,
+        situacao: String(p.situacao ?? ""),
+        tipo: String(p.tipo ?? ""),
+        formato: String(p.formato ?? ""),
+      });
+    }
+    if (aoAndar) aoAndar(saida.length);
+    // pagina incompleta e a ultima: o Bling nao devolve total de registros
+    if (lote.length < POR_PAGINA) break;
+  }
+  }
+  return saida;
+}
+
+// Confere o catalogo do ERP contra o do site.
+//
+// Devolve so a divergencia, nao os 5 mil que batem: a lista inteira nao passa
+// pela tela, e o que interessa e o que esta diferente.
+//
+// O preco do Bling e o preco de venda no anuncio, nao o que a Fabrica cobra da
+// loja — sao numeros diferentes por natureza, entao aqui so o SKU e comparado.
+export interface DivergenciaProduto {
+  sku: string;
+  ondeEsta: "só no ERP" | "só no site";
+  nome: string;
+  // no ERP: variacao ou simples. Ajuda a entender pai x filha.
+  formato?: string;
+  ativoNoSite?: boolean;
+}
+
+export interface ConferenciaErp {
+  erp: number;
+  site: number;
+  nosDois: number;
+  divergencias: DivergenciaProduto[];
+}
+
+export async function conferirContraSite(
+  produtosErp: ProdutoDoBling[]
+): Promise<ConferenciaErp> {
+  const { rows } = await pool.query<{ sku: string; nome: string; ativo: boolean }>(
+    "SELECT sku, nome, ativo FROM fabrica_produtos"
+  );
+  const noSite = new Map(rows.map((r) => [normalizarSku(r.sku), r]));
+  const noErp = new Map<string, ProdutoDoBling>();
+  for (const p of produtosErp) {
+    if (p.codigo) noErp.set(normalizarSku(p.codigo), p);
+  }
+
+  const divergencias: DivergenciaProduto[] = [];
+  let nosDois = 0;
+  for (const [k, p] of noErp) {
+    if (noSite.has(k)) nosDois++;
+    else divergencias.push({
+      sku: p.codigo, ondeEsta: "só no ERP", nome: p.nome, formato: p.formato,
+    });
+  }
+  for (const [k, r] of noSite) {
+    if (!noErp.has(k)) {
+      divergencias.push({
+        sku: r.sku, ondeEsta: "só no site", nome: r.nome, ativoNoSite: r.ativo,
+      });
+    }
+  }
+  divergencias.sort((a, b) => a.sku.localeCompare(b.sku));
+  return { erp: noErp.size, site: noSite.size, nosDois, divergencias };
+}
+
+// Cadastra no ERP o que existe no site e nao la.
+//
+// O site e o SKU MASTER sao os catalogos completos; o ERP ficou pra tras, com
+// um terco do tamanho. Sem o produto la, a venda do dia a dia nao entra.
+//
+// Nao unifica nada por parecer igual. A EMBORRACHADA que o ERP chama de
+// EMBORRACHADA-18KG e fisicamente a mesma tinta de RESIFLEX, INGAFLEX,
+// SELATURBO e TELHAFLEX EMBORRACHADA — a fabrica compra sem rotulo e rotula
+// conforme o SKU do anuncio. Cada marca tem que ser produto proprio, porque e
+// isso que diz quantos rotulos comprar de cada.
+//
+// O inativo entra so quando pedido, e entra **inativo no Bling tambem**: o
+// site diz que aquilo nao esta a venda, e criar como ativo colocaria centenas
+// de produtos em circulacao sem ninguem pedir.
+
+export interface LinhaCriacao {
+  sku: string;
+  nome: string;
+  preco: number;
+  situacao: "criado" | "já existia" | "erro";
+  produtoId?: number;
+  erro?: string;
+}
+
+export interface ResultadoCriacao {
+  simulacao: boolean;
+  candidatos: number;
+  linhas: LinhaCriacao[];
+}
+
+interface ProdutoDoSite {
+  sku: string;
+  nome: string;
+  preco_venda: string;
+  ativo: boolean;
+}
+
+export async function criarNoErpOqueFalta(
+  produtosErp: ProdutoDoBling[],
+  simulacao: boolean,
+  limite: number,
+  incluirInativos: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<ResultadoCriacao> {
+  const { rows } = await pool.query<ProdutoDoSite>(
+    `SELECT sku, nome, preco_venda, ativo
+       FROM fabrica_produtos
+      WHERE ($1::boolean OR (ativo = TRUE AND origem = 'DISTRIBUIDORA'))
+      ORDER BY sku`,
+    [incluirInativos]
+  );
+  const noErp = new Set(produtosErp.map((p) => normalizarSku(p.codigo)).filter(Boolean));
+  const faltam = rows.filter((r) => !noErp.has(normalizarSku(r.sku)));
+  const alvo = limite > 0 ? faltam.slice(0, limite) : faltam;
+
+  const linhas: LinhaCriacao[] = [];
+  for (let i = 0; i < alvo.length; i++) {
+    const r = alvo[i];
+    const preco = Number(r.preco_venda) || 0;
+    if (simulacao) {
+      linhas.push({ sku: r.sku, nome: r.nome, preco, situacao: "criado" });
+      continue;
+    }
+    try {
+      const resp = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
+        nome: r.nome,
+        codigo: r.sku,
+        preco,
+        tipo: "P",
+        // espelha o site: o que nao vende la nasce inativo aqui
+        situacao: r.ativo ? "A" : "I",
+        formato: "S",
+        unidade: "UN",
+      });
+      linhas.push({
+        sku: r.sku, nome: r.nome, preco, situacao: "criado",
+        produtoId: resp.data?.id,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "falha ao cadastrar";
+      // codigo repetido nao e erro: e produto que ja estava la com outra grafia
+      linhas.push({
+        sku: r.sku, nome: r.nome, preco,
+        situacao: /já existe|duplicad|VALIDATION_ERROR/i.test(msg) ? "já existia" : "erro",
+        erro: msg.slice(0, 200),
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, alvo.length);
+  }
+  return { simulacao, candidatos: faltam.length, linhas };
+}
+
+// Grava o codigo de barras no produto do ERP.
+//
+// Os 87 SKUs novos nasceram sem EAN nos quatro lugares. O gerador do site
+// produz EAN-13 valido com prefixo 2 — a faixa que o GS1 reserva pra uso
+// interno, entao nao colide com codigo de barras real em circulacao.
+//
+// Grava por leitura e devolucao, igual ao resto: busca o produto inteiro e
+// manda de volta so com o gtin trocado. Montar o corpo do zero apagaria preco,
+// estoque e fornecedor.
+export interface LinhaGtin {
+  sku: string;
+  gtin: string;
+  situacao: "gravado" | "já tinha esse" | "não achei no ERP" | "erro";
+  produtoId?: number;
+  antes?: string;
+  erro?: string;
+}
+
+export async function gravarGtin(
+  pares: Array<{ sku: string; gtin: string }>,
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaGtin[] }> {
+  const linhas: LinhaGtin[] = [];
+  for (let i = 0; i < pares.length; i++) {
+    const { sku, gtin } = pares[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, gtin, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const antes = String((inteiro.data as { gtin?: string }).gtin ?? "").trim();
+      if (antes === gtin) {
+        linhas.push({ sku, gtin, situacao: "já tinha esse", produtoId: achado.id, antes });
+        continue;
+      }
+      if (simulacao) {
+        linhas.push({ sku, gtin, situacao: "gravado", produtoId: achado.id, antes });
+        continue;
+      }
+      await chamar("put", `/produtos/${achado.id}`, undefined, {
+        ...inteiro.data,
+        gtin,
+      });
+      linhas.push({ sku, gtin, situacao: "gravado", produtoId: achado.id, antes });
+    } catch (err) {
+      linhas.push({
+        sku, gtin, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao gravar",
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, pares.length);
+  }
+  return { simulacao, linhas };
+}
+
+// Inativa produto no ERP.
+//
+// Inativa, nunca exclui. O pedido antigo aponta pro produto: excluir arrisca
+// orfao e o Bling costuma recusar quando ha movimento. Inativo some da
+// operacao do dia a dia e volta com um clique se for preciso.
+export interface LinhaInativacao {
+  sku: string;
+  situacao: "inativado" | "já estava inativo" | "não achei no ERP" | "erro";
+  produtoId?: number;
+  erro?: string;
+}
+
+export async function inativarProdutos(
+  skus: string[],
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaInativacao[] }> {
+  const linhas: LinhaInativacao[] = [];
+  for (let i = 0; i < skus.length; i++) {
+    const sku = skus[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      if (String(inteiro.data.situacao ?? "").toUpperCase() === "I") {
+        linhas.push({ sku, situacao: "já estava inativo", produtoId: achado.id });
+        continue;
+      }
+      if (!simulacao) {
+        // leitura e devolucao: so a situacao muda, o resto volta como veio
+        await chamar("put", `/produtos/${achado.id}`, undefined, {
+          ...inteiro.data,
+          situacao: "I",
+        });
+      }
+      linhas.push({ sku, situacao: "inativado", produtoId: achado.id });
+    } catch (err) {
+      linhas.push({
+        sku, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao inativar",
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, skus.length);
+  }
+  return { simulacao, linhas };
 }
 
 export interface ParPadronizacao {

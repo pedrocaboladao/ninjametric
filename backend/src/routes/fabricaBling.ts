@@ -10,7 +10,14 @@ import {
 } from "../services/blingAuth";
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
 import { sincronizarContatos } from "../services/blingContatosService";
-import { padronizarCodigos } from "../services/blingProdutosService";
+import {
+  padronizarCodigos,
+  listarProdutos as listarProdutosBling,
+  conferirContraSite,
+  criarNoErpOqueFalta,
+  gravarGtin,
+  inativarProdutos,
+} from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
@@ -243,4 +250,228 @@ fabricaBlingRouter.post("/produtos/padronizar", async (req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao padronizar os códigos.");
   }
+});
+
+// O catalogo inteiro do ERP, pra conferir contra o site e contra o SKU MASTER.
+// Roda solto igual a sincronizacao de vendas: sao ~6 mil produtos a 3 chamadas
+// por segundo.
+let catalogoBling: {
+  estado: "rodando" | "pronto" | "erro";
+  lidos: number;
+  erro: string | null;
+  produtos: unknown[] | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/catalogo", (req, res) => {
+  if (catalogoBling && catalogoBling.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma leitura rodando.", ...catalogoBling });
+  }
+  const job = {
+    estado: "rodando" as const,
+    lidos: 0,
+    erro: null as string | null,
+    produtos: null as unknown[] | null,
+  };
+  catalogoBling = job;
+  void (async () => {
+    try {
+      const b = req.body ?? {};
+      const filtros = Array.isArray(b.filtros) ? b.filtros : undefined;
+      const lista = await listarProdutosBling((n) => {
+        job.lidos = n;
+      }, filtros);
+      catalogoBling = { estado: "pronto", lidos: lista.length, erro: null, produtos: lista };
+    } catch (err) {
+      console.error("[fabrica-bling] catalogo", err);
+      catalogoBling = {
+        estado: "erro",
+        lidos: job.lidos,
+        erro: err instanceof Error ? err.message : "falha ao ler o catálogo",
+        produtos: null,
+      };
+    }
+  })();
+  res.status(202).json({ estado: "rodando" });
+});
+
+fabricaBlingRouter.get("/produtos/catalogo", (_req, res) => {
+  if (!catalogoBling) return res.json({ estado: "nenhuma" });
+  res.json(catalogoBling);
+});
+
+// A conferencia do que ja foi lido: ERP contra site, so as divergencias.
+fabricaBlingRouter.get("/produtos/conferir", async (_req, res) => {
+  if (!catalogoBling || catalogoBling.estado !== "pronto" || !catalogoBling.produtos) {
+    return res.status(400).json({
+      error: "Leia o catálogo do ERP primeiro (POST /produtos/catalogo).",
+    });
+  }
+  try {
+    res.json(await conferirContraSite(catalogoBling.produtos as never[]));
+  } catch (err) {
+    erro(res, err, "Falha ao conferir o catálogo.");
+  }
+});
+
+// Cadastra no ERP o que existe no site e nao la. Roda solto: sao milhares de
+// produtos a 3 chamadas por segundo.
+//
+// `simular: true` (o padrao) so lista. `limite` corta a lista — serve pra
+// mandar cinco primeiro e conferir no Bling antes de soltar o resto.
+let criacaoErp: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/criar-faltantes", (req, res) => {
+  if (criacaoErp && criacaoErp.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem um cadastro rodando.", ...criacaoErp });
+  }
+  if (!catalogoBling || catalogoBling.estado !== "pronto" || !catalogoBling.produtos) {
+    return res.status(400).json({
+      error: "Leia o catálogo do ERP primeiro (POST /produtos/catalogo).",
+    });
+  }
+  const b = req.body ?? {};
+  const simulacao = b.simular !== false;
+  const limite = Number.isFinite(Number(b.limite)) ? Number(b.limite) : 0;
+  // `inativos: true` traz tambem o que esta inativo no site — e eles nascem
+  // inativos no Bling, nao ativos
+  const inativos = b.inativos === true;
+  const job = {
+    estado: "rodando" as const,
+    feitos: 0,
+    total: 0,
+    erro: null as string | null,
+    resultado: null as unknown,
+  };
+  criacaoErp = job;
+  const produtos = catalogoBling.produtos as never[];
+  void (async () => {
+    try {
+      const r = await criarNoErpOqueFalta(produtos, simulacao, limite, inativos, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      criacaoErp = {
+        estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r,
+      };
+    } catch (err) {
+      console.error("[fabrica-bling] criar", err);
+      criacaoErp = {
+        estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha ao cadastrar", resultado: null,
+      };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/criar-faltantes", (_req, res) => {
+  if (!criacaoErp) return res.json({ estado: "nenhuma" });
+  res.json(criacaoErp);
+});
+
+// Grava o codigo de barras nos produtos do ERP. Roda solto: cada SKU custa tres
+// chamadas — procurar, ler e devolver.
+let gtinJob: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/gtin", (req, res) => {
+  if (gtinJob && gtinJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma gravação rodando.", ...gtinJob });
+  }
+  const b = req.body ?? {};
+  const pares = Array.isArray(b.pares)
+    ? b.pares
+        .map((p: { sku?: unknown; gtin?: unknown }) => ({
+          sku: String(p.sku ?? "").trim(),
+          gtin: String(p.gtin ?? "").replace(/\D/g, ""),
+        }))
+        .filter((p: { sku: string; gtin: string }) => p.sku && p.gtin.length >= 8)
+    : [];
+  if (!pares.length) {
+    return res.status(400).json({ error: "Mande os pares { sku, gtin }." });
+  }
+  const simulacao = b.simular !== false;
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: pares.length,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  gtinJob = job;
+  void (async () => {
+    try {
+      const r = await gravarGtin(pares, simulacao, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      gtinJob = { estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r };
+    } catch (err) {
+      console.error("[fabrica-bling] gtin", err);
+      gtinJob = { estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", total: pares.length, simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/gtin", (_req, res) => {
+  if (!gtinJob) return res.json({ estado: "nenhuma" });
+  res.json(gtinJob);
+});
+
+// Inativa produto no ERP. Inativa, nunca exclui.
+let inativarJob: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/inativar", (req, res) => {
+  if (inativarJob && inativarJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma inativação rodando.", ...inativarJob });
+  }
+  const b = req.body ?? {};
+  const skus = Array.isArray(b.skus)
+    ? b.skus.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+  if (!skus.length) return res.status(400).json({ error: "Mande a lista de skus." });
+  const simulacao = b.simular !== false;
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: skus.length,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  inativarJob = job;
+  void (async () => {
+    try {
+      const r = await inativarProdutos(skus, simulacao, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      inativarJob = { estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r };
+    } catch (err) {
+      console.error("[fabrica-bling] inativar", err);
+      inativarJob = { estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", total: skus.length, simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/inativar", (_req, res) => {
+  if (!inativarJob) return res.json({ estado: "nenhuma" });
+  res.json(inativarJob);
 });
