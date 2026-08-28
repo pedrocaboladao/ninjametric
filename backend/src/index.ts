@@ -44,6 +44,7 @@ import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requir
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
 import { iniciarSincronizacaoPromocoes } from "./services/promocoesService";
+import { iniciarSincronizacaoVendas } from "./services/fabricaSincAutomaticaService";
 import { iniciarVerificacaoAgenteAds } from "./services/agenteAdsService";
 import { iniciarGrowthHacker } from "./services/growthHackerService";
 import { iniciarSnapshotEstoque } from "./services/estoqueService";
@@ -156,6 +157,7 @@ server.requestTimeout = 360_000;
 iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
 iniciarSincronizacaoPromocoes();
+iniciarSincronizacaoVendas();
 iniciarVerificacaoAgenteAds();
 iniciarGrowthHacker();
 iniciarSnapshotEstoque();
