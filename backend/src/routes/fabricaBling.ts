@@ -260,7 +260,7 @@ let catalogoBling: {
   produtos: unknown[] | null;
 } | null = null;
 
-fabricaBlingRouter.post("/produtos/catalogo", (_req, res) => {
+fabricaBlingRouter.post("/produtos/catalogo", (req, res) => {
   if (catalogoBling && catalogoBling.estado === "rodando") {
     return res.status(409).json({ error: "Já tem uma leitura rodando.", ...catalogoBling });
   }
@@ -273,9 +273,11 @@ fabricaBlingRouter.post("/produtos/catalogo", (_req, res) => {
   catalogoBling = job;
   void (async () => {
     try {
+      const b = req.body ?? {};
+      const filtros = Array.isArray(b.filtros) ? b.filtros : undefined;
       const lista = await listarProdutosBling((n) => {
         job.lidos = n;
-      });
+      }, filtros);
       catalogoBling = { estado: "pronto", lidos: lista.length, erro: null, produtos: lista };
     } catch (err) {
       console.error("[fabrica-bling] catalogo", err);
