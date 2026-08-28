@@ -276,3 +276,117 @@ export async function definirStatus(id: number, status: StatusPedido): Promise<v
 export async function excluirPedido(id: number): Promise<void> {
   await pool.query("DELETE FROM fabrica_pedidos WHERE id = $1", [id]);
 }
+
+// ---------------------------------------------------------------------------
+// Preenche o custo que nunca foi gravado.
+//
+// Isto NÃO é recalcular. A regra lá em cima continua de pé: venda que aconteceu
+// é um fato, e a margem de um pedido de março não pode mudar porque a resina
+// subiu em agosto.
+//
+// Zero é outra coisa. Agosto de 2026 entrou por importação quando o catálogo
+// ainda estava vazio — 3.696 produtos foram cadastrados no ERP depois disso.
+// Os 22 pedidos ficaram com custo 0,00 em R$ 2.728.714,65 vendidos, e margem
+// 100%. Não é um fato histórico: é um valor que ninguém tinha pra gravar.
+//
+// Por isso mexe só no item com custo exatamente zero, e nunca no que já tem
+// número. Item cujo produto continua sem custo hoje fica como está e sai na
+// lista — preencher com zero de novo não seria conserto nenhum.
+
+export interface LinhaCustoFaltante {
+  pedidoId: number;
+  data: string;
+  cliente: string;
+  sku: string;
+  quantidade: number;
+  custoUnitario: number;
+  custoTotal: number;
+}
+
+export interface ResultadoCustoFaltante {
+  simulacao: boolean;
+  itensZerados: number;
+  itensPreenchidos: number;
+  pedidosTocados: number;
+  custoTotal: number;
+  linhas: LinhaCustoFaltante[];
+  semCustoNoCadastro: Array<{ sku: string; itens: number; motivo: string[] }>;
+}
+
+export async function preencherCustoFaltante(
+  de: string,
+  ate: string,
+  simulacao: boolean
+): Promise<ResultadoCustoFaltante> {
+  const { rows } = await pool.query<{
+    item_id: string;
+    pedido_id: string;
+    data: string;
+    cliente: string;
+    produto_id: string;
+    sku: string;
+    quantidade: string;
+  }>(
+    `SELECT i.id AS item_id, p.id AS pedido_id, p.data, c.nome AS cliente,
+            i.produto_id, pr.sku, i.quantidade
+       FROM fabrica_pedido_itens i
+       JOIN fabrica_pedidos p ON p.id = i.pedido_id
+       JOIN fabrica_clientes c ON c.id = p.cliente_id
+       JOIN fabrica_produtos pr ON pr.id = i.produto_id
+      WHERE p.data BETWEEN $1 AND $2
+        AND i.custo_unitario = 0
+      ORDER BY p.data, p.id, i.ordem`,
+    [de, ate]
+  );
+
+  const produtos = await listarProdutos();
+  const porId = new Map(produtos.map((p) => [p.id, p]));
+
+  const linhas: LinhaCustoFaltante[] = [];
+  const pedidos = new Set<number>();
+  const semCusto = new Map<string, { sku: string; itens: number; motivo: string[] }>();
+  let custoTotal = 0;
+
+  for (const r of rows) {
+    const produto = porId.get(Number(r.produto_id));
+    const custo = produto ? Number(produto.custo) : 0;
+    if (!produto || !custo) {
+      const atual = semCusto.get(r.sku) ?? {
+        sku: r.sku,
+        itens: 0,
+        motivo: produto?.semCusto ?? ["produto não encontrado"],
+      };
+      atual.itens += 1;
+      semCusto.set(r.sku, atual);
+      continue;
+    }
+    const quantidade = Number(r.quantidade);
+    if (!simulacao) {
+      await pool.query("UPDATE fabrica_pedido_itens SET custo_unitario = $2 WHERE id = $1", [
+        Number(r.item_id),
+        custo,
+      ]);
+    }
+    pedidos.add(Number(r.pedido_id));
+    custoTotal += quantidade * custo;
+    linhas.push({
+      pedidoId: Number(r.pedido_id),
+      data: String(r.data).slice(0, 10),
+      cliente: r.cliente,
+      sku: r.sku,
+      quantidade,
+      custoUnitario: custo,
+      custoTotal: quantidade * custo,
+    });
+  }
+
+  return {
+    simulacao,
+    itensZerados: rows.length,
+    itensPreenchidos: linhas.length,
+    pedidosTocados: pedidos.size,
+    custoTotal,
+    linhas,
+    semCustoNoCadastro: [...semCusto.values()].sort((a, b) => b.itens - a.itens),
+  };
+}
