@@ -390,3 +390,74 @@ export async function preencherCustoFaltante(
     semCustoNoCadastro: [...semCusto.values()].sort((a, b) => b.itens - a.itens),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Apaga os pedidos de um período pra ele ser refeito por uma fonte só.
+//
+// Agosto de 2026 entrou duas vezes. Primeiro por planilha, com o mês inteiro
+// empilhado no dia 31; depois pelo Bling, com a data real de cada pedido. A
+// importação não percebeu: ela só reconhece linha repetida dentro da MESMA
+// origem, e planilha e Bling são origens diferentes. R$ 529.525,65 a mais.
+//
+// Não dá pra remendar linha a linha: a planilha achatou a data, então nem dá pra
+// dizer qual linha da planilha corresponde a qual pedido do Bling. O caminho
+// honesto é apagar o período e reimportar de uma fonte só — o Bling, que é de
+// onde sai a cobrança das lojas.
+//
+// O pagamento não é tocado: ele é ligado ao cliente, não ao pedido. Os 100
+// pagamentos de agosto continuam onde estão, e a dívida se recalcula sozinha
+// contra os pedidos novos.
+
+export interface ResultadoRefazer {
+  simulacao: boolean;
+  de: string;
+  ate: string;
+  pedidos: number;
+  itens: number;
+  valor: number;
+  porOrigem: Record<string, { pedidos: number; valor: number }>;
+}
+
+export async function refazerPeriodo(
+  de: string,
+  ate: string,
+  simulacao: boolean
+): Promise<ResultadoRefazer> {
+  const { rows } = await pool.query<{
+    id: string;
+    observacao: string | null;
+    itens: string;
+    valor: string;
+  }>(
+    `SELECT p.id, p.observacao,
+            COUNT(i.id) AS itens,
+            COALESCE(SUM(i.quantidade * i.preco_unitario), 0) AS valor
+       FROM fabrica_pedidos p
+       LEFT JOIN fabrica_pedido_itens i ON i.pedido_id = p.id
+      WHERE p.data BETWEEN $1 AND $2
+      GROUP BY p.id, p.observacao`,
+    [de, ate]
+  );
+
+  const porOrigem: Record<string, { pedidos: number; valor: number }> = {};
+  let itens = 0;
+  let valor = 0;
+  for (const r of rows) {
+    const chave = r.observacao ?? "(lançado à mão)";
+    const atual = porOrigem[chave] ?? { pedidos: 0, valor: 0 };
+    atual.pedidos += 1;
+    atual.valor += Number(r.valor);
+    porOrigem[chave] = atual;
+    itens += Number(r.itens);
+    valor += Number(r.valor);
+  }
+
+  if (!simulacao && rows.length) {
+    // o item e o registro de importação saem por cascata: fabrica_venda_importada
+    // referencia o pedido com ON DELETE CASCADE, então a linha volta a ser
+    // importável sem ninguém limpar nada à mão
+    await pool.query("DELETE FROM fabrica_pedidos WHERE data BETWEEN $1 AND $2", [de, ate]);
+  }
+
+  return { simulacao, de, ate, pedidos: rows.length, itens, valor, porOrigem };
+}
