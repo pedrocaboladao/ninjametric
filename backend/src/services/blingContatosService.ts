@@ -387,6 +387,16 @@ export async function sincronizarContatos(
       anotar("celular", inteiro.celular, celular);
       corpo.celular = celular;
     }
+    // Mesmo numero nos dois campos e duplicata, venha de onde vier: a Imperium
+    // tinha 44991761024 em telefone e em celular. Um numero de 11 digitos e
+    // celular — o campo de fixo fica vazio, e quem le o contato para de ver
+    // dois contatos onde ha um.
+    const fixoFinal = digitos(String(corpo.telefone ?? ""));
+    const celFinal = digitos(String(corpo.celular ?? ""));
+    if (fixoFinal && fixoFinal === celFinal) {
+      anotar("telefone", corpo.telefone, "");
+      corpo.telefone = "";
+    }
 
     const geral = (inteiro.endereco?.geral ?? {}) as Record<string, unknown>;
     const novoEndereco: Record<string, unknown> = { ...geral };
