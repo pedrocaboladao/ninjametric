@@ -9,7 +9,7 @@ import {
   urlDeAutorizacao,
 } from "../services/blingAuth";
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
-import { sincronizarContatos } from "../services/blingContatosService";
+import { puxarContatos, sincronizarContatos } from "../services/blingContatosService";
 import {
   padronizarCodigos,
   listarProdutos as listarProdutosBling,
@@ -236,6 +236,18 @@ fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
 //
 // Nasce em simulação, igual à sincronia de contato: código de produto é o que
 // liga a venda ao cadastro, e trocar errado quebra o histórico dos dois lados.
+// O contrario do sincronizar: preenche daqui o que o ERP sabe e o cadastro nao.
+// So mexe em campo vazio — o que ja tem valor aqui sai na lista como divergente
+// e fica pra decisao de quem manda a nota.
+fabricaBlingRouter.post("/contatos/puxar", async (req, res) => {
+  const b = req.body ?? {};
+  try {
+    res.json(await puxarContatos(b.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao puxar os contatos do Bling.");
+  }
+});
+
 fabricaBlingRouter.post("/produtos/padronizar", async (req, res) => {
   const b = req.body ?? {};
   const pares = Array.isArray(b.pares) ? b.pares : [];
