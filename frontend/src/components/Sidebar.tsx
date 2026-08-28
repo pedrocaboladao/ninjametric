@@ -35,6 +35,7 @@ export type View =
   | "clonar"
   | "produtos"
   | "financeiro"
+  | "financeiro_shopee"
   | "contas"
   | "dre"
   | "ads"
@@ -83,6 +84,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeClonar = temPermissao(usuario, "clonar");
   const podeProdutos = temPermissao(usuario, "produtos");
   const podeFinanceiro = temPermissao(usuario, "financeiro");
+  const podeFinanceiroShopee = temPermissao(usuario, "financeiro_shopee");
   const podeContas = temPermissao(usuario, "contas");
   const podeDre = temPermissao(usuario, "dre");
   const podeAds = temPermissao(usuario, "ads");
@@ -99,7 +101,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   // Financeiro, Contas e DRE das lojas viram um grupo so. Soltos no menu, ao
   // lado do financeiro da Fabrica Distribuidora, davam margem pra lancar
   // despesa da fabrica na conta das lojas — sao duas empresas diferentes.
-  const mostrarFinanceiroLojas = podeFinanceiro || podeContas || podeDre;
+  const mostrarFinanceiroLojas = podeFinanceiro || podeFinanceiroShopee || podeContas || podeDre;
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
@@ -170,6 +172,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconMoney size={16} />
                     <span>Feed de vendas</span>
+                  </button>
+                )}
+                {podeFinanceiroShopee && (
+                  <button
+                    className={`sidebar-item ${view === "financeiro_shopee" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("financeiro_shopee")}
+                  >
+                    <IconMoney size={16} />
+                    <span>Feed de vendas (Shopee)</span>
                   </button>
                 )}
                 {podeContas && (

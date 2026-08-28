@@ -9,6 +9,7 @@ export const MODULOS_VALIDOS = [
   "funcionarios",
   "produtos",
   "financeiro",
+  "financeiro_shopee",
   "ads",
   "contas",
   "dre",
