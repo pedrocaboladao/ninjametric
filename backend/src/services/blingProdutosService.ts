@@ -103,17 +103,10 @@ async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
   // produto inativo respondia "nao achei no ERP" com o produto la, parado.
   // Aconteceu com BRILHATELHA-900ML-CHUMBO: inativado por nao ter par no site,
   // e depois vendido de verdade.
-  const tentativas: Array<Record<string, unknown>> = [
-    { codigo },
-    { pesquisa: codigo },
-    { criterio: codigo },
-    { codigo, situacao: "I" },
-    { pesquisa: codigo, situacao: "I" },
-  ];
-  for (const filtro of tentativas) {
+  for (const chave of ["codigo", "pesquisa", "criterio"]) {
     try {
       const r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
-        ...filtro,
+        [chave]: codigo,
         limite: POR_PAGINA,
       });
       const achado = (r.data ?? []).find((p) => normalizarSku(p.codigo ?? "") === alvo);
@@ -121,6 +114,33 @@ async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
     } catch {
       // filtro que o Bling não conhece vira 400: tenta o próximo jeito
     }
+  }
+
+  // Ultimo recurso: varrer os inativos.
+  //
+  // Nenhuma busca por codigo devolve produto inativo, e combinar codigo com
+  // situacao "I" tambem nao — o Bling ignora um dos dois. So a listagem paginada
+  // com situacao "I" enxerga. Custa umas cinco chamadas, entao fica por ultimo:
+  // o caso comum e produto ativo, e esse resolve na primeira tentativa.
+  //
+  // Sem isto, gravar o codigo de barras num produto inativo responde "nao achei
+  // no ERP" com o produto la, parado — e reativar fica impossivel, que e
+  // exatamente quando mais se precisa dele.
+  for (let pagina = 1; ; pagina++) {
+    let r: { data?: ProdutoBling[] };
+    try {
+      r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
+        pagina,
+        limite: POR_PAGINA,
+        situacao: "I",
+      });
+    } catch {
+      break;
+    }
+    const lote = r.data ?? [];
+    const achado = lote.find((p) => normalizarSku(p.codigo ?? "") === alvo);
+    if (achado) return achado;
+    if (lote.length < POR_PAGINA) break;
   }
   return null;
 }
