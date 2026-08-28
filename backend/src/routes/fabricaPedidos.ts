@@ -31,6 +31,7 @@ import {
   type ItemEntrada,
   type StatusPedido,
   preencherCustoFaltante,
+  refazerPeriodo,
 } from "../services/fabricaPedidosService";
 import {
   listarContaCorrente,
@@ -392,6 +393,22 @@ fabricaPedidosRouter.delete("/apelidos-sku/:id", async (req, res) => {
 // Antes do "/:id" logo abaixo: senão o Express casa "custo-faltante" com o
 // parâmetro e devolve "Id inválido". Mesma armadilha do "exportar", do
 // "idade-do-saldo" e do "apelidos-sku".
+// Apaga os pedidos do periodo pra ele ser refeito por uma fonte so. Tambem
+// antes do "/:id".
+fabricaPedidosRouter.post("/refazer-periodo", async (req, res) => {
+  const b = req.body ?? {};
+  const de = String(b.de ?? "");
+  const ate = String(b.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  try {
+    res.json(await refazerPeriodo(de, ate, b.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao limpar o período.");
+  }
+});
+
 fabricaPedidosRouter.post("/custo-faltante", async (req, res) => {
   const b = req.body ?? {};
   const de = String(b.de ?? "");

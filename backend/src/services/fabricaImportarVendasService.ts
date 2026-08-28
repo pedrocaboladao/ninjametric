@@ -19,6 +19,13 @@ export interface ResultadoImportacao {
   puladas: number;
   // o que impediu cada linha pulada, agrupado pra não virar uma lista de 200
   motivos: Record<string, number>;
+  // Origem diferente já ocupando o mesmo período — nada foi lançado.
+  //
+  // Agosto de 2026 entrou duas vezes: primeiro por planilha, depois pelo Bling.
+  // A dedução de linha repetida é por origem (canal + documento + sku), então
+  // uma venda que entrou como planilha passa de novo como Bling sem nenhum
+  // aviso. Deu R$ 529.525,65 de faturamento que nunca existiu.
+  conflitoDeOrigem: string[];
 }
 
 interface Grupo {
@@ -32,6 +39,34 @@ export async function importarPlanilhaVendas(
   origem: string
 ): Promise<ResultadoImportacao> {
   const conf = await conferirPlanilhaVendas(texto, origem);
+
+  // Recusa antes de escrever qualquer coisa: o mesmo período já lançado por
+  // outra fonte quase certamente é a mesma venda com outro rótulo. Melhor parar
+  // e obrigar alguém a escolher a fonte do que somar dois faturamentos.
+  const datas = conf.linhas.map((l) => l.data).filter((d): d is string => Boolean(d)).sort();
+  const marca = `Importado de planilha (${origem})`;
+  const conflitoDeOrigem: string[] = [];
+  if (datas.length) {
+    const { rows } = await pool.query<{ observacao: string | null }>(
+      `SELECT DISTINCT observacao FROM fabrica_pedidos
+        WHERE data BETWEEN $1::date AND $2::date
+          AND observacao IS NOT NULL
+          AND observacao LIKE 'Importado de planilha (%'
+          AND observacao <> $3`,
+      [datas[0], datas[datas.length - 1], marca]
+    );
+    for (const r of rows) if (r.observacao) conflitoDeOrigem.push(r.observacao);
+  }
+  if (conflitoDeOrigem.length) {
+    return {
+      pedidosCriados: 0,
+      itensLancados: 0,
+      valorLancado: 0,
+      puladas: conf.linhas.length,
+      motivos: { "período já lançado por outra fonte": conf.linhas.length },
+      conflitoDeOrigem,
+    };
+  }
 
   const motivos: Record<string, number> = {};
   const prontas: LinhaPlanilha[] = [];
@@ -111,6 +146,7 @@ export async function importarPlanilhaVendas(
     valorLancado: Number(valorLancado.toFixed(2)),
     puladas: conf.linhas.length - prontas.length,
     motivos,
+    conflitoDeOrigem: [],
   };
 }
 

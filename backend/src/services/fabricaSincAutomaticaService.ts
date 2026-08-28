@@ -108,6 +108,12 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
     base.valorLancado = imp.valorLancado;
     base.puladas = imp.puladas;
     base.motivos = imp.motivos;
+    if (imp.conflitoDeOrigem.length) {
+      base.erro =
+        `O período já tem pedido lançado por outra fonte (${imp.conflitoDeOrigem.join(", ")}). ` +
+        "Não lancei nada: seria a mesma venda contada duas vezes.";
+      return base;
+    }
     // depois de importar: o que continua sem par e o que precisa ser cadastrado.
     // Roda a conferencia de novo em vez de reaproveitar a de dentro do import —
     // sao dois mil e poucos itens em memoria, sem uma chamada ao Bling.
