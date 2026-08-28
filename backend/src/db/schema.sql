@@ -16,6 +16,19 @@ CREATE TABLE IF NOT EXISTS contas_ml (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Tokens OAuth2 da Shopee Open Platform, um registro por loja (fase 1 —
+-- sandbox, ver shopeeAuth.ts). shop_id é da própria Shopee, precisa ir
+-- assinado em toda chamada de API (diferente do Mercado Livre, que só usa
+-- o access_token).
+CREATE TABLE IF NOT EXISTS contas_shopee (
+  loja_id INTEGER PRIMARY KEY REFERENCES lojas(id) ON DELETE CASCADE,
+  shop_id BIGINT NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expira_em TIMESTAMPTZ NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS pedidos (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,

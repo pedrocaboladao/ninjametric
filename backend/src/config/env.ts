@@ -62,4 +62,13 @@ export const env = {
   // não é segredo do ML nem do painel, existe só pra autenticar chamada
   // serviço-a-serviço nos dois sentidos (proxy e /internal/public-ml-items).
   internalServiceKey: process.env.INTERNAL_SERVICE_KEY ?? "",
+  // Shopee Open Platform (fase 1 — sandbox). Opcional, mesmo motivo do
+  // resto: sem essas vars, a integração fica indisponível em vez de
+  // derrubar o backend inteiro. shopeeBaseUrl aponta pro sandbox por
+  // padrão — troca só quando for pra produção de verdade (host diferente:
+  // https://openplatform.shopee.com.br).
+  shopeePartnerId: process.env.SHOPEE_PARTNER_ID ?? "",
+  shopeePartnerKey: process.env.SHOPEE_PARTNER_KEY ?? "",
+  shopeeBaseUrl: process.env.SHOPEE_BASE_URL ?? "https://openplatform.sandbox.test-stable.shopee.sg",
+  shopeeRedirectBase: process.env.SHOPEE_REDIRECT_BASE ?? "https://ninjametrics.cloud",
 };
