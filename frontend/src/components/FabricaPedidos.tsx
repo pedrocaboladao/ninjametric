@@ -315,6 +315,7 @@ export function FabricaPedidos() {
         titulo: c.nome,
         codigo: c.cnpj,
         detalhe: c.tipo === "EXTERNO" ? "cliente de fora" : null,
+        busca: c.apelidos.join(" "),
         ativo: c.ativo,
       })),
     [clientes]

@@ -18,6 +18,10 @@ export interface ItemBusca {
   codigo?: string | null;
   // informação de apoio (saldo, cidade) — só aparece, não entra na busca
   detalhe?: string | null;
+  // texto que entra na busca mas não aparece: apelido de loja, nome antigo.
+  // Fica escondido porque a lista tem que continuar legível — mas "truck 3"
+  // precisa achar o Xitão, e "Xitão" é o que o operador quer ler na linha.
+  busca?: string | null;
   ativo?: boolean;
 }
 
@@ -58,7 +62,7 @@ export function BuscaSelecao({
     if (!termos.length) return base.slice(0, limite);
     return base
       .filter((i) => {
-        const alvo = normalizar(`${i.codigo ?? ""} ${i.titulo}`);
+        const alvo = normalizar(`${i.codigo ?? ""} ${i.titulo} ${i.busca ?? ""}`);
         return termos.every((t) => alvo.includes(t));
       })
       .slice(0, limite);

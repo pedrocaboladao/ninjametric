@@ -32,6 +32,8 @@ export interface FabricaCliente {
   clientePaiNome: string | null;
   // quantas lojas pagam por esta — so tem valor em quem e pai
   filhas: number;
+  // como a loja é chamada no dia a dia; entra na busca da tela
+  apelidos: string[];
   // quanto falta do cadastro pra conseguir emitir nota
   completo: boolean;
   faltando: string[];
@@ -76,6 +78,7 @@ interface Linha {
   cliente_pai_id: number | null;
   cliente_pai_nome: string | null;
   filhas: string | null;
+  apelidos: string[] | null;
 }
 
 // O que a NFe exige. Serve pra tela mostrar quem ainda está pela metade,
@@ -117,6 +120,7 @@ function montar(r: Linha): FabricaCliente {
     clientePaiId: r.cliente_pai_id,
     clientePaiNome: r.cliente_pai_nome,
     filhas: Number(r.filhas ?? 0),
+    apelidos: r.apelidos ?? [],
     completo: faltando.length === 0,
     faltando,
   };
@@ -126,7 +130,9 @@ const COLUNAS = `c.id, c.nome, c.tipo, c.cnpj, c.inscricao_estadual, c.email, c.
                  c.cep, c.logradouro, c.numero, c.complemento, c.bairro, c.cidade, c.uf,
                  c.observacao, c.ativo, c.cliente_pai_id,
                  p.nome AS cliente_pai_nome,
-                 (SELECT COUNT(*) FROM fabrica_clientes f WHERE f.cliente_pai_id = c.id) AS filhas`;
+                 (SELECT COUNT(*) FROM fabrica_clientes f WHERE f.cliente_pai_id = c.id) AS filhas,
+                 (SELECT COALESCE(ARRAY_AGG(a.apelido ORDER BY a.id), '{}')
+                    FROM fabrica_cliente_apelidos a WHERE a.cliente_id = c.id) AS apelidos`;
 
 const DE = `FROM fabrica_clientes c LEFT JOIN fabrica_clientes p ON p.id = c.cliente_pai_id`;
 
