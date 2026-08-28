@@ -44,6 +44,10 @@ export function ultimaRodadaAutomatica(): UltimaRodada | null {
   return ultima;
 }
 
+export function rodadaEmAndamento(): boolean {
+  return rodando;
+}
+
 function diaIso(d: Date): string {
   // a data tem que ser a de Maringá, não a do relógio do servidor: às 6h de
   // Brasília um servidor em UTC já virou o dia, e a janela sairia deslocada
@@ -95,8 +99,12 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
   return base;
 }
 
-async function rodarEGuardar(): Promise<void> {
-  if (rodando) return;
+// Guarda o resultado, inclusive quando alguem dispara a mao. A primeira versao
+// devolvia o resultado so na resposta HTTP: quem fechou a aba antes de terminar
+// nao descobria mais como foi, e "ultima rodada" continuava dizendo que nunca
+// rodou. Rodada e rodada, tenha vindo do relogio ou do botao.
+export async function rodarEGuardar(): Promise<UltimaRodada | null> {
+  if (rodando) return ultima;
   rodando = true;
   try {
     ultima = await rodarSincronizacaoAutomatica();
@@ -106,6 +114,7 @@ async function rodarEGuardar(): Promise<void> {
         `[sinc-automatica] ${ultima.de}..${ultima.ate} · ${ultima.pedidosCriados} pedido(s), ` +
           `${ultima.itensLancados} item(ns), ${ultima.puladas} pulada(s)`
       );
+    return ultima;
   } finally {
     rodando = false;
   }
