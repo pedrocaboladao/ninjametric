@@ -15,6 +15,7 @@ import {
   listarProdutos as listarProdutosBling,
   conferirContraSite,
   criarNoErpOqueFalta,
+  gravarGtin,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -372,4 +373,58 @@ fabricaBlingRouter.post("/produtos/criar-faltantes", (req, res) => {
 fabricaBlingRouter.get("/produtos/criar-faltantes", (_req, res) => {
   if (!criacaoErp) return res.json({ estado: "nenhuma" });
   res.json(criacaoErp);
+});
+
+// Grava o codigo de barras nos produtos do ERP. Roda solto: cada SKU custa tres
+// chamadas — procurar, ler e devolver.
+let gtinJob: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/gtin", (req, res) => {
+  if (gtinJob && gtinJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma gravação rodando.", ...gtinJob });
+  }
+  const b = req.body ?? {};
+  const pares = Array.isArray(b.pares)
+    ? b.pares
+        .map((p: { sku?: unknown; gtin?: unknown }) => ({
+          sku: String(p.sku ?? "").trim(),
+          gtin: String(p.gtin ?? "").replace(/\D/g, ""),
+        }))
+        .filter((p: { sku: string; gtin: string }) => p.sku && p.gtin.length >= 8)
+    : [];
+  if (!pares.length) {
+    return res.status(400).json({ error: "Mande os pares { sku, gtin }." });
+  }
+  const simulacao = b.simular !== false;
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: pares.length,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  gtinJob = job;
+  void (async () => {
+    try {
+      const r = await gravarGtin(pares, simulacao, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      gtinJob = { estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r };
+    } catch (err) {
+      console.error("[fabrica-bling] gtin", err);
+      gtinJob = { estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", total: pares.length, simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/gtin", (_req, res) => {
+  if (!gtinJob) return res.json({ estado: "nenhuma" });
+  res.json(gtinJob);
 });
