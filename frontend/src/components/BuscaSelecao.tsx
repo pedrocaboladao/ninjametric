@@ -63,7 +63,11 @@ export function BuscaSelecao({
     return base
       .filter((i) => {
         const alvo = normalizar(`${i.codigo ?? ""} ${i.titulo} ${i.busca ?? ""}`);
-        return termos.every((t) => alvo.includes(t));
+        const semCodigo = normalizar(`${i.titulo} ${i.busca ?? ""}`);
+        // Termo de um ou dois dígitos não procura no código. Ninguém acha um
+        // CNPJ ou um SKU digitando "3" — mas "truck 3" achava Truck 2 e Truck
+        // Ponto Com, porque o 3 casava em 44.000.593 e 36.141.061.
+        return termos.every((t) => (/^\d{1,2}$/.test(t) ? semCodigo : alvo).includes(t));
       })
       .slice(0, limite);
   }, [itens, texto, valor, limite]);
