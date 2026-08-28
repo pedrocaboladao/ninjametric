@@ -81,6 +81,7 @@ async function chamar<T>(
 interface ContatoBling {
   id: number;
   nome?: string;
+  codigo?: string;
   numeroDocumento?: string;
   ie?: string;
   rg?: string;
@@ -192,12 +193,17 @@ function separarFones(t: string | null): { fixo: string; celular: string } {
 // social e o apelido que a importacao usa pra reconhecer o cliente, entao vem
 // de la — cadastrar "Cidade Cancao" quando o Bling escreve "CIDADE CANCAO
 // LTDA" criaria a divergencia que a tabela de apelidos existe pra resolver.
-function corpoNovo(cl: ClienteCadastro, razaoSocial: string): Record<string, unknown> {
+function corpoNovo(
+  cl: ClienteCadastro,
+  razaoSocial: string,
+  codigo: string
+): Record<string, unknown> {
   const ie = (cl.inscricao_estadual ?? "").trim();
   const { fixo, celular } = separarFones(cl.telefone);
   return {
     nome: razaoSocial,
     tipo: "J",
+    ...(codigo ? { codigo } : {}),
     numeroDocumento: digitos(cl.cnpj),
     situacao: "A",
     // 1 contribuinte, 9 nao contribuinte: sem IE o Bling recusa o 1
@@ -247,11 +253,21 @@ export async function sincronizarContatos(
     "SELECT cliente_id, apelido FROM fabrica_cliente_apelidos ORDER BY id"
   );
   const razao = new Map<number, string>();
+  // O outro lado do mesmo corte: apelido sem espaco e codigo de operacao, e vai
+  // pro campo "Codigo" do contato no Bling. E o que faz "truck3" achar no ERP
+  // uma empresa chamada W. L. P DOS SANTOS JUNIOR LTDA. Havendo mais de um,
+  // vale o mais curto — codigo comprido ninguem digita.
+  const codigo = new Map<number, string>();
   for (const a of apelidos) {
     const nome = a.apelido.trim();
-    if (!nome.includes(" ")) continue;
-    const atual = razao.get(a.cliente_id);
-    if (!atual || nome.length > atual.length) razao.set(a.cliente_id, nome);
+    if (!nome) continue;
+    if (nome.includes(" ")) {
+      const atual = razao.get(a.cliente_id);
+      if (!atual || nome.length > atual.length) razao.set(a.cliente_id, nome);
+    } else {
+      const atual = codigo.get(a.cliente_id);
+      if (!atual || nome.length < atual.length) codigo.set(a.cliente_id, nome.toUpperCase());
+    }
   }
 
   const linhas: LinhaSincronia[] = [];
@@ -272,7 +288,7 @@ export async function sincronizarContatos(
         continue;
       }
       const nome = razao.get(cl.id) ?? cl.nome;
-      const novo = corpoNovo(cl, nome);
+      const novo = corpoNovo(cl, nome, codigo.get(cl.id) ?? "");
       if (simulacao) {
         linhas.push({
           cliente: cl.nome,
@@ -332,6 +348,12 @@ export async function sincronizarContatos(
     const corpo: ContatoBling = { ...inteiro };
     const anotar = (campo: string, antes: unknown, depois: string) =>
       campos.push({ campo, antes: String(antes ?? "").trim(), depois });
+
+    const cod = codigo.get(cl.id) ?? "";
+    if (cod && String(inteiro.codigo ?? "").trim().toUpperCase() !== cod) {
+      anotar("código", inteiro.codigo, cod);
+      corpo.codigo = cod;
+    }
 
     const ie = (cl.inscricao_estadual ?? "").trim();
     if (ie && digitos(inteiro.ie) !== digitos(ie)) {

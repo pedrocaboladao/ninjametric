@@ -28,13 +28,17 @@ export interface FabricaCliente {
   faltando: string[];
 }
 
-// clientePaiNome e filhas são derivados: vêm do servidor, não se digita
+// clientePaiNome, filhas e apelidos são derivados: vêm do servidor, não se digita
 export interface FabricaCliente {
   clientePaiNome: string | null;
   filhas: number;
+  // Como a loja é chamada no dia a dia e como ela chega na venda importada.
+  // Entra na busca: quem digita "truck 3" não sabe que a razão social é
+  // W. L. P DOS SANTOS JUNIOR LTDA.
+  apelidos: string[];
 }
 
 export type FabricaClienteEntrada = Omit<
   FabricaCliente,
-  "id" | "completo" | "faltando" | "clientePaiNome" | "filhas"
+  "id" | "completo" | "faltando" | "clientePaiNome" | "filhas" | "apelidos"
 >;

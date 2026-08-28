@@ -59,7 +59,14 @@ export function FabricaClientes() {
     if (!clientes) return [];
     if (!t) return clientes;
     return clientes.filter(
-      (c) => c.nome.toLowerCase().includes(t) || (c.cnpj ?? "").includes(t) || (c.cidade ?? "").toLowerCase().includes(t)
+      (c) =>
+        c.nome.toLowerCase().includes(t) ||
+        (c.cnpj ?? "").includes(t) ||
+        (c.cidade ?? "").toLowerCase().includes(t) ||
+        // "truck 3" tem que achar o Xitão: quem procura usa o apelido do dia a
+        // dia, não a razão social. O espaço sai dos dois lados porque o apelido
+        // é gravado junto ("truck3") e ninguém digita assim.
+        c.apelidos.some((a) => a.toLowerCase().replace(/\s+/g, "").includes(t.replace(/\s+/g, "")))
     );
   }, [clientes, busca]);
 
