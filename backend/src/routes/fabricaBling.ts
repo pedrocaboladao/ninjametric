@@ -11,6 +11,10 @@ import {
 import { buscarVendas, paraTexto } from "../services/blingPedidosService";
 import { puxarContatos, sincronizarContatos } from "../services/blingContatosService";
 import {
+  rodarSincronizacaoAutomatica,
+  ultimaRodadaAutomatica,
+} from "../services/fabricaSincAutomaticaService";
+import {
   padronizarCodigos,
   listarProdutos as listarProdutosBling,
   conferirContraSite,
@@ -239,6 +243,21 @@ fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
 // O contrario do sincronizar: preenche daqui o que o ERP sabe e o cadastro nao.
 // So mexe em campo vazio — o que ja tem valor aqui sai na lista como divergente
 // e fica pra decisao de quem manda a nota.
+// Como foi a ultima rodada automatica. A tela mostra isso pra ninguem descobrir
+// tres dias depois que a maquina parou de lancar.
+fabricaBlingRouter.get("/automatica", (_req, res) => {
+  res.json({ ultima: ultimaRodadaAutomatica() });
+});
+
+// Dispara a rodada automatica agora, sem esperar a manha seguinte.
+fabricaBlingRouter.post("/automatica", async (_req, res) => {
+  try {
+    res.json(await rodarSincronizacaoAutomatica());
+  } catch (err) {
+    erro(res, err, "Falha na sincronização automática.");
+  }
+});
+
 fabricaBlingRouter.post("/contatos/puxar", async (req, res) => {
   const b = req.body ?? {};
   try {
