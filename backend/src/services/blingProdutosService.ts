@@ -137,9 +137,10 @@ export async function listarProdutos(
     const r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
       pagina,
       limite: POR_PAGINA,
-      // o catalogo tem produto pai e variacao; os dois interessam, porque o
-      // codigo que vai na venda e o da variacao
-      criterio: 2,
+      // 1 = todos. Com criterio 2 o Bling devolve so os ativos, e a leitura
+      // ficava cega pro inativo: a conferencia acusava "falta no ERP" pra
+      // sempre, e o cadastro em massa tentaria criar de novo o que ja existe.
+      criterio: 1,
     });
     const lote = r.data ?? [];
     for (const p of lote) {
