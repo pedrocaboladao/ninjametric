@@ -34,6 +34,7 @@ export interface FabricaCliente {
   filhas: number;
   // como a loja é chamada no dia a dia; entra na busca da tela
   apelidos: string[];
+  pessoaFisica: boolean;
   // quanto falta do cadastro pra conseguir emitir nota
   completo: boolean;
   faltando: string[];
@@ -56,6 +57,8 @@ export interface ClienteEntrada {
   observacao: string | null;
   ativo: boolean;
   clientePaiId: number | null;
+  // gente, não empresa: o documento é CPF e não existe inscrição estadual
+  pessoaFisica: boolean;
 }
 
 interface Linha {
@@ -79,12 +82,13 @@ interface Linha {
   cliente_pai_nome: string | null;
   filhas: string | null;
   apelidos: string[] | null;
+  pessoa_fisica: boolean;
 }
 
 // O que a NFe exige. Serve pra tela mostrar quem ainda está pela metade,
 // em vez de descobrir isso na hora de faturar.
 const OBRIGATORIOS_NFE: Array<[keyof Linha, string]> = [
-  ["cnpj", "CNPJ"],
+  ["cnpj", "documento"],
   ["email", "e-mail"],
   ["telefone", "telefone"],
   ["cep", "CEP"],
@@ -96,10 +100,12 @@ const OBRIGATORIOS_NFE: Array<[keyof Linha, string]> = [
 ];
 
 function montar(r: Linha): FabricaCliente {
+  // pessoa física não tem CNPJ e nunca vai ter: o que falta nela é CPF
+  const documento = r.pessoa_fisica ? "CPF" : "CNPJ";
   const faltando = OBRIGATORIOS_NFE.filter(([campo]) => {
     const v = r[campo];
     return v === null || String(v).trim() === "";
-  }).map(([, rotulo]) => rotulo);
+  }).map(([, rotulo]) => (rotulo === "documento" ? documento : rotulo));
   return {
     id: r.id,
     nome: r.nome,
@@ -121,6 +127,7 @@ function montar(r: Linha): FabricaCliente {
     clientePaiNome: r.cliente_pai_nome,
     filhas: Number(r.filhas ?? 0),
     apelidos: r.apelidos ?? [],
+    pessoaFisica: r.pessoa_fisica === true,
     completo: faltando.length === 0,
     faltando,
   };
@@ -128,7 +135,7 @@ function montar(r: Linha): FabricaCliente {
 
 const COLUNAS = `c.id, c.nome, c.tipo, c.cnpj, c.inscricao_estadual, c.email, c.telefone,
                  c.cep, c.logradouro, c.numero, c.complemento, c.bairro, c.cidade, c.uf,
-                 c.observacao, c.ativo, c.cliente_pai_id,
+                 c.observacao, c.ativo, c.cliente_pai_id, c.pessoa_fisica,
                  p.nome AS cliente_pai_nome,
                  (SELECT COUNT(*) FROM fabrica_clientes f WHERE f.cliente_pai_id = c.id) AS filhas,
                  (SELECT COALESCE(ARRAY_AGG(a.apelido ORDER BY a.id), '{}')
@@ -152,7 +159,7 @@ function valores(e: ClienteEntrada) {
   return [
     e.nome, e.tipo, e.cnpj, e.inscricaoEstadual, e.email, e.telefone, e.cep,
     e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.observacao, e.ativo,
-    e.clientePaiId,
+    e.clientePaiId, e.pessoaFisica,
   ];
 }
 
@@ -162,8 +169,8 @@ export async function criarCliente(e: ClienteEntrada): Promise<{ id: number }> {
     `INSERT INTO fabrica_clientes
        (nome, tipo, cnpj, inscricao_estadual, email, telefone, cep,
         logradouro, numero, complemento, bairro, cidade, uf, observacao, ativo,
-        cliente_pai_id)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+        cliente_pai_id, pessoa_fisica)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING id`,
     valores(e)
   );
@@ -197,7 +204,8 @@ export async function atualizarCliente(id: number, e: ClienteEntrada): Promise<v
     `UPDATE fabrica_clientes SET
        nome = $2, tipo = $3, cnpj = $4, inscricao_estadual = $5, email = $6, telefone = $7,
        cep = $8, logradouro = $9, numero = $10, complemento = $11, bairro = $12,
-       cidade = $13, uf = $14, observacao = $15, ativo = $16, cliente_pai_id = $17
+       cidade = $13, uf = $14, observacao = $15, ativo = $16, cliente_pai_id = $17,
+       pessoa_fisica = $18
      WHERE id = $1`,
     [id, ...valores(e)]
   );

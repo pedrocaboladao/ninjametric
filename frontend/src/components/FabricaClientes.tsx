@@ -13,12 +13,11 @@ const VAZIO: FabricaClienteEntrada = {
   nome: "", tipo: "LOJA", clientePaiId: null,
   cnpj: null, inscricaoEstadual: null, email: null, telefone: null,
   cep: null, logradouro: null, numero: null, complemento: null, bairro: null,
-  cidade: null, uf: null, observacao: null, ativo: true,
+  cidade: null, uf: null, observacao: null, ativo: true, pessoaFisica: false,
 };
 
 // campos de texto do formulário longo, na ordem em que fazem sentido preencher
 const CAMPOS: Array<[keyof FabricaClienteEntrada, string]> = [
-  ["cnpj", "CNPJ"],
   ["inscricaoEstadual", "Inscrição estadual"],
   ["email", "E-mail"],
   ["telefone", "Telefone"],
@@ -186,7 +185,26 @@ export function FabricaClientes() {
               </option>
             ))}
         </select>
-        {CAMPOS.map(([chave, rotulo]) => campo(chave, rotulo))}
+        <select
+          className="clonar-input fabricacao-input-pequeno"
+          value={rascunho.pessoaFisica ? "F" : "J"}
+          onChange={(e) =>
+            setRascunho((r) => ({
+              ...r,
+              pessoaFisica: e.target.value === "F",
+              // inscrição estadual é coisa de empresa; virando pessoa, o campo sai
+              inscricaoEstadual: e.target.value === "F" ? null : r.inscricaoEstadual,
+            }))
+          }
+          title="Pessoa física não tem CNPJ nem inscrição estadual — o documento dela é o CPF."
+        >
+          <option value="J">Empresa (CNPJ)</option>
+          <option value="F">Pessoa física (CPF)</option>
+        </select>
+        {campo("cnpj", rascunho.pessoaFisica ? "CPF" : "CNPJ")}
+        {CAMPOS.filter(([chave]) => !(rascunho.pessoaFisica && chave === "inscricaoEstadual")).map(
+          ([chave, rotulo]) => campo(chave, rotulo)
+        )}
         <button type="button" className="btn-responder" onClick={() => void salvar()} disabled={salvando}>
           <IconPlus size={14} /> {editandoId ? "Salvar" : "Adicionar"}
         </button>
@@ -213,7 +231,7 @@ export function FabricaClientes() {
               <th>CLIENTE</th>
               <th>TIPO</th>
               <th>QUEM PAGA</th>
-              <th>CNPJ</th>
+              <th>Documento</th>
               <th>CIDADE/UF</th>
               <th>CONTATO</th>
               <th>CADASTRO</th>

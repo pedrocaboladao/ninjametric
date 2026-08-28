@@ -141,6 +141,7 @@ interface ClienteCadastro {
   bairro: string | null;
   cidade: string | null;
   uf: string | null;
+  pessoa_fisica: boolean;
 }
 
 // Cada campo que muda vai com o valor de antes junto. Simulacao que so diz
@@ -202,13 +203,15 @@ function corpoNovo(
   const { fixo, celular } = separarFones(cl.telefone);
   return {
     nome: razaoSocial,
-    tipo: "J",
+    // F e gente, J e empresa. Mandar CPF num contato marcado J o Bling recusa.
+    tipo: cl.pessoa_fisica ? "F" : "J",
     ...(codigo ? { codigo } : {}),
     numeroDocumento: digitos(cl.cnpj),
     situacao: "A",
-    // 1 contribuinte, 9 nao contribuinte: sem IE o Bling recusa o 1
-    indicadorIe: ie ? 1 : 9,
-    ...(ie ? { ie } : {}),
+    // 1 contribuinte, 9 nao contribuinte: sem IE o Bling recusa o 1.
+    // Pessoa fisica nao tem inscricao estadual, entao e sempre 9.
+    indicadorIe: !cl.pessoa_fisica && ie ? 1 : 9,
+    ...(!cl.pessoa_fisica && ie ? { ie } : {}),
     ...(cl.email ? { email: cl.email } : {}),
     ...(fixo ? { telefone: fixo } : {}),
     ...(celular ? { celular } : {}),
@@ -232,7 +235,7 @@ export async function sincronizarContatos(
 ): Promise<ResultadoSincronia> {
   const { rows: clientes } = await pool.query<ClienteCadastro>(
     `SELECT id, nome, cnpj, inscricao_estadual, email, telefone, cep,
-            logradouro, numero, complemento, bairro, cidade, uf
+            logradouro, numero, complemento, bairro, cidade, uf, pessoa_fisica
        FROM fabrica_clientes
       WHERE cnpj IS NOT NULL AND cnpj <> ''
       ORDER BY nome`
@@ -355,7 +358,7 @@ export async function sincronizarContatos(
       corpo.codigo = cod;
     }
 
-    const ie = (cl.inscricao_estadual ?? "").trim();
+    const ie = cl.pessoa_fisica ? "" : (cl.inscricao_estadual ?? "").trim();
     if (ie && digitos(inteiro.ie) !== digitos(ie)) {
       anotar("IE", inteiro.ie, ie);
       corpo.ie = ie;

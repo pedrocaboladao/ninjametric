@@ -24,6 +24,7 @@ export interface FabricaCliente {
   // Inga Collors e Perpétua vendem no próprio nome e a cobrança vai inteira
   // para a Catedral Impermeabilizantes.
   clientePaiId: number | null;
+  pessoaFisica: boolean;
   completo: boolean;
   faltando: string[];
 }
@@ -37,6 +38,9 @@ export interface FabricaCliente {
   // W. L. P DOS SANTOS JUNIOR LTDA.
   apelidos: string[];
 }
+
+// Cliente externo que é gente, não empresa: o documento é CPF e não existe
+// inscrição estadual. Sem isso a tela cobrava CNPJ de quem nunca vai ter um.
 
 export type FabricaClienteEntrada = Omit<
   FabricaCliente,
