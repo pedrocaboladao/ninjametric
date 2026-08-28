@@ -225,8 +225,9 @@ export async function conferirContraSite(
 // conforme o SKU do anuncio. Cada marca tem que ser produto proprio, porque e
 // isso que diz quantos rotulos comprar de cada.
 //
-// Fica de fora o que esta inativo no site: 209 de revenda e os 139 de
-// fabricacao. Inativo nao vende, e cadastrar no ERP so aumenta a lista.
+// O inativo entra so quando pedido, e entra **inativo no Bling tambem**: o
+// site diz que aquilo nao esta a venda, e criar como ativo colocaria centenas
+// de produtos em circulacao sem ninguem pedir.
 
 export interface LinhaCriacao {
   sku: string;
@@ -247,19 +248,22 @@ interface ProdutoDoSite {
   sku: string;
   nome: string;
   preco_venda: string;
+  ativo: boolean;
 }
 
 export async function criarNoErpOqueFalta(
   produtosErp: ProdutoDoBling[],
   simulacao: boolean,
   limite: number,
+  incluirInativos: boolean,
   aoAndar?: (feitos: number, total: number) => void
 ): Promise<ResultadoCriacao> {
   const { rows } = await pool.query<ProdutoDoSite>(
-    `SELECT sku, nome, preco_venda
+    `SELECT sku, nome, preco_venda, ativo
        FROM fabrica_produtos
-      WHERE ativo = TRUE AND origem = 'DISTRIBUIDORA'
-      ORDER BY sku`
+      WHERE ($1::boolean OR (ativo = TRUE AND origem = 'DISTRIBUIDORA'))
+      ORDER BY sku`,
+    [incluirInativos]
   );
   const noErp = new Set(produtosErp.map((p) => normalizarSku(p.codigo)).filter(Boolean));
   const faltam = rows.filter((r) => !noErp.has(normalizarSku(r.sku)));
@@ -279,7 +283,8 @@ export async function criarNoErpOqueFalta(
         codigo: r.sku,
         preco,
         tipo: "P",
-        situacao: "A",
+        // espelha o site: o que nao vende la nasce inativo aqui
+        situacao: r.ativo ? "A" : "I",
         formato: "S",
         unidade: "UN",
       });
