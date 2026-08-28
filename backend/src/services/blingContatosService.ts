@@ -233,12 +233,26 @@ export async function sincronizarContatos(
   );
 
   // razao social de cada cliente, pra nomear o contato novo do mesmo jeito que
-  // a importacao reconhece
+  // a importacao reconhece.
+  //
+  // Nem todo apelido serve: a tabela guarda tambem apelido curto de operacao
+  // ("truck1", "truck2"), que existe pra digitar rapido, nao pra sair na nota.
+  // Pegar o primeiro por id cadastraria no ERP um destinatario chamado
+  // "truck1" — e o contato do Bling e quem recebe a nota fiscal.
+  //
+  // Razao social sempre tem espaco; apelido de operacao nao tem. Entre os que
+  // tem espaco vale o mais longo, que e o nome por extenso. Nenhum servindo,
+  // fica o nome do cadastro daqui, que e melhor que um apelido de digitacao.
   const { rows: apelidos } = await pool.query<{ cliente_id: number; apelido: string }>(
     "SELECT cliente_id, apelido FROM fabrica_cliente_apelidos ORDER BY id"
   );
   const razao = new Map<number, string>();
-  for (const a of apelidos) if (!razao.has(a.cliente_id)) razao.set(a.cliente_id, a.apelido);
+  for (const a of apelidos) {
+    const nome = a.apelido.trim();
+    if (!nome.includes(" ")) continue;
+    const atual = razao.get(a.cliente_id);
+    if (!atual || nome.length > atual.length) razao.set(a.cliente_id, nome);
+  }
 
   const linhas: LinhaSincronia[] = [];
   let encontrados = 0;
