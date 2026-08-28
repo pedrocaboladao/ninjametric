@@ -471,3 +471,132 @@ const ENDERECO = new Set([
   "UF",
   "CEP",
 ]);
+
+// ---------------------------------------------------------------------------
+// O caminho inverso: preenche daqui o que o ERP sabe e o cadastro não.
+//
+// A sincronização só empurrava. Em um dia de trabalho isso apareceu três vezes:
+// as IEs da Lumiere, da Maringá Full e da Modal Tintas já estavam no Bling, e o
+// Hudson foi buscar duas delas no SEFAZ, uma a uma, com CAPTCHA no meio. O
+// e-mail da Maringá Full e o telefone da Modal também já estavam lá.
+//
+// Só preenche vazio. Campo que já tem valor aqui não é tocado nem quando o
+// Bling discorda: os dois cartões CNPJ e o SEFAZ mostraram telefone e e-mail
+// diferentes pra mesma empresa, e escolher entre eles é decisão de quem manda
+// a nota, não de um mecanismo automático. Divergência assim sai na lista com
+// situação "diferente", pra ser vista e resolvida à mão.
+
+export interface LinhaPuxada {
+  cliente: string;
+  contatoId: number | null;
+  contatoNome: string | null;
+  campos: MudancaCampo[];
+  divergentes: MudancaCampo[];
+  situacao: "preenchido" | "sem novidade" | "não achei no Bling" | "erro";
+  erro?: string;
+}
+
+export interface ResultadoPuxada {
+  simulacao: boolean;
+  clientes: number;
+  linhas: LinhaPuxada[];
+}
+
+// nome da coluna aqui -> como ler o valor no contato do Bling
+type Leitor = (c: ContatoBling, geral: Record<string, unknown>) => string;
+
+const DO_BLING: Array<{ coluna: string; rotulo: string; ler: Leitor; soEmpresa?: boolean }> = [
+  { coluna: "inscricao_estadual", rotulo: "IE", soEmpresa: true, ler: (c) => String(c.ie ?? "").trim() },
+  { coluna: "email", rotulo: "e-mail", ler: (c) => String(c.email ?? "").trim() },
+  // o cadastro daqui tem um campo só de telefone; o Bling tem dois. Vindo os
+  // dois, entram juntos no formato que o separarFones sabe desmontar depois.
+  {
+    coluna: "telefone",
+    rotulo: "telefone",
+    ler: (c) =>
+      [String(c.telefone ?? "").trim(), String(c.celular ?? "").trim()].filter(Boolean).join(" / "),
+  },
+  { coluna: "cep", rotulo: "CEP", ler: (_c, g) => String(g.cep ?? "").trim() },
+  { coluna: "logradouro", rotulo: "logradouro", ler: (_c, g) => String(g.endereco ?? "").trim() },
+  { coluna: "numero", rotulo: "número", ler: (_c, g) => String(g.numero ?? "").trim() },
+  { coluna: "complemento", rotulo: "complemento", ler: (_c, g) => String(g.complemento ?? "").trim() },
+  { coluna: "bairro", rotulo: "bairro", ler: (_c, g) => String(g.bairro ?? "").trim() },
+  { coluna: "cidade", rotulo: "cidade", ler: (_c, g) => String(g.municipio ?? "").trim() },
+  { coluna: "uf", rotulo: "UF", ler: (_c, g) => String(g.uf ?? "").trim() },
+];
+
+export async function puxarContatos(simulacao: boolean): Promise<ResultadoPuxada> {
+  const { rows: clientes } = await pool.query<ClienteCadastro & Record<string, string | null>>(
+    `SELECT id, nome, cnpj, inscricao_estadual, email, telefone, cep,
+            logradouro, numero, complemento, bairro, cidade, uf, pessoa_fisica
+       FROM fabrica_clientes
+      WHERE cnpj IS NOT NULL AND cnpj <> ''
+      ORDER BY nome`
+  );
+
+  const linhas: LinhaPuxada[] = [];
+  for (const cl of clientes) {
+    const achado = await acharPorDocumento(digitos(cl.cnpj));
+    if (!achado) {
+      linhas.push({
+        cliente: cl.nome, contatoId: null, contatoNome: null,
+        campos: [], divergentes: [], situacao: "não achei no Bling",
+      });
+      continue;
+    }
+
+    let inteiro: ContatoBling;
+    try {
+      const r = await chamar<{ data: ContatoBling }>("get", `/contatos/${achado.id}`);
+      inteiro = r.data;
+    } catch (err) {
+      linhas.push({
+        cliente: cl.nome, contatoId: achado.id, contatoNome: achado.nome ?? null,
+        campos: [], divergentes: [], situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao ler o contato",
+      });
+      continue;
+    }
+
+    const geral = (inteiro.endereco?.geral ?? {}) as Record<string, unknown>;
+    const campos: MudancaCampo[] = [];
+    const divergentes: MudancaCampo[] = [];
+    const set: Record<string, string> = {};
+    for (const campo of DO_BLING) {
+      if (campo.soEmpresa && cl.pessoa_fisica) continue;
+      const deLa = campo.ler(inteiro, geral);
+      if (!deLa) continue;
+      const aqui = String(cl[campo.coluna] ?? "").trim();
+      if (!aqui) {
+        campos.push({ campo: campo.rotulo, antes: "", depois: deLa });
+        set[campo.coluna] = deLa;
+      } else if (aqui.toUpperCase() !== deLa.toUpperCase()) {
+        divergentes.push({ campo: campo.rotulo, antes: aqui, depois: deLa });
+      }
+    }
+
+    if (!campos.length) {
+      linhas.push({
+        cliente: cl.nome, contatoId: achado.id, contatoNome: inteiro.nome ?? null,
+        campos: [], divergentes, situacao: "sem novidade",
+      });
+      continue;
+    }
+
+    if (!simulacao) {
+      const colunas = Object.keys(set);
+      await pool.query(
+        `UPDATE fabrica_clientes SET ${colunas
+          .map((c, i) => `${c} = $${i + 2}`)
+          .join(", ")} WHERE id = $1`,
+        [cl.id, ...colunas.map((c) => set[c])]
+      );
+    }
+    linhas.push({
+      cliente: cl.nome, contatoId: achado.id, contatoNome: inteiro.nome ?? null,
+      campos, divergentes, situacao: "preenchido",
+    });
+  }
+
+  return { simulacao, clientes: clientes.length, linhas };
+}
