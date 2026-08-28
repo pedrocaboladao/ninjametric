@@ -505,18 +505,33 @@ export interface ResultadoPuxada {
 // nome da coluna aqui -> como ler o valor no contato do Bling
 type Leitor = (c: ContatoBling, geral: Record<string, unknown>) => string;
 
-const DO_BLING: Array<{ coluna: string; rotulo: string; ler: Leitor; soEmpresa?: boolean }> = [
-  { coluna: "inscricao_estadual", rotulo: "IE", soEmpresa: true, ler: (c) => String(c.ie ?? "").trim() },
+// Campo de numero se compara por digito, nunca por texto.
+//
+// A primeira rodada acusou divergencia em 26 de 26 lojas — todas falsas:
+// "90914966-55" contra "9091496655", "87.070-070" contra "87070070",
+// "(44) 99176-1024" contra "44991761024". O cadastro daqui pontua, o Bling
+// guarda cru. Lista que acusa tudo esconde o que importa de verdade.
+const soDigito = (t: string) => t.replace(/\D/g, "");
+
+const DO_BLING: Array<{
+  coluna: string;
+  rotulo: string;
+  ler: Leitor;
+  soEmpresa?: boolean;
+  numero?: boolean;
+}> = [
+  { coluna: "inscricao_estadual", rotulo: "IE", soEmpresa: true, numero: true, ler: (c) => String(c.ie ?? "").trim() },
   { coluna: "email", rotulo: "e-mail", ler: (c) => String(c.email ?? "").trim() },
   // o cadastro daqui tem um campo só de telefone; o Bling tem dois. Vindo os
   // dois, entram juntos no formato que o separarFones sabe desmontar depois.
   {
     coluna: "telefone",
     rotulo: "telefone",
+    numero: true,
     ler: (c) =>
       [String(c.telefone ?? "").trim(), String(c.celular ?? "").trim()].filter(Boolean).join(" / "),
   },
-  { coluna: "cep", rotulo: "CEP", ler: (_c, g) => String(g.cep ?? "").trim() },
+  { coluna: "cep", rotulo: "CEP", numero: true, ler: (_c, g) => String(g.cep ?? "").trim() },
   { coluna: "logradouro", rotulo: "logradouro", ler: (_c, g) => String(g.endereco ?? "").trim() },
   { coluna: "numero", rotulo: "número", ler: (_c, g) => String(g.numero ?? "").trim() },
   { coluna: "complemento", rotulo: "complemento", ler: (_c, g) => String(g.complemento ?? "").trim() },
@@ -570,8 +585,11 @@ export async function puxarContatos(simulacao: boolean): Promise<ResultadoPuxada
       if (!aqui) {
         campos.push({ campo: campo.rotulo, antes: "", depois: deLa });
         set[campo.coluna] = deLa;
-      } else if (aqui.toUpperCase() !== deLa.toUpperCase()) {
-        divergentes.push({ campo: campo.rotulo, antes: aqui, depois: deLa });
+      } else {
+        const igual = campo.numero
+          ? soDigito(aqui) === soDigito(deLa)
+          : aqui.toUpperCase() === deLa.toUpperCase();
+        if (!igual) divergentes.push({ campo: campo.rotulo, antes: aqui, depois: deLa });
       }
     }
 
