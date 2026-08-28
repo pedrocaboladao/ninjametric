@@ -129,21 +129,39 @@ export interface ProdutoDoBling {
   formato: string;
 }
 
+// O Bling nao devolve o produto inativo na listagem padrao — nem com
+// criterio 1, que a documentacao chama de "todos". Entao a leitura roda uma vez
+// por filtro e junta: sem isso a conferencia acusa "falta no ERP" pra sempre e
+// o cadastro em massa recria o que ja esta la.
+//
+// `filtros` fica parametrizavel porque qual combinacao funciona depende da
+// versao da API, e descobrir isso custa um deploy por tentativa.
 export async function listarProdutos(
-  aoAndar?: (lidos: number) => void
+  aoAndar?: (lidos: number) => void,
+  filtros?: Array<Record<string, unknown>>
 ): Promise<ProdutoDoBling[]> {
+  const combinacoes = filtros?.length
+    ? filtros
+    : [{ criterio: 2 }, { criterio: 3 }, { situacao: "I" }];
   const saida: ProdutoDoBling[] = [];
+  const vistos = new Set<number>();
+  for (const filtro of combinacoes) {
   for (let pagina = 1; ; pagina++) {
-    const r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
-      pagina,
-      limite: POR_PAGINA,
-      // 1 = todos. Com criterio 2 o Bling devolve so os ativos, e a leitura
-      // ficava cega pro inativo: a conferencia acusava "falta no ERP" pra
-      // sempre, e o cadastro em massa tentaria criar de novo o que ja existe.
-      criterio: 1,
-    });
+    let r: { data?: ProdutoBling[] };
+    try {
+      r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
+        pagina,
+        limite: POR_PAGINA,
+        ...filtro,
+      });
+    } catch {
+      // filtro que a API nao conhece vira 400: tenta o proximo
+      break;
+    }
     const lote = r.data ?? [];
     for (const p of lote) {
+      if (vistos.has(p.id)) continue;
+      vistos.add(p.id);
       saida.push({
         id: p.id,
         codigo: String(p.codigo ?? "").trim(),
@@ -157,6 +175,7 @@ export async function listarProdutos(
     if (aoAndar) aoAndar(saida.length);
     // pagina incompleta e a ultima: o Bling nao devolve total de registros
     if (lote.length < POR_PAGINA) break;
+  }
   }
   return saida;
 }
