@@ -1593,3 +1593,14 @@ CREATE TABLE IF NOT EXISTS fabrica_bling_token (
   expira_em TIMESTAMPTZ NOT NULL,
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Cliente externo que é gente, não empresa.
+--
+-- Bruna Letícia, Hudson Moraes Ramos e Maiky Mendes apareciam na tela como
+-- "cadastro incompleto: falta CNPJ" — e nunca vão ter um. A régua de NFe
+-- cobrava documento de empresa de quem tem CPF, e quatro linhas ficavam
+-- vermelhas pra sempre sem nada de errado.
+--
+-- Marcado assim, a coluna cnpj guarda o CPF e a inscrição estadual deixa de
+-- fazer sentido. No Bling o contato entra como tipo F, não J.
+ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS pessoa_fisica BOOLEAN NOT NULL DEFAULT FALSE;

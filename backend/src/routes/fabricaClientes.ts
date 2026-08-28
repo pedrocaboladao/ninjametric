@@ -50,6 +50,7 @@ function lerEntrada(req: Request): ClienteEntrada | string {
       Number.isInteger(Number(b.clientePaiId)) && Number(b.clientePaiId) > 0
         ? Number(b.clientePaiId)
         : null,
+    pessoaFisica: b.pessoaFisica === true,
   };
 }
 
