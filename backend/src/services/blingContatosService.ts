@@ -256,10 +256,18 @@ export async function sincronizarContatos(
     "SELECT cliente_id, apelido FROM fabrica_cliente_apelidos ORDER BY id"
   );
   const razao = new Map<number, string>();
-  // O outro lado do mesmo corte: apelido sem espaco e codigo de operacao, e vai
-  // pro campo "Codigo" do contato no Bling. E o que faz "truck3" achar no ERP
-  // uma empresa chamada W. L. P DOS SANTOS JUNIOR LTDA. Havendo mais de um,
-  // vale o mais curto — codigo comprido ninguem digita.
+  // O outro lado do mesmo corte: apelido que e codigo de operacao vai pro campo
+  // "Codigo" do contato no Bling. E o que faz "truck3" achar no ERP uma empresa
+  // chamada W. L. P DOS SANTOS JUNIOR LTDA.
+  //
+  // Sem espaco nao basta. O Truck 3 tem os apelidos "truck3" e "Xitao" — os dois
+  // sem espaco — e pelo mais curto o codigo virou "XITAO", que e nome de loja,
+  // nao codigo. Codigo de ERP e o que se digita numa caixa de busca: letra sem
+  // acento e numero, mais nada. O "a" de Xitao o exclui, e sobra o certo.
+  //
+  // Havendo mais de um servindo, vale o mais curto — codigo comprido ninguem
+  // digita.
+  const CODIGO = /^[A-Za-z0-9._-]+$/;
   const codigo = new Map<number, string>();
   for (const a of apelidos) {
     const nome = a.apelido.trim();
@@ -267,7 +275,7 @@ export async function sincronizarContatos(
     if (nome.includes(" ")) {
       const atual = razao.get(a.cliente_id);
       if (!atual || nome.length > atual.length) razao.set(a.cliente_id, nome);
-    } else {
+    } else if (CODIGO.test(nome)) {
       const atual = codigo.get(a.cliente_id);
       if (!atual || nome.length < atual.length) codigo.set(a.cliente_id, nome.toUpperCase());
     }
