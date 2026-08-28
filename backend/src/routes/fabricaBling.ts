@@ -21,7 +21,7 @@ import {
   conferirContraSite,
   criarNoErpOqueFalta,
   gravarGtin,
-  inativarProdutos,
+  definirSituacaoProdutos,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -480,6 +480,9 @@ fabricaBlingRouter.post("/produtos/inativar", (req, res) => {
     ? b.skus.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
     : [];
   if (!skus.length) return res.status(400).json({ error: "Mande a lista de skus." });
+  // "A" reativa. Cor nova aparece na venda antes de existir no cadastro, e o
+  // codigo que foi inativado por nao ter par precisa de caminho de volta.
+  const situacao: "A" | "I" = b.situacao === "A" ? "A" : "I";
   const simulacao = b.simular !== false;
   const job = {
     estado: "rodando" as const, feitos: 0, total: skus.length,
@@ -488,7 +491,7 @@ fabricaBlingRouter.post("/produtos/inativar", (req, res) => {
   inativarJob = job;
   void (async () => {
     try {
-      const r = await inativarProdutos(skus, simulacao, (f, t) => {
+      const r = await definirSituacaoProdutos(skus, situacao, simulacao, (f, t) => {
         job.feitos = f;
         job.total = t;
       });

@@ -98,10 +98,22 @@ interface ProdutoBling {
 // volta, comparando o código normalizado. Confiar no filtro pegaria o vizinho.
 async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
   const alvo = normalizarSku(codigo);
-  for (const chave of ["codigo", "pesquisa", "criterio"]) {
+  // A busca padrao do Bling nao devolve produto inativo — a mesma armadilha que
+  // a listagem tem. Sem o passe de situacao "I", gravar o codigo de barras num
+  // produto inativo respondia "nao achei no ERP" com o produto la, parado.
+  // Aconteceu com BRILHATELHA-900ML-CHUMBO: inativado por nao ter par no site,
+  // e depois vendido de verdade.
+  const tentativas: Array<Record<string, unknown>> = [
+    { codigo },
+    { pesquisa: codigo },
+    { criterio: codigo },
+    { codigo, situacao: "I" },
+    { pesquisa: codigo, situacao: "I" },
+  ];
+  for (const filtro of tentativas) {
     try {
       const r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
-        [chave]: codigo,
+        ...filtro,
         limite: POR_PAGINA,
       });
       const achado = (r.data ?? []).find((p) => normalizarSku(p.codigo ?? "") === alvo);
@@ -391,13 +403,26 @@ export async function gravarGtin(
 // operacao do dia a dia e volta com um clique se for preciso.
 export interface LinhaInativacao {
   sku: string;
-  situacao: "inativado" | "já estava inativo" | "não achei no ERP" | "erro";
+  situacao:
+    | "inativado"
+    | "reativado"
+    | "já estava inativo"
+    | "já estava ativo"
+    | "não achei no ERP"
+    | "erro";
   produtoId?: number;
   erro?: string;
 }
 
-export async function inativarProdutos(
+// Liga ou desliga o produto no ERP.
+//
+// So desligar nao bastava. O Hudson mandou inativar os 106 codigos sem par no
+// site — e um deles, BRILHATELHA-900ML-CHUMBO, vendeu de verdade em agosto. Cor
+// nova nasce assim: aparece na venda antes de existir no cadastro. Sem caminho
+// de volta, o conserto virava trabalho manual dentro do Bling.
+export async function definirSituacaoProdutos(
   skus: string[],
+  situacao: "A" | "I",
   simulacao: boolean,
   aoAndar?: (feitos: number, total: number) => void
 ): Promise<{ simulacao: boolean; linhas: LinhaInativacao[] }> {
@@ -411,27 +436,43 @@ export async function inativarProdutos(
         continue;
       }
       const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
-      if (String(inteiro.data.situacao ?? "").toUpperCase() === "I") {
-        linhas.push({ sku, situacao: "já estava inativo", produtoId: achado.id });
+      if (String(inteiro.data.situacao ?? "").toUpperCase() === situacao) {
+        linhas.push({
+          sku,
+          situacao: situacao === "I" ? "já estava inativo" : "já estava ativo",
+          produtoId: achado.id,
+        });
         continue;
       }
       if (!simulacao) {
         // leitura e devolucao: so a situacao muda, o resto volta como veio
         await chamar("put", `/produtos/${achado.id}`, undefined, {
           ...inteiro.data,
-          situacao: "I",
+          situacao,
         });
       }
-      linhas.push({ sku, situacao: "inativado", produtoId: achado.id });
+      linhas.push({
+        sku,
+        situacao: situacao === "I" ? "inativado" : "reativado",
+        produtoId: achado.id,
+      });
     } catch (err) {
       linhas.push({
         sku, situacao: "erro",
-        erro: err instanceof Error ? err.message : "falha ao inativar",
+        erro: err instanceof Error ? err.message : "falha ao mudar a situação",
       });
     }
     if (aoAndar) aoAndar(i + 1, skus.length);
   }
   return { simulacao, linhas };
+}
+
+export function inativarProdutos(
+  skus: string[],
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+) {
+  return definirSituacaoProdutos(skus, "I", simulacao, aoAndar);
 }
 
 export interface ParPadronizacao {
