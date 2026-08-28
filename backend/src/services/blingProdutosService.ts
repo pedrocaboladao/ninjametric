@@ -326,6 +326,64 @@ export async function criarNoErpOqueFalta(
   return { simulacao, candidatos: faltam.length, linhas };
 }
 
+// Grava o codigo de barras no produto do ERP.
+//
+// Os 87 SKUs novos nasceram sem EAN nos quatro lugares. O gerador do site
+// produz EAN-13 valido com prefixo 2 — a faixa que o GS1 reserva pra uso
+// interno, entao nao colide com codigo de barras real em circulacao.
+//
+// Grava por leitura e devolucao, igual ao resto: busca o produto inteiro e
+// manda de volta so com o gtin trocado. Montar o corpo do zero apagaria preco,
+// estoque e fornecedor.
+export interface LinhaGtin {
+  sku: string;
+  gtin: string;
+  situacao: "gravado" | "já tinha esse" | "não achei no ERP" | "erro";
+  produtoId?: number;
+  antes?: string;
+  erro?: string;
+}
+
+export async function gravarGtin(
+  pares: Array<{ sku: string; gtin: string }>,
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaGtin[] }> {
+  const linhas: LinhaGtin[] = [];
+  for (let i = 0; i < pares.length; i++) {
+    const { sku, gtin } = pares[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, gtin, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const antes = String((inteiro.data as { gtin?: string }).gtin ?? "").trim();
+      if (antes === gtin) {
+        linhas.push({ sku, gtin, situacao: "já tinha esse", produtoId: achado.id, antes });
+        continue;
+      }
+      if (simulacao) {
+        linhas.push({ sku, gtin, situacao: "gravado", produtoId: achado.id, antes });
+        continue;
+      }
+      await chamar("put", `/produtos/${achado.id}`, undefined, {
+        ...inteiro.data,
+        gtin,
+      });
+      linhas.push({ sku, gtin, situacao: "gravado", produtoId: achado.id, antes });
+    } catch (err) {
+      linhas.push({
+        sku, gtin, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao gravar",
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, pares.length);
+  }
+  return { simulacao, linhas };
+}
+
 export interface ParPadronizacao {
   de: string;
   para: string;
