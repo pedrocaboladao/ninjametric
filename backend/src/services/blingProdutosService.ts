@@ -116,12 +116,15 @@ async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
     }
   }
 
-  // Ultimo recurso: varrer os inativos.
+  // Ultimo recurso: varrer os inativos com criterio 3.
   //
-  // Nenhuma busca por codigo devolve produto inativo, e combinar codigo com
-  // situacao "I" tambem nao — o Bling ignora um dos dois. So a listagem paginada
-  // com situacao "I" enxerga. Custa umas cinco chamadas, entao fica por ultimo:
-  // o caso comum e produto ativo, e esse resolve na primeira tentativa.
+  // Nenhuma busca por codigo devolve produto inativo. E `situacao: "I"` nao
+  // serve: o Bling **ignora** esse filtro em silencio — pedindo situacao "I" ele
+  // devolveu 5.071 produtos, todos ativos. Quem separa e o `criterio`: 3 traz os
+  // 460 inativos, e so eles.
+  //
+  // Custa umas cinco chamadas, entao fica por ultimo: o caso comum e produto
+  // ativo e resolve na primeira tentativa.
   //
   // Sem isto, gravar o codigo de barras num produto inativo responde "nao achei
   // no ERP" com o produto la, parado — e reativar fica impossivel, que e
@@ -132,7 +135,7 @@ async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
       r = await chamar<{ data?: ProdutoBling[] }>("get", "/produtos", {
         pagina,
         limite: POR_PAGINA,
-        situacao: "I",
+        criterio: 3,
       });
     } catch {
       break;
@@ -172,9 +175,10 @@ export async function listarProdutos(
   aoAndar?: (lidos: number) => void,
   filtros?: Array<Record<string, unknown>>
 ): Promise<ProdutoDoBling[]> {
-  const combinacoes = filtros?.length
-    ? filtros
-    : [{ criterio: 2 }, { criterio: 3 }, { situacao: "I" }];
+  // criterio 2 = ativos, 3 = inativos. O `situacao: "I"` que ficava aqui era
+  // placebo: o Bling ignora esse filtro e devolve a lista de ativos como se nada
+  // tivesse sido pedido. Quem trazia o inativo sempre foi o criterio 3.
+  const combinacoes = filtros?.length ? filtros : [{ criterio: 2 }, { criterio: 3 }];
   const saida: ProdutoDoBling[] = [];
   const vistos = new Set<number>();
   for (const filtro of combinacoes) {
