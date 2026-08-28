@@ -384,6 +384,56 @@ export async function gravarGtin(
   return { simulacao, linhas };
 }
 
+// Inativa produto no ERP.
+//
+// Inativa, nunca exclui. O pedido antigo aponta pro produto: excluir arrisca
+// orfao e o Bling costuma recusar quando ha movimento. Inativo some da
+// operacao do dia a dia e volta com um clique se for preciso.
+export interface LinhaInativacao {
+  sku: string;
+  situacao: "inativado" | "já estava inativo" | "não achei no ERP" | "erro";
+  produtoId?: number;
+  erro?: string;
+}
+
+export async function inativarProdutos(
+  skus: string[],
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaInativacao[] }> {
+  const linhas: LinhaInativacao[] = [];
+  for (let i = 0; i < skus.length; i++) {
+    const sku = skus[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      if (String(inteiro.data.situacao ?? "").toUpperCase() === "I") {
+        linhas.push({ sku, situacao: "já estava inativo", produtoId: achado.id });
+        continue;
+      }
+      if (!simulacao) {
+        // leitura e devolucao: so a situacao muda, o resto volta como veio
+        await chamar("put", `/produtos/${achado.id}`, undefined, {
+          ...inteiro.data,
+          situacao: "I",
+        });
+      }
+      linhas.push({ sku, situacao: "inativado", produtoId: achado.id });
+    } catch (err) {
+      linhas.push({
+        sku, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao inativar",
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, skus.length);
+  }
+  return { simulacao, linhas };
+}
+
 export interface ParPadronizacao {
   de: string;
   para: string;

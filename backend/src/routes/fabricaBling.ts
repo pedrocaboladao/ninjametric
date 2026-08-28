@@ -16,6 +16,7 @@ import {
   conferirContraSite,
   criarNoErpOqueFalta,
   gravarGtin,
+  inativarProdutos,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -427,4 +428,50 @@ fabricaBlingRouter.post("/produtos/gtin", (req, res) => {
 fabricaBlingRouter.get("/produtos/gtin", (_req, res) => {
   if (!gtinJob) return res.json({ estado: "nenhuma" });
   res.json(gtinJob);
+});
+
+// Inativa produto no ERP. Inativa, nunca exclui.
+let inativarJob: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown | null;
+} | null = null;
+
+fabricaBlingRouter.post("/produtos/inativar", (req, res) => {
+  if (inativarJob && inativarJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma inativação rodando.", ...inativarJob });
+  }
+  const b = req.body ?? {};
+  const skus = Array.isArray(b.skus)
+    ? b.skus.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
+    : [];
+  if (!skus.length) return res.status(400).json({ error: "Mande a lista de skus." });
+  const simulacao = b.simular !== false;
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: skus.length,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  inativarJob = job;
+  void (async () => {
+    try {
+      const r = await inativarProdutos(skus, simulacao, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      inativarJob = { estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r };
+    } catch (err) {
+      console.error("[fabrica-bling] inativar", err);
+      inativarJob = { estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", total: skus.length, simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/inativar", (_req, res) => {
+  if (!inativarJob) return res.json({ estado: "nenhuma" });
+  res.json(inativarJob);
 });
