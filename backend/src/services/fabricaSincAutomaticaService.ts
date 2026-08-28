@@ -1,5 +1,12 @@
 import { buscarVendas, paraTexto } from "./blingPedidosService";
-import { importarPlanilhaVendas } from "./fabricaImportarVendasService";
+import {
+  clientesFaltando,
+  importarPlanilhaVendas,
+  skusFaltando,
+  type ClienteFaltando,
+  type SkuFaltando,
+} from "./fabricaImportarVendasService";
+import { conferirPlanilhaVendas } from "./fabricaVendasPlanilhaService";
 
 // Puxa a venda do Bling e lança sozinha, toda manhã.
 //
@@ -34,6 +41,13 @@ export interface UltimaRodada {
   valorLancado: number;
   puladas: number;
   motivos: Record<string, number>;
+  // Quem ficou de fora, com nome e sobrenome.
+  //
+  // A primeira rodada disse "SKU não cadastrado: 1" e mais nada. Contar o que
+  // falta sem dizer o que e nao ajuda ninguem a cadastrar: e um alerta que so
+  // informa que existe um problema, e deixa a procura pro operador.
+  skusFaltando: SkuFaltando[];
+  clientesFaltando: ClienteFaltando[];
   erro: string | null;
 }
 
@@ -71,6 +85,8 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
     valorLancado: 0,
     puladas: 0,
     motivos: {},
+    skusFaltando: [],
+    clientesFaltando: [],
     erro: null,
   };
   try {
@@ -85,12 +101,19 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
       base.erro = `${r.falhas.length} pedido(s) não vieram inteiros do Bling; não lancei nada.`;
       return base;
     }
-    const imp = await importarPlanilhaVendas(paraTexto(r.itens), "BLING");
+    const texto = paraTexto(r.itens);
+    const imp = await importarPlanilhaVendas(texto, "BLING");
     base.pedidosCriados = imp.pedidosCriados;
     base.itensLancados = imp.itensLancados;
     base.valorLancado = imp.valorLancado;
     base.puladas = imp.puladas;
     base.motivos = imp.motivos;
+    // depois de importar: o que continua sem par e o que precisa ser cadastrado.
+    // Roda a conferencia de novo em vez de reaproveitar a de dentro do import —
+    // sao dois mil e poucos itens em memoria, sem uma chamada ao Bling.
+    const conf = await conferirPlanilhaVendas(texto, "BLING");
+    base.skusFaltando = skusFaltando(conf.linhas);
+    base.clientesFaltando = clientesFaltando(conf.linhas);
   } catch (err) {
     base.erro = err instanceof Error ? err.message : "falha na sincronização automática";
   } finally {
@@ -112,7 +135,13 @@ export async function rodarEGuardar(): Promise<UltimaRodada | null> {
     else
       console.log(
         `[sinc-automatica] ${ultima.de}..${ultima.ate} · ${ultima.pedidosCriados} pedido(s), ` +
-          `${ultima.itensLancados} item(ns), ${ultima.puladas} pulada(s)`
+          `${ultima.itensLancados} item(ns), ${ultima.puladas} pulada(s)` +
+          (ultima.skusFaltando.length
+            ? ` · SKU a cadastrar: ${ultima.skusFaltando.map((s) => s.sku).join(", ")}`
+            : "") +
+          (ultima.clientesFaltando.length
+            ? ` · cliente a cadastrar: ${ultima.clientesFaltando.map((c) => c.nome).join(", ")}`
+            : "")
       );
     return ultima;
   } finally {
