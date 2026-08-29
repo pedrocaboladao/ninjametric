@@ -343,13 +343,56 @@ export function FabricaPedidos() {
 
   // O total do que a busca achou. Devolver so a lista deixaria a soma no olho, e
   // a pergunta e quase sempre "quanto essa loja comprou", nao "quais pedidos".
+  //
+  // Buscando por SKU, o total do PEDIDO engana e engana feio: procurar
+  // RESIFLEX-18KG-CINZA devolvia "venda R$ 1.752.825,65", que e a soma dos 132
+  // pedidos que contem o produto. O produto mesmo vendeu R$ 168.190,00 — dez
+  // vezes menos. Numero errado que parece certo e o pior tipo de erro.
+  //
+  // Entao quando o termo casa com item, sai tambem a linha do item: so as linhas
+  // daquele produto, com quantidade. Termo que so casa no cabecalho do pedido
+  // (nome de loja, numero, data) nao gera essa linha.
   const achadoPedidos = useMemo(() => {
     const validos = pedidosVisiveis.filter((p) => p.status !== "CANCELADO");
     const total = validos.reduce((t, p) => t + p.total, 0);
     const custo = validos.reduce((t, p) => t + p.custoTotal, 0);
     const itens = validos.reduce((t, p) => t + p.itens.length, 0);
-    return { n: pedidosVisiveis.length, itens, total, custo, margem: total - custo };
-  }, [pedidosVisiveis]);
+
+    const termos = semAcento(buscaPedido).split(/\s+/).filter(Boolean);
+    const textoItem = (i: { produtoSku: string; produtoNome: string }) =>
+      semAcento(`${i.produtoSku} ${i.produtoNome}`);
+    // so os termos que existem em algum item: "casg" nao e produto
+    const deItem = termos.filter((t) =>
+      validos.some((p) => p.itens.some((i) => textoItem(i).includes(t)))
+    );
+    let doItem: null | { linhas: number; quantidade: number; venda: number; custo: number } = null;
+    if (deItem.length) {
+      let linhas = 0;
+      let quantidade = 0;
+      let venda = 0;
+      let custoItem = 0;
+      for (const p of validos) {
+        for (const i of p.itens) {
+          const alvo = textoItem(i);
+          if (!deItem.every((t) => alvo.includes(t))) continue;
+          linhas += 1;
+          quantidade += i.quantidade;
+          venda += i.quantidade * i.precoUnitario;
+          custoItem += i.quantidade * i.custoUnitario;
+        }
+      }
+      doItem = { linhas, quantidade, venda, custo: custoItem };
+    }
+
+    return {
+      n: pedidosVisiveis.length,
+      itens,
+      total,
+      custo,
+      margem: total - custo,
+      doItem,
+    };
+  }, [pedidosVisiveis, buscaPedido]);
 
   // o saldo entra como detalhe na busca porque a pergunta logo depois de achar
   // o produto e "tem quanto?"
@@ -1413,15 +1456,49 @@ export function FabricaPedidos() {
                 </>
               ) : (
                 <>
-                  <strong>
-                    {achadoPedidos.n} pedido{achadoPedidos.n === 1 ? "" : "s"}
-                  </strong>{" "}
-                  · {achadoPedidos.itens} item{achadoPedidos.itens === 1 ? "" : "ns"} · venda{" "}
-                  {formatCurrency(achadoPedidos.total)} · custo{" "}
-                  {formatCurrency(achadoPedidos.custo)} ·{" "}
-                  <strong>margem {formatCurrency(achadoPedidos.margem)}</strong>
-                  {achadoPedidos.total > 0 && (
-                    <> ({((100 * achadoPedidos.margem) / achadoPedidos.total).toFixed(1)}%)</>
+                  {achadoPedidos.doItem ? (
+                    <>
+                      <strong>
+                        {achadoPedidos.doItem.quantidade.toLocaleString("pt-BR")} unidade
+                        {achadoPedidos.doItem.quantidade === 1 ? "" : "s"}
+                      </strong>{" "}
+                      · venda {formatCurrency(achadoPedidos.doItem.venda)} · custo{" "}
+                      {formatCurrency(achadoPedidos.doItem.custo)} ·{" "}
+                      <strong>
+                        margem{" "}
+                        {formatCurrency(achadoPedidos.doItem.venda - achadoPedidos.doItem.custo)}
+                      </strong>
+                      {achadoPedidos.doItem.venda > 0 && (
+                        <>
+                          {" "}
+                          (
+                          {(
+                            (100 * (achadoPedidos.doItem.venda - achadoPedidos.doItem.custo)) /
+                            achadoPedidos.doItem.venda
+                          ).toFixed(1)}
+                          %)
+                        </>
+                      )}
+                      <br />
+                      <span>
+                        em {achadoPedidos.n} pedido{achadoPedidos.n === 1 ? "" : "s"} — que somam{" "}
+                        {formatCurrency(achadoPedidos.total)} no total, contando o resto do que
+                        cada loja levou junto.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>
+                        {achadoPedidos.n} pedido{achadoPedidos.n === 1 ? "" : "s"}
+                      </strong>{" "}
+                      · {achadoPedidos.itens} {achadoPedidos.itens === 1 ? "item" : "itens"} ·
+                      venda {formatCurrency(achadoPedidos.total)} · custo{" "}
+                      {formatCurrency(achadoPedidos.custo)} ·{" "}
+                      <strong>margem {formatCurrency(achadoPedidos.margem)}</strong>
+                      {achadoPedidos.total > 0 && (
+                        <> ({((100 * achadoPedidos.margem) / achadoPedidos.total).toFixed(1)}%)</>
+                      )}
+                    </>
                   )}
                 </>
               )}
