@@ -222,6 +222,19 @@ export async function extratoDoCliente(clienteId: number): Promise<LinhaExtrato[
   });
 }
 
+// Quantos pagamentos existem no total, ignorando o teto da listagem.
+//
+// A tela mostrava 100 e nao dizia que mostrava 100. Somando o que aparecia dava
+// R$ 3.046.650,75 onde havia R$ 5.225.316,34 — R$ 2,1 milhoes invisiveis. PIX
+// lancado duas vezes ou na loja errada moraria exatamente nessa faixa, e o
+// fechamento perdoaria divida que existe sem ninguem ver.
+export async function contarPagamentos(): Promise<{ total: number; valor: number }> {
+  const { rows } = await pool.query<{ n: string; valor: string }>(
+    "SELECT COUNT(*) AS n, COALESCE(SUM(valor), 0) AS valor FROM fabrica_pagamentos"
+  );
+  return { total: Number(rows[0]?.n ?? 0), valor: Number(rows[0]?.valor ?? 0) };
+}
+
 export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
   const { rows } = await pool.query<{
     id: number;
@@ -235,7 +248,8 @@ export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
      FROM fabrica_pagamentos p
      JOIN fabrica_clientes c ON c.id = p.cliente_id
      ORDER BY p.data DESC, p.id DESC LIMIT $1`,
-    [limite]
+    // teto de 5.000 mesmo pedindo tudo: e conciliacao bancaria, cresce todo mes
+    [Math.min(Math.max(limite, 1), 5000)]
   );
   return rows.map((r) => ({
     id: r.id,

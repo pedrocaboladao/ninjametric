@@ -170,9 +170,28 @@ export async function fetchExtrato(clienteId: number): Promise<LinhaExtrato[]> {
   return (await tratarResposta<{ extrato: LinhaExtrato[] }>(res)).extrato;
 }
 
-export async function fetchPagamentos(): Promise<Pagamento[]> {
-  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos`, { credentials: "include" });
-  return (await tratarResposta<{ pagamentos: Pagamento[] }>(res)).pagamentos;
+// Devolve a pagina e o total. O total nao e o tamanho da lista: a listagem tem
+// teto, e sem esse numero quem soma na tela soma errado — davam R$ 3.046.650,75
+// onde havia R$ 5.225.316,34.
+export async function fetchPagamentos(limite?: number): Promise<{
+  pagamentos: Pagamento[];
+  total: number;
+  valorTotal: number;
+}> {
+  const q = limite ? `?limite=${limite}` : "";
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos${q}`, {
+    credentials: "include",
+  });
+  const r = await tratarResposta<{
+    pagamentos: Pagamento[];
+    total?: number;
+    valorTotal?: number;
+  }>(res);
+  return {
+    pagamentos: r.pagamentos,
+    total: r.total ?? r.pagamentos.length,
+    valorTotal: r.valorTotal ?? r.pagamentos.reduce((s, p) => s + p.valor, 0),
+  };
 }
 
 export async function registrarPagamento(entrada: {
