@@ -249,6 +249,15 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                     <span>Custo de Fabricação</span>
                   </button>
                 )}
+                {podeFabricaEmbalagens && (
+                  <button
+                    className={`sidebar-item ${view === "fabrica_embalagens" ? "sidebar-item-ativo" : ""}`}
+                    onClick={() => trocarView("fabrica_embalagens")}
+                  >
+                    <IconArchiveBox size={16} />
+                    <span>Embalagens</span>
+                  </button>
+                )}
                 {podeFabricaProdutos && (
                   <button
                     className={`sidebar-item ${view === "fabrica_produtos" ? "sidebar-item-ativo" : ""}`}
@@ -265,15 +274,6 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconStore size={16} />
                     <span>Clientes</span>
-                  </button>
-                )}
-                {podeFabricaEmbalagens && (
-                  <button
-                    className={`sidebar-item ${view === "fabrica_embalagens" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => trocarView("fabrica_embalagens")}
-                  >
-                    <IconArchiveBox size={16} />
-                    <span>Embalagens</span>
                   </button>
                 )}
                 {podeFabricaEstoque && (
