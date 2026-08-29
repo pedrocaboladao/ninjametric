@@ -1348,11 +1348,29 @@ export function FabricaPedidos() {
           </p>
         </div>
         <div>
+          {/* O numero do topo somava so os pedidos que couberam na tela.
+              Agosto tem 334 e a listagem traz 200: o cabecalho anunciava
+              R$ 1.954.143,28 onde havia R$ 3.069.007,80. Numero grande e errado,
+              sem nada dizendo que estava cortado. Dizer "de 334" e o minimo. */}
           <div className="financeiro-stat-label">
-            {totais.pedidos} PEDIDO{totais.pedidos === 1 ? "" : "S"} · MARGEM{" "}
+            {totais.pedidos}
+            {totalPedidos > totais.pedidos ? ` de ${totalPedidos}` : ""} PEDIDO
+            {totais.pedidos === 1 ? "" : "S"} · MARGEM{" "}
             {totais.total > 0 ? pct(totais.margem / totais.total) : "—"}
           </div>
           <div className="financeiro-stat-valor">{formatCurrency(totais.total)}</div>
+          {totalPedidos > totais.pedidos && (
+            <div className="financeiro-td-mudo">
+              soma dos {totais.pedidos} mostrados —{" "}
+              <button
+                type="button"
+                className="fabricacao-envase-nome-editavel"
+                onClick={() => setMostrarTodos(true)}
+              >
+                carregar os {totalPedidos}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1386,7 +1404,7 @@ export function FabricaPedidos() {
                   ? `Editando ${editandoId}`
                   : "Novo pedido"
                 : a === "importar"
-                  ? `Importar planilha${
+                  ? `Puxar do Bling${
                       conferencia?.skusFaltando.length
                         ? ` (${conferencia.skusFaltando.length} SKU)`
                         : ""
@@ -2150,6 +2168,49 @@ export function FabricaPedidos() {
 
       {aba === "estoque" && (
         <>
+          <div className="financeiro-filtros">
+            <BuscaSelecao
+              itens={itensEstoque}
+              valor={ajusteProdutoId ? Number(ajusteProdutoId) : null}
+              placeholder="Buscar produto por nome ou SKU"
+              onEscolher={(id) => setAjusteProdutoId(id ? String(id) : "")}
+            />
+            {/* sem o "pequeno": a caixa cortava em "Invent" e ninguem via que
+                havia uma terceira opcao dentro */}
+            <select
+              className="clonar-input"
+              style={{ minWidth: 230 }}
+              value={ajusteTipo}
+              onChange={(e) =>
+                setAjusteTipo(e.target.value as "inventario" | "ajuste" | "consumo")
+              }
+            >
+              <option value="inventario">Inventário (contei)</option>
+              <option value="ajuste">Ajuste (entra/sai)</option>
+              <option value="consumo">Consumo próprio (a fábrica usou)</option>
+            </select>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              placeholder={
+                ajusteTipo === "inventario"
+                  ? "Quantos tem"
+                  : ajusteTipo === "consumo"
+                    ? "Quanto usou"
+                    : "± quantidade"
+              }
+              value={ajusteQtd}
+              onChange={(e) => setAjusteQtd(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Motivo (opcional)"
+              value={ajusteMotivo}
+              onChange={(e) => setAjusteMotivo(e.target.value)}
+            />
+            <button type="button" className="btn-responder" onClick={() => void lancarAjuste()}>
+              <IconPlus size={14} /> Registrar
+            </button>
+          </div>
           <div className="financeiro-tabela-wrap">
             <table className="financeiro-tabela">
               <thead>
@@ -2211,46 +2272,6 @@ export function FabricaPedidos() {
             ser produzido automaticamente — aparece zerado em vez de sumir, pra ficar visível.
           </p>
 
-          <div className="financeiro-filtros">
-            <BuscaSelecao
-              itens={itensEstoque}
-              valor={ajusteProdutoId ? Number(ajusteProdutoId) : null}
-              placeholder="Buscar produto por nome ou SKU"
-              onEscolher={(id) => setAjusteProdutoId(id ? String(id) : "")}
-            />
-            <select
-              className="clonar-input fabricacao-input-pequeno"
-              value={ajusteTipo}
-              onChange={(e) =>
-                setAjusteTipo(e.target.value as "inventario" | "ajuste" | "consumo")
-              }
-            >
-              <option value="inventario">Inventário (contei)</option>
-              <option value="ajuste">Ajuste (entra/sai)</option>
-              <option value="consumo">Consumo próprio (a fábrica usou)</option>
-            </select>
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              placeholder={
-                ajusteTipo === "inventario"
-                  ? "Quantos tem"
-                  : ajusteTipo === "consumo"
-                    ? "Quanto usou"
-                    : "± quantidade"
-              }
-              value={ajusteQtd}
-              onChange={(e) => setAjusteQtd(e.target.value)}
-            />
-            <input
-              className="clonar-input"
-              placeholder="Motivo (opcional)"
-              value={ajusteMotivo}
-              onChange={(e) => setAjusteMotivo(e.target.value)}
-            />
-            <button type="button" className="btn-responder" onClick={() => void lancarAjuste()}>
-              <IconPlus size={14} /> Registrar
-            </button>
-          </div>
 
           <div className="financeiro-tabela-wrap">
             <table className="financeiro-tabela">
