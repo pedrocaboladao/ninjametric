@@ -67,6 +67,15 @@ type Natureza = "" | "fixo" | "variavel" | "revenda";
 
 const CATEGORIA_REVENDA = "REVENDA";
 
+// minusculo e sem acento dos dois lados: quem digita "salario" tem que achar
+// "SALÁRIO", e ninguem procura com o acento certo com pressa
+function semAcento(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 function naturezaDa(c: Conta): Exclude<Natureza, ""> {
   if (c.categoria === CATEGORIA_REVENDA) return "revenda";
   return c.custoFixo ? "fixo" : "variavel";
@@ -109,6 +118,7 @@ export function FabricaContas() {
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
   const [filtroTipo, setFiltroTipo] = useState<TipoConta>("pagar");
   const [filtroNatureza, setFiltroNatureza] = useState<Natureza>("");
+  const [busca, setBusca] = useState("");
   // o mes corrente inteiro: e o recorte que o operador quer ver 9 vezes em 10
   const [de, setDe] = useState(() => hoje().slice(0, 8) + "01");
   const [ate, setAte] = useState(() => {
@@ -181,12 +191,53 @@ export function FabricaContas() {
 
   // o filtro de natureza e da tela, nao do servidor: a lista ja veio inteira e
   // filtrar aqui deixa o total por categoria acompanhar na hora
-  const visiveis = useMemo(
-    () => (contas ?? []).filter((c) => !filtroNatureza || naturezaDa(c) === filtroNatureza),
-    [contas, filtroNatureza]
-  );
+  // Busca por termo solto, em qualquer ordem e sem acento.
+  //
+  // Um mes tem mais de cem lancamentos e achar um so pelos seletores de tipo,
+  // natureza e status nao da: quem procura tem o numero do boleto na mao, ou o
+  // nome do fornecedor, ou lembra so do valor. Cada palavra e procurada
+  // separada, entao "engenho 11.216" acha o mesmo que "11.216 engenho".
+  //
+  // O valor entra nas duas grafias — 11216.67 e "11.216,67" — porque o operador
+  // digita o que le na tela, e o que ele le e o formatado.
+  const visiveis = useMemo(() => {
+    const base = (contas ?? []).filter((c) => !filtroNatureza || naturezaDa(c) === filtroNatureza);
+    const termos = semAcento(busca).split(/\s+/).filter(Boolean);
+    if (!termos.length) return base;
+    return base.filter((c) => {
+      const alvo = semAcento(
+        [
+          c.descricao,
+          c.contraparte,
+          c.categoria,
+          c.formaPagamento,
+          c.documento,
+          c.observacao,
+          c.vencimento,
+          c.status,
+          String(c.valor),
+          c.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      return termos.every((t) => alvo.includes(t));
+    });
+  }, [contas, filtroNatureza, busca]);
 
   const atrasadas = useMemo(() => visiveis.filter((c) => c.atrasada), [visiveis]);
+
+  // Quanto e o que a busca achou. Sem isso o filtro devolve uma lista e o
+  // operador soma no olho — e a pergunta quase sempre e "quanto eu devo pra
+  // esse fornecedor", nao "quais linhas tem o nome dele".
+  const achado = useMemo(() => {
+    const validas = visiveis.filter((c) => c.status !== "cancelado");
+    const total = validas.reduce((t, c) => t + c.valor, 0);
+    const pago = validas
+      .filter((c) => c.status === "pago")
+      .reduce((t, c) => t + c.valor, 0);
+    return { n: visiveis.length, total, pago, aberto: total - pago };
+  }, [visiveis]);
 
   const porNatureza = useMemo(() => {
     const m = { fixo: 0, variavel: 0, revenda: 0 };
@@ -515,6 +566,19 @@ export function FabricaContas() {
           onChange={(e) => setAte(e.target.value)}
           title="Vencimento até"
         />
+        <input
+          className="clonar-input"
+          style={{ minWidth: 260, flex: 1 }}
+          placeholder="Buscar: fornecedor, nº do boleto, categoria, valor…"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          title="Cada palavra é procurada separada e em qualquer ordem, sem acento. O valor pode ser digitado como aparece na tela."
+        />
+        {busca && (
+          <button type="button" className="btn-excluir" onClick={() => setBusca("")}>
+            Limpar
+          </button>
+        )}
         <button type="button" className="btn-responder" onClick={novo}>
           <IconPlus size={14} />{" "}
           {filtroTipo === "receber" ? "Novo recebimento" : "Nova conta"}
@@ -727,6 +791,30 @@ export function FabricaContas() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {busca.trim() && (
+        <p className="financeiro-td-mudo">
+          {achado.n === 0 ? (
+            <>
+              Nada encontrado para <strong>{busca}</strong>.
+            </>
+          ) : (
+            <>
+              <strong>
+                {achado.n} lançamento{achado.n === 1 ? "" : "s"}
+              </strong>{" "}
+              · total {formatCurrency(achado.total)} · já pago{" "}
+              {formatCurrency(achado.pago)} · <strong>falta pagar {formatCurrency(achado.aberto)}</strong>
+              {atrasadas.length > 0 && (
+                <>
+                  {" "}
+                  · {atrasadas.length} atrasada{atrasadas.length === 1 ? "" : "s"}
+                </>
+              )}
+            </>
+          )}
+        </p>
       )}
 
       <div className="financeiro-tabela-wrap">
