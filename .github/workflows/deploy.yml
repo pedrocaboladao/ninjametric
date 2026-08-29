@@ -32,7 +32,7 @@ jobs:
           # grava no .env do VPS. Sem isso alguém teria que abrir o servidor
           # por SSH e colar à mão toda vez que o secret mudar — e credencial
           # digitada em terminal é credencial que acaba num histórico de shell.
-          envs: BLING_CLIENT_ID,BLING_CLIENT_SECRET,BLING_REDIRECT_URI,SHOPEE_PARTNER_ID,SHOPEE_PARTNER_KEY
+          envs: BLING_CLIENT_ID,BLING_CLIENT_SECRET,BLING_REDIRECT_URI,SHOPEE_PARTNER_ID,SHOPEE_PARTNER_KEY,SHOPEE_BASE_URL
           script: |
             set -e
             cd ~/ninjametric
@@ -57,6 +57,7 @@ jobs:
             gravar_env BLING_REDIRECT_URI "$BLING_REDIRECT_URI"
             gravar_env SHOPEE_PARTNER_ID "$SHOPEE_PARTNER_ID"
             gravar_env SHOPEE_PARTNER_KEY "$SHOPEE_PARTNER_KEY"
+            gravar_env SHOPEE_BASE_URL "$SHOPEE_BASE_URL"
             docker compose up -d --build
             docker compose exec -T backend node dist/db/migrate.js
             docker compose exec -T backend node dist/db/seed.js
@@ -96,3 +97,4 @@ jobs:
           BLING_REDIRECT_URI: ${{ secrets.BLING_REDIRECT_URI }}
           SHOPEE_PARTNER_ID: ${{ secrets.SHOPEE_PARTNER_ID }}
           SHOPEE_PARTNER_KEY: ${{ secrets.SHOPEE_PARTNER_KEY }}
+          SHOPEE_BASE_URL: ${{ secrets.SHOPEE_BASE_URL }}

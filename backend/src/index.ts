@@ -99,9 +99,8 @@ app.use("/api/fabrica-entradas", requireAuth, requirePermissao("fabrica_estoque"
 // só existe se alguém autenticado começou a autorização.
 app.use("/api/fabrica-bling/callback", fabricaBlingRouter);
 app.use("/api/fabrica-bling", requireAuth, requirePermissao("fabrica_pedidos"), fabricaBlingRouter);
-// Shopee fase 1 (sandbox) — mesmo motivo do callback do Bling acima: a
-// Shopee chama essa URL direto, sem cookie de sessão, então fica antes do
-// requireAuth.
+// Mesmo motivo do callback do Bling acima: a Shopee chama essa URL direto,
+// sem cookie de sessão, então fica antes do requireAuth.
 app.use("/api/shopee/callback", shopeeRouter);
 app.use("/api/shopee", requireAuth, requireAdmin, shopeeRouter);
 // mesma permissao do financeiro da fabrica: o cadastro de bens existe pra

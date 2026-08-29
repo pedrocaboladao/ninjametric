@@ -3,12 +3,16 @@ import crypto from "node:crypto";
 import { pool } from "../db/pool";
 import { env } from "../config/env";
 
-// Fase 1, sandbox. Diferença central pra Mercado Livre/Bling: TODA chamada
-// (não só o login) precisa de uma assinatura HMAC-SHA256 calculada na hora
-// — não é um token simples no header. Confirmado ao vivo (a Shopee aceitou
-// e redirecionou pra tela de login em vez de rejeitar com erro de
-// assinatura) que a fórmula é:
+// Diferença central pra Mercado Livre/Bling: TODA chamada (não só o login)
+// precisa de uma assinatura HMAC-SHA256 calculada na hora — não é um token
+// simples no header. A fórmula (confirmada ao vivo, tanto no sandbox quanto
+// no host de produção) é:
 //   sign = HMAC-SHA256(partner_id + path + timestamp [+ access_token] [+ shop_id], partner_key)
+//
+// SHOPEE_BASE_URL escolhe o ambiente: sandbox por padrão (ver env.ts) ou o
+// host de produção (https://openplatform.shopee.com.br, confirmado ao vivo)
+// via variável de ambiente — partner_id/key precisam ser do MESMO ambiente
+// do host, senão a Shopee rejeita com erro de assinatura.
 //
 // O link de autorização (/api/v2/shop/auth_partner) não tem parâmetro
 // "state" como o Mercado Livre tem — pra saber qual loja nossa iniciou a
