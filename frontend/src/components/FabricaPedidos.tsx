@@ -225,6 +225,10 @@ export function FabricaPedidos() {
   const [observacao, setObservacao] = useState("");
   const [linhas, setLinhas] = useState<LinhaRascunho[]>([{ ...LINHA_VAZIA }]);
 
+  // Quantos pedidos o filtro tem de verdade, contra os que couberam na tela.
+  const [totalPedidos, setTotalPedidos] = useState(0);
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+
   // ajuste de estoque
   const [ajusteProdutoId, setAjusteProdutoId] = useState("");
   const [ajusteTipo, setAjusteTipo] = useState<"inventario" | "ajuste">("inventario");
@@ -237,6 +241,7 @@ export function FabricaPedidos() {
         fetchPedidos({
           clienteId: filtroCliente ? Number(filtroCliente) : undefined,
           status: (filtroStatus || undefined) as StatusPedido | undefined,
+          limite: mostrarTodos ? 5000 : undefined,
         }),
         fetchFabricaClientes(),
         fetchFabricaProdutos(),
@@ -260,7 +265,8 @@ export function FabricaPedidos() {
       setDevolucoes(dv.devolucoes);
       setNotasPendentes(dv.notasPendentes);
       setConsolidado(dv.consolidado);
-      setPedidos(ps);
+      setPedidos(ps.pedidos);
+      setTotalPedidos(ps.total);
       setClientes(cs);
       setProdutos(prs);
       setEstoque(es);
@@ -270,7 +276,7 @@ export function FabricaPedidos() {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
       setPedidos([]);
     }
-  }, [filtroCliente, filtroStatus]);
+  }, [filtroCliente, filtroStatus, mostrarTodos]);
 
   useEffect(() => {
     void carregar();
@@ -1381,6 +1387,15 @@ export function FabricaPedidos() {
                 </p>
               )}
             </div>
+          )}
+
+          {pedidos && totalPedidos > pedidos.length && (
+            <p className="financeiro-td-mudo">
+              Mostrando {pedidos.length} de {totalPedidos} pedidos, os mais recentes primeiro.{" "}
+              <button type="button" className="btn-excluir" onClick={() => setMostrarTodos(true)}>
+                Mostrar todos os {totalPedidos}
+              </button>
+            </p>
           )}
 
           <div className="financeiro-tabela-wrap">

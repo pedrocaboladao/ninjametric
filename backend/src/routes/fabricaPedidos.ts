@@ -30,6 +30,7 @@ import {
   type PedidoEntrada,
   type ItemEntrada,
   type StatusPedido,
+  contarPedidos,
   preencherCustoFaltante,
   refazerPeriodo,
 } from "../services/fabricaPedidosService";
@@ -99,15 +100,19 @@ function lerEntrada(req: Request): PedidoEntrada | string {
 fabricaPedidosRouter.get("/", async (req, res) => {
   const clienteId = Number(req.query.clienteId);
   const status = req.query.status;
+  const limite = Number(req.query.limite);
+  const filtro = {
+    clienteId: Number.isInteger(clienteId) && clienteId > 0 ? clienteId : undefined,
+    status: statusValido(status) ? status : undefined,
+    de: typeof req.query.de === "string" && req.query.de ? req.query.de : undefined,
+    ate: typeof req.query.ate === "string" && req.query.ate ? req.query.ate : undefined,
+    limite: Number.isInteger(limite) && limite > 0 ? limite : undefined,
+  };
   try {
-    res.json({
-      pedidos: await listarPedidos({
-        clienteId: Number.isInteger(clienteId) && clienteId > 0 ? clienteId : undefined,
-        status: statusValido(status) ? status : undefined,
-        de: typeof req.query.de === "string" && req.query.de ? req.query.de : undefined,
-        ate: typeof req.query.ate === "string" && req.query.ate ? req.query.ate : undefined,
-      }),
-    });
+    // o total vem junto pra tela poder dizer "mostrando 200 de 334" em vez de
+    // deixar quem conta na tela achar que sumiu pedido
+    const [pedidos, total] = await Promise.all([listarPedidos(filtro), contarPedidos(filtro)]);
+    res.json({ pedidos, total });
   } catch (err) {
     erro(res, err, "Falha ao carregar pedidos.");
   }
