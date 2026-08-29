@@ -47,19 +47,25 @@ async function semConteudo(res: Response): Promise<void> {
   }
 }
 
+// Devolve a pagina e o total do filtro. O total nao e o tamanho da lista: a
+// listagem tem teto, e sem esse numero quem conta na tela conta errado — agosto
+// de 2026 tem 334 pedidos e a tela mostrava 200, calada.
 export async function fetchPedidos(filtro: {
   clienteId?: number;
   status?: StatusPedido;
   de?: string;
   ate?: string;
-} = {}): Promise<Pedido[]> {
+  limite?: number;
+} = {}): Promise<{ pedidos: Pedido[]; total: number }> {
   const q = new URLSearchParams();
   if (filtro.clienteId) q.set("clienteId", String(filtro.clienteId));
   if (filtro.status) q.set("status", filtro.status);
   if (filtro.de) q.set("de", filtro.de);
   if (filtro.ate) q.set("ate", filtro.ate);
+  if (filtro.limite) q.set("limite", String(filtro.limite));
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos?${q}`, { credentials: "include" });
-  return (await tratarResposta<{ pedidos: Pedido[] }>(res)).pedidos;
+  const r = await tratarResposta<{ pedidos: Pedido[]; total?: number }>(res);
+  return { pedidos: r.pedidos, total: r.total ?? r.pedidos.length };
 }
 
 export async function criarPedido(entrada: PedidoEntrada): Promise<{ id: number }> {
@@ -544,6 +550,48 @@ export async function sincronizarBling(
     body: JSON.stringify({ dataInicial, dataFinal }),
   });
   return tratarResposta<ProgressoBling>(res);
+}
+
+// O que a rodada automatica faz, na hora que o operador pedir.
+//
+// Le os ultimos 7 dias do Bling e lanca o que ainda nao entrou. Pode clicar
+// quantas vezes quiser: a mesma venda volta e e reconhecida por origem +
+// documento + SKU, entao o segundo clique so acrescenta o que apareceu depois
+// do primeiro.
+export interface RodadaSincronia {
+  de: string;
+  ate: string;
+  pedidosLidos: number;
+  itensLidos: number;
+  falhas: Array<{ id: number; motivo: string }>;
+  pedidosCriados: number;
+  itensLancados: number;
+  valorLancado: number;
+  puladas: number;
+  motivos: Record<string, number>;
+  skusFaltando: Array<{ sku: string; linhas: number; quantidade: number; valor: number }>;
+  clientesFaltando: Array<{ nome: string; linhas: number; valor: number }>;
+  erro: string | null;
+}
+
+export async function sincronizarAgora(): Promise<RodadaSincronia> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/automatica`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: "{}",
+  });
+  return tratarResposta<RodadaSincronia>(res);
+}
+
+export async function ultimaRodada(): Promise<{
+  rodando: boolean;
+  ultima: RodadaSincronia | null;
+}> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/automatica`, {
+    credentials: "include",
+  });
+  return tratarResposta<{ rodando: boolean; ultima: RodadaSincronia | null }>(res);
 }
 
 export async function progressoBling(): Promise<ProgressoBling> {

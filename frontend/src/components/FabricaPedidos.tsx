@@ -26,7 +26,6 @@ import {
   salvarOrigemPix,
   excluirOrigemPix,
   conferirPix,
-  conferirPlanilhaArquivo,
   fetchEntradas,
   conferirNota,
   lancarEntrada,
@@ -34,7 +33,9 @@ import {
   statusBling,
   autorizarBling,
   desconectarBling,
+  sincronizarAgora,
   sincronizarBling,
+  type RodadaSincronia,
   progressoBling,
   criarApelidoCliente,
   criarApelidoSku,
@@ -108,6 +109,15 @@ interface LinhaRascunho {
 
 const LINHA_VAZIA: LinhaRascunho = { produtoId: "", quantidade: "", precoUnitario: "" };
 
+// minusculo e sem acento dos dois lados: quem digita "cancao" tem que achar
+// "Cidade Canção"
+function semAcento(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 export function FabricaPedidos() {
   const [pedidos, setPedidos] = useState<Pedido[] | null>(null);
   const [clientes, setClientes] = useState<FabricaCliente[]>([]);
@@ -136,9 +146,15 @@ export function FabricaPedidos() {
     | "entrada"
   >("pedidos");
 
+  // "Sincronizar agora": le os ultimos 7 dias do Bling e lanca o que falta.
+  // Clicar duas vezes nao duplica — a mesma venda volta e e reconhecida.
+  const [sincronizando, setSincronizando] = useState(false);
+  const [rodada, setRodada] = useState<RodadaSincronia | null>(null);
+
   // importacao de planilha: cola o relatorio, confere, depois lanca
   const [impTexto, setImpTexto] = useState("");
-  const [impOrigem, setImpOrigem] = useState("SHOPEE");
+  // sempre BLING: com a planilha fora, nao existe outra fonte de pedido
+  const [impOrigem, setImpOrigem] = useState("BLING");
   const [conferencia, setConferencia] = useState<ConferenciaPlanilha | null>(null);
   const [importando, setImportando] = useState(false);
 
@@ -152,7 +168,6 @@ export function FabricaPedidos() {
   // "APORTE" / "AVULSA" / "IGNORAR" sao destinos que nao abatem divida
   const [pixEscolha, setPixEscolha] = useState<Record<string, string>>({});
   const pixInputRef = useRef<HTMLInputElement | null>(null);
-  const impInputRef = useRef<HTMLInputElement | null>(null);
 
   // entrada de mercadoria: a nota do fornecedor que alimenta o estoque
   const [entradas, setEntradas] = useState<Entrada[]>([]);
@@ -219,6 +234,12 @@ export function FabricaPedidos() {
   const [observacao, setObservacao] = useState("");
   const [linhas, setLinhas] = useState<LinhaRascunho[]>([{ ...LINHA_VAZIA }]);
 
+  const [buscaPedido, setBuscaPedido] = useState("");
+
+  // Quantos pedidos o filtro tem de verdade, contra os que couberam na tela.
+  const [totalPedidos, setTotalPedidos] = useState(0);
+  const [mostrarTodos, setMostrarTodos] = useState(false);
+
   // ajuste de estoque
   const [ajusteProdutoId, setAjusteProdutoId] = useState("");
   const [ajusteTipo, setAjusteTipo] = useState<"inventario" | "ajuste">("inventario");
@@ -231,6 +252,7 @@ export function FabricaPedidos() {
         fetchPedidos({
           clienteId: filtroCliente ? Number(filtroCliente) : undefined,
           status: (filtroStatus || undefined) as StatusPedido | undefined,
+          limite: mostrarTodos ? 5000 : undefined,
         }),
         fetchFabricaClientes(),
         fetchFabricaProdutos(),
@@ -254,7 +276,8 @@ export function FabricaPedidos() {
       setDevolucoes(dv.devolucoes);
       setNotasPendentes(dv.notasPendentes);
       setConsolidado(dv.consolidado);
-      setPedidos(ps);
+      setPedidos(ps.pedidos);
+      setTotalPedidos(ps.total);
       setClientes(cs);
       setProdutos(prs);
       setEstoque(es);
@@ -264,7 +287,13 @@ export function FabricaPedidos() {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
       setPedidos([]);
     }
-  }, [filtroCliente, filtroStatus]);
+  }, [filtroCliente, filtroStatus, mostrarTodos]);
+
+  // Buscar em cima de 200 de 334 acharia menos do que existe, e o operador nao
+  // teria como saber. Digitou, carrega tudo.
+  useEffect(() => {
+    if (buscaPedido.trim() && !mostrarTodos) setMostrarTodos(true);
+  }, [buscaPedido, mostrarTodos]);
 
   useEffect(() => {
     void carregar();
@@ -285,6 +314,85 @@ export function FabricaPedidos() {
   }, [pedidos]);
 
   const alertas = useMemo(() => estoque.filter((e) => e.abaixoDoMinimo), [estoque]);
+
+  // Busca por termo solto, em qualquer ordem e sem acento.
+  //
+  // O SKU dos itens entra junto: a pergunta que os seletores de cliente e status
+  // nao respondem e "quem comprou RESIFLEX-18KG-CINZA neste mes". Sem isso seria
+  // preciso abrir pedido por pedido.
+  const pedidosVisiveis = useMemo(() => {
+    const base = pedidos ?? [];
+    const termos = semAcento(buscaPedido).split(/\s+/).filter(Boolean);
+    if (!termos.length) return base;
+    return base.filter((p) => {
+      const alvo = semAcento(
+        [
+          String(p.id),
+          p.clienteNome,
+          p.data,
+          p.status,
+          p.observacao ?? "",
+          String(p.total),
+          p.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+          p.itens.map((i) => `${i.produtoSku} ${i.produtoNome}`).join(" "),
+        ].join(" ")
+      );
+      return termos.every((t) => alvo.includes(t));
+    });
+  }, [pedidos, buscaPedido]);
+
+  // O total do que a busca achou. Devolver so a lista deixaria a soma no olho, e
+  // a pergunta e quase sempre "quanto essa loja comprou", nao "quais pedidos".
+  //
+  // Buscando por SKU, o total do PEDIDO engana e engana feio: procurar
+  // RESIFLEX-18KG-CINZA devolvia "venda R$ 1.752.825,65", que e a soma dos 132
+  // pedidos que contem o produto. O produto mesmo vendeu R$ 168.190,00 — dez
+  // vezes menos. Numero errado que parece certo e o pior tipo de erro.
+  //
+  // Entao quando o termo casa com item, sai tambem a linha do item: so as linhas
+  // daquele produto, com quantidade. Termo que so casa no cabecalho do pedido
+  // (nome de loja, numero, data) nao gera essa linha.
+  const achadoPedidos = useMemo(() => {
+    const validos = pedidosVisiveis.filter((p) => p.status !== "CANCELADO");
+    const total = validos.reduce((t, p) => t + p.total, 0);
+    const custo = validos.reduce((t, p) => t + p.custoTotal, 0);
+    const itens = validos.reduce((t, p) => t + p.itens.length, 0);
+
+    const termos = semAcento(buscaPedido).split(/\s+/).filter(Boolean);
+    const textoItem = (i: { produtoSku: string; produtoNome: string }) =>
+      semAcento(`${i.produtoSku} ${i.produtoNome}`);
+    // so os termos que existem em algum item: "casg" nao e produto
+    const deItem = termos.filter((t) =>
+      validos.some((p) => p.itens.some((i) => textoItem(i).includes(t)))
+    );
+    let doItem: null | { linhas: number; quantidade: number; venda: number; custo: number } = null;
+    if (deItem.length) {
+      let linhas = 0;
+      let quantidade = 0;
+      let venda = 0;
+      let custoItem = 0;
+      for (const p of validos) {
+        for (const i of p.itens) {
+          const alvo = textoItem(i);
+          if (!deItem.every((t) => alvo.includes(t))) continue;
+          linhas += 1;
+          quantidade += i.quantidade;
+          venda += i.quantidade * i.precoUnitario;
+          custoItem += i.quantidade * i.custoUnitario;
+        }
+      }
+      doItem = { linhas, quantidade, venda, custo: custoItem };
+    }
+
+    return {
+      n: pedidosVisiveis.length,
+      itens,
+      total,
+      custo,
+      margem: total - custo,
+      doItem,
+    };
+  }, [pedidosVisiveis, buscaPedido]);
 
   // o saldo entra como detalhe na busca porque a pergunta logo depois de achar
   // o produto e "tem quanto?"
@@ -431,24 +539,6 @@ export function FabricaPedidos() {
 
   // Antecipação: a loja manda dinheiro antes de comprar. Vira saldo dela mais
   // os 3,5% — os dois lançamentos saem juntos do backend.
-  async function conferir() {
-    if (!impTexto.trim()) return setErro("Cole as linhas da planilha.");
-    try {
-      const c = await conferirPlanilha(impTexto, impOrigem);
-      setConferencia(c);
-      setErro(null);
-      setAviso(
-        `${c.linhas.length} linha${c.linhas.length === 1 ? "" : "s"} lida${
-          c.linhas.length === 1 ? "" : "s"
-        } de ${c.linhasNoArquivo}. ${c.prontas} pronta${c.prontas === 1 ? "" : "s"}, ${
-          c.comProblema
-        } com problema, ${c.jaImportadas} já importada${c.jaImportadas === 1 ? "" : "s"}.`
-      );
-    } catch (e) {
-      setConferencia(null);
-      setErro(e instanceof Error ? e.message : "Falha ao ler a planilha.");
-    }
-  }
 
   async function importar() {
     if (!conferencia || conferencia.prontas === 0)
@@ -1062,6 +1152,22 @@ export function FabricaPedidos() {
       .catch(() => undefined);
   }, [aba, blingProgresso, acolherBling]);
 
+  async function sincronizarDoBling() {
+    setSincronizando(true);
+    setErro(null);
+    setRodada(null);
+    try {
+      const r = await sincronizarAgora();
+      setRodada(r);
+      if (r.erro) setErro(r.erro);
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.");
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   async function puxarDoBling() {
     setBlingOcupado(true);
     setErro(null);
@@ -1318,7 +1424,145 @@ export function FabricaPedidos() {
             <button type="button" className="btn-responder" onClick={novoPedido}>
               <IconPlus size={14} /> Novo pedido
             </button>
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={sincronizando}
+              onClick={() => void sincronizarDoBling()}
+              title="Lê os últimos 7 dias do Bling e lança o que ainda não entrou. Pode clicar quantas vezes quiser: venda que já entrou é reconhecida e não duplica."
+            >
+              {sincronizando ? "Buscando no Bling..." : "Sincronizar agora"}
+            </button>
+            <input
+              className="clonar-input"
+              style={{ minWidth: 260, flex: 1 }}
+              placeholder="Buscar: loja, SKU, nº do pedido, valor…"
+              value={buscaPedido}
+              onChange={(e) => setBuscaPedido(e.target.value)}
+              title="Cada palavra é procurada separada e em qualquer ordem, sem acento. O SKU dos itens entra na busca: dá pra achar quem comprou um produto."
+            />
+            {buscaPedido && (
+              <button type="button" className="btn-excluir" onClick={() => setBuscaPedido("")}>
+                Limpar
+              </button>
+            )}
           </div>
+
+          {buscaPedido.trim() && (
+            <p className="financeiro-td-mudo">
+              {achadoPedidos.n === 0 ? (
+                <>
+                  Nada encontrado para <strong>{buscaPedido}</strong>.
+                </>
+              ) : (
+                <>
+                  {achadoPedidos.doItem ? (
+                    <>
+                      <strong>
+                        {achadoPedidos.doItem.quantidade.toLocaleString("pt-BR")} unidade
+                        {achadoPedidos.doItem.quantidade === 1 ? "" : "s"}
+                      </strong>{" "}
+                      · venda {formatCurrency(achadoPedidos.doItem.venda)} · custo{" "}
+                      {formatCurrency(achadoPedidos.doItem.custo)} ·{" "}
+                      <strong>
+                        margem{" "}
+                        {formatCurrency(achadoPedidos.doItem.venda - achadoPedidos.doItem.custo)}
+                      </strong>
+                      {achadoPedidos.doItem.venda > 0 && (
+                        <>
+                          {" "}
+                          (
+                          {(
+                            (100 * (achadoPedidos.doItem.venda - achadoPedidos.doItem.custo)) /
+                            achadoPedidos.doItem.venda
+                          ).toFixed(1)}
+                          %)
+                        </>
+                      )}
+                      <br />
+                      <span>
+                        em {achadoPedidos.n} pedido{achadoPedidos.n === 1 ? "" : "s"} — que somam{" "}
+                        {formatCurrency(achadoPedidos.total)} no total, contando o resto do que
+                        cada loja levou junto.
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <strong>
+                        {achadoPedidos.n} pedido{achadoPedidos.n === 1 ? "" : "s"}
+                      </strong>{" "}
+                      · {achadoPedidos.itens} {achadoPedidos.itens === 1 ? "item" : "itens"} ·
+                      venda {formatCurrency(achadoPedidos.total)} · custo{" "}
+                      {formatCurrency(achadoPedidos.custo)} ·{" "}
+                      <strong>margem {formatCurrency(achadoPedidos.margem)}</strong>
+                      {achadoPedidos.total > 0 && (
+                        <> ({((100 * achadoPedidos.margem) / achadoPedidos.total).toFixed(1)}%)</>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </p>
+          )}
+
+          {rodada && !rodada.erro && (
+            <div className="credito-alerta">
+              <p>
+                <strong>
+                  {rodada.pedidosCriados === 0
+                    ? "Nada novo pra lançar."
+                    : `${rodada.pedidosCriados} pedido${
+                        rodada.pedidosCriados === 1 ? "" : "s"
+                      } lançado${rodada.pedidosCriados === 1 ? "" : "s"}`}
+                </strong>{" "}
+                {rodada.pedidosCriados > 0 && (
+                  <>
+                    com {rodada.itensLancados} item
+                    {rodada.itensLancados === 1 ? "" : "ns"},{" "}
+                    {formatCurrency(rodada.valorLancado)}.{" "}
+                  </>
+                )}
+                Li {rodada.pedidosLidos} pedido
+                {rodada.pedidosLidos === 1 ? "" : "s"} do Bling de {rodada.de} a {rodada.ate}
+                {rodada.motivos["já importada antes"] ? (
+                  <>
+                    ; {rodada.motivos["já importada antes"]} linha
+                    {rodada.motivos["já importada antes"] === 1 ? "" : "s"} já tinha
+                    {rodada.motivos["já importada antes"] === 1 ? "" : "m"} entrado antes e
+                    não entrou de novo
+                  </>
+                ) : null}
+                .
+              </p>
+              {/* o que ficou de fora tem nome: contar sem dizer o que e deixa
+                  a procura pro operador, que e o trabalho que o botao existe
+                  pra tirar dele */}
+              {rodada.skusFaltando.length > 0 && (
+                <p>
+                  <strong>Falta cadastrar no site:</strong>{" "}
+                  {rodada.skusFaltando
+                    .map((s) => `${s.sku} (${s.quantidade} un, ${formatCurrency(s.valor)})`)
+                    .join(" · ")}
+                  . Cadastre e clique de novo — a venda entra sozinha.
+                </p>
+              )}
+              {rodada.clientesFaltando.length > 0 && (
+                <p>
+                  <strong>Falta cadastrar o cliente:</strong>{" "}
+                  {rodada.clientesFaltando.map((c) => c.nome).join(" · ")}.
+                </p>
+              )}
+            </div>
+          )}
+
+          {pedidos && !buscaPedido.trim() && totalPedidos > pedidos.length && (
+            <p className="financeiro-td-mudo">
+              Mostrando {pedidos.length} de {totalPedidos} pedidos, os mais recentes primeiro.{" "}
+              <button type="button" className="btn-excluir" onClick={() => setMostrarTodos(true)}>
+                Mostrar todos os {totalPedidos}
+              </button>
+            </p>
+          )}
 
           <div className="financeiro-tabela-wrap">
             <table className="financeiro-tabela">
@@ -1341,12 +1585,14 @@ export function FabricaPedidos() {
                     <td colSpan={9}>Carregando…</td>
                   </tr>
                 )}
-                {pedidos !== null && !pedidos.length && (
+                {pedidos !== null && !pedidosVisiveis.length && (
                   <tr>
-                    <td colSpan={9}>Nenhum pedido lançado.</td>
+                    <td colSpan={9}>
+                      {buscaPedido.trim() ? "Nenhum pedido bate com a busca." : "Nenhum pedido lançado."}
+                    </td>
                   </tr>
                 )}
-                {(pedidos ?? []).map((p) => (
+                {pedidosVisiveis.map((p) => (
                   <tr key={p.id} style={p.status === "CANCELADO" ? { opacity: 0.5 } : undefined}>
                     <td>
                       <button
@@ -1550,13 +1796,17 @@ export function FabricaPedidos() {
         <>
           <div className="financeiro-topo">
             <div>
-              <h2>Importar planilha de venda</h2>
+              <h2>Puxar vendas do Bling</h2>
               <p className="financeiro-td-mudo">
-                Cole o relatório direto do Excel — pode ser Shopee, venda direta, ou o que o
-                ERP exporta. Ele descobre as colunas pelo cabeçalho, então não precisa
-                reorganizar nada. Precisa ter <strong>SKU</strong>, porque é o SKU que diz qual
-                produto saiu do estoque; relatório só com número do pedido e total não serve
-                aqui. Nada é lançado antes de você conferir.
+                O pedido da Fábrica vem do Bling e só de lá. A importação por planilha saiu
+                daqui: agosto de 2026 entrou duas vezes — uma pela planilha, com o mês inteiro
+                empilhado no dia 31, outra pelo ERP com a data real — e o faturamento ficou
+                R$ 529.525,65 maior do que a venda. Duas fontes pra mesma venda é uma fonte
+                a mais.
+                <br />
+                Pro dia a dia use <strong>Sincronizar agora</strong>, na aba Pedidos: ele
+                pega os últimos 7 dias. Aqui embaixo é pra período fora dessa janela — refazer
+                um mês fechado, por exemplo.
               </p>
             </div>
           </div>
@@ -1648,69 +1898,18 @@ export function FabricaPedidos() {
             </div>
           )}
 
-          <div className="financeiro-filtros">
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              placeholder="Origem (SHOPEE, ERP...)"
-              value={impOrigem}
-              onChange={(e) => setImpOrigem(e.target.value.toUpperCase())}
-            />
-            <input
-              ref={impInputRef}
-              type="file"
-              accept=".xlsx,.csv,.tsv,.txt"
-              style={{ display: "none" }}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                setImportando(true);
-                setErro(null);
-                try {
-                  const c = await conferirPlanilhaArquivo(f, impOrigem);
-                  // guarda o texto convertido: quem lanca e a rota de texto,
-                  // entao arquivo e cola seguem o mesmo caminho
-                  setImpTexto(c.texto);
-                  setConferencia(c);
-                } catch (err) {
-                  setErro(err instanceof Error ? err.message : "Falha ao ler o arquivo.");
-                } finally {
-                  setImportando(false);
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn-excluir"
-              disabled={importando}
-              onClick={() => impInputRef.current?.click()}
-              title="Sobe a planilha como arquivo .xlsx ou .csv — mais de mil linhas travam ao colar"
-            >
-              Escolher arquivo
-            </button>
-            <button type="button" className="btn-excluir" onClick={() => void conferir()}>
-              Conferir
-            </button>
-            <button
-              type="button"
-              className="btn-responder"
-              onClick={() => void importar()}
-              disabled={!conferencia || conferencia.prontas === 0 || importando}
-            >
-              {importando
-                ? "Lançando..."
-                : `Lançar ${conferencia?.prontas ?? 0} como pedido`}
-            </button>
-          </div>
-
-          <textarea
-            className="clonar-input"
-            rows={8}
-            placeholder="Cole aqui as linhas da planilha, com o cabeçalho na primeira linha."
-            value={impTexto}
-            onChange={(e) => setImpTexto(e.target.value)}
-            style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
-          />
+          {conferencia && (
+            <div className="financeiro-filtros">
+              <button
+                type="button"
+                className="btn-responder"
+                onClick={() => void importar()}
+                disabled={conferencia.prontas === 0 || importando}
+              >
+                {importando ? "Lançando..." : `Lançar ${conferencia.prontas} como pedido`}
+              </button>
+            </div>
+          )}
 
           {conferencia && (
             <>
