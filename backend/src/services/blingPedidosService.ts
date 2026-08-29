@@ -137,6 +137,20 @@ interface RespostaDetalhe {
   };
 }
 
+// O pedido como o Bling manda, sem filtro.
+//
+// A gente le so cliente, data, SKU, quantidade e valor — e o resto e descartado
+// sem ninguem nunca ter olhado. Quando a pergunta e "a API traz a hora de quem
+// digitou?", so tem um jeito honesto de responder: pedir um pedido e ler o que
+// veio. A documentacao e uma pagina que carrega por javascript e nao da pra ler
+// de fora.
+//
+// Leitura pura, um pedido por vez.
+export async function pedidoCru(id: number): Promise<unknown> {
+  const r = await get<unknown>(`/pedidos/vendas/${id}`);
+  return r;
+}
+
 export async function itensDoPedido(id: number): Promise<ItemBling[]> {
   const r = await get<RespostaDetalhe>(`/pedidos/vendas/${id}`);
   const p = r.data;

@@ -8,7 +8,7 @@ import {
   trocarCodigo,
   urlDeAutorizacao,
 } from "../services/blingAuth";
-import { buscarVendas, paraTexto } from "../services/blingPedidosService";
+import { buscarVendas, paraTexto, pedidoCru } from "../services/blingPedidosService";
 import { puxarContatos, sincronizarContatos } from "../services/blingContatosService";
 import {
   rodadaEmAndamento,
@@ -246,6 +246,20 @@ fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
 // e fica pra decisao de quem manda a nota.
 // Como foi a ultima rodada automatica. A tela mostra isso pra ninguem descobrir
 // tres dias depois que a maquina parou de lancar.
+// Devolve um pedido do Bling como ele vem, pra dar pra ver que campos existem
+// de verdade em vez de confiar na documentacao. So leitura.
+fabricaBlingRouter.get("/pedido-cru/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    return res.status(400).json({ error: "Id inválido." });
+  }
+  try {
+    res.json(await pedidoCru(id));
+  } catch (err) {
+    erro(res, err, "Falha ao ler o pedido no Bling.");
+  }
+});
+
 fabricaBlingRouter.get("/automatica", (_req, res) => {
   res.json({ rodando: rodadaEmAndamento(), ultima: ultimaRodadaAutomatica() });
 });
