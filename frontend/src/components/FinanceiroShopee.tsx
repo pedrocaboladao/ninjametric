@@ -37,6 +37,7 @@ type ChaveOrdenacao =
   | "receitaTotal"
   | "custoTotal"
   | "impostoTotal"
+  | "taxaShopeeTotal"
   | "margemContribuicao"
   | "margemPercentual";
 
@@ -57,6 +58,7 @@ const COLUNAS: Coluna[] = [
   { chave: "receitaTotal", label: "Faturamento", numerica: true },
   { chave: "custoTotal", label: "Custo (-)", numerica: true },
   { chave: "impostoTotal", label: "Imposto (-)", numerica: true },
+  { chave: "taxaShopeeTotal", label: "Taxa Shopee (-)", numerica: true },
   { chave: "margemContribuicao", label: "Margem Contrib. (=)", numerica: true },
   { chave: "margemPercentual", label: "MC em %", numerica: true },
 ];
@@ -119,6 +121,7 @@ export function FinanceiroShopee() {
   const receitaTotal = vendas?.reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
   const custoTotalGeral = vendas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
   const impostoTotalGeral = vendas?.reduce((s, v) => s + v.impostoTotal, 0) ?? 0;
+  const taxaShopeeTotalGeral = vendas?.reduce((s, v) => s + v.taxaShopeeTotal, 0) ?? 0;
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
   const semCustoCadastrado = (vendas?.length ?? 0) - comMargem.length;
@@ -130,9 +133,9 @@ export function FinanceiroShopee() {
           <span className="painel-eyebrow">Financeiro</span>
           <h1>Feed de vendas — Shopee</h1>
           <p className="painel-sub">
-            Receita, custo do produto e imposto por venda da Shopee. Ainda não desconta taxa/comissão da Shopee nem
-            frete na margem — campos não confirmados na API ainda, entram assim que a primeira venda real confirmar
-            o formato certo.
+            Receita, custo do produto, comissão + taxa de serviço da Shopee e imposto por venda. Ainda não desconta
+            frete na margem — a Shopee não tem um "custo de frete do vendedor" isolado igual ao Mercado Livre nesse
+            mesmo formato ainda mapeado.
           </p>
         </div>
         <div className="financeiro-filtros">
@@ -220,10 +223,12 @@ export function FinanceiroShopee() {
               </div>
               <div className="financeiro-card-cor financeiro-card-vermelho">
                 <div className="financeiro-card-cor-topo">
-                  <span>Custo &amp; Imposto</span>
+                  <span>Custo, Imposto &amp; Taxa</span>
                 </div>
                 <div className="financeiro-card-cor-corpo">
-                  <span className="financeiro-card-cor-valor">{formatCurrency(custoTotalGeral + impostoTotalGeral)}</span>
+                  <span className="financeiro-card-cor-valor">
+                    {formatCurrency(custoTotalGeral + impostoTotalGeral + taxaShopeeTotalGeral)}
+                  </span>
                   <div className="financeiro-card-cor-linha">
                     <span>Custo</span>
                     <b>{formatCurrency(custoTotalGeral)}</b>
@@ -231,6 +236,10 @@ export function FinanceiroShopee() {
                   <div className="financeiro-card-cor-linha">
                     <span>Imposto</span>
                     <b>{formatCurrency(impostoTotalGeral)}</b>
+                  </div>
+                  <div className="financeiro-card-cor-linha">
+                    <span>Taxa Shopee</span>
+                    <b>{formatCurrency(taxaShopeeTotalGeral)}</b>
                   </div>
                 </div>
               </div>
@@ -302,6 +311,7 @@ export function FinanceiroShopee() {
                         {v.custoTotal !== null ? formatCurrency(v.custoTotal) : "—"}
                       </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.impostoTotal)}</td>
+                      <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.taxaShopeeTotal)}</td>
                       <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
                         {v.margemContribuicao !== null ? formatCurrency(v.margemContribuicao) : "não cadastrado"}
                       </td>

@@ -124,3 +124,51 @@ export async function buscarDetalhesPedidos(lojaId: number, orderSns: string[]):
 
   return resultadosPorLote.flat();
 }
+
+export interface ShopeeTaxaPedido {
+  orderSn: string;
+  comissao: number;
+  taxaServico: number;
+}
+
+interface RespostaEscrow {
+  error?: string;
+  message?: string;
+  response?: {
+    order_income?: {
+      commission_fee?: number;
+      service_fee?: number;
+    };
+  };
+}
+
+// get_escrow_detail é por pedido (não aceita lista como get_order_detail),
+// por isso uma chamada por order_sn — traz commission_fee + service_fee,
+// que juntos equivalem à "taxa ML" (sale_fee) do Financeiro do Mercado
+// Livre. Confirmado contra um pedido real (260829MD7RM383, Catedral):
+// commission_fee 24.83 + service_fee 15.59, batendo com a diferença entre
+// o valor da venda e o escrow_amount (o que a Shopee de fato repassa).
+// Um pedido individual falhando (ex.: escrow ainda não calculado) não deve
+// derrubar a busca inteira — fica de fora do mapa, tratado como taxa 0 por
+// quem chama.
+export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Promise<Map<string, ShopeeTaxaPedido>> {
+  const resultados = await comConcorrenciaLimitada(orderSns, 10, async (orderSn) => {
+    try {
+      const data = await chamarApiAssinada<RespostaEscrow>(lojaId, "/api/v2/payment/get_escrow_detail", {
+        order_sn: orderSn,
+      });
+      if (data.error) return null;
+      const income = data.response?.order_income;
+      if (!income) return null;
+      return { orderSn, comissao: income.commission_fee ?? 0, taxaServico: income.service_fee ?? 0 };
+    } catch {
+      return null;
+    }
+  });
+
+  const mapa = new Map<string, ShopeeTaxaPedido>();
+  for (const r of resultados) {
+    if (r) mapa.set(r.orderSn, r);
+  }
+  return mapa;
+}
