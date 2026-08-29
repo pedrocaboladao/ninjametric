@@ -45,6 +45,9 @@ export interface Pagamento {
   data: string;
   valor: number;
   observacao: string | null;
+  // identificador do PIX no extrato do banco. Nulo = não veio de conciliação:
+  // foi digitado, ou sobrou de uma importação repetida.
+  e2e: string | null;
 }
 
 // Extrato de uma loja: os pedidos e os pagamentos na mesma linha do tempo,
@@ -243,10 +246,16 @@ export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
     data: string;
     valor: string;
     observacao: string | null;
+    e2e: string | null;
   }>(
-    `SELECT p.id, p.cliente_id, c.nome, p.data, p.valor, p.observacao
+    // o e2e amarra o pagamento ao PIX do extrato. Pagamento sem e2e foi digitado
+    // a mao ou sobrou de uma importacao repetida — e e ai que mora a duplicata
+    // que ninguem enxerga: dois lancamentos iguais, um com PIX e outro sem.
+    `SELECT p.id, p.cliente_id, c.nome, p.data, p.valor, p.observacao,
+            x.e2e
      FROM fabrica_pagamentos p
      JOIN fabrica_clientes c ON c.id = p.cliente_id
+     LEFT JOIN fabrica_pix_recebido x ON x.pagamento_id = p.id
      ORDER BY p.data DESC, p.id DESC LIMIT $1`,
     // teto de 5.000 mesmo pedindo tudo: e conciliacao bancaria, cresce todo mes
     [Math.min(Math.max(limite, 1), 5000)]
@@ -258,6 +267,7 @@ export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
     data: dataIso(r.data),
     valor: Number(r.valor),
     observacao: r.observacao,
+    e2e: r.e2e,
   }));
 }
 
