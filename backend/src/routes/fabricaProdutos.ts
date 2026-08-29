@@ -134,7 +134,10 @@ fabricaProdutosRouter.post("/estoque/ajustes", async (req, res) => {
     if (!Number.isFinite(quantidade) || quantidade === 0) {
       return res.status(400).json({ error: "Informe a quantidade (positiva entra, negativa sai)." });
     }
-    res.status(201).json(await registrarAjusteProduto(produtoId, quantidade, motivo));
+    // consumo: uso proprio da fabrica. Grava o custo do momento e entra no DRE
+    // como despesa — sem isso o saldo baixa e o custo some.
+    const consumo = req.body?.consumo === true;
+    res.status(201).json(await registrarAjusteProduto(produtoId, quantidade, motivo, consumo));
   } catch (err) {
     erro(res, err, "Falha ao registrar ajuste.");
   }

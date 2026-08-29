@@ -1604,3 +1604,17 @@ CREATE TABLE IF NOT EXISTS fabrica_bling_token (
 -- Marcado assim, a coluna cnpj guarda o CPF e a inscrição estadual deixa de
 -- fazer sentido. No Bling o contato entra como tipo F, não J.
 ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS pessoa_fisica BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- Consumo próprio: a fábrica usa o que também vende.
+--
+-- Saco de lixo, fita, stretch e caixa saem por duas portas — venda pra loja e
+-- uso na expedição. A venda vira receita e custo pelo item do pedido; o uso
+-- interno saía só pelo ajuste de estoque, que guarda quantidade e motivo e mais
+-- nada. O saldo baixava e o custo sumia: consumir R$ 5.000 de saco deixava o
+-- lucro do mês R$ 5.000 maior do que foi.
+--
+-- `consumo` marca o ajuste que é uso próprio. `custo_unitario` é gravado no
+-- momento, não recalculado depois — mesma regra do item do pedido: o que
+-- aconteceu é um fato, e o custo de hoje não pode mudar o resultado de março.
+ALTER TABLE fabrica_produto_ajustes ADD COLUMN IF NOT EXISTS consumo BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE fabrica_produto_ajustes ADD COLUMN IF NOT EXISTS custo_unitario NUMERIC(12, 4);

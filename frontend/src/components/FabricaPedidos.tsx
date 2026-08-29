@@ -242,7 +242,7 @@ export function FabricaPedidos() {
 
   // ajuste de estoque
   const [ajusteProdutoId, setAjusteProdutoId] = useState("");
-  const [ajusteTipo, setAjusteTipo] = useState<"inventario" | "ajuste">("inventario");
+  const [ajusteTipo, setAjusteTipo] = useState<"inventario" | "ajuste" | "consumo">("inventario");
   const [ajusteQtd, setAjusteQtd] = useState("");
   const [ajusteMotivo, setAjusteMotivo] = useState("");
 
@@ -1005,16 +1005,22 @@ export function FabricaPedidos() {
     const id = Number(ajusteProdutoId);
     if (!Number.isInteger(id) || !id) return setErro("Escolha o produto.");
     const v = num(ajusteQtd);
-    if (ajusteTipo === "ajuste" && v === 0) {
-      return setErro("Informe a quantidade (positiva entra, negativa sai).");
+    if (ajusteTipo !== "inventario" && v === 0) {
+      return setErro("Informe a quantidade.");
+    }
+    if (ajusteTipo === "consumo" && v < 0) {
+      return setErro("No consumo, informe quanto foi usado — o sinal é por nossa conta.");
     }
     try {
       const r = await registrarAjusteProduto({
         produtoId: id,
-        tipo: ajusteTipo,
-        quantidade: ajusteTipo === "ajuste" ? v : undefined,
+        // consumo é um ajuste de saída com natureza: quantidade negativa, e o
+        // custo do momento gravado junto pra virar despesa no DRE
+        tipo: ajusteTipo === "inventario" ? "inventario" : "ajuste",
+        quantidade: ajusteTipo === "inventario" ? undefined : ajusteTipo === "consumo" ? -Math.abs(v) : v,
         contado: ajusteTipo === "inventario" ? v : undefined,
-        motivo: ajusteMotivo.trim() || null,
+        motivo: ajusteMotivo.trim() || (ajusteTipo === "consumo" ? "Consumo próprio da fábrica" : null),
+        consumo: ajusteTipo === "consumo",
       });
       setAviso(
         ajusteTipo === "inventario" && r.diferenca !== undefined
@@ -2215,14 +2221,23 @@ export function FabricaPedidos() {
             <select
               className="clonar-input fabricacao-input-pequeno"
               value={ajusteTipo}
-              onChange={(e) => setAjusteTipo(e.target.value as "inventario" | "ajuste")}
+              onChange={(e) =>
+                setAjusteTipo(e.target.value as "inventario" | "ajuste" | "consumo")
+              }
             >
               <option value="inventario">Inventário (contei)</option>
               <option value="ajuste">Ajuste (entra/sai)</option>
+              <option value="consumo">Consumo próprio (a fábrica usou)</option>
             </select>
             <input
               className="clonar-input fabricacao-input-pequeno"
-              placeholder={ajusteTipo === "inventario" ? "Quantos tem" : "± quantidade"}
+              placeholder={
+                ajusteTipo === "inventario"
+                  ? "Quantos tem"
+                  : ajusteTipo === "consumo"
+                    ? "Quanto usou"
+                    : "± quantidade"
+              }
               value={ajusteQtd}
               onChange={(e) => setAjusteQtd(e.target.value)}
             />

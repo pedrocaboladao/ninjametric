@@ -134,6 +134,8 @@ export async function registrarAjusteProduto(entrada: {
   quantidade?: number;
   contado?: number;
   motivo?: string | null;
+  // uso próprio da fábrica: grava o custo do momento e vira despesa no DRE
+  consumo?: boolean;
 }): Promise<{ id: number; diferenca?: number }> {
   const res = await fetch(`${API_BASE}/api/fabrica-produtos/estoque/ajustes`, {
     method: "POST",

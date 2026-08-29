@@ -49,6 +49,9 @@ export interface Dre {
   impostoLancado: number;
   receitaLiquida: number;
   custoProdutos: number;
+  // O que a fábrica consumiu do próprio estoque. Não é custo do que foi vendido
+  // — não foi vendido. Já está dentro de despesaVariavel; a linha só separa.
+  consumoProprio: number;
   // mercadoria comprada pronta pra revender: CPV da distribuidora
   custoRevenda: number;
   margemContribuicao: number;
