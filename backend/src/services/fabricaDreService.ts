@@ -104,8 +104,20 @@ export interface Dre {
 // e some do relatório seria pior que aparecer no lugar errado.
 const CATEGORIAS_DE_INSUMO = new Set(["MATÉRIA-PRIMA", "EMBALAGEM", "ÁGUA", "CONSUMO"]);
 
-// Produto pronto comprado pra revender. Sai da despesa e entra no custo da
-// mercadoria vendida — e o que a fabrica gasta hoje, 93% do contas a pagar.
+// Produto pronto comprado pra revender — 93% do contas a pagar da fabrica.
+//
+// Segue a mesma regra da materia-prima logo acima, e pelo mesmo motivo: o custo
+// de compra ja esta gravado dentro do item do pedido, entao somar a nota de
+// compra de novo conta o mesmo dinheiro duas vezes.
+//
+// Ate hoje somava, e nao dava erro visivel porque o item do pedido de agosto
+// estava com custo ZERO — o unico jeito de ver o custo da revenda era pela nota.
+// Preenchido o custo dos 13.212 itens, os dois passaram a valer ao mesmo tempo:
+// CPV virou R$ 3.850.291,78 contra R$ 3.069.007,80 de receita, e o mes fechou
+// com prejuizo de R$ 842.739,39 que nao existe.
+//
+// Nota de compra e estoque, nao custo da venda. Ela continua no bloco separado,
+// junto com a materia-prima: o dinheiro saiu do caixa e sumir seria pior.
 const CATEGORIA_REVENDA = "REVENDA";
 
 // Parcela de bem financiado. Fica fora do resultado: quem representa o bem no
@@ -271,6 +283,8 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     }
     if (categoria === CATEGORIA_REVENDA) {
       custoRevenda += total;
+      insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
+      jaNoCustoTotal += total;
       continue;
     }
     if (categoria === CATEGORIA_IMOBILIZADO) {
@@ -290,7 +304,9 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     else despesaVariavel += total;
   }
 
-  const custoProdutos = custoFabricado + custoRevenda;
+  // so o custo do que foi vendido. `custoRevenda` continua sendo devolvido pra
+  // tela mostrar quanto a fabrica comprou no mes, mas nao entra no resultado.
+  const custoProdutos = custoFabricado;
   const margemContribuicao = receitaLiquida - custoProdutos;
   // depreciacao e despesa fixa: acontece com ou sem venda no mes
   despesaFixa += depreciacao.total;
