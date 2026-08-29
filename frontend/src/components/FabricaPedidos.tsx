@@ -2179,7 +2179,9 @@ export function FabricaPedidos() {
                 havia uma terceira opcao dentro */}
             <select
               className="clonar-input"
-              style={{ minWidth: 230 }}
+              // largura fixa: sem isto o flex do container estica a caixa pra
+              // linha inteira, 1967px pra tres opcoes
+              style={{ width: 250, flex: "0 0 auto" }}
               value={ajusteTipo}
               onChange={(e) =>
                 setAjusteTipo(e.target.value as "inventario" | "ajuste" | "consumo")
