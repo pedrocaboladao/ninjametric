@@ -48,6 +48,15 @@ const VAZIO = {
 };
 type Rascunho = typeof VAZIO;
 
+// minusculo e sem acento dos dois lados: quem digita "cancao" tem que achar
+// "Canção", e quem digita "GALAO" tem que achar "GALÃO"
+function semAcento(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 export function FabricaProdutos() {
   const [produtos, setProdutos] = useState<FabricaProduto[] | null>(null);
   const [formulas, setFormulas] = useState<FormulaResumo[]>([]);
@@ -102,20 +111,54 @@ export function FabricaProdutos() {
     };
   }, [rascunho.formulaId]);
 
+  // Cada palavra procurada separada, em qualquer ordem e sem acento.
+  //
+  // Antes era um pedaco so, e casava em qualquer um dos campos: "resiflex 18"
+  // nao achava nada, porque nenhum campo sozinho continha as duas palavras
+  // nessa ordem. Num catalogo de 5.266 SKUs, procurar exige combinar — cor,
+  // tamanho, familia — e o operador nao lembra a ordem em que o SKU foi escrito.
+  //
+  // O codigo de barras entra junto: quem esta com o produto na mao bipa.
   const filtrados = useMemo(() => {
-    const t = busca.trim().toLowerCase();
     let base = produtos ?? [];
     if (filtroOrigem) base = base.filter((p) => p.origem === filtroOrigem);
-    if (!t) return base;
-    // codigo de barras entra na busca: quem esta com o produto na mao bipa
-    return base.filter(
-      (p) =>
-        p.sku.toLowerCase().includes(t) ||
-        p.nome.toLowerCase().includes(t) ||
-        (p.ean ?? "").includes(t) ||
-        (p.familia ?? "").toLowerCase().includes(t)
-    );
+    const termos = semAcento(busca).split(/\s+/).filter(Boolean);
+    if (!termos.length) return base;
+    return base.filter((p) => {
+      const alvo = semAcento(
+        [
+          p.sku,
+          p.nome,
+          p.ean ?? "",
+          p.familia ?? "",
+          p.tipo,
+          p.origem,
+          p.formulaNome ?? "",
+          p.embalagemNome ?? "",
+          String(p.precoVenda),
+          p.precoVenda.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+        ].join(" ")
+      );
+      return termos.every((t) => alvo.includes(t));
+    });
   }, [produtos, busca, filtroOrigem]);
+
+  // O total do que a busca achou.
+  //
+  // A margem aqui e media simples, e sai dito com todas as letras: sem
+  // quantidade vendida nao da pra ponderar, e uma media simples de catalogo nao
+  // e a margem do negocio. Chamar de "margem" sem qualificar deixaria comparar
+  // com os 18,9% do DRE, que sao outra conta.
+  const achado = useMemo(() => {
+    const ativos = filtrados.filter((p) => p.ativo);
+    const semCusto = filtrados.filter((p) => p.semCusto.length).length;
+    const comMargem = ativos.filter((p) => p.precoVenda > 0 && !p.semCusto.length);
+    const margem =
+      comMargem.length
+        ? comMargem.reduce((t, p) => t + p.percentualLucro, 0) / comMargem.length
+        : 0;
+    return { n: filtrados.length, ativos: ativos.length, semCusto, margem, comMargem: comMargem.length };
+  }, [filtrados]);
 
   // Produto com custo zero nao se denuncia: ele aparece com 100% de margem, o
   // que passa por otimo em vez de cadastro pela metade. Seis EMBORRACHADO
@@ -495,10 +538,16 @@ export function FabricaProdutos() {
       <div className="financeiro-filtros">
         <input
           className="clonar-input"
-          placeholder="Buscar por nome, SKU, código de barras ou família"
+          placeholder="Buscar: nome, SKU, código de barras, família, preço…"
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
+          title="Cada palavra é procurada separada e em qualquer ordem, sem acento: 'resiflex 18 cinza' acha o mesmo que 'cinza resiflex 18'."
         />
+        {busca && (
+          <button type="button" className="btn-excluir" onClick={() => setBusca("")}>
+            Limpar
+          </button>
+        )}
         <button
           type="button"
           className="btn-responder"
@@ -529,6 +578,38 @@ export function FabricaProdutos() {
           </button>
         )}
       </div>
+
+      {busca.trim() && (
+        <p className="financeiro-td-mudo">
+          {achado.n === 0 ? (
+            <>
+              Nada encontrado para <strong>{busca}</strong>.
+            </>
+          ) : (
+            <>
+              <strong>
+                {achado.n} produto{achado.n === 1 ? "" : "s"}
+              </strong>{" "}
+              · {achado.ativos} ativo{achado.ativos === 1 ? "" : "s"}
+              {achado.semCusto > 0 && (
+                <>
+                  {" "}
+                  · <strong>{achado.semCusto} sem custo</strong>
+                </>
+              )}
+              {achado.comMargem > 0 && (
+                <>
+                  {" "}
+                  · margem média {(100 * achado.margem).toFixed(1)}%{" "}
+                  <span title="Média simples entre os produtos, sem peso de quantidade vendida. Não é a margem do mês — essa está no DRE.">
+                    (média simples, sem peso de venda)
+                  </span>
+                </>
+              )}
+            </>
+          )}
+        </p>
+      )}
 
       {semCusto.length > 0 && (
         <div className="credito-alerta">
