@@ -8,7 +8,12 @@ import {
   trocarCodigo,
   urlDeAutorizacao,
 } from "../services/blingAuth";
-import { buscarVendas, paraTexto, pedidoCru } from "../services/blingPedidosService";
+import {
+  buscarVendas,
+  listarPedidos as listarPedidosBling,
+  paraTexto,
+  pedidoCru,
+} from "../services/blingPedidosService";
 import { puxarContatos, sincronizarContatos } from "../services/blingContatosService";
 import {
   rodadaEmAndamento,
@@ -248,12 +253,27 @@ fabricaBlingRouter.post("/contatos/sincronizar", async (req, res) => {
 // tres dias depois que a maquina parou de lancar.
 // Devolve um pedido do Bling como ele vem, pra dar pra ver que campos existem
 // de verdade em vez de confiar na documentacao. So leitura.
+// Aceita o id interno do Bling ou o numero do pedido — que e o que aparece na
+// tela dele e o unico que alguem tem na mao. Com numero, precisa da data pra
+// achar o id sem varrer o historico inteiro.
 fabricaBlingRouter.get("/pedido-cru/:id", async (req, res) => {
-  const id = Number(req.params.id);
+  let id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) {
     return res.status(400).json({ error: "Id inválido." });
   }
+  const data = typeof req.query.data === "string" ? req.query.data : "";
   try {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+      const doDia = await listarPedidosBling(data, data);
+      const achado = doDia.find((p) => String(p.numero) === String(req.params.id));
+      if (!achado) {
+        return res.status(404).json({
+          error: `Não achei o pedido ${req.params.id} em ${data}.`,
+          numeros: doDia.map((p) => p.numero),
+        });
+      }
+      id = achado.id;
+    }
     res.json(await pedidoCru(id));
   } catch (err) {
     erro(res, err, "Falha ao ler o pedido no Bling.");
