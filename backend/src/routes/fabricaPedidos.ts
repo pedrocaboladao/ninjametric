@@ -37,6 +37,7 @@ import {
 import {
   listarContaCorrente,
   extratoDoCliente,
+  contarPagamentos,
   listarPagamentos,
   registrarPagamento,
   excluirPagamento,
@@ -149,9 +150,15 @@ fabricaPedidosRouter.get("/conta-corrente/:clienteId", async (req, res) => {
   }
 });
 
-fabricaPedidosRouter.get("/pagamentos", async (_req, res) => {
+fabricaPedidosRouter.get("/pagamentos", async (req, res) => {
+  const limite = Number(req.query.limite);
   try {
-    res.json({ pagamentos: await listarPagamentos() });
+    // o total vem junto: sem ele quem soma na tela soma errado e nao descobre
+    const [pagamentos, resumo] = await Promise.all([
+      listarPagamentos(Number.isInteger(limite) && limite > 0 ? limite : undefined),
+      contarPagamentos(),
+    ]);
+    res.json({ pagamentos, total: resumo.total, valorTotal: resumo.valor });
   } catch (err) {
     erro(res, err, "Falha ao carregar pagamentos.");
   }

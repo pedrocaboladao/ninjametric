@@ -235,6 +235,10 @@ export function FabricaPedidos() {
   const [linhas, setLinhas] = useState<LinhaRascunho[]>([{ ...LINHA_VAZIA }]);
 
   const [buscaPedido, setBuscaPedido] = useState("");
+  // quantos pagamentos existem de verdade, contra os que couberam na tela
+  const [totalPagamentos, setTotalPagamentos] = useState(0);
+  const [valorTotalPagamentos, setValorTotalPagamentos] = useState(0);
+  const [todosPagamentos, setTodosPagamentos] = useState(false);
 
   // Quantos pedidos o filtro tem de verdade, contra os que couberam na tela.
   const [totalPedidos, setTotalPedidos] = useState(0);
@@ -261,7 +265,7 @@ export function FabricaPedidos() {
       ]);
       const [cc, pg, dv, cr, id] = await Promise.all([
         fetchContaCorrente(),
-        fetchPagamentos(),
+        fetchPagamentos(todosPagamentos ? 5000 : undefined),
         fetchDevolucoes(),
         fetchCreditos(),
         fetchIdadeDoSaldo(),
@@ -272,7 +276,9 @@ export function FabricaPedidos() {
       setSaldosCredito(cr.saldos);
       setAlertasCredito(cr.alertas);
       setPercentual(cr.percentual);
-      setPagamentos(pg);
+      setPagamentos(pg.pagamentos);
+      setTotalPagamentos(pg.total);
+      setValorTotalPagamentos(pg.valorTotal);
       setDevolucoes(dv.devolucoes);
       setNotasPendentes(dv.notasPendentes);
       setConsolidado(dv.consolidado);
@@ -287,7 +293,7 @@ export function FabricaPedidos() {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
       setPedidos([]);
     }
-  }, [filtroCliente, filtroStatus, mostrarTodos]);
+  }, [filtroCliente, filtroStatus, mostrarTodos, todosPagamentos]);
 
   // Buscar em cima de 200 de 334 acharia menos do que existe, e o operador nao
   // teria como saber. Digitou, carrega tudo.
@@ -2552,6 +2558,30 @@ export function FabricaPedidos() {
           )}
 
           <h2>PIX recebidos</h2>
+          {/* o total sai sempre, mostrando tudo ou nao: quem soma na tela tem que
+              poder comparar com o extrato do banco sem descobrir depois que
+              faltavam R$ 2,1 milhoes atras do teto da listagem */}
+          <p className="financeiro-td-mudo">
+            {totalPagamentos > pagamentos.length ? (
+              <>
+                Mostrando {pagamentos.length} de <strong>{totalPagamentos}</strong> recebimentos.
+                No total são <strong>{formatCurrency(valorTotalPagamentos)}</strong>, e é esse
+                valor que o fechamento usa.{" "}
+                <button
+                  type="button"
+                  className="fabricacao-envase-nome-editavel"
+                  onClick={() => setTodosPagamentos(true)}
+                >
+                  Mostrar todos os {totalPagamentos}
+                </button>
+              </>
+            ) : (
+              <>
+                {totalPagamentos} recebimento{totalPagamentos === 1 ? "" : "s"} ·{" "}
+                <strong>{formatCurrency(valorTotalPagamentos)}</strong>
+              </>
+            )}
+          </p>
           <div className="financeiro-tabela-wrap">
             <table className="financeiro-tabela">
               <thead>
