@@ -2203,8 +2203,11 @@ export function FabricaPedidos() {
               value={ajusteQtd}
               onChange={(e) => setAjusteQtd(e.target.value)}
             />
+            {/* o motivo esticava pra 1967px e jogava o Registrar pra linha de
+                baixo: a coluna larga era o campo opcional, e o botao sumia */}
             <input
               className="clonar-input"
+              style={{ width: 320, flex: "0 1 320px" }}
               placeholder="Motivo (opcional)"
               value={ajusteMotivo}
               onChange={(e) => setAjusteMotivo(e.target.value)}
