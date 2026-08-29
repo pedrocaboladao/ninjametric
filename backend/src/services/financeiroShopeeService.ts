@@ -1,5 +1,5 @@
 import { pool } from "../db/pool";
-import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos, ShopeeOrderItemModel } from "./shopeeApi";
+import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos } from "./shopeeApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 
@@ -181,20 +181,15 @@ export async function listarVendasFinanceirasShopee(
   const vendas: VendaFinanceiraShopee[] = [];
   for (const loja of detalhesPorLoja) {
     for (const pedido of loja.detalhes) {
-      // Item com variação (cor/tamanho) tem o SKU e a quantidade em cada
-      // entrada de model_list, não no item em si — sem variação, o próprio
-      // item_sku/quantidade já bastam. Achata tudo numa lista de "linhas"
-      // primeiro, porque a taxa (comissão + serviço) só vem no nível do
-      // PEDIDO inteiro — precisa do total do pedido pra ratear por linha.
-      const linhas = (pedido.item_list ?? []).flatMap((item) => {
-        const semVariacao: ShopeeOrderItemModel = {};
-        const modelos = item.model_list && item.model_list.length > 0 ? item.model_list : [semVariacao];
-        return modelos.map((modelo) => {
-          const sku = modelo.model_sku || item.item_sku || null;
-          const quantidade = modelo.model_quantity_purchased ?? 1;
-          const valorUnitario = modelo.model_discounted_price ?? 0;
-          return { item, sku, quantidade, valorUnitario, receitaTotal: valorUnitario * quantidade };
-        });
+      // Cada entrada de item_list já é uma linha vendida (um line_item_id) —
+      // monta a lista primeiro porque a taxa (comissão + serviço) só vem no
+      // nível do PEDIDO inteiro, precisa do total do pedido pra ratear por
+      // linha depois.
+      const linhas = (pedido.item_list ?? []).map((item) => {
+        const sku = item.model_sku || item.item_sku || null;
+        const quantidade = item.model_quantity_purchased ?? 1;
+        const valorUnitario = item.model_discounted_price ?? 0;
+        return { item, sku, quantidade, valorUnitario, receitaTotal: valorUnitario * quantidade };
       });
 
       const receitaTotalPedido = linhas.reduce((soma, l) => soma + l.receitaTotal, 0);
