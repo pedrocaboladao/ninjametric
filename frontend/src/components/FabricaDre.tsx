@@ -267,7 +267,16 @@ export function FabricaDre() {
               </td>
             </tr>
             <tr>
-              <td className="financeiro-td-mudo">(−) Despesa variável</td>
+              <td className="financeiro-td-mudo">
+                (−) Despesa variável
+                {dre.consumoProprio > 0 && (
+                  <>
+                    {" "}
+                    · inclui {formatCurrency(dre.consumoProprio)} que a fábrica consumiu do
+                    próprio estoque
+                  </>
+                )}
+              </td>
               <td className="financeiro-th-numero financeiro-td-mudo">
                 {formatCurrency(dre.despesaVariavel)}
               </td>

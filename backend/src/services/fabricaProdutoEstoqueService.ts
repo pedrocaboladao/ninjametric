@@ -46,6 +46,9 @@ export interface AjusteProduto {
   data: string;
   quantidade: number;
   motivo: string | null;
+  // uso próprio da fábrica, com o custo do momento gravado junto
+  consumo: boolean;
+  custoUnitario: number | null;
 }
 
 export async function producaoPorProduto(): Promise<Map<number, number>> {
@@ -140,8 +143,11 @@ export async function listarAjustesProduto(limite = 50): Promise<AjusteProduto[]
     data: string;
     quantidade: string;
     motivo: string | null;
+    consumo: boolean;
+    custo_unitario: string | null;
   }>(
-    `SELECT a.id, a.produto_id, pr.nome, a.data, a.quantidade, a.motivo
+    `SELECT a.id, a.produto_id, pr.nome, a.data, a.quantidade, a.motivo,
+            a.consumo, a.custo_unitario
      FROM fabrica_produto_ajustes a
      JOIN fabrica_produtos pr ON pr.id = a.produto_id
      ORDER BY a.data DESC, a.id DESC LIMIT $1`,
@@ -154,18 +160,35 @@ export async function listarAjustesProduto(limite = 50): Promise<AjusteProduto[]
     data: dataIso(r.data),
     quantidade: Number(r.quantidade),
     motivo: r.motivo,
+    consumo: r.consumo === true,
+    custoUnitario: r.custo_unitario === null ? null : Number(r.custo_unitario),
   }));
 }
 
+// `consumo` diz que a saída é uso próprio da fábrica, não quebra nem inventário.
+//
+// O custo é gravado agora e não recalculado depois — mesma regra do item do
+// pedido. Sem isso, o resultado de um mês fechado mudaria toda vez que o preço
+// de compra mudasse.
 export async function registrarAjusteProduto(
   produtoId: number,
   quantidade: number,
-  motivo: string | null
+  motivo: string | null,
+  consumo = false
 ): Promise<{ id: number }> {
+  let custoUnitario: number | null = null;
+  if (consumo) {
+    const { rows: p } = await pool.query<{ custo_compra: string | null }>(
+      "SELECT custo_compra FROM fabrica_produtos WHERE id = $1",
+      [produtoId]
+    );
+    const c = Number(p[0]?.custo_compra ?? 0);
+    custoUnitario = Number.isFinite(c) && c > 0 ? c : null;
+  }
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO fabrica_produto_ajustes (produto_id, quantidade, motivo)
-     VALUES ($1, $2, $3) RETURNING id`,
-    [produtoId, quantidade, motivo]
+    `INSERT INTO fabrica_produto_ajustes (produto_id, quantidade, motivo, consumo, custo_unitario)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [produtoId, quantidade, motivo, consumo, custoUnitario]
   );
   return { id: rows[0].id };
 }

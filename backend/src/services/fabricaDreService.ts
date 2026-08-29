@@ -67,6 +67,15 @@ export interface Dre {
   impostoLancado: number;
   receitaLiquida: number;
   custoProdutos: number;
+  // O que a fábrica consumiu do próprio estoque no período.
+  //
+  // Saco, fita e caixa saem por duas portas: venda pra loja e uso na expedição.
+  // A venda já aparece pelo item do pedido. O uso interno saía só pelo ajuste de
+  // estoque, que baixava o saldo e não levava custo pra lugar nenhum — consumir
+  // R$ 5.000 de saco deixava o lucro do mês R$ 5.000 maior do que foi.
+  //
+  // Não é custo do produto vendido: não foi vendido. É despesa da operação.
+  consumoProprio: number;
   // compra de mercadoria pra revender: CPV da distribuidora, nao despesa
   custoRevenda: number;
   margemContribuicao: number;
@@ -185,7 +194,7 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   const bonificacao = Number(bonif.rows[0]?.total ?? 0);
   const percentualBonif = Number(bonif.rows[0]?.percentual ?? 3.5);
 
-  const [vendas, contas, resumoPedidos, receber] = await Promise.all([
+  const [vendas, contas, resumoPedidos, receber, consumo] = await Promise.all([
     // receita e custo saem do item do pedido, onde ficaram GRAVADOS no
     // lançamento. Recalcular com o custo de hoje mudaria o resultado de um mês
     // já fechado toda vez que a resina mudasse de preço.
@@ -229,6 +238,14 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
        FROM fabrica_contas
        WHERE tipo = 'receber' AND status <> 'cancelado'
          AND vencimento >= $1::date AND vencimento <= $2::date`,
+      [de, ate]
+    ),
+    // Consumo próprio: o ajuste marcado como uso da fábrica, pelo custo gravado
+    // no momento. A quantidade é negativa (saiu do estoque), então o ABS.
+    pool.query<{ total: string }>(
+      `SELECT COALESCE(SUM(ABS(quantidade) * COALESCE(custo_unitario, 0)), 0) AS total
+       FROM fabrica_produto_ajustes
+       WHERE consumo = TRUE AND data >= $1::date AND data <= $2::date`,
       [de, ate]
     ),
   ]);
@@ -307,6 +324,9 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
   // so o custo do que foi vendido. `custoRevenda` continua sendo devolvido pra
   // tela mostrar quanto a fabrica comprou no mes, mas nao entra no resultado.
   const custoProdutos = custoFabricado;
+  // despesa da operação, não custo do que foi vendido: não foi vendido
+  const consumoProprio = Number(consumo.rows[0]?.total ?? 0);
+  despesaVariavel += consumoProprio;
   const margemContribuicao = receitaLiquida - custoProdutos;
   // depreciacao e despesa fixa: acontece com ou sem venda no mes
   despesaFixa += depreciacao.total;
@@ -340,6 +360,7 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     impostoLancado,
     receitaLiquida,
     custoProdutos,
+    consumoProprio,
     custoRevenda,
     margemContribuicao,
     percentualMargem,
