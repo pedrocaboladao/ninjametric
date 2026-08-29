@@ -109,6 +109,15 @@ interface LinhaRascunho {
 
 const LINHA_VAZIA: LinhaRascunho = { produtoId: "", quantidade: "", precoUnitario: "" };
 
+// minusculo e sem acento dos dois lados: quem digita "cancao" tem que achar
+// "Cidade Canção"
+function semAcento(t: string): string {
+  return t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "");
+}
+
 export function FabricaPedidos() {
   const [pedidos, setPedidos] = useState<Pedido[] | null>(null);
   const [clientes, setClientes] = useState<FabricaCliente[]>([]);
@@ -225,6 +234,8 @@ export function FabricaPedidos() {
   const [observacao, setObservacao] = useState("");
   const [linhas, setLinhas] = useState<LinhaRascunho[]>([{ ...LINHA_VAZIA }]);
 
+  const [buscaPedido, setBuscaPedido] = useState("");
+
   // Quantos pedidos o filtro tem de verdade, contra os que couberam na tela.
   const [totalPedidos, setTotalPedidos] = useState(0);
   const [mostrarTodos, setMostrarTodos] = useState(false);
@@ -278,6 +289,12 @@ export function FabricaPedidos() {
     }
   }, [filtroCliente, filtroStatus, mostrarTodos]);
 
+  // Buscar em cima de 200 de 334 acharia menos do que existe, e o operador nao
+  // teria como saber. Digitou, carrega tudo.
+  useEffect(() => {
+    if (buscaPedido.trim() && !mostrarTodos) setMostrarTodos(true);
+  }, [buscaPedido, mostrarTodos]);
+
   useEffect(() => {
     void carregar();
   }, [carregar]);
@@ -297,6 +314,42 @@ export function FabricaPedidos() {
   }, [pedidos]);
 
   const alertas = useMemo(() => estoque.filter((e) => e.abaixoDoMinimo), [estoque]);
+
+  // Busca por termo solto, em qualquer ordem e sem acento.
+  //
+  // O SKU dos itens entra junto: a pergunta que os seletores de cliente e status
+  // nao respondem e "quem comprou RESIFLEX-18KG-CINZA neste mes". Sem isso seria
+  // preciso abrir pedido por pedido.
+  const pedidosVisiveis = useMemo(() => {
+    const base = pedidos ?? [];
+    const termos = semAcento(buscaPedido).split(/\s+/).filter(Boolean);
+    if (!termos.length) return base;
+    return base.filter((p) => {
+      const alvo = semAcento(
+        [
+          String(p.id),
+          p.clienteNome,
+          p.data,
+          p.status,
+          p.observacao ?? "",
+          String(p.total),
+          p.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 }),
+          p.itens.map((i) => `${i.produtoSku} ${i.produtoNome}`).join(" "),
+        ].join(" ")
+      );
+      return termos.every((t) => alvo.includes(t));
+    });
+  }, [pedidos, buscaPedido]);
+
+  // O total do que a busca achou. Devolver so a lista deixaria a soma no olho, e
+  // a pergunta e quase sempre "quanto essa loja comprou", nao "quais pedidos".
+  const achadoPedidos = useMemo(() => {
+    const validos = pedidosVisiveis.filter((p) => p.status !== "CANCELADO");
+    const total = validos.reduce((t, p) => t + p.total, 0);
+    const custo = validos.reduce((t, p) => t + p.custoTotal, 0);
+    const itens = validos.reduce((t, p) => t + p.itens.length, 0);
+    return { n: pedidosVisiveis.length, itens, total, custo, margem: total - custo };
+  }, [pedidosVisiveis]);
 
   // o saldo entra como detalhe na busca porque a pergunta logo depois de achar
   // o produto e "tem quanto?"
@@ -1337,7 +1390,43 @@ export function FabricaPedidos() {
             >
               {sincronizando ? "Buscando no Bling..." : "Sincronizar agora"}
             </button>
+            <input
+              className="clonar-input"
+              style={{ minWidth: 260, flex: 1 }}
+              placeholder="Buscar: loja, SKU, nº do pedido, valor…"
+              value={buscaPedido}
+              onChange={(e) => setBuscaPedido(e.target.value)}
+              title="Cada palavra é procurada separada e em qualquer ordem, sem acento. O SKU dos itens entra na busca: dá pra achar quem comprou um produto."
+            />
+            {buscaPedido && (
+              <button type="button" className="btn-excluir" onClick={() => setBuscaPedido("")}>
+                Limpar
+              </button>
+            )}
           </div>
+
+          {buscaPedido.trim() && (
+            <p className="financeiro-td-mudo">
+              {achadoPedidos.n === 0 ? (
+                <>
+                  Nada encontrado para <strong>{buscaPedido}</strong>.
+                </>
+              ) : (
+                <>
+                  <strong>
+                    {achadoPedidos.n} pedido{achadoPedidos.n === 1 ? "" : "s"}
+                  </strong>{" "}
+                  · {achadoPedidos.itens} item{achadoPedidos.itens === 1 ? "" : "ns"} · venda{" "}
+                  {formatCurrency(achadoPedidos.total)} · custo{" "}
+                  {formatCurrency(achadoPedidos.custo)} ·{" "}
+                  <strong>margem {formatCurrency(achadoPedidos.margem)}</strong>
+                  {achadoPedidos.total > 0 && (
+                    <> ({((100 * achadoPedidos.margem) / achadoPedidos.total).toFixed(1)}%)</>
+                  )}
+                </>
+              )}
+            </p>
+          )}
 
           {rodada && !rodada.erro && (
             <div className="credito-alerta">
@@ -1389,7 +1478,7 @@ export function FabricaPedidos() {
             </div>
           )}
 
-          {pedidos && totalPedidos > pedidos.length && (
+          {pedidos && !buscaPedido.trim() && totalPedidos > pedidos.length && (
             <p className="financeiro-td-mudo">
               Mostrando {pedidos.length} de {totalPedidos} pedidos, os mais recentes primeiro.{" "}
               <button type="button" className="btn-excluir" onClick={() => setMostrarTodos(true)}>
@@ -1419,12 +1508,14 @@ export function FabricaPedidos() {
                     <td colSpan={9}>Carregando…</td>
                   </tr>
                 )}
-                {pedidos !== null && !pedidos.length && (
+                {pedidos !== null && !pedidosVisiveis.length && (
                   <tr>
-                    <td colSpan={9}>Nenhum pedido lançado.</td>
+                    <td colSpan={9}>
+                      {buscaPedido.trim() ? "Nenhum pedido bate com a busca." : "Nenhum pedido lançado."}
+                    </td>
                   </tr>
                 )}
-                {(pedidos ?? []).map((p) => (
+                {pedidosVisiveis.map((p) => (
                   <tr key={p.id} style={p.status === "CANCELADO" ? { opacity: 0.5 } : undefined}>
                     <td>
                       <button
