@@ -1,4 +1,15 @@
-export type TipoProduto = "REVENDA" | "INSUMO";
+// O que acontece com o produto — nao o que ele e.
+//
+// Duas perguntas diferentes moravam num campo so: "eu vendo isso?" e "isso vai
+// pro Mercado Livre?". Pro saco de lixo as respostas divergem — vende sim,
+// anuncia nao — e ele nao cabia em nenhum dos dois valores. Marcado REVENDA, a
+// conferencia cobrava ele no SKU MASTER pra sempre; marcado INSUMO, mentia:
+// foram R$ 24.242,40 vendidos em agosto.
+//
+//   REVENDA          vende e anuncia no ML   -> pertence ao SKU MASTER
+//   CONSUMO_LOJA     vende so pras lojas     -> fora do master, tem preco
+//   INSUMO           a fabrica consome       -> fora do master, sem venda
+export type TipoProduto = "REVENDA" | "CONSUMO_LOJA" | "INSUMO";
 
 export type OrigemProduto = "FABRICA" | "DISTRIBUIDORA";
 

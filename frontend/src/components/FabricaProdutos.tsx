@@ -456,7 +456,8 @@ export function FabricaProdutos() {
           title="Revenda: a loja compra pra anunciar e vender. Insumo: a expedição consome — caixa, saco, fita — e não entra no SKU MASTER."
         >
           <option value="REVENDA">Revenda</option>
-          <option value="INSUMO">Insumo</option>
+          <option value="CONSUMO_LOJA">Consumo da loja — vende, não anuncia</option>
+          <option value="INSUMO">Insumo — a fábrica consome</option>
         </select>
         {rascunho.origem === "FABRICA" ? (
           <>

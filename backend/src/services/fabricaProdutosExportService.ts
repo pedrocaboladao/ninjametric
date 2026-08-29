@@ -60,7 +60,7 @@ export async function exportarProdutos(filtro: FiltroExport = {}): Promise<Buffe
   for (const p of produtos) {
     ws.addRow([
       p.origem === "FABRICA" ? "Fábrica" : "Distribuição",
-      p.tipo === "INSUMO" ? "Insumo" : "Revenda",
+      p.tipo === "INSUMO" ? "Insumo" : p.tipo === "CONSUMO_LOJA" ? "Consumo da loja" : "Revenda",
       p.sku,
       p.nome,
       p.familia ?? "",
