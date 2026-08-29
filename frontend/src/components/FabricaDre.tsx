@@ -92,6 +92,21 @@ export function FabricaDre() {
 
   const negativo = dre.resultado < 0;
 
+  // Margem media do conjunto, nao media das margens: um produto de 1.529
+  // unidades e um de 2 nao podem pesar igual.
+  const totaisProduto = dre.porProduto.reduce(
+    (t, p) => ({
+      quantidade: t.quantidade + p.quantidade,
+      receita: t.receita + p.receita,
+      custo: t.custo + p.custo,
+      margem: t.margem + p.margem,
+      percentual: 0,
+    }),
+    { quantidade: 0, receita: 0, custo: 0, margem: 0, percentual: 0 }
+  );
+  totaisProduto.percentual =
+    totaisProduto.receita > 0 ? totaisProduto.margem / totaisProduto.receita : 0;
+
   return (
     <>
       <div className="financeiro-filtros">
@@ -361,6 +376,39 @@ export function FabricaDre() {
       )}
 
       <h2>Resultado por produto</h2>
+      {/* O total antes da lista.
+        *
+        * A tabela sai ordenada por receita e tem centenas de linhas: ninguem
+        * soma quantidade com o olho, e a margem media nao e a media das margens
+        * da coluna — e a margem do conjunto. Somar percentual daria peso igual a
+        * um produto de 1.529 unidades e a um de 2, e o numero sairia errado sem
+        * parecer errado. */}
+      <div className="financeiro-stats" style={{ marginBottom: 14 }}>
+        <div className="financeiro-stat-card">
+          <span className="financeiro-stat-label">QUANTIDADE BRUTA</span>
+          <strong className="financeiro-stat-valor">
+            {totaisProduto.quantidade.toLocaleString("pt-BR")}
+          </strong>
+        </div>
+        <div className="financeiro-stat-card">
+          <span className="financeiro-stat-label">RECEITA BRUTA</span>
+          <strong className="financeiro-stat-valor">
+            {formatCurrency(totaisProduto.receita)}
+          </strong>
+        </div>
+        <div className="financeiro-stat-card">
+          <span className="financeiro-stat-label">CUSTO BRUTO</span>
+          <strong className="financeiro-stat-valor">{formatCurrency(totaisProduto.custo)}</strong>
+        </div>
+        <div className="financeiro-stat-card">
+          <span className="financeiro-stat-label">MARGEM MÉDIA</span>
+          <strong className="financeiro-stat-valor">{formatCurrency(totaisProduto.margem)}</strong>
+        </div>
+        <div className="financeiro-stat-card">
+          <span className="financeiro-stat-label">% MÉDIA</span>
+          <strong className="financeiro-stat-valor">{pct(totaisProduto.percentual)}</strong>
+        </div>
+      </div>
       <div className="financeiro-tabela-wrap">
         <table className="financeiro-tabela">
           <thead>

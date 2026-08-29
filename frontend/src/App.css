@@ -3958,6 +3958,16 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* O cabeçalho da coluna de número tem que alinhar com o número.
+ *
+ * `.financeiro-tabela thead th` traz `text-align: left` e ganha por
+ * especificidade — uma classe mais um elemento contra uma classe só. O valor ia
+ * pra direita e o título ficava na esquerda, e a tabela parecia torta em toda
+ * tela que usa esse estilo, não só no resultado por produto. */
+.financeiro-tabela thead th.financeiro-th-numero {
+  text-align: right;
+}
+
 .financeiro-td-titulo {
   max-width: 260px;
   overflow: hidden;
