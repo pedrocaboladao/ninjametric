@@ -21,7 +21,7 @@ import type {
   MovimentoEmbalagem,
 } from "../types/fabricaEmbalagens";
 import { formatCurrency } from "../utils/format";
-import { IconPlus } from "./icons";
+import { IconChevron, IconPlus } from "./icons";
 import { BotaoExcluir } from "./BotaoExcluir";
 
 // aceita "8,47" e "8.47" — o operador digita como fala
@@ -42,7 +42,16 @@ const RASCUNHO_VAZIO = {
   ativo: true,
 };
 
-export function FabricaEmbalagens() {
+// `embutido` faz a tela virar secao dentro do Custo de Fabricacao.
+//
+// A embalagem e insumo da formula: o custo dela entra no produto pela mesma
+// porta que a materia-prima. Ver as duas na mesma tela e o que deixa comparar —
+// quanto do balde, quanto da resina — sem trocar de pagina.
+//
+// O componente e um so. Duplicar a tela pra "versao de secao" criaria dois
+// lugares pra corrigir o mesmo bug.
+export function FabricaEmbalagens({ embutido = false }: { embutido?: boolean } = {}) {
+  const [secaoAberta, setSecaoAberta] = useState(false);
   const [embalagens, setEmbalagens] = useState<FabricaEmbalagem[] | null>(null);
   const [vinculos, setVinculos] = useState<VinculoEmbalagem[]>([]);
   const [compras, setCompras] = useState<MovimentoEmbalagem[]>([]);
@@ -245,28 +254,30 @@ export function FabricaEmbalagens() {
   const lista = embalagens ?? [];
   const raizes = lista.filter((e) => e.equivaleAId === null);
 
-  return (
-    <div className="financeiro-page">
-      <div className="financeiro-topo">
-        <div>
-          <div className="financeiro-stat-label">FÁBRICA DISTRIBUIDORA</div>
-          <h1>Embalagens</h1>
-          <p className="financeiro-td-mudo">
-            O balde, a bombona, o galão. O saldo não é digitado: sai do que foi comprado menos os
-            envases que os lotes já consumiram, mais os ajustes. Defina o mínimo para receber
-            alerta de compra antes de faltar.
-          </p>
+  const cabecalho = (
+    <div className="financeiro-topo">
+      <div>
+        <div className="financeiro-stat-label">FÁBRICA DISTRIBUIDORA</div>
+        <h1>Embalagens</h1>
+        <p className="financeiro-td-mudo">
+          O balde, a bombona, o galão. O saldo não é digitado: sai do que foi comprado menos os
+          envases que os lotes já consumiram, mais os ajustes. Defina o mínimo para receber
+          alerta de compra antes de faltar.
+        </p>
+      </div>
+      <div>
+        <div className="financeiro-stat-label">
+          {alertas.length ? `${alertas.length} ABAIXO DO MÍNIMO` : "VALOR EM ESTOQUE"}
         </div>
-        <div>
-          <div className="financeiro-stat-label">
-            {alertas.length ? `${alertas.length} ABAIXO DO MÍNIMO` : "VALOR EM ESTOQUE"}
-          </div>
-          <div className="financeiro-stat-valor">
-            {alertas.length ? alertas.length : formatCurrency(valorTotal)}
-          </div>
+        <div className="financeiro-stat-valor">
+          {alertas.length ? alertas.length : formatCurrency(valorTotal)}
         </div>
       </div>
+    </div>
+  );
 
+  const conteudo = (
+    <>
       {erro && <p className="financeiro-td-mudo">{erro}</p>}
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}
 
@@ -617,6 +628,42 @@ export function FabricaEmbalagens() {
           </div>
         </>
       )}
+    </>
+  );
+
+  if (embutido) {
+    return (
+      <div className="fabricacao-secao">
+        <button
+          type="button"
+          className="fabricacao-secao-toggle"
+          onClick={() => setSecaoAberta((v) => !v)}
+        >
+          <IconChevron open={secaoAberta} />
+          <IconPlus size={0} />
+          <h2>Embalagens</h2>
+          <span className="financeiro-td-mudo">
+            ({lista.length}
+            {alertas.length ? ` · ${alertas.length} abaixo do mínimo` : ""})
+          </span>
+        </button>
+        {secaoAberta && (
+          <>
+            <p className="painel-sub">
+              O balde, a bombona, o galão — insumo da fórmula, igual à matéria-prima. O saldo não é
+              digitado: sai do comprado menos o que os lotes envasaram, mais os ajustes.
+            </p>
+            {conteudo}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="financeiro-page">
+      {cabecalho}
+      {conteudo}
     </div>
   );
 }

@@ -35,6 +35,7 @@ import type {
 } from "../types/fabricacao";
 import { formatCurrency } from "../utils/format";
 import { IconPlus, IconTrash, IconClock, IconMoney, IconWrench, IconChevron, IconChimney, IconFlask } from "./icons";
+import { FabricaEmbalagens } from "./FabricaEmbalagens";
 
 function MateriasPrimasSecao({
   materiasPrimas,
@@ -1880,6 +1881,11 @@ export function Fabricacao() {
       </div>
 
       <MateriasPrimasSecao materiasPrimas={materiasPrimas} onMudou={carregarMateriasPrimas} />
+
+      {/* embalagem e insumo da formula, igual a materia-prima: o custo dela
+          entra no produto pela mesma porta. Ver as duas na mesma tela e o que
+          deixa comparar quanto e balde e quanto e resina. */}
+      <FabricaEmbalagens embutido />
 
       <div className="fabricacao-secao">
         <div className="fabricacao-secao-titulo-acao">
