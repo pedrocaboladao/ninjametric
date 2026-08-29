@@ -127,3 +127,58 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     erro(res, err, "Falha ao buscar pedidos de teste.");
   }
 });
+
+// Diagnóstico temporário pra descobrir, contra um pedido real, o campo
+// certo de taxa/comissão da Shopee — financeiroShopeeService.ts ainda não
+// desconta isso da margem porque nenhum nome de campo foi confirmado ao
+// vivo até agora (só documentação, que já se mostrou não confiável antes
+// nessa mesma integração). Devolve o get_order_detail cru e o
+// get_escrow_detail cru do pedido mais recente (ou de um order_sn
+// específico) pra inspecionar os nomes reais. Remover depois de usar.
+shopeeRouter.get("/pedido-detalhe-teste", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe ?lojaId=" });
+    return;
+  }
+  try {
+    let orderSn = typeof req.query.orderSn === "string" ? req.query.orderSn : "";
+
+    if (!orderSn) {
+      const agora = Math.floor(Date.now() / 1000);
+      const trintaDiasAtras = agora - 30 * 24 * 60 * 60;
+      const lista = await chamarApiAssinada<{
+        response?: { order_list?: { order_sn: string }[] };
+        error?: string;
+        message?: string;
+      }>(lojaId, "/api/v2/order/get_order_list", {
+        time_range_field: "create_time",
+        time_from: trintaDiasAtras,
+        time_to: agora,
+        page_size: 50,
+      });
+      if (lista.error) {
+        res.status(400).json({ error: `Shopee respondeu "${lista.error}": ${lista.message ?? ""}` });
+        return;
+      }
+      orderSn = lista.response?.order_list?.[0]?.order_sn ?? "";
+      if (!orderSn) {
+        res.status(404).json({ error: "Nenhum pedido encontrado nos últimos 30 dias." });
+        return;
+      }
+    }
+
+    const [detalhe, escrow] = await Promise.all([
+      chamarApiAssinada(lojaId, "/api/v2/order/get_order_detail", {
+        order_sn_list: orderSn,
+        response_optional_fields:
+          "item_list,total_amount,payment_method,actual_shipping_fee,estimated_shipping_fee,buyer_username",
+      }),
+      chamarApiAssinada(lojaId, "/api/v2/payment/get_escrow_detail", { order_sn: orderSn }),
+    ]);
+
+    res.json({ orderSn, detalhe, escrow });
+  } catch (err) {
+    erro(res, err, "Falha ao buscar detalhe do pedido de teste.");
+  }
+});
