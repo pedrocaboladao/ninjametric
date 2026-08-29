@@ -26,6 +26,7 @@ import {
   conferirContraSite,
   criarNoErpOqueFalta,
   gravarGtin,
+  gravarPreco,
   definirSituacaoProdutos,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
@@ -451,6 +452,52 @@ let gtinJob: {
   erro: string | null;
   resultado: unknown | null;
 } | null = null;
+
+let precoJob: { estado: string; feitos: number; total: number; erro: string | null; resultado: unknown } | null =
+  null;
+
+fabricaBlingRouter.post("/produtos/preco", (req, res) => {
+  if (precoJob && precoJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma gravação de preço rodando.", ...precoJob });
+  }
+  const b = req.body ?? {};
+  const pares = Array.isArray(b.pares)
+    ? b.pares
+        .map((p: { sku?: unknown; preco?: unknown }) => ({
+          sku: String(p.sku ?? "").trim(),
+          preco: Number(p.preco),
+        }))
+        .filter((p: { sku: string; preco: number }) => p.sku && Number.isFinite(p.preco) && p.preco > 0)
+    : [];
+  if (!pares.length) {
+    return res.status(400).json({ error: "Mande os pares { sku, preco }." });
+  }
+  const simulacao = b.simular !== false;
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: pares.length,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  precoJob = job;
+  void (async () => {
+    try {
+      const r = await gravarPreco(pares, simulacao, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      precoJob = { estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r };
+    } catch (err) {
+      console.error("[fabrica-bling] preco", err);
+      precoJob = { estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", total: pares.length });
+});
+
+fabricaBlingRouter.get("/produtos/preco", (_req, res) => {
+  res.json(precoJob ?? { estado: "nenhuma" });
+});
 
 fabricaBlingRouter.post("/produtos/gtin", (req, res) => {
   if (gtinJob && gtinJob.estado === "rodando") {

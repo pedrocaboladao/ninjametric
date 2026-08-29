@@ -635,3 +635,62 @@ export async function padronizarCodigos(
 
   return { simulacao, pares: linhas.length, linhas };
 }
+
+// ---------------------------------------------------------------------------
+// Grava o preço de venda no produto do ERP.
+//
+// O ERP tinha caminho pra código de barras e pra situação, e nenhum pra preço —
+// e é o preço que sai na nota. Mudar no site e não mudar lá deixa a loja
+// recebendo um documento com um valor e o sistema dizendo outro.
+//
+// Leitura e devolução, igual ao GTIN: busca o produto inteiro, troca só o preço
+// e manda o resto de volta como veio. Montar o corpo do zero apagaria o que o
+// Bling guarda e a gente não modela.
+
+export interface LinhaPreco {
+  sku: string;
+  preco: number;
+  situacao: "gravado" | "já era esse" | "não achei no ERP" | "erro";
+  produtoId?: number;
+  antes?: number;
+  erro?: string;
+}
+
+export async function gravarPreco(
+  pares: Array<{ sku: string; preco: number }>,
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaPreco[] }> {
+  const linhas: LinhaPreco[] = [];
+  for (let i = 0; i < pares.length; i++) {
+    const { sku, preco } = pares[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, preco, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const antes = Number((inteiro.data as { preco?: number | string }).preco ?? 0);
+      // centavo: comparar float direto marcaria 359.1 e 359.10 como diferentes
+      if (Math.abs(antes - preco) < 0.005) {
+        linhas.push({ sku, preco, situacao: "já era esse", produtoId: achado.id, antes });
+        continue;
+      }
+      if (!simulacao) {
+        await chamar("put", `/produtos/${achado.id}`, undefined, {
+          ...inteiro.data,
+          preco,
+        });
+      }
+      linhas.push({ sku, preco, situacao: "gravado", produtoId: achado.id, antes });
+    } catch (err) {
+      linhas.push({
+        sku, preco, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao gravar o preço",
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, pares.length);
+  }
+  return { simulacao, linhas };
+}
