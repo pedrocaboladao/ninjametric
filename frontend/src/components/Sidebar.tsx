@@ -18,7 +18,6 @@ import {
   IconWrench,
   IconFlask,
   IconChimney,
-  IconArchiveBox,
   IconBarcode,
   IconTag,
   IconRobot,
@@ -94,6 +93,13 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeFabricacao = temPermissao(usuario, "fabricacao");
   const podeFabricaProdutos = temPermissao(usuario, "fabrica_produtos");
   const podeFabricaClientes = temPermissao(usuario, "fabrica_clientes");
+  // Embalagem nao tem item de menu: ela mora dentro do Custo de Fabricacao,
+  // abaixo de Materias-primas, que e o lugar com que ela se parece.
+  //
+  // A permissao continua valendo. Quem so tem ela cai direto na tela ao entrar,
+  // pela escolha de view inicial — tirar a rota junto deixaria essa pessoa sem
+  // porta nenhuma, e eu nao consigo listar usuarios pra saber se existe alguem
+  // assim.
   const podeFabricaEmbalagens = temPermissao(usuario, "fabrica_embalagens");
   const podeFabricaEstoque = temPermissao(usuario, "fabrica_estoque");
   const podeFabricaPedidos = temPermissao(usuario, "fabrica_pedidos");
@@ -247,15 +253,6 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
                   >
                     <IconFlask size={16} />
                     <span>Custo de Fabricação</span>
-                  </button>
-                )}
-                {podeFabricaEmbalagens && (
-                  <button
-                    className={`sidebar-item ${view === "fabrica_embalagens" ? "sidebar-item-ativo" : ""}`}
-                    onClick={() => trocarView("fabrica_embalagens")}
-                  >
-                    <IconArchiveBox size={16} />
-                    <span>Embalagens</span>
                   </button>
                 )}
                 {podeFabricaProdutos && (
