@@ -126,6 +126,38 @@ export interface FiltroPedidos {
   limite?: number;
 }
 
+// Quantos pedidos o filtro tem no total, ignorando o teto da listagem.
+//
+// A tela mostra 200 e nao dizia que mostrava 200. Agosto de 2026 tem 334, e
+// contar na tela dava 200 — parecia dado faltando. Quem le so o que aparece
+// conclui errado, e o erro e silencioso.
+export async function contarPedidos(filtro: FiltroPedidos = {}): Promise<number> {
+  const condicoes: string[] = [];
+  const params: unknown[] = [];
+  if (filtro.clienteId) {
+    params.push(filtro.clienteId);
+    condicoes.push(`p.cliente_id = $${params.length}`);
+  }
+  if (filtro.status) {
+    params.push(filtro.status);
+    condicoes.push(`p.status = $${params.length}`);
+  }
+  if (filtro.de) {
+    params.push(filtro.de);
+    condicoes.push(`p.data >= $${params.length}::date`);
+  }
+  if (filtro.ate) {
+    params.push(filtro.ate);
+    condicoes.push(`p.data <= $${params.length}::date`);
+  }
+  const where = condicoes.length ? `WHERE ${condicoes.join(" AND ")}` : "";
+  const { rows } = await pool.query<{ n: string }>(
+    `SELECT COUNT(*) AS n FROM fabrica_pedidos p ${where}`,
+    params
+  );
+  return Number(rows[0]?.n ?? 0);
+}
+
 export async function listarPedidos(filtro: FiltroPedidos = {}): Promise<Pedido[]> {
   const condicoes: string[] = [];
   const params: unknown[] = [];
@@ -145,7 +177,9 @@ export async function listarPedidos(filtro: FiltroPedidos = {}): Promise<Pedido[
     params.push(filtro.ate);
     condicoes.push(`p.data <= $${params.length}::date`);
   }
-  params.push(filtro.limite ?? 200);
+  // teto de 5.000 mesmo quando pedem tudo: cada pedido carrega os itens junto,
+  // e um mes cheio ja passa de treze mil linhas de item
+  params.push(Math.min(Math.max(filtro.limite ?? 200, 1), 5000));
   const where = condicoes.length ? `WHERE ${condicoes.join(" AND ")}` : "";
 
   const { rows } = await pool.query<LinhaPedido>(

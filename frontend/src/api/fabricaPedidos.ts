@@ -47,19 +47,25 @@ async function semConteudo(res: Response): Promise<void> {
   }
 }
 
+// Devolve a pagina e o total do filtro. O total nao e o tamanho da lista: a
+// listagem tem teto, e sem esse numero quem conta na tela conta errado — agosto
+// de 2026 tem 334 pedidos e a tela mostrava 200, calada.
 export async function fetchPedidos(filtro: {
   clienteId?: number;
   status?: StatusPedido;
   de?: string;
   ate?: string;
-} = {}): Promise<Pedido[]> {
+  limite?: number;
+} = {}): Promise<{ pedidos: Pedido[]; total: number }> {
   const q = new URLSearchParams();
   if (filtro.clienteId) q.set("clienteId", String(filtro.clienteId));
   if (filtro.status) q.set("status", filtro.status);
   if (filtro.de) q.set("de", filtro.de);
   if (filtro.ate) q.set("ate", filtro.ate);
+  if (filtro.limite) q.set("limite", String(filtro.limite));
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos?${q}`, { credentials: "include" });
-  return (await tratarResposta<{ pedidos: Pedido[] }>(res)).pedidos;
+  const r = await tratarResposta<{ pedidos: Pedido[]; total?: number }>(res);
+  return { pedidos: r.pedidos, total: r.total ?? r.pedidos.length };
 }
 
 export async function criarPedido(entrada: PedidoEntrada): Promise<{ id: number }> {
