@@ -51,7 +51,7 @@ function lerEntrada(req: Request): ProdutoEntrada | string {
     origem: revenda ? "DISTRIBUIDORA" : "FABRICA",
     // insumo é o que a expedição consome — caixa, saco, fita. Só entra se vier
     // dito; o resto do catálogo é revenda.
-    tipo: tipo === "INSUMO" ? "INSUMO" : "REVENDA",
+    tipo: tipo === "INSUMO" || tipo === "CONSUMO_LOJA" ? tipo : "REVENDA",
     ean: texto(ean),
     familia: texto(familia),
     // custo digitado só existe na revenda: no produto de fábrica ele vem da

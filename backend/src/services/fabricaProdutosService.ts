@@ -19,9 +19,18 @@ export interface FabricaProduto {
   sku: string;
   nome: string;
   origem: "FABRICA" | "DISTRIBUIDORA";
-  // REVENDA vira anúncio no Mercado Livre; INSUMO a expedição consome — caixa,
-  // saco, fita. É por isso que insumo não pertence ao SKU MASTER.
-  tipo: "REVENDA" | "INSUMO";
+  // O que acontece com o produto — não o que ele é.
+  //
+  // Duas perguntas diferentes moravam num campo só: "eu vendo isso?" e "isso vai
+  // pro Mercado Livre?". Pro saco de lixo as respostas divergem — vende sim,
+  // anuncia não — e ele não cabia em nenhum dos dois valores. Marcado REVENDA, a
+  // conferência cobrava ele no SKU MASTER pra sempre; marcado INSUMO, mentia:
+  // foram R$ 24.242,40 vendidos em agosto de 2026.
+  //
+  //   REVENDA        vende e anuncia no ML  -> pertence ao SKU MASTER
+  //   CONSUMO_LOJA   vende só pras lojas    -> fora do master, tem preço
+  //   INSUMO         a fábrica consome      -> fora do master, sem venda
+  tipo: "REVENDA" | "CONSUMO_LOJA" | "INSUMO";
   ean: string | null;
   familia: string | null;
   // só na revenda: no produto de fábrica o custo vem da fórmula, e um número
@@ -53,7 +62,7 @@ export interface ProdutoEntrada {
   sku: string;
   nome: string;
   origem: "FABRICA" | "DISTRIBUIDORA";
-  tipo: "REVENDA" | "INSUMO";
+  tipo: "REVENDA" | "CONSUMO_LOJA" | "INSUMO";
   ean: string | null;
   familia: string | null;
   custoCompra: number | null;
@@ -179,7 +188,10 @@ function montar(
       | "DISTRIBUIDORA",
     // o padrão é revenda: insumo é a exceção, e marcar errado pra menos só
     // deixa a coisa no catálogo — marcar errado pra mais some com ela
-    tipo: (r.tipo === "INSUMO" ? "INSUMO" : "REVENDA") as "REVENDA" | "INSUMO",
+    tipo: (r.tipo === "INSUMO" || r.tipo === "CONSUMO_LOJA" ? r.tipo : "REVENDA") as
+      | "REVENDA"
+      | "CONSUMO_LOJA"
+      | "INSUMO",
     ean: r.ean,
     familia: r.familia,
     custoCompra,
