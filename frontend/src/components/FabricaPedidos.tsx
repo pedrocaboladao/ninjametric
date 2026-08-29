@@ -26,7 +26,6 @@ import {
   salvarOrigemPix,
   excluirOrigemPix,
   conferirPix,
-  conferirPlanilhaArquivo,
   fetchEntradas,
   conferirNota,
   lancarEntrada,
@@ -34,7 +33,9 @@ import {
   statusBling,
   autorizarBling,
   desconectarBling,
+  sincronizarAgora,
   sincronizarBling,
+  type RodadaSincronia,
   progressoBling,
   criarApelidoCliente,
   criarApelidoSku,
@@ -136,9 +137,15 @@ export function FabricaPedidos() {
     | "entrada"
   >("pedidos");
 
+  // "Sincronizar agora": le os ultimos 7 dias do Bling e lanca o que falta.
+  // Clicar duas vezes nao duplica — a mesma venda volta e e reconhecida.
+  const [sincronizando, setSincronizando] = useState(false);
+  const [rodada, setRodada] = useState<RodadaSincronia | null>(null);
+
   // importacao de planilha: cola o relatorio, confere, depois lanca
   const [impTexto, setImpTexto] = useState("");
-  const [impOrigem, setImpOrigem] = useState("SHOPEE");
+  // sempre BLING: com a planilha fora, nao existe outra fonte de pedido
+  const [impOrigem, setImpOrigem] = useState("BLING");
   const [conferencia, setConferencia] = useState<ConferenciaPlanilha | null>(null);
   const [importando, setImportando] = useState(false);
 
@@ -152,7 +159,6 @@ export function FabricaPedidos() {
   // "APORTE" / "AVULSA" / "IGNORAR" sao destinos que nao abatem divida
   const [pixEscolha, setPixEscolha] = useState<Record<string, string>>({});
   const pixInputRef = useRef<HTMLInputElement | null>(null);
-  const impInputRef = useRef<HTMLInputElement | null>(null);
 
   // entrada de mercadoria: a nota do fornecedor que alimenta o estoque
   const [entradas, setEntradas] = useState<Entrada[]>([]);
@@ -431,24 +437,6 @@ export function FabricaPedidos() {
 
   // Antecipação: a loja manda dinheiro antes de comprar. Vira saldo dela mais
   // os 3,5% — os dois lançamentos saem juntos do backend.
-  async function conferir() {
-    if (!impTexto.trim()) return setErro("Cole as linhas da planilha.");
-    try {
-      const c = await conferirPlanilha(impTexto, impOrigem);
-      setConferencia(c);
-      setErro(null);
-      setAviso(
-        `${c.linhas.length} linha${c.linhas.length === 1 ? "" : "s"} lida${
-          c.linhas.length === 1 ? "" : "s"
-        } de ${c.linhasNoArquivo}. ${c.prontas} pronta${c.prontas === 1 ? "" : "s"}, ${
-          c.comProblema
-        } com problema, ${c.jaImportadas} já importada${c.jaImportadas === 1 ? "" : "s"}.`
-      );
-    } catch (e) {
-      setConferencia(null);
-      setErro(e instanceof Error ? e.message : "Falha ao ler a planilha.");
-    }
-  }
 
   async function importar() {
     if (!conferencia || conferencia.prontas === 0)
@@ -1062,6 +1050,22 @@ export function FabricaPedidos() {
       .catch(() => undefined);
   }, [aba, blingProgresso, acolherBling]);
 
+  async function sincronizarDoBling() {
+    setSincronizando(true);
+    setErro(null);
+    setRodada(null);
+    try {
+      const r = await sincronizarAgora();
+      setRodada(r);
+      if (r.erro) setErro(r.erro);
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.");
+    } finally {
+      setSincronizando(false);
+    }
+  }
+
   async function puxarDoBling() {
     setBlingOcupado(true);
     setErro(null);
@@ -1318,7 +1322,66 @@ export function FabricaPedidos() {
             <button type="button" className="btn-responder" onClick={novoPedido}>
               <IconPlus size={14} /> Novo pedido
             </button>
+            <button
+              type="button"
+              className="btn-excluir"
+              disabled={sincronizando}
+              onClick={() => void sincronizarDoBling()}
+              title="Lê os últimos 7 dias do Bling e lança o que ainda não entrou. Pode clicar quantas vezes quiser: venda que já entrou é reconhecida e não duplica."
+            >
+              {sincronizando ? "Buscando no Bling..." : "Sincronizar agora"}
+            </button>
           </div>
+
+          {rodada && !rodada.erro && (
+            <div className="credito-alerta">
+              <p>
+                <strong>
+                  {rodada.pedidosCriados === 0
+                    ? "Nada novo pra lançar."
+                    : `${rodada.pedidosCriados} pedido${
+                        rodada.pedidosCriados === 1 ? "" : "s"
+                      } lançado${rodada.pedidosCriados === 1 ? "" : "s"}`}
+                </strong>{" "}
+                {rodada.pedidosCriados > 0 && (
+                  <>
+                    com {rodada.itensLancados} item
+                    {rodada.itensLancados === 1 ? "" : "ns"},{" "}
+                    {formatCurrency(rodada.valorLancado)}.{" "}
+                  </>
+                )}
+                Li {rodada.pedidosLidos} pedido
+                {rodada.pedidosLidos === 1 ? "" : "s"} do Bling de {rodada.de} a {rodada.ate}
+                {rodada.motivos["já importada antes"] ? (
+                  <>
+                    ; {rodada.motivos["já importada antes"]} linha
+                    {rodada.motivos["já importada antes"] === 1 ? "" : "s"} já tinha
+                    {rodada.motivos["já importada antes"] === 1 ? "" : "m"} entrado antes e
+                    não entrou de novo
+                  </>
+                ) : null}
+                .
+              </p>
+              {/* o que ficou de fora tem nome: contar sem dizer o que e deixa
+                  a procura pro operador, que e o trabalho que o botao existe
+                  pra tirar dele */}
+              {rodada.skusFaltando.length > 0 && (
+                <p>
+                  <strong>Falta cadastrar no site:</strong>{" "}
+                  {rodada.skusFaltando
+                    .map((s) => `${s.sku} (${s.quantidade} un, ${formatCurrency(s.valor)})`)
+                    .join(" · ")}
+                  . Cadastre e clique de novo — a venda entra sozinha.
+                </p>
+              )}
+              {rodada.clientesFaltando.length > 0 && (
+                <p>
+                  <strong>Falta cadastrar o cliente:</strong>{" "}
+                  {rodada.clientesFaltando.map((c) => c.nome).join(" · ")}.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="financeiro-tabela-wrap">
             <table className="financeiro-tabela">
@@ -1550,13 +1613,17 @@ export function FabricaPedidos() {
         <>
           <div className="financeiro-topo">
             <div>
-              <h2>Importar planilha de venda</h2>
+              <h2>Puxar vendas do Bling</h2>
               <p className="financeiro-td-mudo">
-                Cole o relatório direto do Excel — pode ser Shopee, venda direta, ou o que o
-                ERP exporta. Ele descobre as colunas pelo cabeçalho, então não precisa
-                reorganizar nada. Precisa ter <strong>SKU</strong>, porque é o SKU que diz qual
-                produto saiu do estoque; relatório só com número do pedido e total não serve
-                aqui. Nada é lançado antes de você conferir.
+                O pedido da Fábrica vem do Bling e só de lá. A importação por planilha saiu
+                daqui: agosto de 2026 entrou duas vezes — uma pela planilha, com o mês inteiro
+                empilhado no dia 31, outra pelo ERP com a data real — e o faturamento ficou
+                R$ 529.525,65 maior do que a venda. Duas fontes pra mesma venda é uma fonte
+                a mais.
+                <br />
+                Pro dia a dia use <strong>Sincronizar agora</strong>, na aba Pedidos: ele
+                pega os últimos 7 dias. Aqui embaixo é pra período fora dessa janela — refazer
+                um mês fechado, por exemplo.
               </p>
             </div>
           </div>
@@ -1648,69 +1715,18 @@ export function FabricaPedidos() {
             </div>
           )}
 
-          <div className="financeiro-filtros">
-            <input
-              className="clonar-input fabricacao-input-pequeno"
-              placeholder="Origem (SHOPEE, ERP...)"
-              value={impOrigem}
-              onChange={(e) => setImpOrigem(e.target.value.toUpperCase())}
-            />
-            <input
-              ref={impInputRef}
-              type="file"
-              accept=".xlsx,.csv,.tsv,.txt"
-              style={{ display: "none" }}
-              onChange={async (e) => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                setImportando(true);
-                setErro(null);
-                try {
-                  const c = await conferirPlanilhaArquivo(f, impOrigem);
-                  // guarda o texto convertido: quem lanca e a rota de texto,
-                  // entao arquivo e cola seguem o mesmo caminho
-                  setImpTexto(c.texto);
-                  setConferencia(c);
-                } catch (err) {
-                  setErro(err instanceof Error ? err.message : "Falha ao ler o arquivo.");
-                } finally {
-                  setImportando(false);
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="btn-excluir"
-              disabled={importando}
-              onClick={() => impInputRef.current?.click()}
-              title="Sobe a planilha como arquivo .xlsx ou .csv — mais de mil linhas travam ao colar"
-            >
-              Escolher arquivo
-            </button>
-            <button type="button" className="btn-excluir" onClick={() => void conferir()}>
-              Conferir
-            </button>
-            <button
-              type="button"
-              className="btn-responder"
-              onClick={() => void importar()}
-              disabled={!conferencia || conferencia.prontas === 0 || importando}
-            >
-              {importando
-                ? "Lançando..."
-                : `Lançar ${conferencia?.prontas ?? 0} como pedido`}
-            </button>
-          </div>
-
-          <textarea
-            className="clonar-input"
-            rows={8}
-            placeholder="Cole aqui as linhas da planilha, com o cabeçalho na primeira linha."
-            value={impTexto}
-            onChange={(e) => setImpTexto(e.target.value)}
-            style={{ width: "100%", fontFamily: "monospace", fontSize: 12 }}
-          />
+          {conferencia && (
+            <div className="financeiro-filtros">
+              <button
+                type="button"
+                className="btn-responder"
+                onClick={() => void importar()}
+                disabled={conferencia.prontas === 0 || importando}
+              >
+                {importando ? "Lançando..." : `Lançar ${conferencia.prontas} como pedido`}
+              </button>
+            </div>
+          )}
 
           {conferencia && (
             <>

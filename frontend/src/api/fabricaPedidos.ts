@@ -546,6 +546,48 @@ export async function sincronizarBling(
   return tratarResposta<ProgressoBling>(res);
 }
 
+// O que a rodada automatica faz, na hora que o operador pedir.
+//
+// Le os ultimos 7 dias do Bling e lanca o que ainda nao entrou. Pode clicar
+// quantas vezes quiser: a mesma venda volta e e reconhecida por origem +
+// documento + SKU, entao o segundo clique so acrescenta o que apareceu depois
+// do primeiro.
+export interface RodadaSincronia {
+  de: string;
+  ate: string;
+  pedidosLidos: number;
+  itensLidos: number;
+  falhas: Array<{ id: number; motivo: string }>;
+  pedidosCriados: number;
+  itensLancados: number;
+  valorLancado: number;
+  puladas: number;
+  motivos: Record<string, number>;
+  skusFaltando: Array<{ sku: string; linhas: number; quantidade: number; valor: number }>;
+  clientesFaltando: Array<{ nome: string; linhas: number; valor: number }>;
+  erro: string | null;
+}
+
+export async function sincronizarAgora(): Promise<RodadaSincronia> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/automatica`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: "{}",
+  });
+  return tratarResposta<RodadaSincronia>(res);
+}
+
+export async function ultimaRodada(): Promise<{
+  rodando: boolean;
+  ultima: RodadaSincronia | null;
+}> {
+  const res = await fetch(`${API_BASE}/api/fabrica-bling/automatica`, {
+    credentials: "include",
+  });
+  return tratarResposta<{ rodando: boolean; ultima: RodadaSincronia | null }>(res);
+}
+
 export async function progressoBling(): Promise<ProgressoBling> {
   const res = await fetch(`${API_BASE}/api/fabrica-bling/sincronizacao`, {
     credentials: "include",
