@@ -114,7 +114,13 @@ export async function buscarDetalhesPedidos(lojaId: number, orderSns: string[]):
   const resultadosPorLote = await comConcorrenciaLimitada(lotes, 5, async (lote) => {
     const data = await chamarApiAssinada<RespostaDetalhePedidos>(lojaId, "/api/v2/order/get_order_detail", {
       order_sn_list: lote.join(","),
-      response_optional_fields: "item_list",
+      // Só pedir "item_list" às vezes veio sem os dados de variação
+      // (model_list/model_discounted_price) — confirmado ao vivo com
+      // pedidos reais da Catedral (valor unitário e quantidade zerados).
+      // Pedir esse conjunto maior de campos, igual ao teste que funcionou,
+      // resolve — não está claro no que exatamente disparava a diferença.
+      response_optional_fields:
+        "item_list,total_amount,payment_method,actual_shipping_fee,estimated_shipping_fee,buyer_username",
     });
     if (data.error) {
       throw new Error(`Shopee respondeu "${data.error}": ${data.message ?? ""}`);
