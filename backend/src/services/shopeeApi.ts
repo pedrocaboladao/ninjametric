@@ -31,11 +31,12 @@ interface RespostaListaPedidos {
   };
 }
 
-// Pedidos são paginados por CURSOR (não por offset como o Mercado Livre) — a
-// Shopee devolve "next_cursor" na resposta, e a próxima chamada manda de
-// volta em "cursor". page_size máximo documentado é 100, usamos 50 por
-// segurança.
-export async function listarPedidos(
+// get_order_list rejeita ("order_list_invalid_time") uma janela maior que
+// 15 dias — não é bem documentado, só descoberto testando ao vivo com uma
+// loja real. 14 dias de margem de segurança.
+const JANELA_MAX_SEGUNDOS = 14 * 24 * 60 * 60;
+
+async function listarPedidosNaJanela(
   lojaId: number,
   timeFromUnix: number,
   timeToUnix: number
@@ -56,6 +57,26 @@ export async function listarPedidos(
     pedidos.push(...(data.response?.order_list ?? []));
     if (!data.response?.more || !data.response?.next_cursor) break;
     cursor = data.response.next_cursor;
+  }
+  return pedidos;
+}
+
+// Pedidos são paginados por CURSOR (não por offset como o Mercado Livre) — a
+// Shopee devolve "next_cursor" na resposta, e a próxima chamada manda de
+// volta em "cursor". page_size máximo documentado é 100, usamos 50 por
+// segurança. Quebra a janela pedida em pedaços de no máximo 15 dias, já que
+// a Shopee rejeita a chamada inteira se o período for maior que isso.
+export async function listarPedidos(
+  lojaId: number,
+  timeFromUnix: number,
+  timeToUnix: number
+): Promise<{ order_sn: string; order_status: string }[]> {
+  const pedidos: { order_sn: string; order_status: string }[] = [];
+  let inicio = timeFromUnix;
+  while (inicio < timeToUnix) {
+    const fim = Math.min(inicio + JANELA_MAX_SEGUNDOS, timeToUnix);
+    pedidos.push(...(await listarPedidosNaJanela(lojaId, inicio, fim)));
+    inicio = fim;
   }
   return pedidos;
 }

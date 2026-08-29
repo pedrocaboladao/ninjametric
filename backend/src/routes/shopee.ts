@@ -146,14 +146,17 @@ shopeeRouter.get("/pedido-detalhe-teste", async (req, res) => {
 
     if (!orderSn) {
       const agora = Math.floor(Date.now() / 1000);
-      const trintaDiasAtras = agora - 30 * 24 * 60 * 60;
+      // A Shopee limita get_order_list a no máximo 15 dias de janela por
+      // chamada (erro "order_list_invalid_time" acima de 15 dias) — não é
+      // documentado com clareza, só descoberto testando ao vivo.
+      const catorzeDiasAtras = agora - 14 * 24 * 60 * 60;
       const lista = await chamarApiAssinada<{
         response?: { order_list?: { order_sn: string }[] };
         error?: string;
         message?: string;
       }>(lojaId, "/api/v2/order/get_order_list", {
         time_range_field: "create_time",
-        time_from: trintaDiasAtras,
+        time_from: catorzeDiasAtras,
         time_to: agora,
         page_size: 50,
       });
