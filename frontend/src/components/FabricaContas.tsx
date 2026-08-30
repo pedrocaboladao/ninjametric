@@ -25,8 +25,8 @@ import { BuscaSelecao } from "./BuscaSelecao";
 import type { ItemBusca } from "./BuscaSelecao";
 import { fetchFornecedores } from "../api/fabricaFornecedores";
 import type { Fornecedor } from "../types/fabricaFornecedores";
-import { fetchContaCorrente } from "../api/fabricaPedidos";
-import type { ContaCorrente } from "../types/fabricaPedidos";
+import { fetchContaCorrente, fetchAlocacao, registrarPagamento } from "../api/fabricaPedidos";
+import type { ContaCorrente, Alocacao } from "../types/fabricaPedidos";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
 function num(v: string): number {
@@ -122,6 +122,14 @@ export function FabricaContas() {
   // divergiriam no primeiro pagamento parcial — que aqui e a regra, nao a
   // excecao. A loja deve pedido menos pagamento, e pronto.
   const [corrente, setCorrente] = useState<ContaCorrente[] | null>(null);
+  // abatimento do mais velho pro mais novo, calculado na hora
+  const [alocacao, setAlocacao] = useState<Alocacao | null>(null);
+  const [carregandoAloc, setCarregandoAloc] = useState(false);
+  // recebimento lancado aqui mesmo — vai pro mesmo lugar do PIX do extrato
+  const [receb, setReceb] = useState<{ clienteId: number; nome: string } | null>(null);
+  const [recebValor, setRecebValor] = useState("");
+  const [recebData, setRecebData] = useState(() => hoje());
+  const [recebObs, setRecebObs] = useState("");
 
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
   const [filtroTipo, setFiltroTipo] = useState<TipoConta>("pagar");
@@ -304,6 +312,7 @@ export function FabricaContas() {
     const grupos = new Map<
       number,
       {
+        paganteId: number;
         nome: string;
         comprado: number;
         pago: number;
@@ -317,6 +326,7 @@ export function FabricaContas() {
     >();
     for (const c of corrente ?? []) {
       const g = grupos.get(c.paganteId) ?? {
+        paganteId: c.paganteId,
         nome: c.paganteNome,
         comprado: 0, pago: 0, credito: 0, antiga: 0, saldo: 0,
         lojas: [], ultimo: null,
@@ -342,6 +352,48 @@ export function FabricaContas() {
       })
       .sort((a, b) => b.saldo - a.saldo);
   }, [corrente, busca]);
+
+  async function abrirAlocacao(paganteId: number) {
+    setCarregandoAloc(true);
+    setAlocacao(null);
+    try {
+      setAlocacao(await fetchAlocacao(paganteId));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao abrir o abatimento.");
+    } finally {
+      setCarregandoAloc(false);
+    }
+  }
+
+  async function salvarRecebimento() {
+    if (!receb) return;
+    const valor = num(recebValor);
+    if (valor <= 0) return setErro("Informe o valor recebido.");
+    setSalvando(true);
+    try {
+      const r = await registrarPagamento({
+        clienteId: receb.clienteId,
+        valor,
+        data: recebData || null,
+        observacao: recebObs.trim() || null,
+      });
+      setReceb(null);
+      setRecebValor("");
+      setRecebObs("");
+      setAviso(
+        `Recebimento lançado. Saldo agora ${formatCurrency(r.saldo)}` +
+          (r.bonificacao
+            ? ` · bonificação de ${formatCurrency(r.bonificacao)}${r.provisorio ? " (provisória)" : ""}`
+            : "")
+      );
+      setErro(null);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao lançar o recebimento.");
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   const porCategoria = useMemo(() => {
     const m = new Map<
@@ -508,6 +560,127 @@ export function FabricaContas() {
 
       {erro && <p className="financeiro-td-mudo ordem-sem-impressao">{erro}</p>}
       {aviso && <p className="financeiro-td-mudo ordem-sem-impressao">{aviso}</p>}
+
+      {receb && (
+        <Modal
+          titulo="Lançar recebimento"
+          subtitulo={`${receb.nome} · vai pro mesmo lugar do PIX do extrato`}
+          onFechar={() => setReceb(null)}
+        >
+          <div className="clonar-form">
+            <input
+              className="clonar-input"
+              placeholder="Valor recebido"
+              value={recebValor}
+              onChange={(e) => setRecebValor(e.target.value)}
+              autoFocus
+            />
+            <input
+              className="clonar-input"
+              type="date"
+              value={recebData}
+              onChange={(e) => setRecebData(e.target.value)}
+            />
+            <input
+              className="clonar-input"
+              placeholder="Observação (opcional)"
+              value={recebObs}
+              onChange={(e) => setRecebObs(e.target.value)}
+            />
+            <p className="financeiro-td-mudo">
+              Cai na conta de <strong>{receb.nome}</strong> e abate do pedido mais velho pra
+              frente. Quita 100% do que ela deve e a bonificação entra sozinha.
+            </p>
+            <button
+              type="button"
+              className="btn-responder"
+              onClick={() => void salvarRecebimento()}
+              disabled={salvando}
+            >
+              {salvando ? "Lançando…" : "Lançar recebimento"}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {(alocacao || carregandoAloc) && (
+        <Modal
+          titulo={alocacao ? `O que já foi pago — ${alocacao.paganteNome}` : "Carregando…"}
+          subtitulo={
+            alocacao
+              ? `${formatCurrency(alocacao.entrou)} entrou · ${formatCurrency(
+                  alocacao.divida
+                )} devido · ${formatCurrency(alocacao.emAberto)} em aberto`
+              : undefined
+          }
+          onFechar={() => setAlocacao(null)}
+        >
+          {!alocacao ? (
+            <p className="financeiro-td-mudo">Montando a fila…</p>
+          ) : (
+            <>
+              <p className="financeiro-td-mudo">
+                Fila por data, do mais velho pro mais novo. O dinheiro que entrou vai descendo e
+                quita cada linha até acabar — a linha do meio fica <strong>partida</strong>, com
+                parte paga e parte em aberto. Isso é calculado na hora, não é gravado: o total
+                sai da conta corrente e não tem como discordar dela.
+              </p>
+              {alocacao.sobra > 0 && (
+                <p className="financeiro-td-mudo">
+                  Sobrou <strong>{formatCurrency(alocacao.sobra)}</strong> — pagou mais do que
+                  devia. Fica de crédito pro próximo pedido.
+                </p>
+              )}
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>DATA</th>
+                      <th>O QUE É</th>
+                      <th>LOJA</th>
+                      <th className="financeiro-th-numero">VALOR</th>
+                      <th className="financeiro-th-numero">PAGO</th>
+                      <th className="financeiro-th-numero">EM ABERTO</th>
+                      <th>IDADE</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!alocacao.itens.length && (
+                      <tr>
+                        <td colSpan={7}>Nada devido.</td>
+                      </tr>
+                    )}
+                    {alocacao.itens.map((i) => (
+                      <tr
+                        key={`${i.tipo}-${i.referencia ?? i.clienteId}-${i.data}`}
+                        style={i.aberto === 0 ? { opacity: 0.45 } : undefined}
+                      >
+                        <td className="financeiro-td-mudo">{data(i.data)}</td>
+                        <td>
+                          {i.tipo === "anterior"
+                            ? "Dívida de antes do sistema"
+                            : `Pedido ${i.referencia}`}
+                        </td>
+                        <td className="financeiro-td-mudo">{i.clienteNome}</td>
+                        <td className="financeiro-th-numero">{formatCurrency(i.valor)}</td>
+                        <td className="financeiro-th-numero financeiro-td-mudo">
+                          {i.abatido ? formatCurrency(i.abatido) : "—"}
+                        </td>
+                        <td className="financeiro-th-numero">
+                          {i.aberto ? <strong>{formatCurrency(i.aberto)}</strong> : "quitado"}
+                        </td>
+                        <td className="financeiro-td-mudo">
+                          {i.aberto ? `${i.dias}d` : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
 
       {filtroTipo === "receber" && (
         <p className="financeiro-td-mudo ordem-sem-impressao">
@@ -922,22 +1095,32 @@ export function FabricaContas() {
                 <th className="financeiro-th-numero">CRÉDITO</th>
                 <th className="financeiro-th-numero">EM ABERTO</th>
                 <th>ÚLTIMO PIX</th>
+                <th />
               </tr>
             </thead>
             <tbody>
               {corrente === null && (
                 <tr>
-                  <td colSpan={8}>Carregando…</td>
+                  <td colSpan={9}>Carregando…</td>
                 </tr>
               )}
               {corrente !== null && !receber.length && (
                 <tr>
-                  <td colSpan={8}>Nenhuma loja com movimento.</td>
+                  <td colSpan={9}>Nenhuma loja com movimento.</td>
                 </tr>
               )}
               {receber.map((g) => (
                 <tr key={g.nome}>
-                  <td>{g.nome}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="fabricacao-envase-nome-editavel"
+                      onClick={() => void abrirAlocacao(g.paganteId)}
+                      title="Ver o que este dinheiro já pagou, do pedido mais velho pro mais novo."
+                    >
+                      {g.nome}
+                    </button>
+                  </td>
                   <td className="financeiro-td-mudo">{g.lojas.join(", ") || "—"}</td>
                   <td className="financeiro-th-numero financeiro-td-mudo">
                     {g.antiga ? formatCurrency(g.antiga) : "—"}
@@ -951,6 +1134,22 @@ export function FabricaContas() {
                     <strong>{formatCurrency(g.saldo)}</strong>
                   </td>
                   <td className="financeiro-td-mudo">{g.ultimo ? data(g.ultimo) : "—"}</td>
+                  <td>
+                    <button
+                      type="button"
+                      className="btn-responder"
+                      style={{ padding: "2px 8px", fontSize: 11 }}
+                      onClick={() => {
+                        setReceb({ clienteId: g.paganteId, nome: g.nome });
+                        setRecebValor(g.saldo > 0 ? String(g.saldo.toFixed(2)) : "");
+                        setRecebData(hoje());
+                        setRecebObs("");
+                        setErro(null);
+                      }}
+                    >
+                      Receber
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
