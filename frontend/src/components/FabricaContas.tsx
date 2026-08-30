@@ -455,15 +455,26 @@ export function FabricaContas() {
           </p>
         </div>
         <div className="financeiro-topo-numeros">
-          {aba === "contas" && (
+          {aba === "contas" && filtroTipo === "receber" && (
             <div>
-              <div className="financeiro-stat-label">
-                {filtroTipo === "receber" ? "FATURADO" : "BRUTO"} {rotuloPeriodo}
+              {/* conta corrente nao tem recorte de periodo: divida rola de uma
+                  semana pra outra, e cortar por mes esconderia o que sobrou */}
+              <div className="financeiro-stat-label">AS LOJAS DEVEM</div>
+              <div className="financeiro-stat-valor">
+                {formatCurrency(receber.reduce((s, g) => s + Math.max(0, g.saldo), 0))}
               </div>
+              <div className="financeiro-stat-sub">
+                {formatCurrency(receber.reduce((s, g) => s + g.comprado, 0))} comprado ·{" "}
+                {formatCurrency(receber.reduce((s, g) => s + g.pago, 0))} pago · acumulado
+              </div>
+            </div>
+          )}
+          {aba === "contas" && filtroTipo === "pagar" && (
+            <div>
+              <div className="financeiro-stat-label">BRUTO {rotuloPeriodo}</div>
               <div className="financeiro-stat-valor">{formatCurrency(brutoPeriodo)}</div>
               <div className="financeiro-stat-sub">
-                {formatCurrency(pagoNoPeriodo)} {filtroTipo === "receber" ? "recebido" : "pago"} ·{" "}
-                {formatCurrency(faltaPagar)} em aberto
+                {formatCurrency(pagoNoPeriodo)} pago · {formatCurrency(faltaPagar)} em aberto
               </div>
             </div>
           )}
@@ -483,6 +494,15 @@ export function FabricaContas() {
 
       {erro && <p className="financeiro-td-mudo ordem-sem-impressao">{erro}</p>}
       {aviso && <p className="financeiro-td-mudo ordem-sem-impressao">{aviso}</p>}
+
+      {filtroTipo === "receber" && (
+        <p className="financeiro-td-mudo ordem-sem-impressao">
+          O que cada loja deve é <strong>pedido menos pagamento</strong>, acumulado desde o
+          começo — não tem recorte de mês, porque dívida rola de uma semana pra outra. O
+          agrupamento é por <strong>quem manda o PIX</strong>. Recebimento se lança em Pedidos,
+          junto com o extrato.
+        </p>
+      )}
 
       <p className="contas-cabecalho-impressao">
         {filtroTipo === "receber" ? "Contas a receber" : "Contas a pagar"} da Fábrica
