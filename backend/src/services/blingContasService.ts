@@ -1,0 +1,214 @@
+import axios from "axios";
+import { pool } from "../db/pool";
+import { tokenValido } from "./blingAuth";
+
+// Confere as contas a pagar do site contra o Bling.
+//
+// O ERP é quem manda: a nota de compra nasce lá. O site tem cópia porque é dela
+// que sai o custo do DRE — e cópia que ninguém confere é cópia que envelhece.
+//
+// Só lê. Não grava nada no Bling nem no site: a conferência aponta a diferença
+// e quem decide o que fazer é o Hudson. Acertar sozinho, num lugar onde o
+// número vira custo, é como a receita fantasma de agosto começou.
+
+const BASE = "https://api.bling.com.br/Api/v3";
+const POR_PAGINA = 100;
+// mesmo teto de 3 chamadas por segundo do resto da API
+const ESPACO_MS = 350;
+const TENTATIVAS = 4;
+
+const dormir = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let proximaLivre = 0;
+
+async function vez(): Promise<void> {
+  const agora = Date.now();
+  const quando = Math.max(agora, proximaLivre);
+  proximaLivre = quando + ESPACO_MS;
+  if (quando > agora) await dormir(quando - agora);
+}
+
+async function chamar<T>(caminho: string, params?: Record<string, unknown>): Promise<T> {
+  let espera = 2000;
+  for (let tentativa = 1; ; tentativa++) {
+    await vez();
+    const token = await tokenValido();
+    try {
+      const { data } = await axios.get<T>(`${BASE}${caminho}`, {
+        params,
+        headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+        timeout: 30000,
+      });
+      return data;
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 429 && tentativa < TENTATIVAS) {
+        await dormir(espera);
+        espera *= 2;
+        continue;
+      }
+      if (axios.isAxiosError(err) && err.response) {
+        const d = err.response.data as unknown;
+        const t = typeof d === "string" ? d : JSON.stringify(d);
+        throw new Error(`Bling ${err.response.status}: ${t.slice(0, 300)}`);
+      }
+      throw err;
+    }
+  }
+}
+
+interface ContaBling {
+  id: number;
+  situacao?: number | string;
+  vencimento?: string;
+  valor?: number;
+  saldo?: number;
+  numeroDocumento?: string;
+  historico?: string;
+  contato?: { id?: number; nome?: string };
+}
+
+export interface ContaConferida {
+  documento: string;
+  contraparte: string;
+  vencimento: string;
+  valor: number;
+  // o que difere entre os dois lados, escrito em português
+  diferenca?: string;
+  blingId?: number;
+  siteId?: number;
+}
+
+export interface ConferenciaContas {
+  de: string;
+  ate: string;
+  noBling: number;
+  noSite: number;
+  conferem: number;
+  soNoBling: ContaConferida[];
+  soNoSite: ContaConferida[];
+  divergentes: ContaConferida[];
+}
+
+// Todas as páginas do período. Sem filtro de situação: conta já paga sai do
+// filtro "em aberto" e apareceria como buraco no site — o contrário do que a
+// conferência serve pra achar.
+async function baixarDoBling(de: string, ate: string): Promise<ContaBling[]> {
+  const contas: ContaBling[] = [];
+  for (let pagina = 1; pagina <= 60; pagina++) {
+    const r = await chamar<{ data?: ContaBling[] }>("/contas/pagar", {
+      pagina,
+      limite: POR_PAGINA,
+      dataVencimentoInicial: de,
+      dataVencimentoFinal: ate,
+    });
+    const lote = r.data ?? [];
+    contas.push(...lote);
+    if (lote.length < POR_PAGINA) break;
+  }
+  return contas;
+}
+
+// O número do documento é a chave. No Bling da Fábrica ele vem no histórico —
+// "700296" — e às vezes em numeroDocumento; o site guarda em `documento`.
+function chave(...candidatos: Array<string | null | undefined>): string | null {
+  for (const c of candidatos) {
+    const t = String(c ?? "").trim();
+    if (/^\d{4,}$/.test(t)) return t;
+  }
+  return null;
+}
+
+const dinheiro = (v: unknown) => Math.round(Number(v ?? 0) * 100) / 100;
+const dia = (v: unknown) => String(v ?? "").slice(0, 10);
+
+interface LinhaSite {
+  id: number;
+  documento: string | null;
+  descricao: string;
+  contraparte: string | null;
+  valor: string;
+  vencimento: string;
+}
+
+export async function conferirContasPagar(de: string, ate: string): Promise<ConferenciaContas> {
+  const [bling, { rows: site }] = await Promise.all([
+    baixarDoBling(de, ate),
+    pool.query<LinhaSite>(
+      `SELECT id, documento, descricao, contraparte, valor, vencimento::text AS vencimento
+         FROM fabrica_contas
+        WHERE tipo = 'pagar' AND vencimento BETWEEN $1::date AND $2::date`,
+      [de, ate]
+    ),
+  ]);
+
+  // indexa o site pelo documento; o que não tem número entra por
+  // contraparte + vencimento + valor, que é o que sobra pra identificar a conta
+  const porChave = new Map<string, LinhaSite>();
+  const porFato = new Map<string, LinhaSite>();
+  for (const s of site) {
+    const k = chave(s.documento, s.descricao);
+    if (k) porChave.set(k, s);
+    porFato.set(
+      `${(s.contraparte ?? "").toUpperCase()}|${dia(s.vencimento)}|${dinheiro(s.valor)}`,
+      s
+    );
+  }
+
+  const soNoBling: ContaConferida[] = [];
+  const divergentes: ContaConferida[] = [];
+  const vistos = new Set<number>();
+  let conferem = 0;
+
+  for (const b of bling) {
+    const nome = b.contato?.nome ?? "";
+    const venc = dia(b.vencimento);
+    const valor = dinheiro(b.valor);
+    const k = chave(b.numeroDocumento, b.historico);
+    const achado =
+      (k ? porChave.get(k) : undefined) ??
+      porFato.get(`${nome.toUpperCase()}|${venc}|${valor}`);
+    const linha: ContaConferida = {
+      documento: k ?? b.historico ?? String(b.id),
+      contraparte: nome,
+      vencimento: venc,
+      valor,
+      blingId: b.id,
+    };
+    if (!achado) {
+      soNoBling.push(linha);
+      continue;
+    }
+    vistos.add(achado.id);
+    const problemas: string[] = [];
+    if (dinheiro(achado.valor) !== valor)
+      problemas.push(`valor: Bling ${valor} × site ${dinheiro(achado.valor)}`);
+    if (dia(achado.vencimento) !== venc)
+      problemas.push(`vencimento: Bling ${venc} × site ${dia(achado.vencimento)}`);
+    if (problemas.length) {
+      divergentes.push({ ...linha, siteId: achado.id, diferenca: problemas.join("; ") });
+    } else {
+      conferem++;
+    }
+  }
+
+  const soNoSite: ContaConferida[] = site
+    .filter((s) => !vistos.has(s.id))
+    .map((s) => ({
+      documento: s.documento ?? s.descricao,
+      contraparte: s.contraparte ?? "",
+      vencimento: dia(s.vencimento),
+      valor: dinheiro(s.valor),
+      siteId: s.id,
+    }));
+
+  return {
+    de,
+    ate,
+    noBling: bling.length,
+    noSite: site.length,
+    conferem,
+    soNoBling,
+    soNoSite,
+    divergentes,
+  };
+}

@@ -32,6 +32,8 @@ import {
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
+import { conferirContasPagar } from "../services/blingContasService";
+
 export const fabricaBlingRouter = Router();
 
 // O state liga o retorno do Bling à sessão que começou a autorização. Fica em
@@ -48,6 +50,22 @@ function erro(res: Response, err: unknown, padrao: string) {
   console.error("[fabrica-bling]", err);
   res.status(400).json({ error: err instanceof Error ? err.message : padrao });
 }
+
+// Conferencia de contas a pagar: so le, dos dois lados. O acerto e decisao do
+// Hudson — numero que vira custo nao se corrige sozinho.
+fabricaBlingRouter.get("/contas/conferir", async (req, res) => {
+  const DIA = new RegExp("^\d{4}-\d{2}-\d{2}$");
+  const d = (v: unknown, padrao: string) => (DIA.test(String(v ?? "")) ? String(v) : padrao);
+  const hoje = new Date().toISOString().slice(0, 10);
+  try {
+    res.json(await conferirContasPagar(d(req.query.de, "2026-07-01"), d(req.query.ate, hoje)));
+  } catch (err) {
+    console.error("[bling-contas]", err);
+    res.status(400).json({
+      error: err instanceof Error && err.message ? err.message : "Falha ao conferir as contas.",
+    });
+  }
+});
 
 fabricaBlingRouter.get("/status", async (_req, res) => {
   try {
