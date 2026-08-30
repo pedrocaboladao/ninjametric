@@ -54,6 +54,7 @@ import { iniciarSnapshotCatalogo } from "./services/agenteCatalogoService";
 import { iniciarVerificacaoAgenteConversao } from "./services/agenteConversaoService";
 import { iniciarVerificacaoPlanoDiario } from "./services/agentePlanoDiarioService";
 import { iniciarSnapshotAnunciosNegativos } from "./services/anunciosNegativosService";
+import { iniciarSnapshotExperienciaCompra } from "./services/experienciaCompraService";
 import { iniciarWhatsApp } from "./services/whatsappService";
 
 const app = express();
@@ -166,4 +167,5 @@ iniciarSnapshotCatalogo();
 iniciarVerificacaoAgenteConversao();
 iniciarVerificacaoPlanoDiario();
 iniciarSnapshotAnunciosNegativos();
+iniciarSnapshotExperienciaCompra();
 iniciarWhatsApp();

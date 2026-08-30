@@ -252,6 +252,94 @@ export async function listarItensAtivos(lojaId: number, mlUserId: number): Promi
   return Array.from(new Set([...itemIds, ...itensCatalogo]));
 }
 
+const CAP_CANDIDATOS_POR_GAUGE = 150;
+
+// "reputation_health_gauge" (unhealthy/warning) devolve uma lista de
+// candidatos a problema de qualidade de anúncio — não é um proxy limpo só
+// da Experiência de Compra (mistura anúncio parado, ficha de catálogo
+// divergente etc., confirmado ao vivo contra a Catedral: itens "warning"
+// que na verdade tinham nota "Boa"). Serve só pra reduzir a lista antes de
+// checar o detalhe de cada um (ver getPurchaseExperienceDoItem). Paginação
+// normal por offset (não precisa do scan/scroll de listarItensAtivos,
+// porque paramos bem antes do teto de 1000 pelo cap abaixo). Loja com mais
+// candidatos que o cap tem o resto ignorado nessa rodada — aviso explícito
+// no log, nunca corta calado.
+export async function buscarCandidatosSaudeReputacao(
+  lojaId: number,
+  mlUserId: number,
+  gauge: "unhealthy" | "warning",
+  cap: number = CAP_CANDIDATOS_POR_GAUGE
+): Promise<string[]> {
+  const accessToken = await getValidAccessToken(lojaId);
+  const itemIds: string[] = [];
+  let offset = 0;
+  let total = 0;
+  const limit = 50;
+
+  while (itemIds.length < cap) {
+    const { data } = await axios.get<{ results: string[]; paging: { total: number } }>(
+      `${ML_API_BASE}/users/${mlUserId}/items/search`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { reputation_health_gauge: gauge, offset, limit },
+      }
+    );
+    itemIds.push(...data.results);
+    total = data.paging.total;
+    if (data.results.length < limit) break;
+    offset += limit;
+  }
+
+  if (total > cap) {
+    console.warn(
+      `[mercadoLivreApi] loja ${lojaId}: ${total} candidatos "${gauge}", checando só os primeiros ${cap}.`
+    );
+  }
+
+  return itemIds.slice(0, cap);
+}
+
+export interface PurchaseExperienceDetalhe {
+  color: string;
+  value: number;
+  text: string | null;
+  motivoTexto: string | null;
+  recomendacaoTexto: string | null;
+}
+
+// item_id não vem no corpo da resposta (só "up_id" pra item de catálogo) —
+// quem chama já sabe o item_id, foi ele que passou na URL. "locale" é
+// obrigatório (achado ao vivo: sem ele, 400 "Missing or invalid locale").
+export async function getPurchaseExperienceDoItem(
+  lojaId: number,
+  itemId: string
+): Promise<PurchaseExperienceDetalhe | null> {
+  try {
+    const accessToken = await getValidAccessToken(lojaId);
+    const { data } = await axios.get<{
+      reputation?: { color?: string; value?: number; text?: string };
+      reasoning?: { subtitles?: { text?: string }[] };
+      recommendations?: { subtitles?: { text?: string }[] };
+      principal_actionable?: { text?: string };
+    }>(`${ML_API_BASE}/reputation/items/${itemId}/purchase_experience/integrators`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { locale: "pt_BR" },
+    });
+
+    if (!data.reputation) return null;
+
+    return {
+      color: data.reputation.color ?? "gray",
+      value: data.reputation.value ?? -1,
+      text: data.reputation.text ?? null,
+      motivoTexto: data.reasoning?.subtitles?.[0]?.text ?? null,
+      recomendacaoTexto: data.recommendations?.subtitles?.[0]?.text ?? data.principal_actionable?.text ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export interface MlPromocaoAtiva {
   ativa: boolean;
   precoPromocional: number | null;

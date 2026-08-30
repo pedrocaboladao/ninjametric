@@ -125,6 +125,22 @@ export interface AnuncioNegativo {
   atualizadoEm: string;
 }
 
+export interface ExperienciaCompraRuim {
+  lojaId: number;
+  lojaNome: string;
+  itemId: string;
+  titulo: string;
+  thumbnail: string | null;
+  permalink: string | null;
+  sku: string | null;
+  reputationColor: string;
+  reputationValue: number;
+  reputationText: string | null;
+  motivoTexto: string | null;
+  recomendacaoTexto: string | null;
+  atualizadoEm: string;
+}
+
 export interface ComparacaoSkuLoja {
   lojaId: number;
   lojaNome: string;

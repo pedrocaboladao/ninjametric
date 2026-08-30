@@ -6,6 +6,7 @@ import type {
   ProdutoEstoqueBaixo,
   VendaNegativa,
   AnuncioNegativo,
+  ExperienciaCompraRuim,
 } from "../types/dashboard";
 import type { Loja } from "./lojas";
 
@@ -58,6 +59,16 @@ export async function fetchAnunciosNegativos(lojaId?: number | "minhas"): Promis
   const res = await fetch(`${API_BASE}/api/dashboard/anuncios-negativos${query}`, { credentials: "include" });
   if (!res.ok) {
     throw new Error(`Falha ao buscar anúncios com margem negativa: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.anuncios;
+}
+
+export async function fetchExperienciaCompraRuim(lojaId?: number | "minhas"): Promise<ExperienciaCompraRuim[]> {
+  const query = lojaId ? `?lojaId=${lojaId}` : "";
+  const res = await fetch(`${API_BASE}/api/dashboard/experiencia-compra${query}`, { credentials: "include" });
+  if (!res.ok) {
+    throw new Error(`Falha ao buscar experiência de compra: ${res.status}`);
   }
   const data = await res.json();
   return data.anuncios;

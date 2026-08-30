@@ -751,6 +751,24 @@ CREATE TABLE IF NOT EXISTS anuncios_negativos_snapshot (
   UNIQUE (loja_id, item_id)
 );
 CREATE INDEX IF NOT EXISTS idx_anuncios_negativos_snapshot_loja ON anuncios_negativos_snapshot (loja_id);
+
+CREATE TABLE IF NOT EXISTS experiencia_compra_snapshot (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  item_id TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  thumbnail TEXT,
+  permalink TEXT,
+  sku TEXT,
+  reputation_color TEXT NOT NULL,
+  reputation_value NUMERIC(5, 1) NOT NULL,
+  reputation_text TEXT,
+  motivo_texto TEXT,
+  recomendacao_texto TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (loja_id, item_id)
+);
+CREATE INDEX IF NOT EXISTS idx_experiencia_compra_snapshot_loja ON experiencia_compra_snapshot (loja_id);
 CREATE INDEX IF NOT EXISTS idx_agente_plano_diario_itens_plano ON agente_plano_diario_itens (plano_id);
 
 -- Histórico do chat manual do Growth Hacker — pedido do dono pra continuar

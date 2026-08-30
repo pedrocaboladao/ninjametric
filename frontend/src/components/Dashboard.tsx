@@ -9,12 +9,14 @@ import {
   fetchEstoqueBaixo,
   fetchVendasNegativas,
   fetchAnunciosNegativos,
+  fetchExperienciaCompraRuim,
 } from "../api/dashboard";
 import type {
   RankingPrecificacao as RankingPrecificacaoTipo,
   ProdutoEstoqueBaixo,
   VendaNegativa,
   AnuncioNegativo,
+  ExperienciaCompraRuim as ExperienciaCompraRuimTipo,
 } from "../types/dashboard";
 import { DashboardHeader } from "./DashboardHeader";
 import { HeroFaturamento } from "./HeroFaturamento";
@@ -26,6 +28,7 @@ import { RankingPrecificacao } from "./RankingPrecificacao";
 import { EstoqueBaixo } from "./EstoqueBaixo";
 import { VendasNegativas } from "./VendasNegativas";
 import { AnunciosNegativos } from "./AnunciosNegativos";
+import { ExperienciaCompraRuim } from "./ExperienciaCompraRuim";
 import { PainelEstudo } from "./PainelEstudo";
 import type { Usuario } from "../types/usuarios";
 
@@ -52,6 +55,7 @@ export function Dashboard({ usuario }: Props) {
   const [lojaFiltroEstoque, setLojaFiltroEstoque] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroVendasNegativas, setLojaFiltroVendasNegativas] = useState<number | "todas" | "minhas">("todas");
   const [lojaFiltroAnunciosNegativos, setLojaFiltroAnunciosNegativos] = useState<number | "todas" | "minhas">("todas");
+  const [lojaFiltroExperienciaCompra, setLojaFiltroExperienciaCompra] = useState<number | "todas" | "minhas">("todas");
   const [modoDataPrecificacao, setModoDataPrecificacao] = useState<"hoje" | "7dias">("hoje");
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -116,6 +120,14 @@ export function Dashboard({ usuario }: Props) {
     buscarAnunciosNegativos,
     true
   );
+
+  const buscarExperienciaCompra = useCallback(
+    () => fetchExperienciaCompraRuim(lojaFiltroExperienciaCompra === "todas" ? undefined : lojaFiltroExperienciaCompra),
+    [lojaFiltroExperienciaCompra]
+  );
+  const { dados: experienciaCompraRuim, erro: erroExperienciaCompra } = useBuscaComCancelamento<
+    ExperienciaCompraRuimTipo[]
+  >(buscarExperienciaCompra, true);
 
   function handleExpandir() {
     if (!containerRef.current) return;
@@ -264,6 +276,23 @@ export function Dashboard({ usuario }: Props) {
                   lojas={lojas}
                   lojaFiltro={lojaFiltroAnunciosNegativos}
                   onChangeLojaFiltro={setLojaFiltroAnunciosNegativos}
+                />
+              )}
+
+              {erroExperienciaCompra && (
+                <div className="state-message state-error painel painel-top-vendidos">
+                  Erro ao carregar experiência de compra: {erroExperienciaCompra}
+                </div>
+              )}
+              {!erroExperienciaCompra && !experienciaCompraRuim && (
+                <div className="state-message painel painel-top-vendidos">Carregando experiência de compra...</div>
+              )}
+              {experienciaCompraRuim && (
+                <ExperienciaCompraRuim
+                  anuncios={experienciaCompraRuim}
+                  lojas={lojas}
+                  lojaFiltro={lojaFiltroExperienciaCompra}
+                  onChangeLojaFiltro={setLojaFiltroExperienciaCompra}
                 />
               )}
             </div>
