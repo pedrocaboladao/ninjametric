@@ -32,7 +32,7 @@ import {
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
-import { conferirContasPagar } from "../services/blingContasService";
+import { conferirContasPagar, procurarContatos } from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
 
@@ -63,6 +63,19 @@ fabricaBlingRouter.get("/contas/conferir", async (req, res) => {
     console.error("[bling-contas]", err);
     res.status(400).json({
       error: err instanceof Error && err.message ? err.message : "Falha ao conferir as contas.",
+    });
+  }
+});
+
+fabricaBlingRouter.get("/contatos/procurar", async (req, res) => {
+  const termo = String(req.query.termo ?? "").trim();
+  if (termo.length < 3) return res.status(400).json({ error: "Termo curto demais." });
+  try {
+    res.json({ contatos: await procurarContatos(termo) });
+  } catch (err) {
+    console.error("[bling-contatos-procurar]", err);
+    res.status(400).json({
+      error: err instanceof Error && err.message ? err.message : "Falha ao procurar.",
     });
   }
 });
