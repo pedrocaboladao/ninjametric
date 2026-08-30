@@ -33,7 +33,12 @@ import {
   statusBling,
   autorizarBling,
   desconectarBling,
+  excluirFechamento,
+  fecharCiclo,
+  fetchFechamentos,
+  previaFechamento,
   sincronizarAgora,
+  type Fechamento,
   sincronizarBling,
   type RodadaSincronia,
   progressoBling,
@@ -235,6 +240,14 @@ export function FabricaPedidos() {
   const [linhas, setLinhas] = useState<LinhaRascunho[]>([{ ...LINHA_VAZIA }]);
 
   const [buscaPedido, setBuscaPedido] = useState("");
+
+  // fechamento de cobranca: o ciclo proposto, a previa e o historico congelado
+  const [fechamentos, setFechamentos] = useState<Fechamento[]>([]);
+  const [fechDe, setFechDe] = useState("");
+  const [fechAte, setFechAte] = useState("");
+  const [fechObs, setFechObs] = useState("");
+  const [previa, setPrevia] = useState<Fechamento | null>(null);
+  const [fechando, setFechando] = useState(false);
   // quantos pagamentos existem de verdade, contra os que couberam na tela
   const [totalPagamentos, setTotalPagamentos] = useState(0);
   const [valorTotalPagamentos, setValorTotalPagamentos] = useState(0);
@@ -1180,6 +1193,71 @@ export function FabricaPedidos() {
     }
   }
 
+  // O ciclo proposto vem do servidor: dia seguinte ao ultimo fechamento ate
+  // hoje. Quem fecha pode mover — feriado e falta empurram o dia.
+  const carregarFechamentos = useCallback(async () => {
+    try {
+      const r = await fetchFechamentos();
+      setFechamentos(r.fechamentos);
+      setFechDe((v) => v || r.proximo.de);
+      setFechAte((v) => v || r.proximo.ate);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao carregar os fechamentos.");
+    }
+  }, []);
+
+  async function verPrevia() {
+    if (!fechDe || !fechAte) return setErro("Escolha o período.");
+    try {
+      setPrevia(await previaFechamento(fechDe, fechAte));
+      setErro(null);
+    } catch (e) {
+      setPrevia(null);
+      setErro(e instanceof Error ? e.message : "Falha ao montar a prévia.");
+    }
+  }
+
+  async function congelarCiclo() {
+    if (!previa) return setErro("Veja a prévia antes de fechar.");
+    const total = previa.linhas.reduce((s, l) => s + l.emAberto, 0);
+    if (
+      !window.confirm(
+        `Fechar o ciclo de ${data(fechDe)} a ${data(fechAte)}?
+
+` +
+          `${previa.linhas.length} loja(s), ${formatCurrency(total)} em aberto.
+
+` +
+          "Os números ficam congelados: PIX que chegar depois entra no próximo ciclo, não neste."
+      )
+    )
+      return;
+    setFechando(true);
+    try {
+      await fecharCiclo(fechDe, fechAte, fechObs.trim() || null);
+      setAviso(`Ciclo de ${data(fechDe)} a ${data(fechAte)} fechado.`);
+      setPrevia(null);
+      setFechObs("");
+      setFechDe("");
+      setFechAte("");
+      await carregarFechamentos();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao fechar o ciclo.");
+    } finally {
+      setFechando(false);
+    }
+  }
+
+  async function apagarFechamento(id: number) {
+    if (!window.confirm("Apagar este fechamento? O ciclo volta a ficar em aberto.")) return;
+    try {
+      await excluirFechamento(id);
+      await carregarFechamentos();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao apagar o fechamento.");
+    }
+  }
+
   async function puxarDoBling() {
     setBlingOcupado(true);
     setErro(null);
@@ -1267,6 +1345,7 @@ export function FabricaPedidos() {
 
   useEffect(() => {
     if (aba === "pix") void carregarOrigensPix();
+    if (aba === "fechamento") void carregarFechamentos();
   }, [aba, carregarOrigensPix]);
 
   async function conferirArquivoPix(arquivo: File) {
@@ -2334,6 +2413,168 @@ export function FabricaPedidos() {
             <div>
               <div className="financeiro-stat-label">AS LOJAS DEVEM</div>
               <div className="financeiro-stat-valor">{formatCurrency(totalDevido)}</div>
+            </div>
+          </div>
+
+          {/* O ciclo de cobranca. Nao e semana de calendario: o periodo vem
+              sugerido e quem fecha decide — feriado, falta e atraso empurram o
+              dia, e a ferramenta acompanha em vez de brigar. */}
+          <h3>Fechar o ciclo</h3>
+          <p className="financeiro-td-mudo">
+            Terça a segunda é o ritual, não uma regra: mova as datas se o dia escorregou. Veja a
+            prévia, confira, e feche. Depois de fechado os números congelam — PIX que chegar
+            depois entra no ciclo seguinte, e o que você mandou pra loja continua batendo.
+          </p>
+          <div className="financeiro-filtros">
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              value={fechDe}
+              onChange={(e) => {
+                setFechDe(e.target.value);
+                setPrevia(null);
+              }}
+              title="Início do ciclo"
+            />
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              value={fechAte}
+              onChange={(e) => {
+                setFechAte(e.target.value);
+                setPrevia(null);
+              }}
+              title="Fim do ciclo"
+            />
+            <input
+              className="clonar-input"
+              style={{ width: 320, flex: "0 1 320px" }}
+              placeholder="Observação (opcional)"
+              value={fechObs}
+              onChange={(e) => setFechObs(e.target.value)}
+            />
+            <button type="button" className="btn-excluir" onClick={() => void verPrevia()}>
+              Ver prévia
+            </button>
+            <button
+              type="button"
+              className="btn-responder"
+              disabled={!previa || fechando}
+              onClick={() => void congelarCiclo()}
+            >
+              {fechando ? "Fechando…" : "Fechar ciclo"}
+            </button>
+          </div>
+
+          {previa && (
+            <div className="financeiro-tabela-wrap">
+              <table className="financeiro-tabela">
+                <thead>
+                  <tr>
+                    <th>QUEM PAGA</th>
+                    <th className="financeiro-th-numero">VALOR PREVISTO</th>
+                    <th className="financeiro-th-numero">RECEBIDO</th>
+                    <th className="financeiro-th-numero">DESCONTOS</th>
+                    <th className="financeiro-th-numero">EM ABERTO</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!previa.linhas.length && (
+                    <tr>
+                      <td colSpan={5}>Nenhuma loja com movimento no período.</td>
+                    </tr>
+                  )}
+                  {previa.linhas.map((l) => (
+                    <tr key={l.clienteId}>
+                      <td>
+                        {l.clienteNome}
+                        {l.lojas.length > 1 && (
+                          <span className="financeiro-td-mudo"> · {l.lojas.join(", ")}</span>
+                        )}
+                      </td>
+                      <td className="financeiro-th-numero">{formatCurrency(l.previsto)}</td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {formatCurrency(l.recebido)}
+                      </td>
+                      <td className="financeiro-th-numero financeiro-td-mudo">
+                        {l.desconto ? formatCurrency(l.desconto) : "—"}
+                      </td>
+                      <td className="financeiro-th-numero">{formatCurrency(l.emAberto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td>
+                      <strong>TOTAL</strong>
+                    </td>
+                    <td className="financeiro-th-numero">
+                      {formatCurrency(previa.linhas.reduce((s, l) => s + l.previsto, 0))}
+                    </td>
+                    <td className="financeiro-th-numero">
+                      {formatCurrency(previa.linhas.reduce((s, l) => s + l.recebido, 0))}
+                    </td>
+                    <td className="financeiro-th-numero">
+                      {formatCurrency(previa.linhas.reduce((s, l) => s + l.desconto, 0))}
+                    </td>
+                    <td className="financeiro-th-numero">
+                      <strong>
+                        {formatCurrency(previa.linhas.reduce((s, l) => s + l.emAberto, 0))}
+                      </strong>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+
+          {fechamentos.length > 0 && (
+            <>
+              <h3>Ciclos fechados</h3>
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>PERÍODO</th>
+                      <th>LOJAS</th>
+                      <th className="financeiro-th-numero">PREVISTO</th>
+                      <th className="financeiro-th-numero">RECEBIDO</th>
+                      <th className="financeiro-th-numero">EM ABERTO</th>
+                      <th>OBSERVAÇÃO</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fechamentos.map((f) => (
+                      <tr key={f.id ?? 0}>
+                        <td>
+                          {data(f.de)} a {data(f.ate)}
+                        </td>
+                        <td className="financeiro-td-mudo">{f.linhas.length}</td>
+                        <td className="financeiro-th-numero">
+                          {formatCurrency(f.linhas.reduce((s, l) => s + l.previsto, 0))}
+                        </td>
+                        <td className="financeiro-th-numero financeiro-td-mudo">
+                          {formatCurrency(f.linhas.reduce((s, l) => s + l.recebido, 0))}
+                        </td>
+                        <td className="financeiro-th-numero">
+                          {formatCurrency(f.linhas.reduce((s, l) => s + l.emAberto, 0))}
+                        </td>
+                        <td className="financeiro-td-mudo">{f.observacao ?? "—"}</td>
+                        <td>
+                          <BotaoExcluir onConfirmar={() => void apagarFechamento(f.id ?? 0)} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <div className="financeiro-topo">
+            <div>
+              <h3>Saldo corrido, hoje</h3>
             </div>
           </div>
 
