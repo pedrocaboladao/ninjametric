@@ -7,6 +7,8 @@ import {
   lerRelatorioPix,
   listarOrigens,
   salvarOrigem,
+  conferirReapontes,
+  aplicarReapontes,
   type DestinoPix,
 } from "../services/fabricaPixService";
 
@@ -24,6 +26,26 @@ function erro(res: Response, err: unknown, msg: string) {
   console.error(msg, err);
   res.status(500).json({ error: err instanceof Error ? err.message : msg });
 }
+
+fabricaPixRouter.get("/reapontar", async (_req, res) => {
+  try {
+    res.json({ fora: await conferirReapontes() });
+  } catch (err) {
+    erro(res, err, "Falha ao conferir os pagamentos.");
+  }
+});
+
+fabricaPixRouter.post("/reapontar", async (req, res) => {
+  const ids = Array.isArray((req.body ?? {}).ids)
+    ? (req.body.ids as unknown[]).map(Number).filter((n) => Number.isInteger(n) && n > 0)
+    : [];
+  if (!ids.length) return res.status(400).json({ error: "Escolha os pagamentos." });
+  try {
+    res.json({ movidos: await aplicarReapontes(ids) });
+  } catch (err) {
+    erro(res, err, "Falha ao reapontar os pagamentos.");
+  }
+});
 
 fabricaPixRouter.get("/origens", async (_req, res) => {
   try {

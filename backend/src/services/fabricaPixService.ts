@@ -499,3 +499,114 @@ export async function importarPix(linhas: LinhaPix[]): Promise<ResultadoPix> {
     pendentes,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Reapontar pagamento pro dono que a origem diz.
+//
+// A origem do PIX pode ser corrigida depois que o dinheiro ja foi lancado — e
+// quando isso acontece o pagamento antigo fica onde estava, apontando pra loja
+// errada, calado. Foi o que aconteceu com o grupo Truck: R$ 259.392,37 pagos
+// pela Truck 4 dormindo na conta da Truck Ponto Com, porque os cinco primeiros
+// PIX entraram antes de alguem arrumar o mapa. O de 26/08, ja com o mapa certo,
+// caiu na loja certa — e por isso ninguem desconfiou dos outros.
+//
+// Isso nao inventa dinheiro nem apaga: o valor e o e2e continuam os mesmos, so
+// muda de conta. O total do grupo fica igual ao centavo.
+
+export interface Reaponte {
+  pagamentoId: number;
+  e2e: string;
+  data: string;
+  valor: number;
+  pagador: string;
+  deId: number;
+  deNome: string;
+  paraId: number;
+  paraNome: string;
+}
+
+export async function conferirReapontes(): Promise<Reaponte[]> {
+  const [{ rows: pix }, { rows: origens }] = await Promise.all([
+    pool.query<{
+      e2e: string;
+      data: string;
+      pagador: string;
+      valor: string;
+      pagamento_id: number;
+      cliente_id: number;
+      cliente_nome: string;
+    }>(
+      `SELECT x.e2e, x.data::text AS data, x.pagador, x.valor, x.pagamento_id,
+              p.cliente_id, c.nome AS cliente_nome
+         FROM fabrica_pix_recebido x
+         JOIN fabrica_pagamentos p ON p.id = x.pagamento_id
+         JOIN fabrica_clientes c ON c.id = p.cliente_id
+        WHERE x.destino = 'CLIENTE'
+        ORDER BY x.data, x.e2e`
+    ),
+    pool.query<{ chave: string; cliente_id: number | null; cliente_nome: string | null }>(
+      `SELECT o.chave, o.cliente_id, c.nome AS cliente_nome
+         FROM fabrica_pix_origem o
+         LEFT JOIN fabrica_clientes c ON c.id = o.cliente_id
+        WHERE o.destino = 'CLIENTE' AND o.cliente_id IS NOT NULL`
+    ),
+  ]);
+  const porChave = new Map(origens.map((o) => [o.chave, o]));
+
+  const fora: Reaponte[] = [];
+  for (const r of pix) {
+    const o = porChave.get(chaveOrigem(r.pagador));
+    // sem origem cadastrada nao da pra dizer que esta errado — so que ninguem
+    // ensinou o nome ainda
+    if (!o || !o.cliente_id || o.cliente_id === r.cliente_id) continue;
+    fora.push({
+      pagamentoId: r.pagamento_id,
+      e2e: r.e2e,
+      data: r.data,
+      valor: Number(r.valor),
+      pagador: r.pagador,
+      deId: r.cliente_id,
+      deNome: r.cliente_nome,
+      paraId: o.cliente_id,
+      paraNome: o.cliente_nome ?? "",
+    });
+  }
+  return fora;
+}
+
+// Move os pagamentos escolhidos. Le a conferencia de novo em vez de confiar no
+// destino que veio da tela: entre ver e clicar alguem pode ter mexido no mapa,
+// e ai o clique mandaria o dinheiro pra terceira loja.
+export async function aplicarReapontes(ids: number[]): Promise<Reaponte[]> {
+  const alvo = new Set(ids);
+  const plano = (await conferirReapontes()).filter((r) => alvo.has(r.pagamentoId));
+  if (!plano.length) return [];
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    for (const r of plano) {
+      await cliente.query("UPDATE fabrica_pagamentos SET cliente_id = $2 WHERE id = $1", [
+        r.pagamentoId,
+        r.paraId,
+      ]);
+      await cliente.query(
+        "UPDATE fabrica_pix_recebido SET cliente_id = $2 WHERE pagamento_id = $1",
+        [r.pagamentoId, r.paraId]
+      );
+      // a bonificacao nasceu deste pagamento; deixar pra tras daria desconto na
+      // loja que nao pagou
+      await cliente.query("UPDATE fabrica_creditos SET cliente_id = $2 WHERE pagamento_id = $1", [
+        r.pagamentoId,
+        r.paraId,
+      ]);
+    }
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  return plano;
+}
