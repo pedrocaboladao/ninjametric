@@ -212,3 +212,27 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     divergentes,
   };
 }
+
+// Procura contato no Bling por nome. Só lê.
+//
+// O extrato do Sicoob traz o nome de quem pagou, nunca o CNPJ. Quando aparece um
+// pagador que não bate com loja nenhuma, o único lugar que sabe de quem é o
+// documento é o ERP — e sem isso a conciliação vira chute.
+export async function procurarContatos(termo: string): Promise<
+  Array<{ id: number; nome: string; documento: string | null; tipo: string | null }>
+> {
+  const r = await chamar<{
+    data?: Array<{
+      id: number;
+      nome?: string;
+      numeroDocumento?: string;
+      tipo?: string;
+    }>;
+  }>("/contatos", { pesquisa: termo, limite: 100 });
+  return (r.data ?? []).map((c) => ({
+    id: c.id,
+    nome: c.nome ?? "",
+    documento: c.numeroDocumento ?? null,
+    tipo: c.tipo ?? null,
+  }));
+}
