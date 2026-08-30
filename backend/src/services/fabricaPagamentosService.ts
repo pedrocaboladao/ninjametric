@@ -401,11 +401,33 @@ export async function proximoPeriodo(): Promise<{ de: string; ate: string }> {
 // ciclo.
 export async function montarFechamento(de: string, ate: string): Promise<Fechamento> {
   const contas = await listarContaCorrente();
-  const { rows: pagos } = await pool.query<{ cliente_id: number; total: string }>(
-    `SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos
-      WHERE data >= $1::date AND data <= $2::date GROUP BY cliente_id`,
-    [de, ate]
-  );
+  // Saldo NA DATA do fechamento, não o de hoje.
+  //
+  // A conta-corrente é sempre "agora". Fechar um ciclo atrasado — que é
+  // justamente o caso quando feriado ou falta empurram o dia — mostraria o saldo
+  // de hoje com o rótulo de outra data, e a loja receberia uma cobrança que não
+  // corresponde a período nenhum.
+  const [{ rows: compradoAte }, { rows: pagoAte }, { rows: pagos }] = await Promise.all([
+    pool.query<{ cliente_id: number; total: string }>(
+      `SELECT p.cliente_id, SUM(i.quantidade * i.preco_unitario) AS total
+         FROM fabrica_pedidos p JOIN fabrica_pedido_itens i ON i.pedido_id = p.id
+        WHERE p.status <> 'CANCELADO' AND p.data <= $1::date
+        GROUP BY p.cliente_id`,
+      [ate]
+    ),
+    pool.query<{ cliente_id: number; total: string }>(
+      `SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos
+        WHERE data <= $1::date GROUP BY cliente_id`,
+      [ate]
+    ),
+    pool.query<{ cliente_id: number; total: string }>(
+      `SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos
+        WHERE data >= $1::date AND data <= $2::date GROUP BY cliente_id`,
+      [de, ate]
+    ),
+  ]);
+  const compNa = new Map(compradoAte.map((r) => [r.cliente_id, Number(r.total)]));
+  const pagoNa = new Map(pagoAte.map((r) => [r.cliente_id, Number(r.total)]));
   const pagoNoPeriodo = new Map(pagos.map((r) => [r.cliente_id, Number(r.total)]));
 
   const porPagante = new Map<number, LinhaFechamento>();
@@ -419,9 +441,14 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
       emAberto: 0,
       lojas: [],
     };
-    // previsto = saldo devedor + o que ela ja pagou neste ciclo: o saldo ja
-    // veio abatido, e a cobranca da semana e o total antes do PIX entrar
-    atual.previsto += c.saldo + (pagoNoPeriodo.get(c.clienteId) ?? 0);
+    // saldo naquela data: comprado ate ali, menos pago ate ali, mais o que a
+    // loja ja devia antes de o site existir. Os creditos vem da conta-corrente
+    // porque nao tem data propria.
+    const carregada = -((c.credito ?? 0) + (c.creditoConta ?? 0));
+    const saldoNaData =
+      (compNa.get(c.clienteId) ?? 0) - (pagoNa.get(c.clienteId) ?? 0) + carregada;
+    // previsto = o que ela devia antes de pagar neste ciclo
+    atual.previsto += saldoNaData + (pagoNoPeriodo.get(c.clienteId) ?? 0);
     atual.recebido += pagoNoPeriodo.get(c.clienteId) ?? 0;
     // DESCONTOS na planilha e antecipacao, nao desconto sobre a venda: a loja
     // pagou adiantado e leva credito, ou ganhou a bonificacao de 3,5% por pagar
@@ -431,7 +458,7 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
     // So o credito POSITIVO: `creditoConta` negativo e divida carregada, o
     // contrario de desconto, e somar isso aqui viraria abatimento do nada.
     atual.desconto += (c.credito ?? 0) + Math.max(0, c.creditoConta ?? 0);
-    atual.emAberto += c.saldo;
+    atual.emAberto += saldoNaData;
     if (c.comprado > 0 || c.saldo !== 0) atual.lojas.push(c.clienteNome);
     porPagante.set(c.paganteId, atual);
   }
