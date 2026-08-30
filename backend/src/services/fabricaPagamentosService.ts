@@ -341,3 +341,187 @@ export async function devendoPorCliente(): Promise<Map<number, number>> {
   const contas = await listarContaCorrente();
   return new Map(contas.map((c) => [c.clienteId, c.saldo]));
 }
+
+// ---------------------------------------------------------------------------
+// Fechamento semanal de cobrança.
+//
+// Terça a segunda, recebendo na terça — mas não travado no calendário. Feriado,
+// falta ou atraso empurram o dia, e o ciclo acompanha: o período vem sugerido e
+// quem fecha decide.
+//
+// O `previsto` é o saldo que a loja devia no dia do fechamento — o que sobrou do
+// ciclo anterior mais o que ela comprou desde então. Não é "o que comprou na
+// semana": a planilha que isso substitui mostra o em aberto da semana 1 virando
+// base do previsto da semana 2, e é assim que a cobrança funciona.
+
+export interface LinhaFechamento {
+  clienteId: number;
+  clienteNome: string;
+  previsto: number;
+  recebido: number;
+  desconto: number;
+  emAberto: number;
+  lojas: string[];
+}
+
+export interface Fechamento {
+  id: number | null;
+  de: string;
+  ate: string;
+  observacao: string | null;
+  fechadoEm: string | null;
+  linhas: LinhaFechamento[];
+}
+
+// Quando começa o próximo ciclo: o dia seguinte ao fim do último fechamento.
+// Não havendo nenhum, o primeiro dia com pedido — não adianta abrir um ciclo
+// vazio antes de existir venda.
+export async function proximoPeriodo(): Promise<{ de: string; ate: string }> {
+  const { rows } = await pool.query<{ ate: string }>(
+    "SELECT ate FROM fabrica_fechamentos ORDER BY ate DESC, id DESC LIMIT 1"
+  );
+  let de: string;
+  if (rows[0]) {
+    const d = new Date(`${dataIso(rows[0].ate)}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    de = d.toISOString().slice(0, 10);
+  } else {
+    const { rows: p } = await pool.query<{ primeira: string | null }>(
+      "SELECT MIN(data) AS primeira FROM fabrica_pedidos WHERE status <> 'CANCELADO'"
+    );
+    de = p[0]?.primeira ? dataIso(p[0].primeira) : new Date().toISOString().slice(0, 10);
+  }
+  return { de, ate: new Date().toISOString().slice(0, 10) };
+}
+
+// Monta o fechamento do período sem gravar nada.
+//
+// `previsto` sai da conta-corrente inteira, não só do período: é dívida
+// acumulada. `recebido` e `desconto` são do período, porque é o que entrou neste
+// ciclo.
+export async function montarFechamento(de: string, ate: string): Promise<Fechamento> {
+  const contas = await listarContaCorrente();
+  const { rows: pagos } = await pool.query<{ cliente_id: number; total: string }>(
+    `SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos
+      WHERE data >= $1::date AND data <= $2::date GROUP BY cliente_id`,
+    [de, ate]
+  );
+  const pagoNoPeriodo = new Map(pagos.map((r) => [r.cliente_id, Number(r.total)]));
+
+  const porPagante = new Map<number, LinhaFechamento>();
+  for (const c of contas) {
+    const atual = porPagante.get(c.paganteId) ?? {
+      clienteId: c.paganteId,
+      clienteNome: c.paganteNome,
+      previsto: 0,
+      recebido: 0,
+      desconto: 0,
+      emAberto: 0,
+      lojas: [],
+    };
+    // previsto = saldo devedor + o que ela ja pagou neste ciclo: o saldo ja
+    // veio abatido, e a cobranca da semana e o total antes do PIX entrar
+    atual.previsto += c.saldo + (pagoNoPeriodo.get(c.clienteId) ?? 0);
+    atual.recebido += pagoNoPeriodo.get(c.clienteId) ?? 0;
+    // DESCONTOS na planilha e antecipacao, nao desconto sobre a venda: a loja
+    // pagou adiantado e leva credito, ou ganhou a bonificacao de 3,5% por pagar
+    // em dia. Credito de devolucao entra junto — pra loja e a mesma coisa, ela
+    // tira menos dinheiro do bolso na terca.
+    //
+    // So o credito POSITIVO: `creditoConta` negativo e divida carregada, o
+    // contrario de desconto, e somar isso aqui viraria abatimento do nada.
+    atual.desconto += (c.credito ?? 0) + Math.max(0, c.creditoConta ?? 0);
+    atual.emAberto += c.saldo;
+    if (c.comprado > 0 || c.saldo !== 0) atual.lojas.push(c.clienteNome);
+    porPagante.set(c.paganteId, atual);
+  }
+
+  const linhas = [...porPagante.values()]
+    .filter((l) => l.previsto !== 0 || l.recebido !== 0 || l.emAberto !== 0)
+    .sort((a, b) => b.emAberto - a.emAberto);
+  return { id: null, de, ate, observacao: null, fechadoEm: null, linhas };
+}
+
+export async function gravarFechamento(
+  de: string,
+  ate: string,
+  observacao: string | null
+): Promise<{ id: number }> {
+  const f = await montarFechamento(de, ate);
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    const { rows } = await cliente.query<{ id: number }>(
+      "INSERT INTO fabrica_fechamentos (de, ate, observacao) VALUES ($1::date, $2::date, $3) RETURNING id",
+      [de, ate, observacao]
+    );
+    const id = rows[0].id;
+    for (const l of f.linhas) {
+      await cliente.query(
+        `INSERT INTO fabrica_fechamento_linhas
+           (fechamento_id, cliente_id, previsto, recebido, desconto, em_aberto)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, l.clienteId, l.previsto, l.recebido, l.desconto, l.emAberto]
+      );
+    }
+    await cliente.query("COMMIT");
+    return { id };
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
+
+export async function listarFechamentos(limite = 30): Promise<Fechamento[]> {
+  const { rows } = await pool.query<{
+    id: number;
+    de: string;
+    ate: string;
+    observacao: string | null;
+    fechado_em: string;
+  }>(
+    "SELECT id, de, ate, observacao, fechado_em FROM fabrica_fechamentos ORDER BY ate DESC, id DESC LIMIT $1",
+    [Math.min(Math.max(limite, 1), 200)]
+  );
+  if (!rows.length) return [];
+  const { rows: linhas } = await pool.query<{
+    fechamento_id: number;
+    cliente_id: number;
+    nome: string;
+    previsto: string;
+    recebido: string;
+    desconto: string;
+    em_aberto: string;
+  }>(
+    `SELECT l.fechamento_id, l.cliente_id, c.nome, l.previsto, l.recebido, l.desconto, l.em_aberto
+       FROM fabrica_fechamento_linhas l
+       JOIN fabrica_clientes c ON c.id = l.cliente_id
+      WHERE l.fechamento_id = ANY($1::int[])
+      ORDER BY l.em_aberto DESC`,
+    [rows.map((r) => r.id)]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    de: dataIso(r.de),
+    ate: dataIso(r.ate),
+    observacao: r.observacao,
+    fechadoEm: r.fechado_em,
+    linhas: linhas
+      .filter((l) => l.fechamento_id === r.id)
+      .map((l) => ({
+        clienteId: l.cliente_id,
+        clienteNome: l.nome,
+        previsto: Number(l.previsto),
+        recebido: Number(l.recebido),
+        desconto: Number(l.desconto),
+        emAberto: Number(l.em_aberto),
+        lojas: [],
+      })),
+  }));
+}
+
+export async function excluirFechamento(id: number): Promise<void> {
+  await pool.query("DELETE FROM fabrica_fechamentos WHERE id = $1", [id]);
+}

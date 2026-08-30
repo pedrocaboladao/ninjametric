@@ -38,7 +38,12 @@ import {
   listarContaCorrente,
   extratoDoCliente,
   contarPagamentos,
+  excluirFechamento,
+  gravarFechamento,
+  listarFechamentos,
   listarPagamentos,
+  montarFechamento,
+  proximoPeriodo,
   registrarPagamento,
   excluirPagamento,
 } from "../services/fabricaPagamentosService";
@@ -147,6 +152,59 @@ fabricaPedidosRouter.get("/conta-corrente/:clienteId", async (req, res) => {
     res.json({ extrato: await extratoDoCliente(clienteId) });
   } catch (err) {
     erro(res, err, "Falha ao carregar o extrato.");
+  }
+});
+
+// O fechamento do ciclo: proposto, gravado e listado.
+//
+// Vem antes do "/:id" — mesma armadilha de sempre.
+fabricaPedidosRouter.get("/fechamentos", async (_req, res) => {
+  try {
+    const [historico, periodo] = await Promise.all([listarFechamentos(), proximoPeriodo()]);
+    res.json({ fechamentos: historico, proximo: periodo });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar os fechamentos.");
+  }
+});
+
+// Sem gravar: mostra como o ciclo ficaria, pra conferir antes de congelar.
+fabricaPedidosRouter.get("/fechamentos/previa", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  try {
+    res.json(await montarFechamento(de, ate));
+  } catch (err) {
+    erro(res, err, "Falha ao montar o fechamento.");
+  }
+});
+
+fabricaPedidosRouter.post("/fechamentos", async (req, res) => {
+  const b = req.body ?? {};
+  const de = String(b.de ?? "");
+  const ate = String(b.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  if (de > ate) return res.status(400).json({ error: "A data inicial é depois da final." });
+  try {
+    const obs = typeof b.observacao === "string" && b.observacao.trim() ? b.observacao.trim() : null;
+    res.status(201).json(await gravarFechamento(de, ate, obs));
+  } catch (err) {
+    erro(res, err, "Falha ao gravar o fechamento.");
+  }
+});
+
+fabricaPedidosRouter.delete("/fechamentos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Id inválido." });
+  try {
+    await excluirFechamento(id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir o fechamento.");
   }
 });
 
