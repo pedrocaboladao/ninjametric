@@ -303,17 +303,31 @@ export function FabricaContas() {
     const termos = semAcento(busca).split(/\s+/).filter(Boolean);
     const grupos = new Map<
       number,
-      { nome: string; comprado: number; pago: number; credito: number; saldo: number; lojas: string[]; ultimo: string | null }
+      {
+        nome: string;
+        comprado: number;
+        pago: number;
+        credito: number;
+        // o que a loja ja devia quando o sistema comecou
+        antiga: number;
+        saldo: number;
+        lojas: string[];
+        ultimo: string | null;
+      }
     >();
     for (const c of corrente ?? []) {
       const g = grupos.get(c.paganteId) ?? {
         nome: c.paganteNome,
-        comprado: 0, pago: 0, credito: 0, saldo: 0,
+        comprado: 0, pago: 0, credito: 0, antiga: 0, saldo: 0,
         lojas: [], ultimo: null,
       };
       g.comprado += c.comprado;
       g.pago += c.pago;
       g.credito += (c.credito ?? 0) + Math.max(0, c.creditoConta ?? 0);
+      // creditoConta negativo e divida, nao credito: e o que a loja ja devia
+      // antes do site existir. Sem essa coluna a linha fica ilegivel — a
+      // Catedral comprou 760 mil, pagou 1,8 milhao e "ainda deve" 542 mil.
+      g.antiga += -Math.min(0, c.creditoConta ?? 0);
       g.saldo += c.saldo;
       if (c.clienteId !== c.paganteId && (c.comprado > 0 || c.saldo !== 0)) g.lojas.push(c.clienteNome);
       if (c.ultimoPagamento && (!g.ultimo || c.ultimoPagamento > g.ultimo)) g.ultimo = c.ultimoPagamento;
@@ -497,9 +511,11 @@ export function FabricaContas() {
 
       {filtroTipo === "receber" && (
         <p className="financeiro-td-mudo ordem-sem-impressao">
-          O que cada loja deve é <strong>pedido menos pagamento</strong>, acumulado desde o
-          começo — não tem recorte de mês, porque dívida rola de uma semana pra outra. O
-          agrupamento é por <strong>quem manda o PIX</strong>. Recebimento se lança em Pedidos,
+          <strong>dívida antiga + comprado − pago − crédito = em aberto.</strong> A dívida antiga
+          é o que a loja já devia quando o sistema começou, em 30/06 — sem ela a linha não fecha
+          de ler. Acumulado desde o começo, sem recorte de mês, porque dívida rola de uma semana
+          pra outra. O agrupamento é por <strong>quem manda o PIX</strong>: a Lux Collor vende no
+          próprio nome e quem paga é a Catedral Ferramentas. Recebimento se lança em Pedidos,
           junto com o extrato.
         </p>
       )}
@@ -900,6 +916,7 @@ export function FabricaContas() {
               <tr>
                 <th>QUEM PAGA</th>
                 <th>LOJAS NA CONTA</th>
+                <th className="financeiro-th-numero">DÍVIDA ANTIGA</th>
                 <th className="financeiro-th-numero">COMPRADO</th>
                 <th className="financeiro-th-numero">PAGO</th>
                 <th className="financeiro-th-numero">CRÉDITO</th>
@@ -910,18 +927,21 @@ export function FabricaContas() {
             <tbody>
               {corrente === null && (
                 <tr>
-                  <td colSpan={7}>Carregando…</td>
+                  <td colSpan={8}>Carregando…</td>
                 </tr>
               )}
               {corrente !== null && !receber.length && (
                 <tr>
-                  <td colSpan={7}>Nenhuma loja com movimento.</td>
+                  <td colSpan={8}>Nenhuma loja com movimento.</td>
                 </tr>
               )}
               {receber.map((g) => (
                 <tr key={g.nome}>
                   <td>{g.nome}</td>
                   <td className="financeiro-td-mudo">{g.lojas.join(", ") || "—"}</td>
+                  <td className="financeiro-th-numero financeiro-td-mudo">
+                    {g.antiga ? formatCurrency(g.antiga) : "—"}
+                  </td>
                   <td className="financeiro-th-numero">{formatCurrency(g.comprado)}</td>
                   <td className="financeiro-th-numero">{formatCurrency(g.pago)}</td>
                   <td className="financeiro-th-numero">
