@@ -447,9 +447,12 @@ export async function importarPix(linhas: LinhaPix[]): Promise<ResultadoPix> {
             .filter(Boolean)
             .join(" · ");
           const { rows } = await cliente.query<{ id: number }>(
-            `INSERT INTO fabrica_pagamentos (cliente_id, data, valor, observacao)
-             VALUES ($1, $2::date, $3, $4) RETURNING id`,
-            [r.clienteId, r.data, r.valor, obs]
+            // o proprio extrato diz o que e: "Adiantamento fabrica" contra
+            // "Fabrica semanal". Adiantamento e dinheiro que chegou antes da
+            // compra, e na planilha da terca ele aparece em DESCONTOS.
+            `INSERT INTO fabrica_pagamentos (cliente_id, data, valor, observacao, antecipacao)
+             VALUES ($1, $2::date, $3, $4, $5) RETURNING id`,
+            [r.clienteId, r.data, r.valor, obs, /adiantament/i.test(r.descricao || "")]
           );
           pagamentoId = Number(rows[0].id);
           criados++;

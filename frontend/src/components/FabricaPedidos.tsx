@@ -47,6 +47,7 @@ import {
   importarPix,
   registrarPagamento,
   excluirPagamento,
+  marcarAntecipacao,
   fetchDevolucoes,
   registrarDevolucao,
   marcarNotaCancelada,
@@ -845,6 +846,15 @@ export function FabricaPedidos() {
       if (extratoDe?.clienteId === id) setExtrato(await fetchExtrato(id));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao registrar o recebimento.");
+    }
+  }
+
+  async function alternarAntecipacao(pg: Pagamento) {
+    try {
+      await marcarAntecipacao(pg.id, !pg.antecipacao);
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao marcar o adiantamento.");
     }
   }
 
@@ -2842,13 +2852,14 @@ export function FabricaPedidos() {
                   <th>LOJA</th>
                   <th className="financeiro-th-numero">VALOR</th>
                   <th>OBSERVAÇÃO</th>
+                  <th>TIPO</th>
                   <th />
                 </tr>
               </thead>
               <tbody>
                 {!pagamentos.length && (
                   <tr>
-                    <td colSpan={5}>Nenhum recebimento registrado.</td>
+                    <td colSpan={6}>Nenhum recebimento registrado.</td>
                   </tr>
                 )}
                 {pagamentos.map((pg) => (
@@ -2857,6 +2868,26 @@ export function FabricaPedidos() {
                     <td>{pg.clienteNome}</td>
                     <td className="financeiro-th-numero">{formatCurrency(pg.valor)}</td>
                     <td className="financeiro-td-mudo">{pg.observacao ?? "PIX"}</td>
+                    <td>
+                      {/* Adiantamento não é pagamento do ciclo: o dinheiro já estava
+                          na fábrica antes de a loja comprar. Some de RECEBIDO e
+                          aparece em DESCONTOS no fechamento — o mesmo lugar da
+                          planilha. A importação marca sozinha pela descrição do
+                          extrato; isto aqui é pro que foi digitado à mão. */}
+                      <button
+                        type="button"
+                        className={pg.antecipacao ? "btn-responder" : "btn-excluir"}
+                        style={{ padding: "2px 8px", fontSize: 11 }}
+                        onClick={() => void alternarAntecipacao(pg)}
+                        title={
+                          pg.antecipacao
+                            ? "Adiantamento: entra em DESCONTOS no fechamento. Clique pra tratar como pagamento do ciclo."
+                            : "Pagamento do ciclo. Clique se este dinheiro chegou adiantado, antes da compra."
+                        }
+                      >
+                        {pg.antecipacao ? "adiantamento" : "do ciclo"}
+                      </button>
+                    </td>
                     <td>
                       <BotaoExcluir onConfirmar={() => void apagarPagamento(pg)} />
                     </td>

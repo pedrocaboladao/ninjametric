@@ -1,4 +1,5 @@
 import { pool } from "../db/pool";
+import { dataIso } from "./fabricaData";
 
 // Cliente da Fábrica Distribuidora: as lojas do grupo e clientes de fora.
 //
@@ -36,6 +37,11 @@ export interface FabricaCliente {
   apelidos: string[];
   pessoaFisica: boolean;
   naCobranca: boolean;
+  // Último dia em que o pai paga por esta loja. Nulo = paga sempre.
+  //
+  // Vira a chave sem reescrever o passado: o que a loja comprou até esta data
+  // continua cobrado do pai, e o que vier depois é cobrado dela.
+  cobrancaPaiAte: string | null;
   // quanto falta do cadastro pra conseguir emitir nota
   completo: boolean;
   faltando: string[];
@@ -62,6 +68,8 @@ export interface ClienteEntrada {
   pessoaFisica: boolean;
   // entra no ciclo semanal de cobrança
   naCobranca: boolean;
+  // último dia em que o pai paga por ela; nulo = sempre
+  cobrancaPaiAte: string | null;
 }
 
 interface Linha {
@@ -87,6 +95,7 @@ interface Linha {
   apelidos: string[] | null;
   pessoa_fisica: boolean;
   na_cobranca: boolean;
+  cobranca_pai_ate: string | null;
 }
 
 // O que a NFe exige. Serve pra tela mostrar quem ainda está pela metade,
@@ -133,6 +142,7 @@ function montar(r: Linha): FabricaCliente {
     apelidos: r.apelidos ?? [],
     pessoaFisica: r.pessoa_fisica === true,
     naCobranca: r.na_cobranca !== false,
+    cobrancaPaiAte: r.cobranca_pai_ate ? dataIso(r.cobranca_pai_ate) : null,
     completo: faltando.length === 0,
     faltando,
   };
@@ -140,7 +150,7 @@ function montar(r: Linha): FabricaCliente {
 
 const COLUNAS = `c.id, c.nome, c.tipo, c.cnpj, c.inscricao_estadual, c.email, c.telefone,
                  c.cep, c.logradouro, c.numero, c.complemento, c.bairro, c.cidade, c.uf,
-                 c.observacao, c.ativo, c.cliente_pai_id, c.pessoa_fisica, c.na_cobranca,
+                 c.observacao, c.ativo, c.cliente_pai_id, c.pessoa_fisica, c.na_cobranca, c.cobranca_pai_ate,
                  p.nome AS cliente_pai_nome,
                  (SELECT COUNT(*) FROM fabrica_clientes f WHERE f.cliente_pai_id = c.id) AS filhas,
                  (SELECT COALESCE(ARRAY_AGG(a.apelido ORDER BY a.id), '{}')
@@ -164,7 +174,7 @@ function valores(e: ClienteEntrada) {
   return [
     e.nome, e.tipo, e.cnpj, e.inscricaoEstadual, e.email, e.telefone, e.cep,
     e.logradouro, e.numero, e.complemento, e.bairro, e.cidade, e.uf, e.observacao, e.ativo,
-    e.clientePaiId, e.pessoaFisica, e.naCobranca,
+    e.clientePaiId, e.pessoaFisica, e.naCobranca, e.cobrancaPaiAte,
   ];
 }
 
@@ -174,8 +184,8 @@ export async function criarCliente(e: ClienteEntrada): Promise<{ id: number }> {
     `INSERT INTO fabrica_clientes
        (nome, tipo, cnpj, inscricao_estadual, email, telefone, cep,
         logradouro, numero, complemento, bairro, cidade, uf, observacao, ativo,
-        cliente_pai_id, pessoa_fisica, na_cobranca)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+        cliente_pai_id, pessoa_fisica, na_cobranca, cobranca_pai_ate)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19::date)
      RETURNING id`,
     valores(e)
   );
@@ -210,7 +220,7 @@ export async function atualizarCliente(id: number, e: ClienteEntrada): Promise<v
        nome = $2, tipo = $3, cnpj = $4, inscricao_estadual = $5, email = $6, telefone = $7,
        cep = $8, logradouro = $9, numero = $10, complemento = $11, bairro = $12,
        cidade = $13, uf = $14, observacao = $15, ativo = $16, cliente_pai_id = $17,
-       pessoa_fisica = $18, na_cobranca = $19
+       pessoa_fisica = $18, na_cobranca = $19, cobranca_pai_ate = $20::date
      WHERE id = $1`,
     [id, ...valores(e)]
   );

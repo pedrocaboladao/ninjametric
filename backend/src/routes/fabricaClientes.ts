@@ -53,6 +53,11 @@ function lerEntrada(req: Request): ClienteEntrada | string {
     pessoaFisica: b.pessoaFisica === true,
     // padrão é cobrar: esquecer de marcar não pode tirar loja da cobrança
     naCobranca: b.naCobranca !== false,
+    // data solta do navegador não entra: uma data errada aqui muda de dono
+    // dívida que já foi cobrada
+    cobrancaPaiAte: /^\d{4}-\d{2}-\d{2}$/.test(String(b.cobrancaPaiAte ?? ""))
+      ? String(b.cobrancaPaiAte)
+      : null,
   };
 }
 

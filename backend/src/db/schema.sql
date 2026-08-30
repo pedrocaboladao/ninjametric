@@ -1666,3 +1666,29 @@ CREATE INDEX IF NOT EXISTS idx_fabrica_fechamento_linhas_fech
 -- Quem fica de fora não some: o saldo dele sai num bloco separado do fechamento,
 -- com nome e valor. Dívida que desaparece calada é o pior tipo.
 ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS na_cobranca BOOLEAN NOT NULL DEFAULT TRUE;
+
+-- Antecipacao: a loja mandou dinheiro antes de comprar.
+--
+-- Nao e um lancamento novo — o PIX ja esta em fabrica_pagamentos, com e2e do
+-- banco. Criar um credito separado contaria o mesmo dinheiro duas vezes. O que
+-- falta e so dizer QUE TIPO de dinheiro e: na planilha do Hudson a antecipacao
+-- aparece na coluna DESCONTOS, nao em RECEBIDO. Mesmo valor, coluna diferente.
+--
+-- Quem separa os dois e o proprio extrato: o Sicoob escreve "Adiantamento
+-- fabrica" na descricao do PIX, e "Fabrica semanal" no pagamento do ciclo.
+ALTER TABLE fabrica_pagamentos ADD COLUMN IF NOT EXISTS antecipacao BOOLEAN NOT NULL DEFAULT FALSE;
+UPDATE fabrica_pagamentos
+   SET antecipacao = TRUE
+ WHERE NOT antecipacao AND observacao ILIKE '%adiantament%';
+
+-- Ate quando o pai paga por esta loja.
+--
+-- Ate agosto a cobranca subia inteira pro pai: a Inga Collors comprava e a
+-- Catedral Impermeabilizantes pagava. As compras sempre estiveram no nome de
+-- quem comprou — o que subia era so a cobranca.
+--
+-- NULL = o pai paga sempre, que e como funciona hoje. Com data, a conta se
+-- parte no dia seguinte: o que a loja comprou ate ali continua com o pai, e o
+-- que vier depois e cobrado dela mesma. Sem isso, virar a chave reescreveria
+-- agosto — a divida antiga pularia de dono e as duas tabelas parariam de bater.
+ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS cobranca_pai_ate DATE;
