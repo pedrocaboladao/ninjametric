@@ -46,6 +46,7 @@ import {
   proximoPeriodo,
   registrarPagamento,
   excluirPagamento,
+  marcarAntecipacao,
 } from "../services/fabricaPagamentosService";
 import {
   listarDevolucoes,
@@ -237,6 +238,17 @@ fabricaPedidosRouter.post("/pagamentos", async (req, res) => {
     res.status(201).json(await registrarPagamento(clienteId, valor, data, observacao));
   } catch (err) {
     erro(res, err, "Falha ao registrar o pagamento.");
+  }
+});
+
+fabricaPedidosRouter.put("/pagamentos/:id/antecipacao", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  try {
+    await marcarAntecipacao(id, (req.body ?? {}).antecipacao !== false);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao marcar o adiantamento.");
   }
 });
 

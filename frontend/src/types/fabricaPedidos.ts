@@ -106,6 +106,13 @@ export interface Pagamento {
   data: string;
   valor: number;
   observacao: string | null;
+  e2e?: string | null;
+  // Dinheiro que chegou antes da compra.
+  //
+  // No fechamento ele sai de RECEBIDO e entra em DESCONTOS — mesmo valor, outra
+  // coluna, como na planilha. O extrato do Sicoob já separa: "Adiantamento
+  // fabrica" contra "Fabrica semanal".
+  antecipacao?: boolean;
 }
 
 // Extrato pra mandar pra loja na terça: pedidos e pagamentos na mesma linha do

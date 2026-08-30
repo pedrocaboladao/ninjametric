@@ -221,6 +221,16 @@ export async function registrarPagamento(entrada: {
   }>(res);
 }
 
+export async function marcarAntecipacao(id: number, antecipacao: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos/${id}/antecipacao`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ antecipacao }),
+  });
+  await semConteudo(res);
+}
+
 export async function excluirPagamento(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos/${id}`, {
     method: "DELETE",

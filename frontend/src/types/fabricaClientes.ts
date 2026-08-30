@@ -30,6 +30,11 @@ export interface FabricaCliente {
   // Outra pergunta que "está ativo": quem compra esporádico e paga na hora não
   // faz parte da terça-feira, mas continua sendo cliente.
   naCobranca: boolean;
+  // Último dia em que o pai paga por esta loja. Nulo = paga sempre.
+  //
+  // Vira a chave sem reescrever o passado: o que a loja comprou até esta data
+  // continua na conta do pai, o que vier depois é cobrado dela.
+  cobrancaPaiAte: string | null;
   completo: boolean;
   faltando: string[];
 }

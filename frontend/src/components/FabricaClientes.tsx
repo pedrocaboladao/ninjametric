@@ -14,7 +14,7 @@ const VAZIO: FabricaClienteEntrada = {
   cnpj: null, inscricaoEstadual: null, email: null, telefone: null,
   cep: null, logradouro: null, numero: null, complemento: null, bairro: null,
   cidade: null, uf: null, observacao: null, ativo: true, pessoaFisica: false,
-  naCobranca: true,
+  naCobranca: true, cobrancaPaiAte: null,
 };
 
 // campos de texto do formulário longo, na ordem em que fazem sentido preencher
@@ -158,6 +158,23 @@ export function FabricaClientes() {
           value={rascunho.nome}
           onChange={(e) => setRascunho((r) => ({ ...r, nome: e.target.value }))}
         />
+        {rascunho.clientePaiId !== null && (
+          <label
+            className="clonar-input"
+            style={{ width: 250, flex: "0 0 auto", display: "flex", alignItems: "center", gap: 6 }}
+            title="Até quando o pai paga por ela. Em branco, o pai paga sempre. Com data, o que a loja comprou até ali continua na conta do pai e o que vier depois é cobrado dela — o passado não muda de dono."
+          >
+            <span style={{ whiteSpace: "nowrap", opacity: 0.7 }}>pai paga até</span>
+            <input
+              type="date"
+              style={{ border: 0, background: "transparent", color: "inherit", flex: 1 }}
+              value={rascunho.cobrancaPaiAte ?? ""}
+              onChange={(e) =>
+                setRascunho((r) => ({ ...r, cobrancaPaiAte: e.target.value || null }))
+              }
+            />
+          </label>
+        )}
         <select
           className="clonar-input fabricacao-input-pequeno"
           value={rascunho.tipo}

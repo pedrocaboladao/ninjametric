@@ -52,6 +52,9 @@ export interface Pagamento {
   // identificador do PIX no extrato do banco. Nulo = não veio de conciliação:
   // foi digitado, ou sobrou de uma importação repetida.
   e2e: string | null;
+  // dinheiro que chegou antes da compra. Sai de RECEBIDO e entra em DESCONTOS
+  // no fechamento — mesmo valor, coluna diferente, como na planilha.
+  antecipacao: boolean;
 }
 
 // Extrato de uma loja: os pedidos e os pagamentos na mesma linha do tempo,
@@ -81,9 +84,15 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
     ultimo_pedido: string | null;
     ultimo_pagamento: string | null;
   }>(
+    // quem paga HOJE: passada a janela do pai, a loja volta a pagar por si.
+    // O fechamento reparte transação a transação; aqui é só o retrato de agora.
     `SELECT c.id, c.nome, c.tipo, c.ativo, c.na_cobranca,
-            COALESCE(c.cliente_pai_id, c.id) AS pagante_id,
-            COALESCE(pai.nome, c.nome)       AS pagante_nome,
+            CASE WHEN c.cliente_pai_id IS NOT NULL
+                  AND (c.cobranca_pai_ate IS NULL OR c.cobranca_pai_ate >= CURRENT_DATE)
+                 THEN c.cliente_pai_id ELSE c.id END AS pagante_id,
+            CASE WHEN c.cliente_pai_id IS NOT NULL
+                  AND (c.cobranca_pai_ate IS NULL OR c.cobranca_pai_ate >= CURRENT_DATE)
+                 THEN pai.nome ELSE c.nome END AS pagante_nome,
             COALESCE(ped.total, 0)  AS comprado,
             COALESCE(pag.total, 0)  AS pago,
             ped.ultima              AS ultimo_pedido,
@@ -255,11 +264,12 @@ export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
     valor: string;
     observacao: string | null;
     e2e: string | null;
+    antecipacao: boolean;
   }>(
     // o e2e amarra o pagamento ao PIX do extrato. Pagamento sem e2e foi digitado
     // a mao ou sobrou de uma importacao repetida — e e ai que mora a duplicata
     // que ninguem enxerga: dois lancamentos iguais, um com PIX e outro sem.
-    `SELECT p.id, p.cliente_id, c.nome, p.data, p.valor, p.observacao,
+    `SELECT p.id, p.cliente_id, c.nome, p.data, p.valor, p.observacao, p.antecipacao,
             x.e2e
      FROM fabrica_pagamentos p
      JOIN fabrica_clientes c ON c.id = p.cliente_id
@@ -276,6 +286,7 @@ export async function listarPagamentos(limite = 100): Promise<Pagamento[]> {
     valor: Number(r.valor),
     observacao: r.observacao,
     e2e: r.e2e,
+    antecipacao: r.antecipacao === true,
   }));
 }
 
@@ -336,6 +347,16 @@ export async function registrarPagamento(
   const contas = await listarContaCorrente();
   const conta = contas.find((c) => c.clienteId === clienteId);
   return { id, saldo: conta?.saldo ?? 0, bonificacao, provisorio, confirmados };
+}
+
+// Adiantamento ou pagamento do ciclo. O extrato do Sicoob já diz qual é na
+// descrição do PIX, e a importação marca sozinha; isto aqui é pro que foi
+// digitado à mão, ou pro dia em que o banco escrever diferente.
+export async function marcarAntecipacao(id: number, antecipacao: boolean): Promise<void> {
+  await pool.query("UPDATE fabrica_pagamentos SET antecipacao = $2 WHERE id = $1", [
+    id,
+    antecipacao,
+  ]);
 }
 
 export async function excluirPagamento(id: number): Promise<void> {
@@ -409,94 +430,148 @@ export async function proximoPeriodo(): Promise<{ de: string; ate: string }> {
 // `previsto` sai da conta-corrente inteira, não só do período: é dívida
 // acumulada. `recebido` e `desconto` são do período, porque é o que entrou neste
 // ciclo.
+interface Rateio {
+  pagante_id: number;
+  cliente_id: number;
+  total: string;
+}
+
+// Soma por (quem paga, quem comprou). A chave é o par, não a loja: a mesma loja
+// pode aparecer duas vezes quando o pai deixa de pagar por ela no meio do
+// caminho — uma parte na conta do pai, outra na dela.
+function somar(rows: Rateio[], valor: (r: any) => number = (r) => Number(r.total)): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const r of rows) {
+    const k = `${r.pagante_id}:${r.cliente_id}`;
+    m.set(k, (m.get(k) ?? 0) + valor(r));
+  }
+  return m;
+}
+
 export async function montarFechamento(de: string, ate: string): Promise<Fechamento> {
   const contas = await listarContaCorrente();
+  const nomePorId = new Map(contas.map((c) => [c.clienteId, c.clienteNome]));
   // Saldo NA DATA do fechamento, não o de hoje.
   //
   // A conta-corrente é sempre "agora". Fechar um ciclo atrasado — que é
   // justamente o caso quando feriado ou falta empurram o dia — mostraria o saldo
   // de hoje com o rótulo de outra data, e a loja receberia uma cobrança que não
   // corresponde a período nenhum.
-  const [{ rows: compradoAte }, { rows: pagoAte }, { rows: pagos }] = await Promise.all([
-    pool.query<{ cliente_id: number; total: string }>(
-      `SELECT p.cliente_id, SUM(i.quantidade * i.preco_unitario) AS total
-         FROM fabrica_pedidos p JOIN fabrica_pedido_itens i ON i.pedido_id = p.id
-        WHERE p.status <> 'CANCELADO' AND p.data <= $1::date
-        GROUP BY p.cliente_id`,
-      [ate]
-    ),
-    pool.query<{ cliente_id: number; total: string }>(
-      `SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos
-        WHERE data <= $1::date GROUP BY cliente_id`,
-      [ate]
-    ),
-    pool.query<{ cliente_id: number; total: string }>(
-      `SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos
-        WHERE data >= $1::date AND data <= $2::date GROUP BY cliente_id`,
-      [de, ate]
-    ),
-  ]);
-  const compNa = new Map(compradoAte.map((r) => [r.cliente_id, Number(r.total)]));
-  const pagoNa = new Map(pagoAte.map((r) => [r.cliente_id, Number(r.total)]));
-  const pagoNoPeriodo = new Map(pagos.map((r) => [r.cliente_id, Number(r.total)]));
-
-  // Fora do ciclo semanal: quem compra esporadico e paga na hora, e quem foi
-  // desligado.
   //
-  // Sai da tabela, mas nao some do relatorio: o que ficou de fora vai separado,
-  // com nome e valor. Saldo que desaparece calado e como a receita fantasma —
-  // ninguem procura o que nao aparece.
-  const foraDaCobranca: LinhaFechamento[] = [];
+  // Quem paga sai por transação, não por loja: `cobranca_pai_ate` deixa a conta
+  // se partir numa data. O que a filha comprou dentro da janela do pai continua
+  // cobrado do pai; o que veio depois é cobrado dela. Agrupar a loja inteira num
+  // pagante só reescreveria o passado no dia em que a chave virasse.
+  const PAGANTE = (tabela: string) => `CASE
+      WHEN c.cliente_pai_id IS NOT NULL
+       AND (c.cobranca_pai_ate IS NULL OR ${tabela}.data <= c.cobranca_pai_ate)
+      THEN c.cliente_pai_id ELSE c.id END`;
+  const [{ rows: compradoAte }, { rows: pagoAte }, { rows: pagos }, { rows: creditos }] =
+    await Promise.all([
+      pool.query<Rateio>(
+        `SELECT ${PAGANTE("p")} AS pagante_id, c.id AS cliente_id,
+                SUM(i.quantidade * i.preco_unitario) AS total
+           FROM fabrica_pedidos p
+           JOIN fabrica_clientes c ON c.id = p.cliente_id
+           JOIN fabrica_pedido_itens i ON i.pedido_id = p.id
+          WHERE p.status <> 'CANCELADO' AND p.data <= $1::date
+          GROUP BY 1, 2`,
+        [ate]
+      ),
+      pool.query<Rateio>(
+        `SELECT ${PAGANTE("g")} AS pagante_id, c.id AS cliente_id, SUM(g.valor) AS total
+           FROM fabrica_pagamentos g
+           JOIN fabrica_clientes c ON c.id = g.cliente_id
+          WHERE g.data <= $1::date
+          GROUP BY 1, 2`,
+        [ate]
+      ),
+      // o que entrou no ciclo, separando adiantamento de pagamento do ciclo:
+      // é a mesma conta, mas a planilha mostra em colunas diferentes
+      pool.query<Rateio & { antecipado: string }>(
+        `SELECT ${PAGANTE("g")} AS pagante_id, c.id AS cliente_id, SUM(g.valor) AS total,
+                COALESCE(SUM(g.valor) FILTER (WHERE g.antecipacao), 0) AS antecipado
+           FROM fabrica_pagamentos g
+           JOIN fabrica_clientes c ON c.id = g.cliente_id
+          WHERE g.data >= $1::date AND g.data <= $2::date
+          GROUP BY 1, 2`,
+        [de, ate]
+      ),
+      // Crédito do período, não o saldo inteiro.
+      //
+      // Crédito de ciclos passados já abateu lá e vive dentro do saldo que veio
+      // rolando. Mostrar de novo tiraria o mesmo dinheiro duas vezes da conta —
+      // e a linha pararia de fechar: previsto − recebido − desconto = em aberto.
+      pool.query<Rateio>(
+        `SELECT ${PAGANTE("k")} AS pagante_id, c.id AS cliente_id,
+                COALESCE(SUM(k.valor) FILTER (WHERE k.valor > 0), 0) AS total
+           FROM fabrica_creditos k
+           JOIN fabrica_clientes c ON c.id = k.cliente_id
+          WHERE NOT k.provisorio AND k.data >= $1::date AND k.data <= $2::date
+          GROUP BY 1, 2
+         UNION ALL
+         SELECT ${PAGANTE("d")} AS pagante_id, c.id AS cliente_id, SUM(d.credito) AS total
+           FROM fabrica_devolucoes d
+           JOIN fabrica_clientes c ON c.id = d.cliente_id
+          WHERE d.credito > 0 AND d.data >= $1::date AND d.data <= $2::date
+          GROUP BY 1, 2`,
+        [de, ate]
+      ),
+    ]);
+  const compNa = somar(compradoAte);
+  const pagoNa = somar(pagoAte);
+  const pagoNoPeriodo = somar(pagos);
+  const antecipado = somar(pagos, (r) => Number(r.antecipado));
+  const creditoNoPeriodo = somar(creditos);
+  // toda dupla (quem paga, quem comprou) que apareceu em qualquer uma das somas
+  const rateios = [...compNa.keys(), ...pagoNa.keys(), ...pagoNoPeriodo.keys(), ...creditoNoPeriodo.keys()];
+
+  const fora = new Map<number, LinhaFechamento>();
 
   const porPagante = new Map<number, LinhaFechamento>();
-  for (const c of contas) {
+  const conta = new Map(contas.map((c) => [c.clienteId, c]));
+  for (const chave of new Set(rateios)) {
+    const [paganteId, clienteId] = chave.split(":").map(Number);
+    const c = conta.get(clienteId);
+    if (!c) continue;
+    // credito sem data — dívida carregada e saldo em conta — mora na loja, não
+    // no rateio: some do saldo dela uma vez só, com quem paga hoje
+    const semData = paganteId === c.paganteId ? -((c.credito ?? 0) + (c.creditoConta ?? 0)) : 0;
+    const saldoNaData = (compNa.get(chave) ?? 0) - (pagoNa.get(chave) ?? 0) + semData;
+    const recebido = pagoNoPeriodo.get(chave) ?? 0;
+    const antecip = antecipado.get(chave) ?? 0;
+    const credito = creditoNoPeriodo.get(chave) ?? 0;
+    if (!saldoNaData && !recebido && !credito) continue;
+
+    const linha = (destino: Map<number, LinhaFechamento>, id: number, nome: string) => {
+      const atual = destino.get(id) ?? {
+        clienteId: id,
+        clienteNome: nome,
+        previsto: 0,
+        recebido: 0,
+        desconto: 0,
+        emAberto: 0,
+        lojas: [],
+      };
+      // previsto = o que ela devia antes de qualquer abatimento deste ciclo.
+      // Assim a linha fecha sozinha: previsto − recebido − desconto = em aberto.
+      atual.previsto += saldoNaData + recebido + credito;
+      // adiantamento sai de RECEBIDO e vai pra DESCONTOS, como na planilha: é
+      // dinheiro que já estava na fábrica antes de a loja comprar
+      atual.recebido += recebido - antecip;
+      atual.desconto += antecip + credito;
+      atual.emAberto += saldoNaData;
+      if (c.comprado > 0 || c.saldo !== 0) atual.lojas.push(c.clienteNome);
+      destino.set(id, atual);
+    };
+
+    // Fora do ciclo semanal: quem compra esporádico e paga na hora, e quem foi
+    // desligado. Sai da tabela, mas não some do relatório.
     if (!c.ativo || !c.naCobranca) {
-      const carregadaI = -((c.credito ?? 0) + (c.creditoConta ?? 0));
-      const saldoI =
-        (compNa.get(c.clienteId) ?? 0) - (pagoNa.get(c.clienteId) ?? 0) + carregadaI;
-      const recebidoI = pagoNoPeriodo.get(c.clienteId) ?? 0;
-      if (saldoI !== 0 || recebidoI !== 0) {
-        foraDaCobranca.push({
-          clienteId: c.clienteId,
-          clienteNome: c.clienteNome,
-          previsto: saldoI + recebidoI,
-          recebido: recebidoI,
-          desconto: 0,
-          emAberto: saldoI,
-          lojas: [],
-        });
-      }
+      linha(fora, clienteId, c.clienteNome);
       continue;
     }
-    const atual = porPagante.get(c.paganteId) ?? {
-      clienteId: c.paganteId,
-      clienteNome: c.paganteNome,
-      previsto: 0,
-      recebido: 0,
-      desconto: 0,
-      emAberto: 0,
-      lojas: [],
-    };
-    // saldo naquela data: comprado ate ali, menos pago ate ali, mais o que a
-    // loja ja devia antes de o site existir. Os creditos vem da conta-corrente
-    // porque nao tem data propria.
-    const carregada = -((c.credito ?? 0) + (c.creditoConta ?? 0));
-    const saldoNaData =
-      (compNa.get(c.clienteId) ?? 0) - (pagoNa.get(c.clienteId) ?? 0) + carregada;
-    // previsto = o que ela devia antes de pagar neste ciclo
-    atual.previsto += saldoNaData + (pagoNoPeriodo.get(c.clienteId) ?? 0);
-    atual.recebido += pagoNoPeriodo.get(c.clienteId) ?? 0;
-    // DESCONTOS na planilha e antecipacao, nao desconto sobre a venda: a loja
-    // pagou adiantado e leva credito, ou ganhou a bonificacao de 3,5% por pagar
-    // em dia. Credito de devolucao entra junto — pra loja e a mesma coisa, ela
-    // tira menos dinheiro do bolso na terca.
-    //
-    // So o credito POSITIVO: `creditoConta` negativo e divida carregada, o
-    // contrario de desconto, e somar isso aqui viraria abatimento do nada.
-    atual.desconto += (c.credito ?? 0) + Math.max(0, c.creditoConta ?? 0);
-    atual.emAberto += saldoNaData;
-    if (c.comprado > 0 || c.saldo !== 0) atual.lojas.push(c.clienteNome);
-    porPagante.set(c.paganteId, atual);
+    linha(porPagante, paganteId, nomePorId.get(paganteId) ?? c.paganteNome);
   }
 
   const linhas = [...porPagante.values()]
@@ -509,7 +584,7 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
     observacao: null,
     fechadoEm: null,
     linhas,
-    foraDaCobranca: foraDaCobranca.sort((a, b) => b.emAberto - a.emAberto),
+    foraDaCobranca: [...fora.values()].sort((a, b) => b.emAberto - a.emAberto),
   };
 }
 
