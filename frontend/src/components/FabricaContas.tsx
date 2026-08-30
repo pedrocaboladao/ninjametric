@@ -25,6 +25,8 @@ import { BuscaSelecao } from "./BuscaSelecao";
 import type { ItemBusca } from "./BuscaSelecao";
 import { fetchFornecedores } from "../api/fabricaFornecedores";
 import type { Fornecedor } from "../types/fabricaFornecedores";
+import { fetchContaCorrente } from "../api/fabricaPedidos";
+import type { ContaCorrente } from "../types/fabricaPedidos";
 
 // aceita "1.234,56" e "1234.56" — o operador digita como fala
 function num(v: string): number {
@@ -114,6 +116,12 @@ export function FabricaContas() {
   const [mostrarForm, setMostrarForm] = useState(false);
   const [aba, setAba] = useState<"contas" | "dre" | "bens" | "fornecedores">("contas");
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  // O a receber nao e digitado: e a conta corrente das lojas.
+  //
+  // Lancar recebivel a mao criaria dois lugares dizendo a mesma coisa, e eles
+  // divergiriam no primeiro pagamento parcial — que aqui e a regra, nao a
+  // excecao. A loja deve pedido menos pagamento, e pronto.
+  const [corrente, setCorrente] = useState<ContaCorrente[] | null>(null);
 
   const [filtroStatus, setFiltroStatus] = useState<"" | StatusConta>("");
   const [filtroTipo, setFiltroTipo] = useState<TipoConta>("pagar");
@@ -135,7 +143,7 @@ export function FabricaContas() {
 
   const carregar = useCallback(async () => {
     try {
-      const [cs, r] = await Promise.all([
+      const [cs, r, cor] = await Promise.all([
         fetchContas({
           tipo: filtroTipo,
           status: filtroStatus || undefined,
@@ -143,9 +151,11 @@ export function FabricaContas() {
           ate: ate || undefined,
         }),
         fetchResumoContas(),
+        fetchContaCorrente(),
       ]);
       setContas(cs);
       setResumo(r);
+      setCorrente(cor);
       setErro(null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao carregar.");
@@ -283,6 +293,41 @@ export function FabricaContas() {
     () => visiveis.filter((c) => c.status === "pendente").reduce((s, c) => s + c.valor, 0),
     [visiveis]
   );
+
+  // Conta corrente agrupada por quem paga.
+  //
+  // A Lux Collor vende no proprio nome e quem manda o PIX e a Catedral
+  // Ferramentas — cobrar loja a loja mandaria conta pra quem nao paga, e
+  // separaria o adiantado de uma do atrasado da outra dentro do mesmo grupo.
+  const receber = useMemo(() => {
+    const termos = semAcento(busca).split(/\s+/).filter(Boolean);
+    const grupos = new Map<
+      number,
+      { nome: string; comprado: number; pago: number; credito: number; saldo: number; lojas: string[]; ultimo: string | null }
+    >();
+    for (const c of corrente ?? []) {
+      const g = grupos.get(c.paganteId) ?? {
+        nome: c.paganteNome,
+        comprado: 0, pago: 0, credito: 0, saldo: 0,
+        lojas: [], ultimo: null,
+      };
+      g.comprado += c.comprado;
+      g.pago += c.pago;
+      g.credito += (c.credito ?? 0) + Math.max(0, c.creditoConta ?? 0);
+      g.saldo += c.saldo;
+      if (c.clienteId !== c.paganteId && (c.comprado > 0 || c.saldo !== 0)) g.lojas.push(c.clienteNome);
+      if (c.ultimoPagamento && (!g.ultimo || c.ultimoPagamento > g.ultimo)) g.ultimo = c.ultimoPagamento;
+      grupos.set(c.paganteId, g);
+    }
+    return [...grupos.values()]
+      .filter((g) => g.comprado !== 0 || g.pago !== 0 || g.saldo !== 0)
+      .filter((g) => {
+        if (!termos.length) return true;
+        const alvo = semAcento([g.nome, ...g.lojas].join(" "));
+        return termos.every((t) => alvo.includes(t));
+      })
+      .sort((a, b) => b.saldo - a.saldo);
+  }, [corrente, busca]);
 
   const porCategoria = useMemo(() => {
     const m = new Map<
@@ -478,16 +523,22 @@ export function FabricaContas() {
           {filtroTipo === "receber" ? (
             <>
               <div className="contas-cartao">
-                <div className="financeiro-stat-label">FATURADO NO PERÍODO</div>
-                <div className="financeiro-stat-valor">{formatCurrency(totalPeriodo)}</div>
+                <div className="financeiro-stat-label">COMPRADO PELAS LOJAS</div>
+                <div className="financeiro-stat-valor">
+                  {formatCurrency(receber.reduce((s, g) => s + g.comprado, 0))}
+                </div>
               </div>
               <div className="contas-cartao">
                 <div className="financeiro-stat-label">RECEBIDO</div>
-                <div className="financeiro-stat-valor">{formatCurrency(pagoNoPeriodo)}</div>
+                <div className="financeiro-stat-valor">
+                  {formatCurrency(receber.reduce((s, g) => s + g.pago, 0))}
+                </div>
               </div>
               <div className="contas-cartao">
                 <div className="financeiro-stat-label">SALDO DEVEDOR DAS LOJAS</div>
-                <div className="financeiro-stat-valor">{formatCurrency(faltaPagar)}</div>
+                <div className="financeiro-stat-valor">
+                  {formatCurrency(receber.reduce((s, g) => s + Math.max(0, g.saldo), 0))}
+                </div>
               </div>
             </>
           ) : (
@@ -579,10 +630,15 @@ export function FabricaContas() {
             Limpar
           </button>
         )}
-        <button type="button" className="btn-responder" onClick={novo}>
-          <IconPlus size={14} />{" "}
-          {filtroTipo === "receber" ? "Novo recebimento" : "Nova conta"}
-        </button>
+        {/* Nao existe "lancar recebivel": o que a loja deve sai de pedido menos
+            pagamento. Um lancamento a mao criaria um segundo numero dizendo a
+            mesma coisa, e os dois divergiriam no primeiro pagamento parcial —
+            que aqui e a regra, nao a excecao. Pagamento se lanca em Pedidos. */}
+        {filtroTipo === "pagar" && (
+          <button type="button" className="btn-responder" onClick={novo}>
+            <IconPlus size={14} /> Nova conta
+          </button>
+        )}
         <button type="button" className="btn-excluir" onClick={() => window.print()}>
           Imprimir
         </button>
@@ -817,6 +873,50 @@ export function FabricaContas() {
         </p>
       )}
 
+      {filtroTipo === "receber" ? (
+        <div className="financeiro-tabela-wrap">
+          <table className="financeiro-tabela contas-tabela-lancamentos">
+            <thead>
+              <tr>
+                <th>QUEM PAGA</th>
+                <th>LOJAS NA CONTA</th>
+                <th className="financeiro-th-numero">COMPRADO</th>
+                <th className="financeiro-th-numero">PAGO</th>
+                <th className="financeiro-th-numero">CRÉDITO</th>
+                <th className="financeiro-th-numero">EM ABERTO</th>
+                <th>ÚLTIMO PIX</th>
+              </tr>
+            </thead>
+            <tbody>
+              {corrente === null && (
+                <tr>
+                  <td colSpan={7}>Carregando…</td>
+                </tr>
+              )}
+              {corrente !== null && !receber.length && (
+                <tr>
+                  <td colSpan={7}>Nenhuma loja com movimento.</td>
+                </tr>
+              )}
+              {receber.map((g) => (
+                <tr key={g.nome}>
+                  <td>{g.nome}</td>
+                  <td className="financeiro-td-mudo">{g.lojas.join(", ") || "—"}</td>
+                  <td className="financeiro-th-numero">{formatCurrency(g.comprado)}</td>
+                  <td className="financeiro-th-numero">{formatCurrency(g.pago)}</td>
+                  <td className="financeiro-th-numero">
+                    {g.credito ? formatCurrency(g.credito) : "—"}
+                  </td>
+                  <td className="financeiro-th-numero">
+                    <strong>{formatCurrency(g.saldo)}</strong>
+                  </td>
+                  <td className="financeiro-td-mudo">{g.ultimo ? data(g.ultimo) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
       <div className="financeiro-tabela-wrap">
         <table className="financeiro-tabela contas-tabela-lancamentos">
           <thead>
@@ -824,10 +924,10 @@ export function FabricaContas() {
               <th>VENCIMENTO</th>
               <th>DESCRIÇÃO</th>
               <th>CATEGORIA</th>
-              <th>{filtroTipo === "receber" ? "CLIENTE" : "FORNECEDOR"}</th>
+              <th>FORNECEDOR</th>
               <th>PAGAMENTO</th>
               <th className="financeiro-th-numero">VALOR</th>
-              {filtroTipo === "pagar" && <th>CUSTO</th>}
+              <th>CUSTO</th>
               <th>STATUS</th>
               <th />
             </tr>
@@ -861,9 +961,7 @@ export function FabricaContas() {
                   {c.documento && ` · ${c.documento}`}
                 </td>
                 <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
-                {filtroTipo === "pagar" && (
-                  <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
-                )}
+                <td className="financeiro-td-mudo">{c.custoFixo ? "fixo" : "variável"}</td>
                 <td>
                   <select
                     className="clonar-input fabricacao-input-pequeno"
@@ -886,18 +984,37 @@ export function FabricaContas() {
           </tbody>
         </table>
       </div>
+      )}
       <div className="contas-totais">
         <div className="contas-total-linha">
-          <span>{filtroTipo === "receber" ? "FATURADO NO PERÍODO" : "TOTAL DO PERÍODO"}</span>
-          <strong>{formatCurrency(totalPeriodo)}</strong>
+          <span>{filtroTipo === "receber" ? "COMPRADO" : "TOTAL DO PERÍODO"}</span>
+          <strong>
+            {formatCurrency(
+              filtroTipo === "receber"
+                ? receber.reduce((s, g) => s + g.comprado, 0)
+                : totalPeriodo
+            )}
+          </strong>
         </div>
         <div className="contas-total-linha">
           <span>{filtroTipo === "receber" ? "RECEBIDO" : "PAGO"}</span>
-          <strong>{formatCurrency(pagoNoPeriodo)}</strong>
+          <strong>
+            {formatCurrency(
+              filtroTipo === "receber"
+                ? receber.reduce((s, g) => s + g.pago, 0)
+                : pagoNoPeriodo
+            )}
+          </strong>
         </div>
         <div className="contas-total-linha">
-          <span>{filtroTipo === "receber" ? "FALTA RECEBER" : "FALTA PAGAR"}</span>
-          <strong>{formatCurrency(faltaPagar)}</strong>
+          <span>{filtroTipo === "receber" ? "EM ABERTO" : "FALTA PAGAR"}</span>
+          <strong>
+            {formatCurrency(
+              filtroTipo === "receber"
+                ? receber.reduce((s, g) => s + Math.max(0, g.saldo), 0)
+                : faltaPagar
+            )}
+          </strong>
         </div>
         {filtroTipo === "pagar" && filtroNatureza === "" && (
           <>
