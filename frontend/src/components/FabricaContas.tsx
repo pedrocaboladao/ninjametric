@@ -710,10 +710,12 @@ export function FabricaContas() {
             className={aba === a ? "btn-responder" : "btn-excluir"}
             onClick={() => setAba(a)}
           >
+            {/* Nome fixo: as duas moram nesta aba, e quem trocava era o
+                seletor logo abaixo. A aba mudando de nome junto fazia parecer
+                que existiam duas telas — e quem procurava o a receber nao
+                achava, porque o botao so dizia "Contas a pagar". */}
             {a === "contas"
-              ? filtroTipo === "receber"
-                ? "Contas a receber"
-                : "Contas a pagar"
+              ? "Contas a pagar e receber"
               : a === "dre"
                 ? "DRE"
                 : a === "bens"
