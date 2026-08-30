@@ -1655,3 +1655,14 @@ CREATE TABLE IF NOT EXISTS fabrica_fechamento_linhas (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_fechamento_linhas_fech
   ON fabrica_fechamento_linhas (fechamento_id);
+
+-- Entra na cobrança semanal, ou compra de vez em quando e paga na hora.
+--
+-- São perguntas diferentes de "está ativo". A Bruna e o Maiky compram esporádico
+-- e não fazem parte do ciclo de terça; o Hudson compra sempre e entra. Usar
+-- `ativo` pra isso mentiria: eles não pararam de comprar, e um dia alguém leria
+-- "inativo" como "sumiu" e apagaria o cadastro.
+--
+-- Quem fica de fora não some: o saldo dele sai num bloco separado do fechamento,
+-- com nome e valor. Dívida que desaparece calada é o pior tipo.
+ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS na_cobranca BOOLEAN NOT NULL DEFAULT TRUE;
