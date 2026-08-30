@@ -127,3 +127,27 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     erro(res, err, "Falha ao buscar pedidos de teste.");
   }
 });
+
+// Diagnóstico temporário: o Ads da Shopee não vem liberado por padrão no
+// app (precisa pedir permissão extra pro Suporte de Parceiros da Shopee).
+// Essa chamada só serve pra gerar uma tentativa real negada, com um
+// request_id de verdade, pra anexar no chamado de suporte como prova
+// concreta do que está bloqueado. Remover depois de abrir o chamado.
+shopeeRouter.get("/ads-teste", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe ?lojaId=" });
+    return;
+  }
+  try {
+    const agora = new Date();
+    const seteDiasAtras = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const data = await chamarApiAssinada(lojaId, "/api/v2/ads/get_all_cpc_ads_daily_performance", {
+      start_date: seteDiasAtras.toISOString().slice(0, 10),
+      end_date: agora.toISOString().slice(0, 10),
+    });
+    res.json(data);
+  } catch (err) {
+    erro(res, err, "Falha ao testar o Ads.");
+  }
+});
