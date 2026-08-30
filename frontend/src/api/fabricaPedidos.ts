@@ -5,6 +5,7 @@ import type {
   EstoqueProduto,
   AjusteProduto,
   ContaCorrente,
+  Alocacao,
   IdadeSaldo,
   ConferenciaPlanilha,
   ResultadoImportacao,
@@ -192,6 +193,13 @@ export async function fetchPagamentos(limite?: number): Promise<{
     total: r.total ?? r.pagamentos.length,
     valorTotal: r.valorTotal ?? r.pagamentos.reduce((s, p) => s + p.valor, 0),
   };
+}
+
+export async function fetchAlocacao(paganteId: number): Promise<Alocacao> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/alocacao/${paganteId}`, {
+    credentials: "include",
+  });
+  return tratarResposta<Alocacao>(res);
 }
 
 export async function registrarPagamento(entrada: {

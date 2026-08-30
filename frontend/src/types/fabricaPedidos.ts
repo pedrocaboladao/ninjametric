@@ -461,3 +461,30 @@ export interface SincronizacaoBling extends ConferenciaPlanilha {
   skusFaltando: SkuFaltando[];
   clientesFaltando: ClienteFaltando[];
 }
+
+// Onde o dinheiro caiu: fila por data, mais velho primeiro.
+//
+// Calculado na hora, nunca gravado. O total sai da conta corrente, então não
+// tem como divergir dela — se divergir, o errado é o cálculo, não o saldo.
+export interface ItemAberto {
+  tipo: "anterior" | "pedido";
+  referencia: number | null;
+  clienteId: number;
+  clienteNome: string;
+  data: string;
+  valor: number;
+  abatido: number;
+  aberto: number;
+  dias: number;
+}
+
+export interface Alocacao {
+  paganteId: number;
+  paganteNome: string;
+  divida: number;
+  entrou: number;
+  emAberto: number;
+  // pagou mais do que devia
+  sobra: number;
+  itens: ItemAberto[];
+}

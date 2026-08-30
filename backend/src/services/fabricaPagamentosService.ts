@@ -671,3 +671,140 @@ export async function listarFechamentos(limite = 30): Promise<Fechamento[]> {
 export async function excluirFechamento(id: number): Promise<void> {
   await pool.query("DELETE FROM fabrica_fechamentos WHERE id = $1", [id]);
 }
+
+// ---------------------------------------------------------------------------
+// Onde o dinheiro caiu: abate do mais velho pro mais novo.
+//
+// A conta corrente responde QUANTO a loja deve. Nao responde DESDE QUANDO — e
+// divida de 60 dias e divida de 3 dias sao conversas diferentes na terca.
+//
+// O comentario no topo deste arquivo dizia que decidir qual pedido foi quitado
+// primeiro era "uma decisao inventada que ninguem na fabrica toma". Continua
+// verdade pra quem GRAVA essa decisao: gravado, o rateio vira um segundo numero
+// que discorda do extrato no primeiro pagamento apagado ou pedido corrigido.
+//
+// Calculado na hora, nao. E so uma leitura diferente dos mesmos fatos: fila por
+// data, dinheiro entrando por cima. O total sempre bate com a conta corrente
+// porque sai dela — se der diferenca, o errado e este codigo, nao o saldo.
+//
+// A divida que veio de antes do sistema entra primeiro: e a mais velha de todas.
+
+export interface ItemAberto {
+  tipo: "anterior" | "pedido";
+  referencia: number | null;
+  clienteId: number;
+  clienteNome: string;
+  data: string;
+  valor: number;
+  abatido: number;
+  aberto: number;
+  // idade em dias, pra saber o que esta apodrecendo
+  dias: number;
+}
+
+export interface Alocacao {
+  paganteId: number;
+  paganteNome: string;
+  divida: number;
+  entrou: number;
+  emAberto: number;
+  // pagou mais do que devia: credito a favor da loja
+  sobra: number;
+  itens: ItemAberto[];
+}
+
+export async function alocarPorAntiguidade(paganteId: number): Promise<Alocacao> {
+  const contas = await listarContaCorrente();
+  const doGrupo = contas.filter((c) => c.paganteId === paganteId);
+  if (!doGrupo.length) {
+    return {
+      paganteId,
+      paganteNome: "",
+      divida: 0,
+      entrou: 0,
+      emAberto: 0,
+      sobra: 0,
+      itens: [],
+    };
+  }
+  const ids = doGrupo.map((c) => c.clienteId);
+  const nomePorId = new Map(doGrupo.map((c) => [c.clienteId, c.clienteNome]));
+
+  const [{ rows: pedidos }, { rows: anteriores }] = await Promise.all([
+    pool.query<{ id: number; cliente_id: number; data: string; total: string }>(
+      `SELECT p.id, p.cliente_id, p.data::text AS data,
+              SUM(i.quantidade * i.preco_unitario) AS total
+         FROM fabrica_pedidos p
+         JOIN fabrica_pedido_itens i ON i.pedido_id = p.id
+        WHERE p.cliente_id = ANY($1::int[]) AND p.status <> 'CANCELADO'
+        GROUP BY p.id, p.cliente_id, p.data
+        HAVING SUM(i.quantidade * i.preco_unitario) <> 0
+        ORDER BY p.data, p.id`,
+      [ids]
+    ),
+    pool.query<{ cliente_id: number; data: string; valor: string }>(
+      `SELECT cliente_id, data::text AS data, SUM(valor) AS valor
+         FROM fabrica_creditos
+        WHERE cliente_id = ANY($1::int[]) AND origem = 'SALDO_ANTERIOR'
+        GROUP BY cliente_id, data
+       HAVING SUM(valor) < 0`,
+      [ids]
+    ),
+  ]);
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const idade = (d: string) =>
+    Math.max(0, Math.round((Date.parse(`${hoje}T12:00:00Z`) - Date.parse(`${d}T12:00:00Z`)) / 86400000));
+
+  const fila: ItemAberto[] = [
+    ...anteriores.map((r) => ({
+      tipo: "anterior" as const,
+      referencia: null,
+      clienteId: r.cliente_id,
+      clienteNome: nomePorId.get(r.cliente_id) ?? "",
+      data: dataIso(r.data),
+      // credito negativo e divida; aqui ela vira valor devido, positivo
+      valor: -Number(r.valor),
+      abatido: 0,
+      aberto: 0,
+      dias: idade(dataIso(r.data)),
+    })),
+    ...pedidos.map((r) => ({
+      tipo: "pedido" as const,
+      referencia: r.id,
+      clienteId: r.cliente_id,
+      clienteNome: nomePorId.get(r.cliente_id) ?? "",
+      data: dataIso(r.data),
+      valor: Number(r.total),
+      abatido: 0,
+      aberto: 0,
+      dias: idade(dataIso(r.data)),
+    })),
+  ].sort((a, b) => (a.data === b.data ? (a.referencia ?? -1) - (b.referencia ?? -1) : a.data < b.data ? -1 : 1));
+
+  // tudo que entrou: PIX, devolucao e credito. A conta corrente ja soma os
+  // tres do mesmo jeito — aqui e o mesmo dinheiro, so distribuido na fila.
+  const entrou = doGrupo.reduce(
+    (s, c) => s + c.pago + (c.credito ?? 0) + Math.max(0, c.creditoConta ?? 0),
+    0
+  );
+
+  let sobrando = entrou;
+  for (const item of fila) {
+    const abate = Math.min(sobrando, item.valor);
+    item.abatido = abate;
+    item.aberto = item.valor - abate;
+    sobrando -= abate;
+  }
+
+  const divida = fila.reduce((s, i) => s + i.valor, 0);
+  return {
+    paganteId,
+    paganteNome: doGrupo[0].paganteNome,
+    divida,
+    entrou,
+    emAberto: fila.reduce((s, i) => s + i.aberto, 0),
+    sobra: sobrando,
+    itens: fila,
+  };
+}

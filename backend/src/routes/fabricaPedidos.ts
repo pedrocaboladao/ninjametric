@@ -47,6 +47,7 @@ import {
   registrarPagamento,
   excluirPagamento,
   marcarAntecipacao,
+  alocarPorAntiguidade,
 } from "../services/fabricaPagamentosService";
 import {
   listarDevolucoes,
@@ -135,6 +136,18 @@ fabricaPedidosRouter.get("/idade-do-saldo", async (_req, res) => {
     res.json(await idadeDoSaldo());
   } catch (err) {
     erro(res, err, "Falha ao calcular a idade do saldo.");
+  }
+});
+
+// Abate do mais velho pro mais novo. Calculado, nunca gravado — o total sai da
+// conta corrente e por isso nao tem como divergir dela.
+fabricaPedidosRouter.get("/alocacao/:paganteId", async (req, res) => {
+  const id = Number(req.params.paganteId);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id invalido." });
+  try {
+    res.json(await alocarPorAntiguidade(id));
+  } catch (err) {
+    erro(res, err, "Falha ao montar o abatimento.");
   }
 });
 
