@@ -1618,3 +1618,40 @@ ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS pessoa_fisica BOOLEAN NOT 
 -- aconteceu é um fato, e o custo de hoje não pode mudar o resultado de março.
 ALTER TABLE fabrica_produto_ajustes ADD COLUMN IF NOT EXISTS consumo BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE fabrica_produto_ajustes ADD COLUMN IF NOT EXISTS custo_unitario NUMERIC(12, 4);
+
+-- O fechamento semanal de cobrança, como evento.
+--
+-- Terça a segunda, recebendo na terça — mas não travado no calendário: feriado,
+-- falta da funcionária ou atraso empurram o dia, e o ciclo tem que acompanhar
+-- em vez de brigar. Por isso é um registro com período escolhido, não uma
+-- semana calculada.
+--
+-- As linhas ficam CONGELADAS no fechamento. Se o PIX chegar depois, o ciclo
+-- passado não pode mudar sozinho: o número que foi mandado pra loja tem que
+-- continuar batendo com o que o sistema mostra. Mesma regra do custo do item do
+-- pedido — o que aconteceu é um fato.
+CREATE TABLE IF NOT EXISTS fabrica_fechamentos (
+  id SERIAL PRIMARY KEY,
+  de DATE NOT NULL,
+  ate DATE NOT NULL,
+  observacao TEXT,
+  fechado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_fechamentos_ate ON fabrica_fechamentos (ate DESC);
+
+-- Uma linha por quem paga, não por quem compra: a Truck 4 recebe a conta das
+-- quatro, a Catedral Ferramentas das três dela.
+CREATE TABLE IF NOT EXISTS fabrica_fechamento_linhas (
+  id SERIAL PRIMARY KEY,
+  fechamento_id INTEGER NOT NULL REFERENCES fabrica_fechamentos(id) ON DELETE CASCADE,
+  cliente_id INTEGER NOT NULL REFERENCES fabrica_clientes(id) ON DELETE RESTRICT,
+  -- o saldo que a loja devia no dia: o que sobrou do ciclo anterior mais o que
+  -- ela comprou desde então
+  previsto NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  recebido NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  -- antecipação e a bonificação de 3,5%: a loja paga menos e não fica devendo
+  desconto NUMERIC(12, 2) NOT NULL DEFAULT 0,
+  em_aberto NUMERIC(12, 2) NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_fechamento_linhas_fech
+  ON fabrica_fechamento_linhas (fechamento_id);
