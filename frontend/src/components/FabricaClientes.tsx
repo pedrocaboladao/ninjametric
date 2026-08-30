@@ -14,6 +14,7 @@ const VAZIO: FabricaClienteEntrada = {
   cnpj: null, inscricaoEstadual: null, email: null, telefone: null,
   cep: null, logradouro: null, numero: null, complemento: null, bairro: null,
   cidade: null, uf: null, observacao: null, ativo: true, pessoaFisica: false,
+  naCobranca: true,
 };
 
 // campos de texto do formulário longo, na ordem em que fazem sentido preencher
@@ -200,6 +201,16 @@ export function FabricaClientes() {
         >
           <option value="J">Empresa (CNPJ)</option>
           <option value="F">Pessoa física (CPF)</option>
+        </select>
+        <select
+          className="clonar-input"
+          style={{ width: 250, flex: "0 0 auto" }}
+          value={rascunho.naCobranca ? "sim" : "nao"}
+          onChange={(e) => setRascunho((r) => ({ ...r, naCobranca: e.target.value === "sim" }))}
+          title="Quem compra esporádico e paga na hora fica fora do ciclo de terça — mas o saldo dele continua aparecendo, num bloco separado."
+        >
+          <option value="sim">Entra na cobrança semanal</option>
+          <option value="nao">Compra esporádica — fora do ciclo</option>
         </select>
         {campo("cnpj", rascunho.pessoaFisica ? "CPF" : "CNPJ")}
         {CAMPOS.filter(([chave]) => !(rascunho.pessoaFisica && chave === "inscricaoEstadual")).map(

@@ -25,6 +25,11 @@ export interface FabricaCliente {
   // para a Catedral Impermeabilizantes.
   clientePaiId: number | null;
   pessoaFisica: boolean;
+  // Entra no ciclo semanal de cobrança.
+  //
+  // Outra pergunta que "está ativo": quem compra esporádico e paga na hora não
+  // faz parte da terça-feira, mas continua sendo cliente.
+  naCobranca: boolean;
   completo: boolean;
   faltando: string[];
 }

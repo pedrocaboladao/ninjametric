@@ -51,6 +51,8 @@ function lerEntrada(req: Request): ClienteEntrada | string {
         ? Number(b.clientePaiId)
         : null,
     pessoaFisica: b.pessoaFisica === true,
+    // padrão é cobrar: esquecer de marcar não pode tirar loja da cobrança
+    naCobranca: b.naCobranca !== false,
   };
 }
 

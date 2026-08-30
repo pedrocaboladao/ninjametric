@@ -673,6 +673,8 @@ export interface Fechamento {
   observacao: string | null;
   fechadoEm: string | null;
   linhas: LinhaFechamento[];
+  // quem ficou fora do ciclo e ainda tem saldo — aparece separado, nunca some
+  foraDaCobranca?: LinhaFechamento[];
 }
 
 export async function fetchFechamentos(): Promise<{

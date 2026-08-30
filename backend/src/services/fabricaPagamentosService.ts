@@ -21,6 +21,10 @@ export interface ContaCorrente {
   clienteId: number;
   clienteNome: string;
   clienteTipo: string;
+  ativo: boolean;
+  // entra no ciclo semanal de cobranca. Quem compra esporadico e paga na hora
+  // fica fora — e outra pergunta que "esta ativo"
+  naCobranca: boolean;
   // Quem fecha a conta desta loja. Várias vendem no próprio nome e a cobrança
   // vai inteira pra outra — Catedral Ferramentas paga por Lux Collor, Imperium
   // e Fábrica de Tintas. Quando a loja paga por si, o pagante é ela mesma.
@@ -68,6 +72,8 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
     id: number;
     nome: string;
     tipo: string;
+    ativo: boolean;
+    na_cobranca: boolean;
     pagante_id: number;
     pagante_nome: string;
     comprado: string;
@@ -75,7 +81,7 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
     ultimo_pedido: string | null;
     ultimo_pagamento: string | null;
   }>(
-    `SELECT c.id, c.nome, c.tipo,
+    `SELECT c.id, c.nome, c.tipo, c.ativo, c.na_cobranca,
             COALESCE(c.cliente_pai_id, c.id) AS pagante_id,
             COALESCE(pai.nome, c.nome)       AS pagante_nome,
             COALESCE(ped.total, 0)  AS comprado,
@@ -111,6 +117,8 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
       clienteId: r.id,
       clienteNome: r.nome,
       clienteTipo: r.tipo,
+      ativo: r.ativo,
+      naCobranca: r.na_cobranca,
       paganteId: Number(r.pagante_id),
       paganteNome: r.pagante_nome,
       comprado,
@@ -371,6 +379,8 @@ export interface Fechamento {
   observacao: string | null;
   fechadoEm: string | null;
   linhas: LinhaFechamento[];
+  // cliente desligado que ainda tem saldo: fica fora da cobranca, mas aparece
+  foraDaCobranca?: LinhaFechamento[];
 }
 
 // Quando começa o próximo ciclo: o dia seguinte ao fim do último fechamento.
@@ -430,8 +440,34 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
   const pagoNa = new Map(pagoAte.map((r) => [r.cliente_id, Number(r.total)]));
   const pagoNoPeriodo = new Map(pagos.map((r) => [r.cliente_id, Number(r.total)]));
 
+  // Fora do ciclo semanal: quem compra esporadico e paga na hora, e quem foi
+  // desligado.
+  //
+  // Sai da tabela, mas nao some do relatorio: o que ficou de fora vai separado,
+  // com nome e valor. Saldo que desaparece calado e como a receita fantasma —
+  // ninguem procura o que nao aparece.
+  const foraDaCobranca: LinhaFechamento[] = [];
+
   const porPagante = new Map<number, LinhaFechamento>();
   for (const c of contas) {
+    if (!c.ativo || !c.naCobranca) {
+      const carregadaI = -((c.credito ?? 0) + (c.creditoConta ?? 0));
+      const saldoI =
+        (compNa.get(c.clienteId) ?? 0) - (pagoNa.get(c.clienteId) ?? 0) + carregadaI;
+      const recebidoI = pagoNoPeriodo.get(c.clienteId) ?? 0;
+      if (saldoI !== 0 || recebidoI !== 0) {
+        foraDaCobranca.push({
+          clienteId: c.clienteId,
+          clienteNome: c.clienteNome,
+          previsto: saldoI + recebidoI,
+          recebido: recebidoI,
+          desconto: 0,
+          emAberto: saldoI,
+          lojas: [],
+        });
+      }
+      continue;
+    }
     const atual = porPagante.get(c.paganteId) ?? {
       clienteId: c.paganteId,
       clienteNome: c.paganteNome,
@@ -466,7 +502,15 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
   const linhas = [...porPagante.values()]
     .filter((l) => l.previsto !== 0 || l.recebido !== 0 || l.emAberto !== 0)
     .sort((a, b) => b.emAberto - a.emAberto);
-  return { id: null, de, ate, observacao: null, fechadoEm: null, linhas };
+  return {
+    id: null,
+    de,
+    ate,
+    observacao: null,
+    fechadoEm: null,
+    linhas,
+    foraDaCobranca: foraDaCobranca.sort((a, b) => b.emAberto - a.emAberto),
+  };
 }
 
 export async function gravarFechamento(

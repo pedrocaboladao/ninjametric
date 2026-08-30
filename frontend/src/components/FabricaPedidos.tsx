@@ -2528,6 +2528,17 @@ export function FabricaPedidos() {
             </div>
           )}
 
+          {previa && (previa.foraDaCobranca?.length ?? 0) > 0 && (
+            <p className="financeiro-td-mudo">
+              <strong>Fora do ciclo:</strong>{" "}
+              {previa.foraDaCobranca!
+                .map((l) => `${l.clienteNome} ${formatCurrency(l.emAberto)}`)
+                .join(" · ")}
+              . Compram esporádico e pagam na hora, então não entram na cobrança de terça — mas o
+              saldo aparece aqui pra não sumir.
+            </p>
+          )}
+
           {fechamentos.length > 0 && (
             <>
               <h3>Ciclos fechados</h3>
