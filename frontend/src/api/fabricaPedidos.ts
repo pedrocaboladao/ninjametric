@@ -652,3 +652,65 @@ export async function criarApelidoSku(
   });
   return tratarResposta<ProdutoApelido>(res);
 }
+
+// ---------------------------------------------------------------------------
+// Fechamento de cobrança: propõe, confere e congela.
+
+export interface LinhaFechamento {
+  clienteId: number;
+  clienteNome: string;
+  previsto: number;
+  recebido: number;
+  desconto: number;
+  emAberto: number;
+  lojas: string[];
+}
+
+export interface Fechamento {
+  id: number | null;
+  de: string;
+  ate: string;
+  observacao: string | null;
+  fechadoEm: string | null;
+  linhas: LinhaFechamento[];
+}
+
+export async function fetchFechamentos(): Promise<{
+  fechamentos: Fechamento[];
+  proximo: { de: string; ate: string };
+}> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/fechamentos`, {
+    credentials: "include",
+  });
+  return tratarResposta<{ fechamentos: Fechamento[]; proximo: { de: string; ate: string } }>(res);
+}
+
+export async function previaFechamento(de: string, ate: string): Promise<Fechamento> {
+  const q = new URLSearchParams({ de, ate });
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/fechamentos/previa?${q}`, {
+    credentials: "include",
+  });
+  return tratarResposta<Fechamento>(res);
+}
+
+export async function fecharCiclo(
+  de: string,
+  ate: string,
+  observacao: string | null
+): Promise<{ id: number }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/fechamentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ de, ate, observacao }),
+  });
+  return tratarResposta<{ id: number }>(res);
+}
+
+export async function excluirFechamento(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/fechamentos/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta<{ ok: boolean }>(res);
+}
