@@ -111,7 +111,24 @@ export interface Dre {
 //
 // Elas não somem: aparecem num bloco separado, porque o dinheiro saiu do caixa
 // e some do relatório seria pior que aparecer no lugar errado.
-const CATEGORIAS_DE_INSUMO = new Set(["MATÉRIA-PRIMA", "EMBALAGEM", "ÁGUA", "CONSUMO"]);
+//
+// ÁGUA e CONSUMO saíram desta lista.
+//
+// O teste pra estar aqui é um só: **isso sai pela porta dentro de um produto
+// vendido?** Se sai, é estoque e volta ao resultado como custo do produto. Se
+// não sai, é despesa do mês.
+//
+// A conta da Sanepar não sai pela porta: é consumo do barracão, e ficava fora
+// do resultado sem aparecer em despesa nenhuma — R$ 2.156,60 saindo do caixa
+// e não chegando em lugar nenhum. Se um dia a água virar ingrediente medido,
+// ela entra por MATÉRIA-PRIMA, pela nota do fornecedor de insumo, nunca pela
+// conta da concessionária.
+//
+// CONSUMO segurava EPI, plástico e chave de abrir balde — proteção do
+// funcionário e ferramenta, que são despesa do mês. O consumo próprio de
+// produto acabado, esse sim, tem caminho proprio: entra por `consumoProprio`,
+// pelo ajuste de estoque, e nao por conta a pagar.
+const CATEGORIAS_DE_INSUMO = new Set(["MATÉRIA-PRIMA", "EMBALAGEM"]);
 
 // Produto pronto comprado pra revender — 93% do contas a pagar da fabrica.
 //
