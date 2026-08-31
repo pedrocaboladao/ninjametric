@@ -291,3 +291,23 @@ export async function procurarContatos(termo: string): Promise<
     tipo: c.tipo ?? null,
   }));
 }
+
+// Espia o JSON cru de uma pagina da listagem e do detalhe da primeira conta.
+//
+// Existe porque tres tentativas de adivinhar o formato do Bling saíram erradas
+// — filtro de data ignorado, campos que so vem no detalhe, detalhe sobrescrevendo
+// o vencimento. Olhar uma vez custa menos que chutar tres.
+export async function espiarContas(): Promise<unknown> {
+  const lista = await chamar<{ data?: ContaBling[] }>("/contas/pagar", { pagina: 1, limite: 3 });
+  const primeira = (lista.data ?? [])[0];
+  let detalhe: unknown = null;
+  let erroDetalhe: string | null = null;
+  if (primeira) {
+    try {
+      detalhe = await chamar<unknown>(`/contas/pagar/${primeira.id}`);
+    } catch (err) {
+      erroDetalhe = err instanceof Error ? err.message : String(err);
+    }
+  }
+  return { listagem: lista.data ?? [], detalhe, erroDetalhe };
+}

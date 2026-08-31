@@ -32,7 +32,7 @@ import {
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
-import { conferirContasPagar, procurarContatos } from "../services/blingContasService";
+import { conferirContasPagar, procurarContatos, espiarContas } from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
 
@@ -53,6 +53,15 @@ function erro(res: Response, err: unknown, padrao: string) {
 
 // Conferencia de contas a pagar: so le, dos dois lados. O acerto e decisao do
 // Hudson — numero que vira custo nao se corrige sozinho.
+fabricaBlingRouter.get("/contas/espiar", async (_req, res) => {
+  try {
+    res.json(await espiarContas());
+  } catch (err) {
+    console.error("[bling-contas-espiar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao espiar." });
+  }
+});
+
 fabricaBlingRouter.get("/contas/conferir", async (req, res) => {
   const DIA = new RegExp("^\d{4}-\d{2}-\d{2}$");
   const d = (v: unknown, padrao: string) => (DIA.test(String(v ?? "")) ? String(v) : padrao);
