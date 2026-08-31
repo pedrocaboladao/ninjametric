@@ -7,6 +7,7 @@ import {
   type SkuFaltando,
 } from "./fabricaImportarVendasService";
 import { conferirPlanilhaVendas } from "./fabricaVendasPlanilhaService";
+import { vendaSemCusto, type VendaSemCusto } from "./fabricaPedidosService";
 
 // Puxa a venda do Bling e lança sozinha, toda manhã.
 //
@@ -48,6 +49,13 @@ export interface UltimaRodada {
   // informa que existe um problema, e deixa a procura pro operador.
   skusFaltando: SkuFaltando[];
   clientesFaltando: ClienteFaltando[];
+  // Venda que entrou sem custo — margem de 100% no dia.
+  //
+  // O custo vem do cadastro do produto, nao do Bling. Quando ele nao entra, o
+  // dia fica com margem de 100% e o lucro do mes sobe sozinho. Em 31/08/2026
+  // foram R$ 102.551,93 em 604 itens, e ninguem reparou ate alguem estranhar o
+  // lucro alto demais.
+  semCusto: VendaSemCusto;
   erro: string | null;
 }
 
@@ -87,6 +95,7 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
     motivos: {},
     skusFaltando: [],
     clientesFaltando: [],
+    semCusto: { itens: 0, pedidos: 0, valor: 0, skus: [] },
     erro: null,
   };
   try {
@@ -120,6 +129,9 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
     const conf = await conferirPlanilhaVendas(texto, "BLING");
     base.skusFaltando = skusFaltando(conf.linhas);
     base.clientesFaltando = clientesFaltando(conf.linhas);
+    // olha o periodo inteiro, nao so o que acabou de entrar: item que ficou sem
+    // custo numa rodada anterior continua zerado e continua inflando a margem
+    base.semCusto = await vendaSemCusto(de, ate);
   } catch (err) {
     base.erro = err instanceof Error ? err.message : "falha na sincronização automática";
   } finally {
@@ -147,6 +159,9 @@ export async function rodarEGuardar(): Promise<UltimaRodada | null> {
             : "") +
           (ultima.clientesFaltando.length
             ? ` · cliente a cadastrar: ${ultima.clientesFaltando.map((c) => c.nome).join(", ")}`
+            : "") +
+          (ultima.semCusto.itens
+            ? ` · SEM CUSTO: ${ultima.semCusto.itens} item(ns) em ${ultima.semCusto.pedidos} pedido(s)`
             : "")
       );
     return ultima;
