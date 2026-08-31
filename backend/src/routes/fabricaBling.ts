@@ -37,6 +37,7 @@ import {
   procurarContatos,
   espiarContas,
   contasDoFornecedor,
+  conferirPedidos,
 } from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
@@ -67,6 +68,19 @@ function erro(res: Response, err: unknown, padrao: string) {
 
 // Conferencia de contas a pagar: so le, dos dois lados. O acerto e decisao do
 // Hudson — numero que vira custo nao se corrige sozinho.
+fabricaBlingRouter.get("/pedidos/conferir", async (req, res) => {
+  const DIA = /^\d{4}-\d{2}-\d{2}$/;
+  const de = DIA.test(String(req.query.de ?? "")) ? String(req.query.de) : null;
+  const ate = DIA.test(String(req.query.ate ?? "")) ? String(req.query.ate) : null;
+  if (!de || !ate) return res.status(400).json({ error: "Informe de e ate (AAAA-MM-DD)." });
+  try {
+    res.json(await conferirPedidos(de, ate));
+  } catch (err) {
+    console.error("[bling-pedidos-conferir]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao conferir." });
+  }
+});
+
 fabricaBlingRouter.get("/contas/por-fornecedor", async (req, res) => {
   const termo = String(req.query.termo ?? "").trim();
   if (termo.length < 3) return res.status(400).json({ error: "Termo curto demais." });
