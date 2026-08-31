@@ -137,7 +137,20 @@ async function baixarDoBling(de: string, ate: string): Promise<ContaBling[]> {
   for (const c of noPeriodo) {
     try {
       const d = await chamar<{ data?: ContaBling }>(`/contas/pagar/${c.id}`);
-      contas.push({ ...c, ...(d.data ?? {}) });
+      const det: Partial<ContaBling> = d.data ?? {};
+      // O detalhe completa, nao substitui.
+      //
+      // Espalhar o detalhe por cima trocava o vencimento por outra data — conta
+      // filtrada como de agosto voltava mostrando julho. Valor e vencimento
+      // ficam os da listagem, que e o que a tela do Bling mostra e o que o
+      // recorte de data usou. Do detalhe vem so o que identifica a conta.
+      contas.push({
+        ...c,
+        historico: det.historico ?? c.historico,
+        numeroDocumento: det.numeroDocumento ?? c.numeroDocumento,
+        contato: det.contato ?? c.contato,
+        categoria: det.categoria ?? c.categoria,
+      });
     } catch {
       // detalhe que nao veio nao some da conferencia: entra com o que a
       // listagem deu e cai em "so no Bling", que e onde alguem vai olhar
