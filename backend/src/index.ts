@@ -24,8 +24,8 @@ import { fabricaProdutosRouter } from "./routes/fabricaProdutos";
 import { fabricaClientesRouter } from "./routes/fabricaClientes";
 import { fabricaPixRouter } from "./routes/fabricaPix";
 import { fabricaEntradasRouter } from "./routes/fabricaEntradas";
-import { fabricaBlingRouter } from "./routes/fabricaBling";
-import { shopeeRouter } from "./routes/shopee";
+import { fabricaBlingRouter, fabricaBlingCallbackRouter } from "./routes/fabricaBling";
+import { shopeeRouter, shopeeCallbackRouter } from "./routes/shopee";
 import { fabricaEmbalagensRouter } from "./routes/fabricaEmbalagens";
 import { fabricaEstoqueRouter } from "./routes/fabricaEstoque";
 import { fabricaPedidosRouter } from "./routes/fabricaPedidos";
@@ -98,11 +98,11 @@ app.use("/api/fabrica-entradas", requireAuth, requirePermissao("fabrica_estoque"
 // O callback do Bling chega pelo navegador vindo de fora, sem o cookie da
 // sessão — por isso fica antes do requireAuth. O que protege é o state, que
 // só existe se alguém autenticado começou a autorização.
-app.use("/api/fabrica-bling/callback", fabricaBlingRouter);
+app.use("/api/fabrica-bling/callback", fabricaBlingCallbackRouter);
 app.use("/api/fabrica-bling", requireAuth, requirePermissao("fabrica_pedidos"), fabricaBlingRouter);
 // Mesmo motivo do callback do Bling acima: a Shopee chama essa URL direto,
 // sem cookie de sessão, então fica antes do requireAuth.
-app.use("/api/shopee/callback", shopeeRouter);
+app.use("/api/shopee/callback", shopeeCallbackRouter);
 app.use("/api/shopee", requireAuth, requireAdmin, shopeeRouter);
 // mesma permissao do financeiro da fabrica: o cadastro de bens existe pra
 // alimentar a depreciacao do DRE, nao e modulo separado

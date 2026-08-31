@@ -35,6 +35,15 @@ import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVenda
 import { conferirContasPagar, procurarContatos, espiarContas } from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
+// Callback fica num router próprio, separado do admin-gated acima — mesmo
+// bug encontrado ao vivo no callback da Shopee (routes/shopee.ts): montar
+// isso em "/api/fabrica-bling/callback" usando o MESMO fabricaBlingRouter
+// (que internamente tem sua própria rota "/callback") exigiria
+// "/api/fabrica-bling/callback/callback" pra bater — a URL real que o
+// Bling chama nunca dava match nesse mount, caía direto no app.use
+// seguinte com requireAuth e voltava "Não autenticado" pro navegador de
+// quem estava autorizando (sem cookie de sessão nosso).
+export const fabricaBlingCallbackRouter = Router();
 
 // O state liga o retorno do Bling à sessão que começou a autorização. Fica em
 // memória de propósito: vale um minuto — o code do Bling expira nesse tempo —
@@ -123,7 +132,7 @@ fabricaBlingRouter.get("/autorizar", (_req, res) => {
 
 // O Bling manda o navegador de volta pra cá. Responde HTML, não JSON: quem
 // está lendo é uma janela aberta, não um fetch.
-fabricaBlingRouter.get("/callback", async (req: Request, res: Response) => {
+fabricaBlingCallbackRouter.get("/", async (req: Request, res: Response) => {
   const code = typeof req.query.code === "string" ? req.query.code : "";
   const state = typeof req.query.state === "string" ? req.query.state : "";
   const pagina = (titulo: string, texto: string) =>

@@ -9,6 +9,17 @@ import {
 } from "../services/shopeeAuth";
 
 export const shopeeRouter = Router();
+// Callback fica num router PRÓPRIO, separado do admin-gated acima — mesmo
+// motivo do /auth/callback do Mercado Livre (routes/auth.ts): é a Shopee
+// quem chama essa URL (o navegador do vendedor voltando da tela de
+// autorização), sem cookie de sessão nosso. Bug real encontrado ao vivo:
+// montar isso em "/api/shopee/callback" usando o MESMO shopeeRouter (que
+// internamente tem sua própria rota "/callback") exige "/api/shopee/
+// callback/callback" pra bater — a URL real que a Shopee chama
+// ("/api/shopee/callback") nunca dava match nesse mount, caía direto no
+// app.use("/api/shopee", requireAuth, ...) seguinte e voltava "Não
+// autenticado" pro navegador do vendedor (que não tem nossa sessão).
+export const shopeeCallbackRouter = Router();
 
 function erro(res: Response, err: unknown, padrao: string) {
   console.error("[shopee]", err);
@@ -37,7 +48,7 @@ shopeeRouter.get("/:lojaId/autorizar", (req, res) => {
 // A Shopee manda o navegador de volta pra cá com code + shop_id — lojaId
 // vem do nosso próprio redirect (a Shopee não suporta "state" nesse link,
 // ver shopeeAuth.ts). Responde HTML, não JSON: quem lê é uma janela aberta.
-shopeeRouter.get("/callback", async (req: Request, res: Response) => {
+shopeeCallbackRouter.get("/", async (req: Request, res: Response) => {
   const code = typeof req.query.code === "string" ? req.query.code : "";
   const shopId = Number(req.query.shop_id);
   const lojaId = Number(req.query.lojaId);
