@@ -89,21 +89,54 @@ export interface ConferenciaContas {
   divergentes: ContaConferida[];
 }
 
-// Todas as páginas do período. Sem filtro de situação: conta já paga sai do
-// filtro "em aberto" e apareceria como buraco no site — o contrário do que a
-// conferência serve pra achar.
+// Todas as contas do período, com o detalhe de cada uma.
+//
+// Duas armadilhas do Bling aqui, e as duas silenciosas:
+//
+//   o filtro de data e ignorado    pedindo 01/08 a 31/08 ele devolveu contas
+//                                  vencendo em 15/07. Nao da erro, nao avisa —
+//                                  so devolve outra coisa. Entao o recorte e
+//                                  feito aqui, depois de baixar.
+//
+//   a listagem vem sem os campos   `historico`, `numeroDocumento` e o nome do
+//   que identificam a conta        contato so existem no GET de uma conta so.
+//                                  Na listagem vem tudo vazio, e comparar assim
+//                                  deu 0 de 159 — o mesmo que o `gtin` faz nos
+//                                  produtos.
+//
+// Por isso o detalhe e buscado uma a uma. A 3 chamadas por segundo, um mes sai
+// em menos de um minuto; e conferencia que alguem roda de vez em quando, nao
+// tela que abre toda hora.
+//
+// Sem filtro de situacao de proposito: conta ja paga sai do filtro "em aberto"
+// e apareceria como buraco no site — o contrario do que a conferencia procura.
 async function baixarDoBling(de: string, ate: string): Promise<ContaBling[]> {
-  const contas: ContaBling[] = [];
+  const bruto: ContaBling[] = [];
   for (let pagina = 1; pagina <= 60; pagina++) {
     const r = await chamar<{ data?: ContaBling[] }>("/contas/pagar", {
       pagina,
       limite: POR_PAGINA,
-      dataVencimentoInicial: de,
-      dataVencimentoFinal: ate,
     });
     const lote = r.data ?? [];
-    contas.push(...lote);
+    bruto.push(...lote);
     if (lote.length < POR_PAGINA) break;
+  }
+
+  const noPeriodo = bruto.filter((c) => {
+    const v = dia(c.vencimento);
+    return v >= de && v <= ate;
+  });
+
+  const contas: ContaBling[] = [];
+  for (const c of noPeriodo) {
+    try {
+      const d = await chamar<{ data?: ContaBling }>(`/contas/pagar/${c.id}`);
+      contas.push({ ...c, ...(d.data ?? {}) });
+    } catch {
+      // detalhe que nao veio nao some da conferencia: entra com o que a
+      // listagem deu e cai em "so no Bling", que e onde alguem vai olhar
+      contas.push(c);
+    }
   }
   return contas;
 }
