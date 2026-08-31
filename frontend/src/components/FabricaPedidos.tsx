@@ -1671,6 +1671,23 @@ export function FabricaPedidos() {
                   {rodada.clientesFaltando.map((c) => c.nome).join(" · ")}.
                 </p>
               )}
+              {/* Venda sem custo nao trava nada e nao parece erro: o pedido
+                  entra, o valor confere com o Bling, e so a margem denuncia.
+                  Em 31/08/2026 foram R$ 102.551,93 em 604 itens, e o mes ia
+                  fechar com esse tanto de lucro que nao existe. */}
+              {rodada.semCusto?.itens > 0 && (
+                <p>
+                  <strong>Venda sem custo:</strong> {rodada.semCusto.itens} item
+                  {rodada.semCusto.itens === 1 ? "" : "ns"} em {rodada.semCusto.pedidos} pedido
+                  {rodada.semCusto.pedidos === 1 ? "" : "s"},{" "}
+                  {formatCurrency(rodada.semCusto.valor)} de venda com custo zero
+                  {rodada.semCusto.skus.length > 0 && (
+                    <> — {rodada.semCusto.skus.join(", ")}</>
+                  )}
+                  . Isso deixa a margem do dia em 100% e infla o lucro do mês. Rode{" "}
+                  <strong>preencher custo faltante</strong> no período.
+                </p>
+              )}
             </div>
           )}
 

@@ -610,6 +610,12 @@ export interface RodadaSincronia {
   motivos: Record<string, number>;
   skusFaltando: Array<{ sku: string; linhas: number; quantidade: number; valor: number }>;
   clientesFaltando: Array<{ nome: string; linhas: number; valor: number }>;
+  // Venda que entrou sem custo — o dia aparece com 100% de margem.
+  //
+  // O custo do item vem do cadastro do produto, nao do Bling. Quando nao entra,
+  // o lucro do mes sobe sozinho e ninguem repara: o numero vem, parece um
+  // numero, e so quem conhece a margem da casa desconfia.
+  semCusto: { itens: number; pedidos: number; valor: number; skus: string[] };
   erro: string | null;
 }
 

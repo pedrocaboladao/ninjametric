@@ -495,3 +495,59 @@ export async function refazerPeriodo(
 
   return { simulacao, de, ate, pedidos: rows.length, itens, valor, porOrigem };
 }
+
+// Venda que entrou sem custo.
+//
+// A margem da fabrica fica entre 18% e 20%. Quando o custo do item nao entra, o
+// dia aparece com 100% de margem e o lucro do mes sobe sozinho — em 31/08/2026
+// foram R$ 102.551,93 de custo faltando em 604 itens, e o mes ia fechar com
+// R$ 102 mil de lucro que nao existe.
+//
+// Isso ja aconteceu ao contrario tambem: quando o custo apareceu depois, a nota
+// de revenda passou a somar junto e inventou um prejuizo de R$ 842.739,39.
+//
+// Ninguem repara sozinho: o numero vem, parece um numero, e so quem conhece a
+// margem da casa desconfia. Por isso a sincronizacao passa a avisar.
+export interface VendaSemCusto {
+  itens: number;
+  pedidos: number;
+  valor: number;
+  // ate cinco SKUs pra dizer onde olhar, sem virar uma parede de texto
+  skus: string[];
+}
+
+export async function vendaSemCusto(de: string, ate: string): Promise<VendaSemCusto> {
+  const { rows } = await pool.query<{
+    itens: string;
+    pedidos: string;
+    valor: string;
+  }>(
+    `SELECT COUNT(*) AS itens,
+            COUNT(DISTINCT i.pedido_id) AS pedidos,
+            COALESCE(SUM(i.quantidade * i.preco_unitario), 0) AS valor
+       FROM fabrica_pedido_itens i
+       JOIN fabrica_pedidos p ON p.id = i.pedido_id
+      WHERE p.data BETWEEN $1::date AND $2::date
+        AND p.status <> 'CANCELADO'
+        AND i.custo_unitario = 0`,
+    [de, ate]
+  );
+  const { rows: skus } = await pool.query<{ sku: string }>(
+    `SELECT DISTINCT pr.sku
+       FROM fabrica_pedido_itens i
+       JOIN fabrica_pedidos p ON p.id = i.pedido_id
+       JOIN fabrica_produtos pr ON pr.id = i.produto_id
+      WHERE p.data BETWEEN $1::date AND $2::date
+        AND p.status <> 'CANCELADO'
+        AND i.custo_unitario = 0
+      ORDER BY pr.sku
+      LIMIT 5`,
+    [de, ate]
+  );
+  return {
+    itens: Number(rows[0]?.itens ?? 0),
+    pedidos: Number(rows[0]?.pedidos ?? 0),
+    valor: Number(rows[0]?.valor ?? 0),
+    skus: skus.map((s) => s.sku),
+  };
+}
