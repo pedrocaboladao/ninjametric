@@ -70,6 +70,7 @@ export interface VendaFinanceiraShopee {
   custoTotal: number | null;
   impostoTotal: number;
   taxaShopeeTotal: number;
+  cupomVendedorTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
 }
@@ -195,6 +196,7 @@ export async function listarVendasFinanceirasShopee(
       const receitaTotalPedido = linhas.reduce((soma, l) => soma + l.receitaTotal, 0);
       const taxaPedido = loja.taxas.get(pedido.order_sn);
       const taxaTotalPedido = (taxaPedido?.comissao ?? 0) + (taxaPedido?.taxaServico ?? 0);
+      const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
 
       for (const linha of linhas) {
         const custoUnitario = linha.sku !== null ? custoPorSku.get(normalizarSku(linha.sku)) ?? null : null;
@@ -207,8 +209,15 @@ export async function listarVendasFinanceirasShopee(
           receitaTotalPedido > 0
             ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * taxaTotalPedido)
             : 0;
+        // Cupom custeado pelo vendedor — igual à taxa, só vem no total do
+        // pedido, rateado proporcional à receita da linha. É custo real
+        // (sai do bolso do vendedor), então entra na margem igual imposto/taxa.
+        const cupomVendedorTotal =
+          receitaTotalPedido > 0
+            ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * cupomVendedorPedido)
+            : 0;
         const margemContribuicao =
-          custoTotal !== null ? linha.receitaTotal - custoTotal - impostoTotal - taxaShopeeTotal : null;
+          custoTotal !== null ? linha.receitaTotal - custoTotal - impostoTotal - taxaShopeeTotal - cupomVendedorTotal : null;
 
         vendas.push({
           orderSn: pedido.order_sn,
@@ -224,6 +233,7 @@ export async function listarVendasFinanceirasShopee(
           custoTotal,
           impostoTotal,
           taxaShopeeTotal,
+          cupomVendedorTotal,
           margemContribuicao,
           margemPercentual:
             margemContribuicao !== null && linha.receitaTotal > 0

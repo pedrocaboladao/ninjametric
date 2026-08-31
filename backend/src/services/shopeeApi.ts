@@ -131,6 +131,7 @@ export interface ShopeeTaxaPedido {
   orderSn: string;
   comissao: number;
   taxaServico: number;
+  cupomVendedor: number;
 }
 
 interface RespostaEscrow {
@@ -140,6 +141,14 @@ interface RespostaEscrow {
     order_income?: {
       commission_fee?: number;
       service_fee?: number;
+      // Valor do cupom aplicado na compra que fica por conta do vendedor
+      // (não é a Shopee quem banca) — confirmado contra um pedido real
+      // devolvido (260829MD7RM383, Catedral, cupom "CATE3OFFF"): o total do
+      // pedido vem 0 por causa do estorno, mas o item dentro de "items"
+      // preserva o valor original em discount_from_voucher_seller (R$4,27).
+      // Em pedido sem devolução, voucher_from_seller aqui no nível do
+      // pedido é o valor a usar direto, sem precisar somar item a item.
+      voucher_from_seller?: number;
     };
   };
 }
@@ -162,7 +171,12 @@ export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Pr
       if (data.error) return null;
       const income = data.response?.order_income;
       if (!income) return null;
-      return { orderSn, comissao: income.commission_fee ?? 0, taxaServico: income.service_fee ?? 0 };
+      return {
+        orderSn,
+        comissao: income.commission_fee ?? 0,
+        taxaServico: income.service_fee ?? 0,
+        cupomVendedor: income.voucher_from_seller ?? 0,
+      };
     } catch {
       return null;
     }
