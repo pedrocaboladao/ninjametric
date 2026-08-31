@@ -32,7 +32,12 @@ import {
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
-import { conferirContasPagar, procurarContatos, espiarContas } from "../services/blingContasService";
+import {
+  conferirContasPagar,
+  procurarContatos,
+  espiarContas,
+  contasDoFornecedor,
+} from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
 // Callback fica num router próprio, separado do admin-gated acima — mesmo
@@ -62,6 +67,17 @@ function erro(res: Response, err: unknown, padrao: string) {
 
 // Conferencia de contas a pagar: so le, dos dois lados. O acerto e decisao do
 // Hudson — numero que vira custo nao se corrige sozinho.
+fabricaBlingRouter.get("/contas/por-fornecedor", async (req, res) => {
+  const termo = String(req.query.termo ?? "").trim();
+  if (termo.length < 3) return res.status(400).json({ error: "Termo curto demais." });
+  try {
+    res.json(await contasDoFornecedor(termo));
+  } catch (err) {
+    console.error("[bling-contas-fornecedor]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao buscar." });
+  }
+});
+
 fabricaBlingRouter.get("/contas/espiar", async (_req, res) => {
   try {
     res.json(await espiarContas());

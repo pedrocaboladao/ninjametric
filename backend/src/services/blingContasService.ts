@@ -337,3 +337,63 @@ export async function espiarContas(): Promise<unknown> {
   }
   return { listagem: lista.data ?? [], detalhe, erroDetalhe };
 }
+
+// Todas as contas a pagar de um fornecedor, sem recorte de data.
+//
+// Serve pra pergunta "o que eu ja paguei pra essa transportadora?" — que foi
+// como o frete agrupado apareceu: quatro CT-e cobrados num boleto so, invisiveis
+// procurando por valor.
+//
+// Varre a listagem inteira e filtra pelo id do contato aqui, em vez de mandar
+// `idContato` pro Bling: o filtro de data ele ignora em silencio, e nao ha
+// motivo pra confiar que os outros filtros sejam diferentes. Depois busca o
+// detalhe so das que casaram, porque historico e numero da nota nao vem na
+// listagem.
+export async function contasDoFornecedor(termo: string): Promise<{
+  contato: { id: number; nome: string; documento: string | null } | null;
+  contas: Array<{
+    id: number;
+    vencimento: string;
+    valor: number;
+    situacao: number | string | null;
+    historico: string;
+    numeroDocumento: string;
+  }>;
+}> {
+  const achados = await procurarContatos(termo);
+  const contato = achados[0] ?? null;
+  if (!contato) return { contato: null, contas: [] };
+
+  const bruto: ContaBling[] = [];
+  for (let pagina = 1; pagina <= 60; pagina++) {
+    const r = await chamar<{ data?: ContaBling[] }>("/contas/pagar", {
+      pagina,
+      limite: POR_PAGINA,
+    });
+    const lote = r.data ?? [];
+    bruto.push(...lote);
+    if (lote.length < POR_PAGINA) break;
+  }
+
+  const minhas = bruto.filter((c) => c.contato?.id === contato.id);
+  const contas = [];
+  for (const c of minhas) {
+    let det: Partial<ContaBling> = {};
+    try {
+      const d = await chamar<{ data?: ContaBling }>(`/contas/pagar/${c.id}`);
+      det = d.data ?? {};
+    } catch {
+      // detalhe que falhou nao apaga a conta da lista
+    }
+    contas.push({
+      id: c.id,
+      vencimento: dia(c.vencimento),
+      valor: dinheiro(c.valor),
+      situacao: c.situacao ?? null,
+      historico: (det.historico ?? c.historico ?? "").trim(),
+      numeroDocumento: (det.numeroDocumento ?? c.numeroDocumento ?? "").trim(),
+    });
+  }
+  contas.sort((a, b) => (a.vencimento < b.vencimento ? -1 : 1));
+  return { contato, contas };
+}
