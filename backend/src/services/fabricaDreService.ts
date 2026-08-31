@@ -151,21 +151,30 @@ const CATEGORIA_REVENDA = "REVENDA";
 // o caminhao duas vezes — uma pelo cheque, outra pelo desgaste.
 const CATEGORIA_IMOBILIZADO = "IMOBILIZADO";
 
-// Dinheiro que anda sem nada ter sido consumido: adiantamento ao funcionario e
-// parcela de divida. Fica fora do resultado, no mesmo bloco do imobilizado.
+// Parcela de divida: o principal e caixa, quem e despesa e o juro.
 //
-// O adiantamento nao e despesa a mais: ele volta na folha. O holerite mostra a
-// linha "Desconto de Adiantamento Salarial" — R$ 1.040,00 no do Rodrigo, o
-// mesmo valor lancado aqui como adiantamento. Ou seja, o salario base ja
-// contem esse dinheiro, e lancar os dois cobra a mesma pessoa duas vezes.
+// ADIANTAMENTO NAO entra aqui, e a historia vale ser contada porque eu errei
+// duas vezes antes de acertar.
 //
-// Eu tinha lido ao contrario. Os tres funcionarios recebem R$ 2.300,00 no dia 5,
-// inclusive quem tira adiantamento e quem nao tira, e disso eu conclui que nao
-// havia desconto. O R$ 2.300,00 nao e o liquido mesmo — e o salario base. O
-// liquido e um terceiro numero que nao esta lancado em lugar nenhum.
+// O holerite tem a linha "Desconto de Adiantamento Salarial", e isso parece
+// dizer que o adiantamento volta na folha — logo, lancar os dois seria dobra.
+// Nao e. O desconto significa que o funcionario nao recebe duas vezes; a
+// empresa desembolsa as duas. O que decide e outra pergunta: **o lancamento do
+// dia 5 e o salario cheio ou o que sobrou depois do adiantamento?**
 //
-// EMPRESTIMO segue a mesma regra: a parcela e caixa, quem e despesa e o juro.
-const CATEGORIAS_DE_CAIXA = new Set(["ADIANTAMENTO", "EMPRÉSTIMO"]);
+// A conta dos salarios reais respondeu:
+//
+//   Carlos    ganha 6.000,00   lancado 3.000,00 + 3.000,00 = 6.000,00
+//   Ricardo   ganha 3.750,00   lancado 2.300,00 + 1.500,00 = 3.800,00
+//
+// Os dois so fecham somando. Cada lancamento e uma parcela que saiu do banco,
+// nao o bruto da folha. Tirar o adiantamento do resultado escondia R$ 1.450,00
+// por mes so do Ricardo.
+//
+// O que me enganou: o Douglas ganha exatamente 2.300,00, entao no holerite dele
+// o valor do dia 5 e mesmo o salario base. Peguei o caso de um funcionario e
+// apliquei nos tres.
+const CATEGORIAS_DE_CAIXA = new Set(["EMPRÉSTIMO"]);
 
 // Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
 // digitar todo mês, mas o histórico fica preso ao que valia na época.
