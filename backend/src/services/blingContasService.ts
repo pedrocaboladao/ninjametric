@@ -65,6 +65,8 @@ interface ContaBling {
   numeroDocumento?: string;
   historico?: string;
   contato?: { id?: number; nome?: string };
+  categoria?: { id?: number; descricao?: string };
+  portador?: { id?: number; descricao?: string };
 }
 
 export interface ContaConferida {
@@ -72,6 +74,10 @@ export interface ContaConferida {
   contraparte: string;
   vencimento: string;
   valor: number;
+  // como cada lado classifica a conta. Sem isso a lista de divergencia e um
+  // monte de linha solta — com isso da pra ver que "so no Bling" e quase toda
+  // despesa miuda que nunca precisou existir no site.
+  categoria: string;
   // o que difere entre os dois lados, escrito em português
   diferenca?: string;
   blingId?: number;
@@ -159,6 +165,7 @@ interface LinhaSite {
   documento: string | null;
   descricao: string;
   contraparte: string | null;
+  categoria: string | null;
   valor: string;
   vencimento: string;
 }
@@ -167,7 +174,7 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
   const [bling, { rows: site }] = await Promise.all([
     baixarDoBling(de, ate),
     pool.query<LinhaSite>(
-      `SELECT id, documento, descricao, contraparte, valor, vencimento::text AS vencimento
+      `SELECT id, documento, descricao, contraparte, categoria, valor, vencimento::text AS vencimento
          FROM fabrica_contas
         WHERE tipo = 'pagar' AND vencimento BETWEEN $1::date AND $2::date`,
       [de, ate]
@@ -205,6 +212,7 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       contraparte: nome,
       vencimento: venc,
       valor,
+      categoria: b.categoria?.descricao?.trim() || "sem categoria",
       blingId: b.id,
     };
     if (!achado) {
@@ -231,6 +239,7 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       contraparte: s.contraparte ?? "",
       vencimento: dia(s.vencimento),
       valor: dinheiro(s.valor),
+      categoria: s.categoria ?? "sem categoria",
       siteId: s.id,
     }));
 
