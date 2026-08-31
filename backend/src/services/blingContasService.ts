@@ -64,7 +64,11 @@ interface ContaBling {
   saldo?: number;
   numeroDocumento?: string;
   historico?: string;
+  // Vem so o id. O nome nunca vem, nem na listagem nem no detalhe — quem quiser
+  // saber de quem e a conta tem que ir buscar o contato.
   contato?: { id?: number; nome?: string };
+  // idem, e na Fabrica vem sempre {id: 0}: o ERP nao classifica conta a pagar.
+  // Quem classifica e o site, e por isso o DRE sai de la e nao daqui.
   categoria?: { id?: number; descricao?: string };
   portador?: { id?: number; descricao?: string };
 }
@@ -133,6 +137,12 @@ async function baixarDoBling(de: string, ate: string): Promise<ContaBling[]> {
     return v >= de && v <= ate;
   });
 
+  // Nome do fornecedor: uma chamada por contato, nao por conta.
+  //
+  // Sao dezenas de contas pra meia duzia de fornecedores; buscar por conta
+  // gastaria o teto de 3 por segundo a toa e demoraria minutos a mais.
+  const nomePorContato = new Map<number, string>();
+
   const contas: ContaBling[] = [];
   for (const c of noPeriodo) {
     try {
@@ -144,11 +154,22 @@ async function baixarDoBling(de: string, ate: string): Promise<ContaBling[]> {
       // filtrada como de agosto voltava mostrando julho. Valor e vencimento
       // ficam os da listagem, que e o que a tela do Bling mostra e o que o
       // recorte de data usou. Do detalhe vem so o que identifica a conta.
+      const idContato = det.contato?.id ?? c.contato?.id;
+      let nome = idContato ? nomePorContato.get(idContato) : undefined;
+      if (idContato && nome === undefined) {
+        try {
+          const ct = await chamar<{ data?: { nome?: string } }>(`/contatos/${idContato}`);
+          nome = ct.data?.nome ?? "";
+        } catch {
+          nome = "";
+        }
+        nomePorContato.set(idContato, nome);
+      }
       contas.push({
         ...c,
         historico: det.historico ?? c.historico,
         numeroDocumento: det.numeroDocumento ?? c.numeroDocumento,
-        contato: det.contato ?? c.contato,
+        contato: { id: idContato, nome: nome || undefined },
         categoria: det.categoria ?? c.categoria,
       });
     } catch {
@@ -225,7 +246,12 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       contraparte: nome,
       vencimento: venc,
       valor,
-      categoria: b.categoria?.descricao?.trim() || "sem categoria",
+      // O Bling manda categoria {id: 0} — ele nao classifica conta a pagar. O
+      // que sobra e o historico, que na pratica e onde a fabrica escreve tanto
+      // o numero da nota ("700296") quanto o tipo do gasto ("EMBALAGEM").
+      categoria:
+        b.categoria?.descricao?.trim() ||
+        (k ? "nota com numero" : (b.historico ?? "").trim() || "sem historico"),
       blingId: b.id,
     };
     if (!achado) {
