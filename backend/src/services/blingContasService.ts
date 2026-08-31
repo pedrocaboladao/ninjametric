@@ -397,3 +397,80 @@ export async function contasDoFornecedor(termo: string): Promise<{
   contas.sort((a, b) => (a.vencimento < b.vencimento ? -1 : 1));
   return { contato, contas };
 }
+
+// Compara os pedidos do Bling com os do site, dia a dia.
+//
+// A funcionaria disse que lancou 57 pedidos e o sync trouxe 18. Sem ver os dois
+// lados nao da pra saber se faltaram 39, se 39 ja tinham entrado antes, ou se
+// eram de outra empresa — o Bling da Fabrica guarda tambem o catalogo da
+// Fabrica Loja, que vende no Mercado Livre.
+//
+// Filtra a data aqui de novo depois de baixar: em /contas/pagar o Bling ignora
+// o filtro de data em silencio, respondendo 200 com outro periodo. Nao custa
+// nada garantir.
+export async function conferirPedidos(
+  de: string,
+  ate: string
+): Promise<{
+  de: string;
+  ate: string;
+  bling: Array<{ numero: string; data: string; cliente: string; total: number }>;
+  site: Array<{ id: number; data: string; cliente: string; total: number }>;
+  porDia: Array<{ data: string; bling: number; site: number; valorBling: number; valorSite: number }>;
+}> {
+  const { listarPedidos } = await import("./blingPedidosService");
+  const brutos = await listarPedidos(de, ate);
+  const bling = brutos
+    .filter((p) => p.data >= de && p.data <= ate)
+    .map((p) => ({ numero: p.numero, data: p.data, cliente: p.cliente, total: p.total }));
+
+  const { rows } = await pool.query<{
+    id: number;
+    data: string;
+    cliente: string;
+    total: string;
+  }>(
+    `SELECT p.id, p.data::text AS data, c.nome AS cliente,
+            COALESCE(SUM(i.quantidade * i.preco_unitario), 0) AS total
+       FROM fabrica_pedidos p
+       JOIN fabrica_clientes c ON c.id = p.cliente_id
+       LEFT JOIN fabrica_pedido_itens i ON i.pedido_id = p.id
+      WHERE p.data BETWEEN $1::date AND $2::date AND p.status <> 'CANCELADO'
+      GROUP BY p.id, p.data, c.nome
+      ORDER BY p.data, p.id`,
+    [de, ate]
+  );
+  const site = rows.map((r) => ({
+    id: r.id,
+    data: dia(r.data),
+    cliente: r.cliente,
+    total: dinheiro(r.total),
+  }));
+
+  const dias = new Map<string, { bling: number; site: number; valorBling: number; valorSite: number }>();
+  const pega = (d: string) => {
+    const a = dias.get(d) ?? { bling: 0, site: 0, valorBling: 0, valorSite: 0 };
+    dias.set(d, a);
+    return a;
+  };
+  for (const p of bling) {
+    const a = pega(p.data);
+    a.bling += 1;
+    a.valorBling += p.total;
+  }
+  for (const p of site) {
+    const a = pega(p.data);
+    a.site += 1;
+    a.valorSite += p.total;
+  }
+
+  return {
+    de,
+    ate,
+    bling,
+    site,
+    porDia: [...dias.entries()]
+      .map(([data, v]) => ({ data, ...v }))
+      .sort((a, b) => (a.data < b.data ? -1 : 1)),
+  };
+}
