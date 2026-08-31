@@ -51,15 +51,24 @@ function lerEntrada(req: Request): ContaEntrada | string {
 }
 
 fabricaContasRouter.get("/", async (req, res) => {
-  const { tipo, status, de, ate } = req.query;
+  const { tipo, status, de, ate, limite } = req.query;
   try {
+    // `limite` estava sendo ignorado: quem pedisse 5.000 recebia as 300 mais
+    // recentes e nada dizia que o resto ficou de fora. Somar o que voltava dava
+    // um total que parecia o total — e nao era. Mesmo buraco dos pagamentos
+    // limitados a 100, que escondiam R$ 2,1 milhoes.
+    const n = Number(limite);
+    const contas = await listarContas({
+      tipo: TIPOS.includes(tipo as TipoConta) ? (tipo as TipoConta) : undefined,
+      status: STATUS.includes(status as StatusConta) ? (status as StatusConta) : undefined,
+      de: typeof de === "string" && de ? de : undefined,
+      ate: typeof ate === "string" && ate ? ate : undefined,
+      limite: Number.isFinite(n) && n > 0 ? Math.min(n, 20000) : undefined,
+    });
     res.json({
-      contas: await listarContas({
-        tipo: TIPOS.includes(tipo as TipoConta) ? (tipo as TipoConta) : undefined,
-        status: STATUS.includes(status as StatusConta) ? (status as StatusConta) : undefined,
-        de: typeof de === "string" && de ? de : undefined,
-        ate: typeof ate === "string" && ate ? ate : undefined,
-      }),
+      contas,
+      // quem le sabe se veio tudo. Lista truncada em silencio e pior que erro.
+      truncado: contas.length >= (Number.isFinite(n) && n > 0 ? Math.min(n, 20000) : 300),
     });
   } catch (err) {
     erro(res, err, "Falha ao carregar contas.");

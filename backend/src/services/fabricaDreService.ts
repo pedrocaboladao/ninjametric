@@ -151,6 +151,31 @@ const CATEGORIA_REVENDA = "REVENDA";
 // o caminhao duas vezes — uma pelo cheque, outra pelo desgaste.
 const CATEGORIA_IMOBILIZADO = "IMOBILIZADO";
 
+// Parcela de divida: o principal e caixa, quem e despesa e o juro.
+//
+// ADIANTAMENTO NAO entra aqui, e a historia vale ser contada porque eu errei
+// duas vezes antes de acertar.
+//
+// O holerite tem a linha "Desconto de Adiantamento Salarial", e isso parece
+// dizer que o adiantamento volta na folha — logo, lancar os dois seria dobra.
+// Nao e. O desconto significa que o funcionario nao recebe duas vezes; a
+// empresa desembolsa as duas. O que decide e outra pergunta: **o lancamento do
+// dia 5 e o salario cheio ou o que sobrou depois do adiantamento?**
+//
+// A conta dos salarios reais respondeu:
+//
+//   Carlos    ganha 6.000,00   lancado 3.000,00 + 3.000,00 = 6.000,00
+//   Ricardo   ganha 3.750,00   lancado 2.300,00 + 1.500,00 = 3.800,00
+//
+// Os dois so fecham somando. Cada lancamento e uma parcela que saiu do banco,
+// nao o bruto da folha. Tirar o adiantamento do resultado escondia R$ 1.450,00
+// por mes so do Ricardo.
+//
+// O que me enganou: o Douglas ganha exatamente 2.300,00, entao no holerite dele
+// o valor do dia 5 e mesmo o salario base. Peguei o caso de um funcionario e
+// apliquei nos tres.
+const CATEGORIAS_DE_CAIXA = new Set(["EMPRÉSTIMO"]);
+
 // Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
 // digitar todo mês, mas o histórico fica preso ao que valia na época.
 export async function aliquotaDoMes(
@@ -317,6 +342,13 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     }
     if (categoria === CATEGORIA_REVENDA) {
       custoRevenda += total;
+      insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
+      jaNoCustoTotal += total;
+      continue;
+    }
+    if (CATEGORIAS_DE_CAIXA.has(categoria)) {
+      // aparece no bloco de fora do resultado: o dinheiro saiu do caixa e
+      // sumir do relatorio seria pior que aparecer no lugar errado
       insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
       jaNoCustoTotal += total;
       continue;

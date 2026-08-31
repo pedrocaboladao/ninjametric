@@ -58,6 +58,11 @@ const CATEGORIAS = [
   // IMPOSTO, porque o imposto da venda ja foi provisionado. INSS e FGTS dentro
   // de IMPOSTO sumiriam do resultado no dia em que a aliquota fosse cadastrada.
   "ENCARGOS",
+  // Retirada de socio. Nao e folha: nao gera FGTS, nao tem vale, nao entra na
+  // conta de custo de pessoal. Misturar com SALARIO faz a folha parecer maior
+  // do que e — o pro-labore do Hudson e do Carlos Vinicius somam R$ 93.000,00
+  // em agosto, quase cinco vezes a folha inteira dos seis funcionarios.
+  "PRÓ-LABORE",
   "BENEFÍCIOS",
   "SERVIÇOS",
   "ADMINISTRATIVO",
