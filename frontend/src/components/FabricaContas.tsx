@@ -70,6 +70,14 @@ const CATEGORIAS = [
   // socio, sai igual todo mes e e despesa. Retirada e calculada sobre o lucro,
   // sai em valor e data irregulares, e nunca entra no resultado.
   "RETIRADA DE LUCROS",
+  // Custo do dinheiro, nao da operacao: juro e multa de atraso, tarifa de banco,
+  // IOF, desconto de duplicata.
+  //
+  // Fica separado porque juro de atraso nao e custo do que foi comprado. Os dois
+  // boletos da Brasiltec pagos com 7 e 5 dias de atraso custaram R$ 116,41 a
+  // mais — se isso entrasse junto no IMOBILIZADO, a fabrica ia depreciar juro
+  // por dez anos. E ninguem conseguiria responder quanto custou atrasar.
+  "DESPESA FINANCEIRA",
   "BENEFÍCIOS",
   "SERVIÇOS",
   "ADMINISTRATIVO",
