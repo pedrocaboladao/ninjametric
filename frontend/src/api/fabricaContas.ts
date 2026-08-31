@@ -37,10 +37,17 @@ export async function fetchContas(filtro: {
   status?: StatusConta;
   de?: string;
   ate?: string;
+  limite?: number;
 } = {}): Promise<Conta[]> {
-  const res = await fetch(`${API_BASE}/api/fabrica-contas?${query(filtro)}`, {
-    credentials: "include",
-  });
+  // Pede o mes inteiro, nao as 300 mais recentes.
+  //
+  // O servidor devolvia 300 por padrao e a tela somava o que chegava — um total
+  // que parecia o total. Com lancamento recorrente ate 2027, as 300 mais novas
+  // sao as do futuro, e o mes que o operador esta olhando ficava de fora.
+  const res = await fetch(
+    `${API_BASE}/api/fabrica-contas?${query({ limite: 5000, ...filtro })}`,
+    { credentials: "include" }
+  );
   return (await tratarResposta<{ contas: Conta[] }>(res)).contas;
 }
 
