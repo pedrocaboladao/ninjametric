@@ -151,6 +151,22 @@ const CATEGORIA_REVENDA = "REVENDA";
 // o caminhao duas vezes — uma pelo cheque, outra pelo desgaste.
 const CATEGORIA_IMOBILIZADO = "IMOBILIZADO";
 
+// Dinheiro que anda sem nada ter sido consumido: adiantamento ao funcionario e
+// parcela de divida. Fica fora do resultado, no mesmo bloco do imobilizado.
+//
+// O adiantamento nao e despesa a mais: ele volta na folha. O holerite mostra a
+// linha "Desconto de Adiantamento Salarial" — R$ 1.040,00 no do Rodrigo, o
+// mesmo valor lancado aqui como adiantamento. Ou seja, o salario base ja
+// contem esse dinheiro, e lancar os dois cobra a mesma pessoa duas vezes.
+//
+// Eu tinha lido ao contrario. Os tres funcionarios recebem R$ 2.300,00 no dia 5,
+// inclusive quem tira adiantamento e quem nao tira, e disso eu conclui que nao
+// havia desconto. O R$ 2.300,00 nao e o liquido mesmo — e o salario base. O
+// liquido e um terceiro numero que nao esta lancado em lugar nenhum.
+//
+// EMPRESTIMO segue a mesma regra: a parcela e caixa, quem e despesa e o juro.
+const CATEGORIAS_DE_CAIXA = new Set(["ADIANTAMENTO", "EMPRÉSTIMO"]);
+
 // Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
 // digitar todo mês, mas o histórico fica preso ao que valia na época.
 export async function aliquotaDoMes(
@@ -317,6 +333,13 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     }
     if (categoria === CATEGORIA_REVENDA) {
       custoRevenda += total;
+      insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
+      jaNoCustoTotal += total;
+      continue;
+    }
+    if (CATEGORIAS_DE_CAIXA.has(categoria)) {
+      // aparece no bloco de fora do resultado: o dinheiro saiu do caixa e
+      // sumir do relatorio seria pior que aparecer no lugar errado
       insumos.set(categoria, (insumos.get(categoria) ?? 0) + total);
       jaNoCustoTotal += total;
       continue;
