@@ -174,7 +174,17 @@ const CATEGORIA_IMOBILIZADO = "IMOBILIZADO";
 // O que me enganou: o Douglas ganha exatamente 2.300,00, entao no holerite dele
 // o valor do dia 5 e mesmo o salario base. Peguei o caso de um funcionario e
 // apliquei nos tres.
-const CATEGORIAS_DE_CAIXA = new Set(["EMPRÉSTIMO"]);
+//
+// RETIRADA DE LUCROS entra aqui pelo mesmo motivo: o socio tirando lucro nao
+// consome nada da operacao. Nao e despesa deste mes nem do mes passado — nao e
+// despesa de mes nenhum. Ela reduz o patrimonio, e o patrimonio nao passa pelo
+// resultado.
+//
+// PRO-LABORE fica de fora desta lista de proposito: aquilo e pagamento pelo
+// trabalho do socio, valor fixo de contrato, e despesa como qualquer salario.
+// Sao coisas diferentes e nao podem morar na mesma categoria — foi por isso que
+// os R$ 93.000,00 de agosto passaram por despesa antes de alguem olhar.
+const CATEGORIAS_DE_CAIXA = new Set(["EMPRÉSTIMO", "RETIRADA DE LUCROS"]);
 
 // Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
 // digitar todo mês, mas o histórico fica preso ao que valia na época.

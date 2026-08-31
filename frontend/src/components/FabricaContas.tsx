@@ -63,6 +63,13 @@ const CATEGORIAS = [
   // do que e — o pro-labore do Hudson e do Carlos Vinicius somam R$ 93.000,00
   // em agosto, quase cinco vezes a folha inteira dos seis funcionarios.
   "PRÓ-LABORE",
+  // Retirada de lucro NAO e despesa: e o dono tirando o que ja era dele. Sai do
+  // caixa e reduz o patrimonio, nao o resultado — em mes nenhum.
+  //
+  // O que separa das duas: pro-labore e valor fixo de contrato pelo trabalho do
+  // socio, sai igual todo mes e e despesa. Retirada e calculada sobre o lucro,
+  // sai em valor e data irregulares, e nunca entra no resultado.
+  "RETIRADA DE LUCROS",
   "BENEFÍCIOS",
   "SERVIÇOS",
   "ADMINISTRATIVO",
