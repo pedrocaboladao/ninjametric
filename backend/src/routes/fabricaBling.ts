@@ -63,8 +63,13 @@ fabricaBlingRouter.get("/contas/espiar", async (_req, res) => {
 });
 
 fabricaBlingRouter.get("/contas/conferir", async (req, res) => {
-  const DIA = new RegExp("^\d{4}-\d{2}-\d{2}$");
-  const d = (v: unknown, padrao: string) => (DIA.test(String(v ?? "")) ? String(v) : padrao);
+  // Literal, nao `new RegExp("...")`: dentro de string o \d vira só "d", e o
+  // padrao virava ^d{4}-d{2}-d{2}$ — que nunca casa com uma data de verdade.
+  // Toda data pedida caía no padrao, e a conferencia respondia sobre julho
+  // enquanto a tela pedia agosto. Erro que nao da erro: o numero vem, so nao e
+  // do periodo que voce pediu.
+  const d = (v: unknown, padrao: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? "")) ? String(v) : padrao;
   const hoje = new Date().toISOString().slice(0, 10);
   try {
     res.json(await conferirContasPagar(d(req.query.de, "2026-07-01"), d(req.query.ate, hoje)));
