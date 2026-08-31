@@ -53,9 +53,22 @@ const CATEGORIAS = [
   "REVENDA",
   "EMBALAGEM",
   "MANUTENÇÃO",
+  // Encargo de folha e imposto sobre venda sao coisas diferentes, e o DRE trata
+  // diferente: quando existe aliquota cadastrada ele IGNORA tudo que esta em
+  // IMPOSTO, porque o imposto da venda ja foi provisionado. INSS e FGTS dentro
+  // de IMPOSTO sumiriam do resultado no dia em que a aliquota fosse cadastrada.
+  "ENCARGOS",
+  "BENEFÍCIOS",
+  "SERVIÇOS",
+  "ADMINISTRATIVO",
   "IMPOSTO",
   "FRETE",
   "CONSUMO",
+  // Nem despesa nem custo: dinheiro que volta, ou parcela de divida. Ficam na
+  // lista pra quem lanca ter onde por — o DRE ainda os trata como despesa, e
+  // tirar do resultado depende de saber se a folha ja vem liquida do adiantado.
+  "ADIANTAMENTO",
+  "EMPRÉSTIMO",
   "OUTROS",
 ];
 
