@@ -1626,22 +1626,29 @@ export function FabricaPedidos() {
 
           {rodada && !rodada.erro && (
             <div className="credito-alerta">
+              {/* Nota do Bling nao e pedido do site: o site junta as notas do
+                  mesmo cliente no mesmo dia numa linha so, porque a loja recebe
+                  uma cobranca por dia e nao onze.
+
+                  A frase antiga dizia "18 pedidos lancados ... li 326 pedidos do
+                  Bling" e parecia que 308 tinham sumido. A funcionaria lancou 57
+                  notas em 31/08 e o site mostrou 18 — os dois numeros certos, o
+                  texto e que fazia parecer perda. Valor batia ao centavo. */}
               <p>
                 <strong>
                   {rodada.pedidosCriados === 0
                     ? "Nada novo pra lançar."
-                    : `${rodada.pedidosCriados} pedido${
-                        rodada.pedidosCriados === 1 ? "" : "s"
-                      } lançado${rodada.pedidosCriados === 1 ? "" : "s"}`}
+                    : `Entraram ${rodada.itensLancados} item${
+                        rodada.itensLancados === 1 ? "" : "ns"
+                      }, ${formatCurrency(rodada.valorLancado)}`}
                 </strong>{" "}
                 {rodada.pedidosCriados > 0 && (
                   <>
-                    com {rodada.itensLancados} item
-                    {rodada.itensLancados === 1 ? "" : "ns"},{" "}
-                    {formatCurrency(rodada.valorLancado)}.{" "}
+                    — agrupados em {rodada.pedidosCriados} pedido
+                    {rodada.pedidosCriados === 1 ? "" : "s"} do site, um por cliente por dia.{" "}
                   </>
                 )}
-                Li {rodada.pedidosLidos} pedido
+                Li {rodada.pedidosLidos} nota
                 {rodada.pedidosLidos === 1 ? "" : "s"} do Bling de {rodada.de} a {rodada.ate}
                 {rodada.motivos["já importada antes"] ? (
                   <>
