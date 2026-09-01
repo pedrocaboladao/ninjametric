@@ -84,6 +84,14 @@ const CATEGORIAS = [
   "IMPOSTO",
   "FRETE",
   "CONSUMO",
+  // Bem que dura anos: movel, equipamento, maquina, obra. Nao e despesa do mes
+  // — vira depreciacao mensal no DRE, que le esta categoria pelo nome.
+  //
+  // Estava faltando so aqui. O DRE ja depreciava, o cadastro de fornecedor ja
+  // oferecia, e agosto tinha R$ 156.680,34 em 18 lancamentos gravados pela API
+  // — mas quem lancasse pela tela nao achava a opcao, escolhia outra coisa, e o
+  // bem nunca depreciava.
+  "IMOBILIZADO",
   // Nem despesa nem custo: dinheiro que volta, ou parcela de divida. Ficam na
   // lista pra quem lanca ter onde por — o DRE ainda os trata como despesa, e
   // tirar do resultado depende de saber se a folha ja vem liquida do adiantado.
