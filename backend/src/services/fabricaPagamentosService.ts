@@ -518,24 +518,24 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
         [de, ate]
       ),
     ]);
-  // Quem paga este cliente NA DATA DO FECHAMENTO.
+  // De quem e a divida que nao tem data.
   //
   // A divida carregada e o saldo em conta nao tem data, entao precisam de um
-  // dono — e o dono e quem pagava naquele fechamento, nao quem paga hoje.
+  // dono. Nao ter data quer dizer que vem de antes do sistema — ou seja, e
+  // sempre mais antiga que qualquer `cobranca_pai_ate`. Entao o dono e o pai,
+  // sempre que existir um, independente do fechamento que se esta montando.
   //
-  // Sem isso, no dia em que a janela do pai vence a divida antiga evapora: a
+  // Sem isso a divida antiga evapora no dia em que a janela do pai vence: a
   // compra de agosto continua agrupada no pai, mas o credito sem data ja seguiu
-  // a filha, e ninguem soma os dois. Aconteceu em 31/08/2026 — a Catedral
-  // Ferramentas apareceu com -190.782,86 em vez de 180.591,81, porque os
-  // R$ 371.374,67 que a Fabrica de Tintas e a Lux Collor traziam de antes do
-  // sistema sumiram da linha.
+  // a filha, e ninguem soma os dois. Aconteceu duas vezes em 31/08/2026. Na
+  // primeira eu amarrei o dono em `cobranca_pai_ate >= ate`, que so adiava o
+  // problema: no fechamento seguinte `ate` passa do corte e a divida some de
+  // novo. Na previa de 01/09 a Catedral Ferramentas apareceu com -191.010,81 e
+  // R$ 438.287,89 sumiram do total, com as catorze filhas fora da tabela.
   const { rows: donos } = await pool.query<{ cliente_id: number; pagante_id: number }>(
     `SELECT id AS cliente_id,
-            CASE WHEN cliente_pai_id IS NOT NULL
-                  AND (cobranca_pai_ate IS NULL OR cobranca_pai_ate >= $1::date)
-                 THEN cliente_pai_id ELSE id END AS pagante_id
-       FROM fabrica_clientes`,
-    [ate]
+            COALESCE(cliente_pai_id, id) AS pagante_id
+       FROM fabrica_clientes`
   );
   const donoNaData = new Map(donos.map((d) => [d.cliente_id, Number(d.pagante_id)]));
 
