@@ -518,6 +518,27 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
         [de, ate]
       ),
     ]);
+  // Quem paga este cliente NA DATA DO FECHAMENTO.
+  //
+  // A divida carregada e o saldo em conta nao tem data, entao precisam de um
+  // dono — e o dono e quem pagava naquele fechamento, nao quem paga hoje.
+  //
+  // Sem isso, no dia em que a janela do pai vence a divida antiga evapora: a
+  // compra de agosto continua agrupada no pai, mas o credito sem data ja seguiu
+  // a filha, e ninguem soma os dois. Aconteceu em 31/08/2026 — a Catedral
+  // Ferramentas apareceu com -190.782,86 em vez de 180.591,81, porque os
+  // R$ 371.374,67 que a Fabrica de Tintas e a Lux Collor traziam de antes do
+  // sistema sumiram da linha.
+  const { rows: donos } = await pool.query<{ cliente_id: number; pagante_id: number }>(
+    `SELECT id AS cliente_id,
+            CASE WHEN cliente_pai_id IS NOT NULL
+                  AND (cobranca_pai_ate IS NULL OR cobranca_pai_ate >= $1::date)
+                 THEN cliente_pai_id ELSE id END AS pagante_id
+       FROM fabrica_clientes`,
+    [ate]
+  );
+  const donoNaData = new Map(donos.map((d) => [d.cliente_id, Number(d.pagante_id)]));
+
   const compNa = somar(compradoAte);
   const pagoNa = somar(pagoAte);
   const pagoNoPeriodo = somar(pagos);
@@ -536,7 +557,10 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
     if (!c) continue;
     // credito sem data — dívida carregada e saldo em conta — mora na loja, não
     // no rateio: some do saldo dela uma vez só, com quem paga hoje
-    const semData = paganteId === c.paganteId ? -((c.credito ?? 0) + (c.creditoConta ?? 0)) : 0;
+    const semData =
+      paganteId === (donoNaData.get(clienteId) ?? c.paganteId)
+        ? -((c.credito ?? 0) + (c.creditoConta ?? 0))
+        : 0;
     const saldoNaData = (compNa.get(chave) ?? 0) - (pagoNa.get(chave) ?? 0) + semData;
     const recebido = pagoNoPeriodo.get(chave) ?? 0;
     const antecip = antecipado.get(chave) ?? 0;
