@@ -205,7 +205,7 @@ interface LinhaSite {
 }
 
 export async function conferirContasPagar(de: string, ate: string): Promise<ConferenciaContas> {
-  const [bling, { rows: site }] = await Promise.all([
+  const [bling, { rows: site }, plano] = await Promise.all([
     baixarDoBling(de, ate),
     pool.query<LinhaSite>(
       `SELECT id, documento, descricao, contraparte, categoria, valor, vencimento::text AS vencimento
@@ -213,7 +213,11 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
         WHERE tipo = 'pagar' AND vencimento BETWEEN $1::date AND $2::date`,
       [de, ate]
     ),
+    // o plano de contas do Bling, pra traduzir o id que vem na conta.
+    // Falhou? segue sem: a conferencia vale mesmo sem o nome da categoria.
+    listarCategoriasBling().catch(() => [] as CategoriaBling[]),
   ]);
+  const nomeDaCategoria = new Map(plano.map((c) => [Number(c.id), c.descricao]));
 
   // indexa o site pelo documento; o que não tem número entra por
   // contraparte + vencimento + valor, que é o que sobra pra identificar a conta
@@ -246,10 +250,17 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       contraparte: nome,
       vencimento: venc,
       valor,
-      // O Bling manda categoria {id: 0} — ele nao classifica conta a pagar. O
-      // que sobra e o historico, que na pratica e onde a fabrica escreve tanto
-      // o numero da nota ("700296") quanto o tipo do gasto ("EMBALAGEM").
+      // O detalhe da conta traz `categoria: {id}` e **nunca** a descricao. Ler
+      // so `descricao` fazia conta ja classificada aparecer como se nao fosse:
+      // caia no historico e a conferencia dizia "HONORARIOS CONTABEIS" depois
+      // de a categoria ter sido gravada certa. Por isso o nome vem do plano de
+      // contas, pelo id.
+      //
+      // Sem categoria de verdade sobra o historico, que na pratica e onde a
+      // fabrica escreve tanto o numero da nota ("700296") quanto o tipo do
+      // gasto ("EMBALAGEM").
       categoria:
+        nomeDaCategoria.get(Number(b.categoria?.id ?? 0)) ||
         b.categoria?.descricao?.trim() ||
         (k ? "nota com numero" : (b.historico ?? "").trim() || "sem historico"),
       blingId: b.id,
