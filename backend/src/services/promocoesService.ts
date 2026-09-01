@@ -98,18 +98,27 @@ export async function criarCampanha(
   } catch (err) {
     if (axios.isAxiosError(err)) {
       const status = err.response?.status;
-      const mensagemMl = (err.response?.data as { message?: string })?.message;
+      const corpo = err.response?.data as
+        | { message?: string; cause?: Array<{ code?: string; message?: string; description?: string }> }
+        | undefined;
+      // "message" sozinho às vezes vem cortado/incompleto (achado ao vivo:
+      // "seller_proposition_title: may only be characters long", sem o
+      // número do limite) — "cause" costuma ter o detalhe real por trás.
+      // Mostra os dois, sem escolher um só e arriscar perder informação.
+      const detalhes = [corpo?.message, ...(corpo?.cause ?? []).map((c) => c.message ?? c.description ?? c.code)]
+        .filter(Boolean)
+        .join(" | ");
       // 403 aqui costuma ser a mesma pegadinha de permissão já documentada em
       // getPromocaoStatus (mercadoLivreApi.ts): "Preços e promoções" precisa
       // estar habilitada no app E a conta reautorizada depois disso — mudar
       // a permissão não atualiza tokens já emitidos.
       if (status === 403) {
         throw new Error(
-          `Mercado Livre recusou (403${mensagemMl ? `: ${mensagemMl}` : ""}) — provavelmente a permissão "Preços e promoções" não está habilitada/reautorizada pra essa loja no app do Mercado Livre.`
+          `Mercado Livre recusou (403${detalhes ? `: ${detalhes}` : ""}) — provavelmente a permissão "Preços e promoções" não está habilitada/reautorizada pra essa loja no app do Mercado Livre.`
         );
       }
       throw new Error(
-        `Falha ao criar campanha no Mercado Livre (HTTP ${status}${mensagemMl ? `: ${mensagemMl}` : ""}) — nome enviado: "${nome}" (${nome.length} caracteres).`
+        `Falha ao criar campanha no Mercado Livre (HTTP ${status}${detalhes ? `: ${detalhes}` : ""}) — nome enviado: "${nome}" (${nome.length} caracteres).`
       );
     }
     throw err;
