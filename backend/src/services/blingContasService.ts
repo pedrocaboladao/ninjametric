@@ -535,6 +535,21 @@ async function escrever(caminho: string, corpo: unknown): Promise<void> {
   }
 }
 
+interface ContaCompleta {
+  id?: number;
+  vencimento?: string;
+  valor?: number;
+  saldo?: number;
+  dataEmissao?: string;
+  competencia?: string;
+  numeroDocumento?: string;
+  historico?: string;
+  contato?: { id?: number };
+  formaPagamento?: { id?: number };
+  portador?: { id?: number };
+  categoria?: { id?: number };
+}
+
 export interface Classificacao {
   blingId: number;
   categoriaId: number;
@@ -554,13 +569,41 @@ export async function classificarContasBling(
   const saida: ResultadoClassificacao[] = [];
   for (const it of itens) {
     try {
-      const { data: atual } = await chamar<{ data: Record<string, unknown> }>(
+      const { data: atual } = await chamar<{ data: ContaCompleta }>(
         `/contas/pagar/${it.blingId}`
       );
       if (!atual) throw new Error("conta não encontrada no Bling");
-      const corpo = { ...atual, categoria: { id: it.categoriaId } };
-      delete (corpo as { id?: unknown }).id;
+
+      // Só os campos que o PUT documenta. Mandar a conta inteira do GET faz o
+      // Bling responder 200 e ignorar tudo em silêncio — o campo `categoria`
+      // não gravava e a conferência seguia mostrando o histórico. Nenhum erro,
+      // nenhum aviso: parecia classificado e não estava.
+      //
+      // `ocorrencia` fica de fora de proposito: e ela que define recorrencia, e
+      // mandar o valor errado transformaria um carne em conta unica.
+      const corpo: Record<string, unknown> = {
+        vencimento: atual.vencimento,
+        valor: atual.valor,
+        categoria: { id: it.categoriaId },
+      };
+      if (atual.contato?.id) corpo.contato = { id: atual.contato.id };
+      if (atual.formaPagamento?.id) corpo.formaPagamento = { id: atual.formaPagamento.id };
+      if (atual.portador?.id) corpo.portador = { id: atual.portador.id };
+      if (atual.saldo !== undefined) corpo.saldo = atual.saldo;
+      if (atual.dataEmissao) corpo.dataEmissao = atual.dataEmissao;
+      if (atual.competencia) corpo.competencia = atual.competencia;
+      if (atual.numeroDocumento) corpo.numeroDocumento = atual.numeroDocumento;
+      if (atual.historico) corpo.historico = atual.historico;
+
       await escrever(`/contas/pagar/${it.blingId}`, corpo);
+
+      // Confere relendo: o 200 do Bling nao prova que gravou.
+      const { data: depois } = await chamar<{ data: ContaCompleta }>(
+        `/contas/pagar/${it.blingId}`
+      );
+      if (Number(depois?.categoria?.id ?? 0) !== it.categoriaId) {
+        throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
+      }
       saida.push({ blingId: it.blingId, ok: true });
     } catch (err) {
       saida.push({
