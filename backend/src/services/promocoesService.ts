@@ -279,8 +279,20 @@ export async function recriarCampanha(campanhaAntigaId: number): Promise<Resulta
 
   // "/" no sufixo já causou "Invalid name" (HTTP 400) numa campanha real -
   // ML parece não aceitar barra no nome da promoção. Usa "-" em vez de "/".
-  const sufixo = ` (${dataISO(new Date()).split("-").reverse().slice(0, 2).join("-")})`;
-  return criarCampanha(rows[0].loja_id, rows[0].nome + sufixo, itens, campanhaAntigaId);
+  //
+  // ML tem um limite de caracteres pro nome (campo seller_proposition_
+  // title), mas a mensagem de erro vem cortada e nunca diz o número real
+  // ("may only be characters long", sem o número — bug deles, não nosso).
+  // Achado ao vivo: nome de 22 caracteres (sem sufixo) já tinha sido
+  // aceito antes (é o nome que ficou salvo dessa campanha), e 30
+  // caracteres (com o sufixo antigo " (DD-MM)") foi recusado. Sufixo mais
+  // compacto (" DDMM", sem parênteses) + trunca o nome base pra manter o
+  // total dentro do que já sabemos que funciona (≤22), em vez de arriscar
+  // um número no meio que a gente não testou de verdade.
+  const MAX_NOME_CAMPANHA = 22;
+  const sufixo = ` ${dataISO(new Date()).split("-").reverse().slice(0, 2).join("")}`;
+  const nomeBase = rows[0].nome.slice(0, Math.max(0, MAX_NOME_CAMPANHA - sufixo.length)).trimEnd();
+  return criarCampanha(rows[0].loja_id, nomeBase + sufixo, itens, campanhaAntigaId);
 }
 
 export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<Campanha[]> {
