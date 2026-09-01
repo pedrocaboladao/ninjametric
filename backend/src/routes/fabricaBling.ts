@@ -38,6 +38,8 @@ import {
   espiarContas,
   contasDoFornecedor,
   conferirPedidos,
+  listarCategoriasBling,
+  classificarContasBling,
 } from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
@@ -98,6 +100,39 @@ fabricaBlingRouter.get("/contas/espiar", async (_req, res) => {
   } catch (err) {
     console.error("[bling-contas-espiar]", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao espiar." });
+  }
+});
+
+fabricaBlingRouter.get("/contas/categorias", async (_req, res) => {
+  try {
+    res.json({ categorias: await listarCategoriasBling() });
+  } catch (err) {
+    console.error("[bling-categorias]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
+  }
+});
+
+// Grava categoria em conta a pagar do Bling. Lista explicita, sem "todas":
+// escrever no ERP em lote as cegas e o tipo de coisa que nao tem desfazer.
+fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
+  const bruto = Array.isArray((req.body ?? {}).itens) ? (req.body ?? {}).itens : [];
+  const itens = bruto
+    .map((i: { blingId?: unknown; categoriaId?: unknown }) => ({
+      blingId: Number(i?.blingId),
+      categoriaId: Number(i?.categoriaId),
+    }))
+    .filter(
+      (i: { blingId: number; categoriaId: number }) =>
+        Number.isInteger(i.blingId) && i.blingId > 0 && Number.isInteger(i.categoriaId) && i.categoriaId > 0
+    );
+  if (!itens.length) return res.status(400).json({ error: "Informe itens com blingId e categoriaId." });
+  if (itens.length > 500) return res.status(400).json({ error: "No maximo 500 por vez." });
+  try {
+    const r = await classificarContasBling(itens);
+    res.json({ total: r.length, ok: r.filter((x) => x.ok).length, falhas: r.filter((x) => !x.ok) });
+  } catch (err) {
+    console.error("[bling-classificar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao classificar." });
   }
 });
 
