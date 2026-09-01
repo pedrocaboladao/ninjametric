@@ -474,3 +474,101 @@ export async function conferirPedidos(
       .sort((a, b) => (a.data < b.data ? -1 : 1)),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Escrever categoria no Bling
+//
+// Aqui o arquivo deixa de ser só leitura, e por isso a porta é estreita: a
+// unica coisa que se grava e o campo `categoria` de uma conta a pagar, uma
+// conta por chamada, com o id vindo de fora. Nada de apagar, nada em lote
+// silencioso — o Hudson perde o historico se algo for removido de la.
+
+interface CategoriaBling {
+  id: number;
+  descricao: string;
+  tipo?: number;
+}
+
+export async function listarCategoriasBling(): Promise<CategoriaBling[]> {
+  const todas: CategoriaBling[] = [];
+  for (let pagina = 1; ; pagina++) {
+    const { data } = await chamar<{ data: CategoriaBling[] }>("/categorias/receitas-despesas", {
+      pagina,
+      limite: POR_PAGINA,
+    });
+    if (!data?.length) break;
+    todas.push(...data);
+    if (data.length < POR_PAGINA) break;
+  }
+  return todas;
+}
+
+async function escrever(caminho: string, corpo: unknown): Promise<void> {
+  let espera = 2000;
+  for (let tentativa = 1; ; tentativa++) {
+    await vez();
+    const token = await tokenValido();
+    try {
+      await axios.put(`${BASE}${caminho}`, corpo, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        timeout: 30000,
+      });
+      return;
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 429 && tentativa < TENTATIVAS) {
+        await dormir(espera);
+        espera *= 2;
+        continue;
+      }
+      if (axios.isAxiosError(err) && err.response) {
+        const d = err.response.data as unknown;
+        const t = typeof d === "string" ? d : JSON.stringify(d);
+        throw new Error(`Bling ${err.response.status}: ${t.slice(0, 300)}`);
+      }
+      throw err;
+    }
+  }
+}
+
+export interface Classificacao {
+  blingId: number;
+  categoriaId: number;
+}
+
+export interface ResultadoClassificacao {
+  blingId: number;
+  ok: boolean;
+  erro?: string;
+}
+
+// O PUT do Bling substitui a conta inteira, entao le antes e devolve tudo de
+// volta com a categoria trocada. Mandar so o campo apagaria o resto.
+export async function classificarContasBling(
+  itens: Classificacao[]
+): Promise<ResultadoClassificacao[]> {
+  const saida: ResultadoClassificacao[] = [];
+  for (const it of itens) {
+    try {
+      const { data: atual } = await chamar<{ data: Record<string, unknown> }>(
+        `/contas/pagar/${it.blingId}`
+      );
+      if (!atual) throw new Error("conta não encontrada no Bling");
+      const corpo = { ...atual, categoria: { id: it.categoriaId } };
+      delete (corpo as { id?: unknown }).id;
+      await escrever(`/contas/pagar/${it.blingId}`, corpo);
+      saida.push({ blingId: it.blingId, ok: true });
+    } catch (err) {
+      saida.push({
+        blingId: it.blingId,
+        ok: false,
+        erro: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  return saida;
+}
