@@ -90,11 +90,16 @@ shopeeAdsRouter.get("/ads-teste", async (req, res) => {
     return;
   }
   try {
+    // A Shopee quer DD-MM-YYYY aqui (confirmado ao vivo — o formato
+    // ISO YYYY-MM-DD que outros endpoints da Shopee aceitam dá
+    // "error_param" nesse em especial).
+    const paraDDMMYYYY = (d: Date) =>
+      `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
     const agora = new Date();
     const seteDiasAtras = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
     const data = await chamarApiAssinada(lojaId, "/api/v2/ads/get_all_cpc_ads_daily_performance", {
-      start_date: seteDiasAtras.toISOString().slice(0, 10),
-      end_date: agora.toISOString().slice(0, 10),
+      start_date: paraDDMMYYYY(seteDiasAtras),
+      end_date: paraDDMMYYYY(agora),
     });
     res.json(data);
   } catch (err) {
