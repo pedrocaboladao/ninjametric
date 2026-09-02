@@ -348,3 +348,55 @@ export async function lerAnexo(id: number): Promise<AnexoArquivo | null> {
 export async function apagarAnexo(id: number): Promise<void> {
   await pool.query(`DELETE FROM fabrica_conta_anexos WHERE id = $1`, [id]);
 }
+
+// ---------------------------------------------------------------------------
+// Trazer o valor do Bling para o site.
+//
+// O site cria a conta recorrente como previsao, repetindo o mes anterior.
+// Quando o boleto chega, quem corrige e a funcionaria, no Bling. Entao numa
+// divergencia de valor ou data quem manda e o Bling — sempre nesse sentido,
+// nunca o contrario.
+//
+// Escreve na observacao de onde veio e qual era o valor antes: sem isso, um
+// mes depois ninguem sabe se R$ 4.812,00 era o boleto ou um erro de digitacao.
+export async function aplicarValorDoBling(
+  id: number,
+  valor: number,
+  vencimento: string | null
+): Promise<{ valorAnterior: number; vencimentoAnterior: string }> {
+  const { rows } = await pool.query<{ valor: string; vencimento: string; observacao: string | null }>(
+    `SELECT valor, to_char(vencimento, 'YYYY-MM-DD') AS vencimento, observacao
+       FROM fabrica_contas WHERE id = $1`,
+    [id]
+  );
+  const atual = rows[0];
+  if (!atual) throw new Error("Conta não encontrada.");
+  if (!Number.isFinite(valor) || valor <= 0) throw new Error("Valor inválido.");
+
+  const valorAnterior = Number(atual.valor);
+  const mudancas: string[] = [];
+  if (Math.abs(valorAnterior - valor) > 0.005) {
+    mudancas.push(`valor ${brl(valorAnterior)} → ${brl(valor)}`);
+  }
+  if (vencimento && vencimento !== atual.vencimento) {
+    mudancas.push(`vencimento ${atual.vencimento} → ${vencimento}`);
+  }
+
+  const carimbo =
+    `[${new Date().toISOString().slice(0, 10)}] corrigido pelo Bling: ` +
+    (mudancas.length ? mudancas.join("; ") : "sem mudança de valor ou data");
+  const observacao = atual.observacao ? `${atual.observacao}\n${carimbo}` : carimbo;
+
+  await pool.query(
+    `UPDATE fabrica_contas
+        SET valor = $2,
+            vencimento = COALESCE($3::date, vencimento),
+            observacao = $4
+      WHERE id = $1`,
+    [id, valor, vencimento, observacao]
+  );
+  return { valorAnterior, vencimentoAnterior: atual.vencimento };
+}
+
+const brl = (n: number) =>
+  n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });

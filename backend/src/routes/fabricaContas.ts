@@ -11,11 +11,13 @@ import {
   definirStatusConta,
   excluirConta,
   resumoContas,
+  aplicarValorDoBling,
   type ContaEntrada,
   type TipoConta,
   type StatusConta,
 } from "../services/fabricaContasService";
 import { montarDre, definirAliquota } from "../services/fabricaDreService";
+import { conferirContasPagar } from "../services/blingContasService";
 
 export const fabricaContasRouter = Router();
 
@@ -152,6 +154,34 @@ fabricaContasRouter.post("/", async (req, res) => {
 // --- anexos da conta ---------------------------------------------------------
 //
 // Rota de download antes da de :id pra nao ser engolida por ela.
+
+// A conferencia mora aqui, e nao no router do Bling, porque quem a le e a tela
+// de contas: um usuario com fabrica_financeiro e sem fabrica_pedidos tomaria
+// 403 no meio da propria tela.
+fabricaContasRouter.get("/conferir-bling", async (req, res) => {
+  const d = (v: unknown, padrao: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(String(v ?? "")) ? String(v) : padrao;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const mes = `${hoje.slice(0, 7)}-01`;
+  try {
+    res.json(await conferirContasPagar(d(req.query.de, mes), d(req.query.ate, hoje)));
+  } catch (err) {
+    erro(res, err, "Falha ao conferir contra o Bling.");
+  }
+});
+
+fabricaContasRouter.post("/:id/valor-do-bling", async (req, res) => {
+  const id = Number(req.params.id);
+  const valor = Number(req.body?.valor);
+  const venc = typeof req.body?.vencimento === "string" ? req.body.vencimento : "";
+  try {
+    res.json(
+      await aplicarValorDoBling(id, valor, /^\d{4}-\d{2}-\d{2}$/.test(venc) ? venc : null)
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao trazer o valor do Bling.");
+  }
+});
 
 fabricaContasRouter.get("/anexos/:anexoId", async (req, res) => {
   const id = Number(req.params.anexoId);
