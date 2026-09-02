@@ -1,5 +1,6 @@
 import { pool } from "../db/pool";
 import { conferirPlanilhaVendas, type LinhaPlanilha } from "./fabricaVendasPlanilhaService";
+import { listarProdutos } from "./fabricaProdutosService";
 
 // Transforma a planilha conferida em pedidos.
 //
@@ -97,6 +98,18 @@ export async function importarPlanilhaVendas(
   let itensLancados = 0;
   let valorLancado = 0;
 
+  // Custo do produto no momento da venda.
+  //
+  // Sem isto o item nascia com custo zero e a margem do dia ia a 100% ate
+  // alguem rodar "preencher custo faltante" a mao. Nao era caso raro: era todo
+  // pedido que o sync criava. Em 02/09/2026 foram 200 itens de uma vez, e em
+  // 31/08 foram 604 — o mes ia fechar com lucro que nao existe.
+  //
+  // O custo e gravado no item de proposito, e nao recalculado na leitura: uma
+  // venda que aconteceu e um fato. Recalcular a margem de um pedido antigo com
+  // o custo de hoje reescreveria o historico.
+  const custoPorProduto = new Map((await listarProdutos()).map((p) => [p.id, Number(p.custo) || 0]));
+
   const cliente = await pool.connect();
   try {
     await cliente.query("BEGIN");
@@ -111,9 +124,15 @@ export async function importarPlanilhaVendas(
 
       for (const l of g.linhas) {
         await cliente.query(
-          `INSERT INTO fabrica_pedido_itens (pedido_id, produto_id, quantidade, preco_unitario)
-           VALUES ($1, $2, $3, $4)`,
-          [pedidoId, l.produtoId, l.quantidade, l.precoUnitario]
+          `INSERT INTO fabrica_pedido_itens (pedido_id, produto_id, quantidade, preco_unitario, custo_unitario)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [
+            pedidoId,
+            l.produtoId,
+            l.quantidade,
+            l.precoUnitario,
+            (l.produtoId !== null ? custoPorProduto.get(l.produtoId) : 0) ?? 0,
+          ]
         );
         itensLancados++;
         valorLancado += l.total;
