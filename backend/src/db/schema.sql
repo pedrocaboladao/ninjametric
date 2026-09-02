@@ -29,6 +29,22 @@ CREATE TABLE IF NOT EXISTS contas_shopee (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Tokens do app SEPARADO de Ads da Shopee ("ADS impetrus vision", categoria
+-- "Ads Service" no Open Platform Console) — precisou ser um app à parte
+-- porque o app principal ("impetrus vision", Seller In House System) não
+-- vem com o escopo de Ads liberado por padrão (ver comentário histórico em
+-- routes/shopee.ts sobre o /ads-teste). Cada loja precisa autorizar os dois
+-- apps separadamente, daí a tabela própria em vez de reaproveitar
+-- contas_shopee.
+CREATE TABLE IF NOT EXISTS contas_shopee_ads (
+  loja_id INTEGER PRIMARY KEY REFERENCES lojas(id) ON DELETE CASCADE,
+  shop_id BIGINT NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expira_em TIMESTAMPTZ NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS pedidos (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
