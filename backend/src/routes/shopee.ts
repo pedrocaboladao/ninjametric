@@ -139,11 +139,10 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
   }
 });
 
-// Diagnóstico temporário: o Ads da Shopee não vem liberado por padrão no
-// app (precisa pedir permissão extra pro Suporte de Parceiros da Shopee).
-// Essa chamada só serve pra gerar uma tentativa real negada, com um
-// request_id de verdade, pra anexar no chamado de suporte como prova
-// concreta do que está bloqueado. Remover depois de abrir o chamado.
+// Diagnóstico: acesso ao Ads da Shopee foi liberado pelo Suporte de
+// Parceiros (confirmado ao vivo — achado real: a chamada não bate mais em
+// erro de permissão, só de formato de data). Mantido como rota de teste
+// simples; o consumo de verdade fica em shopeeApi.ts/financeiroShopeeService.ts.
 shopeeRouter.get("/ads-teste", async (req, res) => {
   const lojaId = Number(req.query.lojaId);
   if (!Number.isInteger(lojaId)) {
@@ -153,9 +152,14 @@ shopeeRouter.get("/ads-teste", async (req, res) => {
   try {
     const agora = new Date();
     const seteDiasAtras = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
+    // A Shopee quer DD-MM-YYYY nesse endpoint específico (achado ao vivo:
+    // erro "start_date/end_date is invalid, please pass DD-MM-YYYY format"
+    // mandando AAAA-MM-DD, formato usado em todo o resto da API).
+    const paraDDMMYYYY = (d: Date) =>
+      `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
     const data = await chamarApiAssinada(lojaId, "/api/v2/ads/get_all_cpc_ads_daily_performance", {
-      start_date: seteDiasAtras.toISOString().slice(0, 10),
-      end_date: agora.toISOString().slice(0, 10),
+      start_date: paraDDMMYYYY(seteDiasAtras),
+      end_date: paraDDMMYYYY(agora),
     });
     res.json(data);
   } catch (err) {
