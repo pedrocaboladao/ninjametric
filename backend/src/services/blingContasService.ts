@@ -334,8 +334,22 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
   ) => {
     for (let i = soNoBling.length - 1; i >= 0; i--) {
       const b = soNoBling[i];
-      const par = orfaosDoSite.find((s) => !usados.has(s.id) && combina(s, b));
-      if (!par) continue;
+
+      // Só casa quando a resposta é única dos dois lados. Pegar "o primeiro que
+      // bate" parece funcionar e embaralha gente: o site tem quatro vales de
+      // R$ 250,00 e o Bling outros quatro, e a primeira versão casou o vale do
+      // Maurício com a linha do Douglas e o do Ricardo com a do Jonathan. Nos
+      // de valor igual isso não move dinheiro — mas o vale transporte de
+      // R$ 324,80 é do Rodrigo, e o botão teria oferecido escrevê-lo no
+      // Douglas, que recebeu 364,00.
+      //
+      // Quando há ambiguidade a conta fica órfã de propósito. Órfã é uma
+      // pergunta pra pessoa; par errado é um número errado que ninguém revisa.
+      const candidatos = orfaosDoSite.filter((s) => !usados.has(s.id) && combina(s, b));
+      if (candidatos.length !== 1) continue;
+      const par = candidatos[0];
+      if (soNoBling.filter((outro) => combina(par, outro)).length !== 1) continue;
+
       usados.add(par.id);
       const problemas: string[] = [];
       if (dinheiro(par.valor) !== b.valor)
@@ -354,9 +368,69 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     }
   };
 
-  // Duas passadas inteiras, e nesta ordem. Numa passada so — valor, senao nome,
-  // conta por conta — um casamento por nome consome a linha que a proxima conta
-  // precisava pelo valor, e o valor e a evidencia mais forte das duas.
+  // Terceira chave: o nome da pessoa, que mora na descricao.
+  //
+  // "VALE ALIM. RODRIGO TREVISI pix 44998842139" e "VALE ALIMENTAÇÃO RODRIGO
+  // TREVISI" sao a mesma conta, mas nao casam por texto igual nem por valor —
+  // o Bling ja corrigiu o valor. O que identifica e RODRIGO TREVISI.
+  //
+  // Cada palavra vale o inverso de quantas contas do site a contem: VALE
+  // aparece em seis e quase nao pontua, TREVISI aparece em duas e pontua
+  // meio, BARENA aparece em uma e vale um inteiro. Assim a palavra rara e
+  // que decide, e LTDA, COMERCIO e INDUSTRIA nao aproximam fornecedor nenhum
+  // — sem precisar manter uma lista de palavras a ignorar.
+  const palavras = (t: string) =>
+    new Set(nome(t).split(" ").filter((w) => w.length >= 4));
+  const textoSite = (s: (typeof orfaosDoSite)[number]) =>
+    `${s.documento ?? ""} ${s.descricao ?? ""}`;
+
+  const emQuantas = new Map<string, number>();
+  for (const s of orfaosDoSite)
+    for (const w of palavras(textoSite(s))) emQuantas.set(w, (emQuantas.get(w) ?? 0) + 1);
+
+  const pontos = (a: string, b: string) => {
+    const outras = palavras(b);
+    let total = 0;
+    for (const w of palavras(a))
+      if (outras.has(w)) total += 1 / (emQuantas.get(w) ?? 1);
+    return total;
+  };
+
+  // O melhor tem que ser melhor sozinho, e bom o bastante: 0,8 exige ao menos
+  // uma palavra quase exclusiva. Empate nao casa — no setembro de 2026 dois
+  // vales de R$ 250,00 empataram porque o Bling tinha RICARDO TAVARES e o site
+  // JONATHAN TIRANDENTES. Sao pessoas diferentes mesmo, e ficar orfao e a
+  // resposta certa.
+  const MINIMO = 0.8;
+  const melhorPara = (texto: string) => {
+    let campeao: (typeof orfaosDoSite)[number] | null = null;
+    let melhor = 0;
+    let segundo = 0;
+    for (const s of orfaosDoSite) {
+      if (usados.has(s.id)) continue;
+      const p = pontos(texto, textoSite(s));
+      if (p > melhor) {
+        segundo = melhor;
+        melhor = p;
+        campeao = s;
+      } else if (p > segundo) segundo = p;
+    }
+    return melhor >= MINIMO && melhor > segundo ? campeao : null;
+  };
+
+  casar((s, b) => {
+    const campeao = melhorPara(b.documento);
+    // simétrico: o melhor do site tem que ser esta conta do Bling, e nao outra
+    if (!campeao || campeao.id !== s.id) return false;
+    const meu = pontos(textoSite(s), b.documento);
+    return !soNoBling.some(
+      (o) => o.blingId !== b.blingId && pontos(textoSite(s), o.documento) >= meu
+    );
+  });
+
+  // Depois o valor, e so entao o nome da contraparte. A ordem importa: numa
+  // passada so — uma chave, senao a outra, conta por conta — um casamento
+  // fraco consome a linha que a proxima conta precisava por uma chave forte.
   casar(
     (s, b) =>
       dinheiro(s.valor) === b.valor && emDias(dia(s.vencimento), b.vencimento) <= JANELA_DIAS
