@@ -740,3 +740,26 @@ export async function excluirFechamento(id: number): Promise<void> {
   });
   await tratarResposta<{ ok: boolean }>(res);
 }
+
+export interface ResultadoCustoFaltante {
+  simulacao: boolean;
+  itensZerados: number;
+  itensPreenchidos: number;
+  pedidosTocados: number;
+  custoTotal: number;
+}
+
+// `simular: false` explicito: o padrao do backend e simular, e e bom que seja —
+// preencher custo reescreve o item do pedido, que e o unico dado gravado.
+export async function preencherCustoFaltante(
+  de: string,
+  ate: string
+): Promise<ResultadoCustoFaltante> {
+  const res = await fetch(`${API_BASE}/api/fabrica-pedidos/custo-faltante`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ de, ate, simular: false }),
+  });
+  return tratarResposta<ResultadoCustoFaltante>(res);
+}

@@ -57,6 +57,7 @@ import {
 } from "../api/fabricaPedidos";
 import { fetchFabricaClientes } from "../api/fabricaClientes";
 import { fetchFabricaProdutos, criarFabricaProduto } from "../api/fabricaProdutos";
+import { preencherCustoFaltante } from "../api/fabricaPedidos";
 import type {
   Pedido,
   PedidoEntrada,
@@ -334,6 +335,46 @@ export function FabricaPedidos() {
   }, [pedidos]);
 
   const alertas = useMemo(() => estoque.filter((e) => e.abaixoDoMinimo), [estoque]);
+  const [preenchendoCusto, setPreenchendoCusto] = useState(false);
+
+  // Pedido com custo zero, olhando os pedidos e nao o ultimo sync.
+  //
+  // O aviso ja existia no resultado da sincronizacao — mas so aparecia enquanto
+  // aquele resultado estava na tela. Quem nao clicou em "Sincronizar agora"
+  // naquele minuto, ou saiu da pagina, nao via nada. Em 02/09/2026 o Hudson
+  // achou 688 itens zerados porque foi conferir, nao porque a tela avisou.
+  //
+  // Aqui a conta e feita da lista: se existe pedido sem custo no periodo, o
+  // aviso aparece sempre, tendo sincronizado ou nao.
+  async function preencherCusto() {
+    if (!semCusto.de || !semCusto.ate) return;
+    setPreenchendoCusto(true);
+    setErro(null);
+    try {
+      const r = await preencherCustoFaltante(semCusto.de, semCusto.ate);
+      setAviso(
+        `Custo preenchido em ${r.itensPreenchidos} item${r.itensPreenchidos === 1 ? "" : "ns"} de ` +
+          `${r.pedidosTocados} pedido${r.pedidosTocados === 1 ? "" : "s"}.`
+      );
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao preencher o custo.");
+    } finally {
+      setPreenchendoCusto(false);
+    }
+  }
+
+  const semCusto = useMemo(() => {
+    const lista = (pedidos ?? []).filter(
+      (p) => p.status !== "CANCELADO" && p.total > 0 && p.custoTotal <= 0
+    );
+    return {
+      pedidos: lista.length,
+      valor: lista.reduce((s, p) => s + p.total, 0),
+      de: lista.reduce((d, p) => (d && d < p.data ? d : p.data), ""),
+      ate: lista.reduce((d, p) => (d && d > p.data ? d : p.data), ""),
+    };
+  }, [pedidos]);
 
   // Busca por termo solto, em qualquer ordem e sem acento.
   //
@@ -1468,6 +1509,34 @@ export function FabricaPedidos() {
           )}
         </div>
       </div>
+
+      {/* Venda com custo zero, sempre visivel.
+          O aviso da sincronizacao so aparecia enquanto o resultado dela estava
+          na tela: quem nao clicou em "Sincronizar agora" naquele minuto nao via
+          nada. Este olha os pedidos, entao aparece tendo sincronizado ou nao. */}
+      {semCusto.pedidos > 0 && (
+        <div className="pedidos-alerta-custo">
+          <strong>
+            {semCusto.pedidos} pedido{semCusto.pedidos === 1 ? "" : "s"} sem custo
+          </strong>{" "}
+          — {formatCurrency(semCusto.valor)} de venda com margem de 100%
+          {semCusto.de && semCusto.ate && (
+            <>
+              , de {semCusto.de.split("-").reverse().join("/")} a{" "}
+              {semCusto.ate.split("-").reverse().join("/")}
+            </>
+          )}
+          . Isso infla o lucro do mês.{" "}
+          <button
+            type="button"
+            className="clonar-botao"
+            disabled={preenchendoCusto}
+            onClick={() => void preencherCusto()}
+          >
+            {preenchendoCusto ? "Preenchendo…" : "Preencher custo"}
+          </button>
+        </div>
+      )}
 
       {erro && <p className="financeiro-td-mudo">{erro}</p>}
       {aviso && <p className="financeiro-td-mudo">{aviso}</p>}

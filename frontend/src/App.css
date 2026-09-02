@@ -6412,3 +6412,21 @@ button.contas-cartao:hover {
   align-items: center;
   gap: 6px;
 }
+
+/* Venda com custo zero: precisa gritar, nao informar.
+   O aviso antigo era um <p> igual aos outros no meio do resumo do sync. */
+.pedidos-alerta-custo {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #b45309;
+  background: rgba(180, 83, 9, 0.14);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.pedidos-alerta-custo strong {
+  color: #f59e0b;
+}
+.pedidos-alerta-custo button {
+  margin-left: 8px;
+}
