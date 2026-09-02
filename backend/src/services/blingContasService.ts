@@ -86,6 +86,16 @@ export interface ContaConferida {
   diferenca?: string;
   blingId?: number;
   siteId?: number;
+  // O que o Bling diz, pra tela poder trazer sem uma segunda consulta.
+  //
+  // Na conferencia de contas a pagar o Bling e a referencia: o site cria a
+  // recorrente como previsao, repetindo o valor do mes anterior, e quem corrige
+  // quando o boleto chega e a funcionaria, no Bling.
+  blingValor?: number;
+  blingVencimento?: string;
+  blingContraparte?: string;
+  // como os dois foram casados: por documento, ou por valor e data proximos
+  parEncontradoPor?: "documento" | "valor";
 }
 
 export interface ConferenciaContas {
@@ -264,6 +274,9 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
         b.categoria?.descricao?.trim() ||
         (k ? "nota com numero" : (b.historico ?? "").trim() || "sem historico"),
       blingId: b.id,
+      blingValor: valor,
+      blingVencimento: venc,
+      blingContraparte: nome,
     };
     if (!achado) {
       soNoBling.push(linha);
@@ -276,14 +289,87 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     if (dia(achado.vencimento) !== venc)
       problemas.push(`vencimento: Bling ${venc} × site ${dia(achado.vencimento)}`);
     if (problemas.length) {
-      divergentes.push({ ...linha, siteId: achado.id, diferenca: problemas.join("; ") });
+      divergentes.push({
+        ...linha,
+        siteId: achado.id,
+        diferenca: problemas.join("; "),
+        parEncontradoPor: "documento",
+      });
     } else {
       conferem++;
     }
   }
 
-  const soNoSite: ContaConferida[] = site
-    .filter((s) => !vistos.has(s.id))
+  const orfaosDoSite = site.filter((s) => !vistos.has(s.id));
+
+  // Segunda passada: a mesma conta com nome diferente dos dois lados.
+  //
+  // O casamento acima exige numero de documento, ou contraparte + vencimento +
+  // valor idênticos. Quando o Bling chama "IPTU" e o site chama "PREFEITURA DE
+  // MARINGÁ", ou quando o valor mudou porque o site tinha só a previsão, a
+  // mesma conta aparecia nos dois órfãos como se fossem duas — em setembro/2026
+  // foram 8 assim, mais a folha inteira.
+  //
+  // Aqui elas se reencontram pelo que sobra: valor igual em datas próximas, ou
+  // contraparte parecida no mesmo mês. Não vira "confere": vira divergente com
+  // o valor do Bling do lado, que é o que a tela usa pra corrigir.
+  const JANELA_DIAS = 25;
+  const emDias = (a: string, b: string) =>
+    Math.abs((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
+
+  // Nome comparado inteiro, sem acento e sem pontuacao. Comparar so a primeira
+  // palavra parecia esperto e casou VALE TRANSPORTE com VALE ALIMENTACAO: as
+  // duas comecam com "VALE". O botao teria oferecido trocar 250,00 por 324,80.
+  const nome = (t: string) =>
+    (t ?? "")
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^A-Z0-9]+/g, " ")
+      .trim();
+
+  const usados = new Set<number>();
+  const casar = (
+    combina: (s: (typeof orfaosDoSite)[number], b: ContaConferida) => boolean
+  ) => {
+    for (let i = soNoBling.length - 1; i >= 0; i--) {
+      const b = soNoBling[i];
+      const par = orfaosDoSite.find((s) => !usados.has(s.id) && combina(s, b));
+      if (!par) continue;
+      usados.add(par.id);
+      const problemas: string[] = [];
+      if (dinheiro(par.valor) !== b.valor)
+        problemas.push(`valor: Bling ${b.valor} × site ${dinheiro(par.valor)}`);
+      if (dia(par.vencimento) !== b.vencimento)
+        problemas.push(`vencimento: Bling ${b.vencimento} × site ${dia(par.vencimento)}`);
+      if (nome(par.contraparte ?? "") !== nome(b.contraparte))
+        problemas.push(`nome: Bling "${b.contraparte}" × site "${par.contraparte ?? ""}"`);
+      divergentes.push({
+        ...b,
+        siteId: par.id,
+        diferenca: problemas.join("; ") || "mesma conta, casada por valor",
+        parEncontradoPor: "valor",
+      });
+      soNoBling.splice(i, 1);
+    }
+  };
+
+  // Duas passadas inteiras, e nesta ordem. Numa passada so — valor, senao nome,
+  // conta por conta — um casamento por nome consome a linha que a proxima conta
+  // precisava pelo valor, e o valor e a evidencia mais forte das duas.
+  casar(
+    (s, b) =>
+      dinheiro(s.valor) === b.valor && emDias(dia(s.vencimento), b.vencimento) <= JANELA_DIAS
+  );
+  casar(
+    (s, b) =>
+      nome(s.contraparte ?? "") !== "" &&
+      nome(s.contraparte ?? "") === nome(b.contraparte) &&
+      emDias(dia(s.vencimento), b.vencimento) <= JANELA_DIAS
+  );
+
+  const soNoSite: ContaConferida[] = orfaosDoSite
+    .filter((s) => !usados.has(s.id))
     .map((s) => ({
       documento: s.documento ?? s.descricao,
       contraparte: s.contraparte ?? "",

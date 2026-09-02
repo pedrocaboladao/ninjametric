@@ -26,6 +26,7 @@ import { Modal } from "./Modal";
 import { FabricaDre } from "./FabricaDre";
 import { FabricaBens } from "./FabricaBens";
 import { FabricaFornecedores } from "./FabricaFornecedores";
+import { FabricaConferirBling } from "./FabricaConferirBling";
 import { BuscaSelecao } from "./BuscaSelecao";
 import type { ItemBusca } from "./BuscaSelecao";
 import { fetchFornecedores } from "../api/fabricaFornecedores";
@@ -162,7 +163,9 @@ export function FabricaContas() {
   const [anexando, setAnexando] = useState(false);
   const [form, setForm] = useState({ ...VAZIO });
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [aba, setAba] = useState<"contas" | "dre" | "bens" | "fornecedores">("contas");
+  const [aba, setAba] = useState<
+    "contas" | "dre" | "bens" | "fornecedores" | "conferir"
+  >("contas");
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   // O a receber nao e digitado: e a conta corrente das lojas.
   //
@@ -777,7 +780,7 @@ export function FabricaContas() {
       </p>
 
       <div className="financeiro-filtros ordem-sem-impressao">
-        {(["contas", "dre", "bens", "fornecedores"] as const).map((a) => (
+        {(["contas", "dre", "bens", "fornecedores", "conferir"] as const).map((a) => (
           <button
             key={a}
             type="button"
@@ -794,7 +797,9 @@ export function FabricaContas() {
                 ? "DRE"
                 : a === "bens"
                   ? "Bens"
-                  : "Fornecedores"}
+                  : a === "fornecedores"
+                    ? "Fornecedores"
+                    : "Conferir no Bling"}
           </button>
         ))}
       </div>
@@ -802,6 +807,7 @@ export function FabricaContas() {
       {aba === "dre" && <FabricaDre />}
       {aba === "bens" && <FabricaBens />}
       {aba === "fornecedores" && <FabricaFornecedores />}
+      {aba === "conferir" && <FabricaConferirBling />}
 
       {aba === "contas" && (
         <div className="contas-cartoes">

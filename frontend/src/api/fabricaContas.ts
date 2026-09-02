@@ -142,3 +142,56 @@ export async function excluirAnexo(id: number): Promise<void> {
 export function urlDoAnexo(id: number): string {
   return `${API_BASE}/api/fabrica-contas/anexos/${id}`;
 }
+
+// --- conferência contra o Bling ---------------------------------------------
+
+export interface ContaConferida {
+  documento: string;
+  contraparte: string;
+  vencimento: string;
+  valor: number;
+  categoria: string;
+  diferenca?: string;
+  blingId?: number;
+  siteId?: number;
+  blingValor?: number;
+  blingVencimento?: string;
+  blingContraparte?: string;
+  parEncontradoPor?: "documento" | "valor";
+}
+
+export interface ConferenciaContas {
+  de: string;
+  ate: string;
+  noBling: number;
+  noSite: number;
+  conferem: number;
+  soNoBling: ContaConferida[];
+  soNoSite: ContaConferida[];
+  divergentes: ContaConferida[];
+}
+
+export async function conferirContraBling(de: string, ate: string): Promise<ConferenciaContas> {
+  const res = await fetch(
+    `${API_BASE}/api/fabrica-contas/conferir-bling?de=${de}&ate=${ate}`,
+    { credentials: "include" }
+  );
+  return tratarResposta<ConferenciaContas>(res);
+}
+
+// Traz o valor do Bling para a conta do site. Sentido único de propósito: o
+// Bling é a referência do contas a pagar, porque é lá que o provisionamento
+// vira o valor do boleto.
+export async function trazerValorDoBling(
+  contaId: number,
+  valor: number,
+  vencimento?: string
+): Promise<{ valorAnterior: number; vencimentoAnterior: string }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-contas/${contaId}/valor-do-bling`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valor, vencimento }),
+  });
+  return tratarResposta<{ valorAnterior: number; vencimentoAnterior: string }>(res);
+}

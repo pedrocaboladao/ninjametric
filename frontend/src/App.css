@@ -6430,3 +6430,9 @@ button.contas-cartao:hover {
 .pedidos-alerta-custo button {
   margin-left: 8px;
 }
+
+/* Conferência contra o Bling: as três listas empilhadas precisam de ar entre
+   elas, senão a tabela de "só no Bling" parece continuação da de divergentes. */
+.conferir-bling-bloco {
+  margin-top: 22px;
+}
