@@ -2,6 +2,7 @@ import { pool } from "../db/pool";
 import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos } from "./shopeeApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
+import { obterGastoAdsShopee } from "./shopeeAdsService";
 
 const DIAS_JANELA = 7;
 
@@ -88,6 +89,7 @@ export interface ResumoPedidosShopee {
 export interface ResultadoFinanceiroShopee {
   vendas: VendaFinanceiraShopee[];
   resumoPedidos: ResumoPedidosShopee;
+  gastoAdsTotal: number;
 }
 
 interface LojaShopee {
@@ -137,7 +139,7 @@ export async function listarVendasFinanceirasShopee(
   const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
   const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
 
-  const [produtos, pedidosPorLoja] = await Promise.all([
+  const [produtos, pedidosPorLoja, gastoAdsTotal] = await Promise.all([
     listarProdutos(),
     Promise.all(
       lojas.map(async (loja) => ({
@@ -147,6 +149,9 @@ export async function listarVendasFinanceirasShopee(
         pedidos: await listarPedidos(loja.id, timeFrom, timeTo),
       }))
     ),
+    // Igual ao gastoAdsTotal do Financeiro do Mercado Livre: não é por
+    // venda, só entra no total da janela. Ver shopeeAdsService.ts.
+    obterGastoAdsShopee(lojaIdFiltro, lojasPermitidas, janela.inicioDia.slice(0, 10), janela.agora.slice(0, 10)),
   ]);
 
   const custoPorSku = new Map(produtos.map((p) => [normalizarSku(p.sku), p.custo]));
@@ -246,7 +251,7 @@ export async function listarVendasFinanceirasShopee(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos };
+  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
 }

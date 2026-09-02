@@ -27,4 +27,5 @@ export interface ResumoPedidosShopee {
 export interface ResultadoFinanceiroShopee {
   vendas: VendaFinanceiraShopee[];
   resumoPedidos: ResumoPedidosShopee;
+  gastoAdsTotal: number;
 }

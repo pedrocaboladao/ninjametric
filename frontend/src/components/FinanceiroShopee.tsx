@@ -107,6 +107,7 @@ export function FinanceiroShopee() {
 
   const vendas = resultado?.vendas ?? null;
   const resumoPedidos = resultado?.resumoPedidos ?? null;
+  const gastoAdsTotal = resultado?.gastoAdsTotal ?? 0;
 
   function ordenarPor(chave: ChaveOrdenacao) {
     setOrdenacao((atual) =>
@@ -128,6 +129,11 @@ export function FinanceiroShopee() {
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
   const semCustoCadastrado = (vendas?.length ?? 0) - comMargem.length;
+
+  // Gasto de Ads não é por venda (vem por dia, no nível da loja inteira) —
+  // por isso só desconta aqui, no total da janela, igual ao Financeiro do ML.
+  const margemAposAds = margemTotal - gastoAdsTotal;
+  const margemAposAdsPercentual = receitaTotal > 0 ? (margemAposAds / receitaTotal) * 100 : null;
 
   return (
     <div className="financeiro-page">
@@ -277,6 +283,16 @@ export function FinanceiroShopee() {
                 {semCustoCadastrado > 0 && (
                   <span className="financeiro-stat-sub">{semCustoCadastrado} sem custo cadastrado</span>
                 )}
+              </div>
+              <div className="financeiro-stat-card">
+                <span className="financeiro-stat-label">Margem após Ads</span>
+                <span className={`financeiro-stat-valor ${classeMargem(margemAposAdsPercentual)}`}>
+                  {formatCurrency(margemAposAds)}
+                </span>
+                <span className="financeiro-stat-sub">
+                  Gasto Ads: {formatCurrency(gastoAdsTotal)}
+                  {margemAposAdsPercentual !== null ? ` · ${margemAposAdsPercentual.toFixed(2)}%` : ""}
+                </span>
               </div>
             </div>
           )}
