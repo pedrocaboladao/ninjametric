@@ -1,6 +1,11 @@
 import { Router, Request, Response } from "express";
+import multer from "multer";
 import {
   listarContas,
+  listarAnexos,
+  salvarAnexo,
+  lerAnexo,
+  apagarAnexo,
   criarConta,
   atualizarConta,
   definirStatusConta,
@@ -13,6 +18,13 @@ import {
 import { montarDre, definirAliquota } from "../services/fabricaDreService";
 
 export const fabricaContasRouter = Router();
+
+// boleto e comprovante sao pequenos; o relatorio de rateio escaneado chegou a
+// 2,6 MB. 10 MB cobre com folga e ainda cabe no banco sem doer.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 function erro(res: Response, err: unknown, padrao: string) {
   console.error("[fabrica-contas]", err);
@@ -136,6 +148,72 @@ fabricaContasRouter.post("/", async (req, res) => {
     erro(res, err, "Falha ao criar a conta.");
   }
 });
+
+// --- anexos da conta ---------------------------------------------------------
+//
+// Rota de download antes da de :id pra nao ser engolida por ela.
+
+fabricaContasRouter.get("/anexos/:anexoId", async (req, res) => {
+  const id = Number(req.params.anexoId);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  try {
+    const a = await lerAnexo(id);
+    if (!a) return res.status(404).json({ error: "Anexo não encontrado." });
+    res.setHeader("Content-Type", a.tipo || "application/octet-stream");
+    // inline: PDF e imagem abrem na aba, que e o que se quer ao conferir um
+    // boleto. O navegador ainda deixa baixar.
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${a.nome.replace(/[^\w.\-]/g, "_")}"`
+    );
+    res.send(a.conteudo);
+  } catch (err) {
+    erro(res, err, "Falha ao abrir o anexo.");
+  }
+});
+
+fabricaContasRouter.delete("/anexos/:anexoId", async (req, res) => {
+  const id = Number(req.params.anexoId);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  try {
+    await apagarAnexo(id);
+    res.status(204).end();
+  } catch (err) {
+    erro(res, err, "Falha ao apagar o anexo.");
+  }
+});
+
+fabricaContasRouter.get("/:id/anexos", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+  try {
+    res.json({ anexos: await listarAnexos(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao listar os anexos.");
+  }
+});
+
+fabricaContasRouter.post(
+  "/:id/anexos",
+  upload.single("arquivo"),
+  async (req: Request, res: Response) => {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id)) return res.status(400).json({ error: "Id inválido." });
+    if (!req.file) return res.status(400).json({ error: "Envie o arquivo." });
+    try {
+      res.status(201).json(
+        await salvarAnexo(
+          id,
+          req.file.originalname || "anexo",
+          req.file.mimetype || "application/octet-stream",
+          req.file.buffer
+        )
+      );
+    } catch (err) {
+      erro(res, err, "Falha ao anexar o arquivo.");
+    }
+  }
+);
 
 fabricaContasRouter.put("/:id", async (req, res) => {
   const id = Number(req.params.id);

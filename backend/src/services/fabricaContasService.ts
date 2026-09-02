@@ -271,3 +271,80 @@ export async function resumoContas(de?: string, ate?: string): Promise<ResumoCon
   }
   return resumo;
 }
+
+// ---------------------------------------------------------------------------
+// Anexos da conta: boleto, comprovante, relatorio de rateio.
+//
+// O rateio da Maringa Full e o caso que pediu isto: uma linha de R$ 3.332,30 no
+// extrato que por dentro sao nove itens. O detalhe cabia na observacao, mas o
+// relatorio original nao — e e ele que vale numa discussao.
+
+export interface AnexoResumo {
+  id: number;
+  contaId: number;
+  nome: string;
+  tipo: string;
+  tamanho: number;
+  criadoEm: string;
+}
+
+export interface AnexoArquivo {
+  nome: string;
+  tipo: string;
+  conteudo: Buffer;
+}
+
+export async function listarAnexos(contaId: number): Promise<AnexoResumo[]> {
+  // sem `conteudo` de proposito: a lista carregaria megabytes pra mostrar nome
+  const { rows } = await pool.query(
+    `SELECT id, conta_id, nome, tipo, tamanho, criado_em
+       FROM fabrica_conta_anexos
+      WHERE conta_id = $1
+      ORDER BY criado_em DESC, id DESC`,
+    [contaId]
+  );
+  return rows.map((r) => ({
+    id: Number(r.id),
+    contaId: Number(r.conta_id),
+    nome: String(r.nome),
+    tipo: String(r.tipo),
+    tamanho: Number(r.tamanho),
+    criadoEm: new Date(r.criado_em).toISOString(),
+  }));
+}
+
+export async function salvarAnexo(
+  contaId: number,
+  nome: string,
+  tipo: string,
+  conteudo: Buffer
+): Promise<AnexoResumo> {
+  const { rows } = await pool.query(
+    `INSERT INTO fabrica_conta_anexos (conta_id, nome, tipo, tamanho, conteudo)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id, conta_id, nome, tipo, tamanho, criado_em`,
+    [contaId, nome, tipo, conteudo.length, conteudo]
+  );
+  const r = rows[0];
+  return {
+    id: Number(r.id),
+    contaId: Number(r.conta_id),
+    nome: String(r.nome),
+    tipo: String(r.tipo),
+    tamanho: Number(r.tamanho),
+    criadoEm: new Date(r.criado_em).toISOString(),
+  };
+}
+
+export async function lerAnexo(id: number): Promise<AnexoArquivo | null> {
+  const { rows } = await pool.query(
+    `SELECT nome, tipo, conteudo FROM fabrica_conta_anexos WHERE id = $1`,
+    [id]
+  );
+  if (!rows.length) return null;
+  return { nome: String(rows[0].nome), tipo: String(rows[0].tipo), conteudo: rows[0].conteudo };
+}
+
+export async function apagarAnexo(id: number): Promise<void> {
+  await pool.query(`DELETE FROM fabrica_conta_anexos WHERE id = $1`, [id]);
+}

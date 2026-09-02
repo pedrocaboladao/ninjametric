@@ -6377,3 +6377,38 @@ button.contas-cartao:hover {
   white-space: normal;
   text-align: right;
 }
+
+/* Anexo da conta: boleto, comprovante, relatorio de rateio. */
+.contas-anexos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--borda, #2a2a2a);
+}
+.contas-anexo-add {
+  align-self: flex-start;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 10px;
+  border: 1px dashed var(--borda, #3a3a3a);
+  border-radius: 6px;
+}
+.contas-anexo-add:hover {
+  border-style: solid;
+}
+.contas-anexo-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+.contas-anexo-lista li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
