@@ -29,6 +29,22 @@ CREATE TABLE IF NOT EXISTS contas_shopee (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Tokens do app SEPARADO de Ads da Shopee ("ADS impetrus vision", categoria
+-- "Ads Service" no Open Platform Console) — precisou ser um app à parte
+-- porque o app principal ("impetrus vision", Seller In House System) não
+-- vem com o escopo de Ads liberado por padrão (ver comentário histórico em
+-- routes/shopee.ts sobre o /ads-teste). Cada loja precisa autorizar os dois
+-- apps separadamente, daí a tabela própria em vez de reaproveitar
+-- contas_shopee.
+CREATE TABLE IF NOT EXISTS contas_shopee_ads (
+  loja_id INTEGER PRIMARY KEY REFERENCES lojas(id) ON DELETE CASCADE,
+  shop_id BIGINT NOT NULL,
+  access_token TEXT NOT NULL,
+  refresh_token TEXT NOT NULL,
+  expira_em TIMESTAMPTZ NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS pedidos (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
@@ -1086,6 +1102,25 @@ CREATE TABLE IF NOT EXISTS fabrica_contas (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_contas_venc ON fabrica_contas (vencimento DESC);
 CREATE INDEX IF NOT EXISTS idx_fabrica_contas_status ON fabrica_contas (status, tipo);
+
+-- Anexo da conta: boleto, comprovante, relatorio de rateio.
+--
+-- O arquivo mora no banco, nao no disco. O deploy reconstroi o container a cada
+-- push; arquivo em disco sumiria e ninguem perceberia ate precisar dele. O
+-- volume do Postgres ja e o unico lugar persistente que existe aqui.
+--
+-- ON DELETE CASCADE: anexo sem conta nao serve pra nada.
+CREATE TABLE IF NOT EXISTS fabrica_conta_anexos (
+  id SERIAL PRIMARY KEY,
+  conta_id INTEGER NOT NULL REFERENCES fabrica_contas(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  tamanho INTEGER NOT NULL,
+  conteudo BYTEA NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_conta_anexos_conta
+  ON fabrica_conta_anexos (conta_id);
 
 DROP TABLE IF EXISTS fabrica_contas_insumo;
 ALTER TABLE fabrica_contas DROP COLUMN IF EXISTS materia_prima_id;

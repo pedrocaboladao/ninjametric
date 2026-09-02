@@ -86,6 +86,16 @@ export interface ContaConferida {
   diferenca?: string;
   blingId?: number;
   siteId?: number;
+  // O que o Bling diz, pra tela poder trazer sem uma segunda consulta.
+  //
+  // Na conferencia de contas a pagar o Bling e a referencia: o site cria a
+  // recorrente como previsao, repetindo o valor do mes anterior, e quem corrige
+  // quando o boleto chega e a funcionaria, no Bling.
+  blingValor?: number;
+  blingVencimento?: string;
+  blingContraparte?: string;
+  // como os dois foram casados: por documento, ou por valor e data proximos
+  parEncontradoPor?: "documento" | "valor";
 }
 
 export interface ConferenciaContas {
@@ -205,7 +215,7 @@ interface LinhaSite {
 }
 
 export async function conferirContasPagar(de: string, ate: string): Promise<ConferenciaContas> {
-  const [bling, { rows: site }] = await Promise.all([
+  const [bling, { rows: site }, plano] = await Promise.all([
     baixarDoBling(de, ate),
     pool.query<LinhaSite>(
       `SELECT id, documento, descricao, contraparte, categoria, valor, vencimento::text AS vencimento
@@ -213,7 +223,11 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
         WHERE tipo = 'pagar' AND vencimento BETWEEN $1::date AND $2::date`,
       [de, ate]
     ),
+    // o plano de contas do Bling, pra traduzir o id que vem na conta.
+    // Falhou? segue sem: a conferencia vale mesmo sem o nome da categoria.
+    listarCategoriasBling().catch(() => [] as CategoriaBling[]),
   ]);
+  const nomeDaCategoria = new Map(plano.map((c) => [Number(c.id), c.descricao]));
 
   // indexa o site pelo documento; o que não tem número entra por
   // contraparte + vencimento + valor, que é o que sobra pra identificar a conta
@@ -246,13 +260,23 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       contraparte: nome,
       vencimento: venc,
       valor,
-      // O Bling manda categoria {id: 0} — ele nao classifica conta a pagar. O
-      // que sobra e o historico, que na pratica e onde a fabrica escreve tanto
-      // o numero da nota ("700296") quanto o tipo do gasto ("EMBALAGEM").
+      // O detalhe da conta traz `categoria: {id}` e **nunca** a descricao. Ler
+      // so `descricao` fazia conta ja classificada aparecer como se nao fosse:
+      // caia no historico e a conferencia dizia "HONORARIOS CONTABEIS" depois
+      // de a categoria ter sido gravada certa. Por isso o nome vem do plano de
+      // contas, pelo id.
+      //
+      // Sem categoria de verdade sobra o historico, que na pratica e onde a
+      // fabrica escreve tanto o numero da nota ("700296") quanto o tipo do
+      // gasto ("EMBALAGEM").
       categoria:
+        nomeDaCategoria.get(Number(b.categoria?.id ?? 0)) ||
         b.categoria?.descricao?.trim() ||
         (k ? "nota com numero" : (b.historico ?? "").trim() || "sem historico"),
       blingId: b.id,
+      blingValor: valor,
+      blingVencimento: venc,
+      blingContraparte: nome,
     };
     if (!achado) {
       soNoBling.push(linha);
@@ -265,14 +289,87 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     if (dia(achado.vencimento) !== venc)
       problemas.push(`vencimento: Bling ${venc} × site ${dia(achado.vencimento)}`);
     if (problemas.length) {
-      divergentes.push({ ...linha, siteId: achado.id, diferenca: problemas.join("; ") });
+      divergentes.push({
+        ...linha,
+        siteId: achado.id,
+        diferenca: problemas.join("; "),
+        parEncontradoPor: "documento",
+      });
     } else {
       conferem++;
     }
   }
 
-  const soNoSite: ContaConferida[] = site
-    .filter((s) => !vistos.has(s.id))
+  const orfaosDoSite = site.filter((s) => !vistos.has(s.id));
+
+  // Segunda passada: a mesma conta com nome diferente dos dois lados.
+  //
+  // O casamento acima exige numero de documento, ou contraparte + vencimento +
+  // valor idênticos. Quando o Bling chama "IPTU" e o site chama "PREFEITURA DE
+  // MARINGÁ", ou quando o valor mudou porque o site tinha só a previsão, a
+  // mesma conta aparecia nos dois órfãos como se fossem duas — em setembro/2026
+  // foram 8 assim, mais a folha inteira.
+  //
+  // Aqui elas se reencontram pelo que sobra: valor igual em datas próximas, ou
+  // contraparte parecida no mesmo mês. Não vira "confere": vira divergente com
+  // o valor do Bling do lado, que é o que a tela usa pra corrigir.
+  const JANELA_DIAS = 25;
+  const emDias = (a: string, b: string) =>
+    Math.abs((new Date(a).getTime() - new Date(b).getTime()) / 86400000);
+
+  // Nome comparado inteiro, sem acento e sem pontuacao. Comparar so a primeira
+  // palavra parecia esperto e casou VALE TRANSPORTE com VALE ALIMENTACAO: as
+  // duas comecam com "VALE". O botao teria oferecido trocar 250,00 por 324,80.
+  const nome = (t: string) =>
+    (t ?? "")
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .replace(/[^A-Z0-9]+/g, " ")
+      .trim();
+
+  const usados = new Set<number>();
+  const casar = (
+    combina: (s: (typeof orfaosDoSite)[number], b: ContaConferida) => boolean
+  ) => {
+    for (let i = soNoBling.length - 1; i >= 0; i--) {
+      const b = soNoBling[i];
+      const par = orfaosDoSite.find((s) => !usados.has(s.id) && combina(s, b));
+      if (!par) continue;
+      usados.add(par.id);
+      const problemas: string[] = [];
+      if (dinheiro(par.valor) !== b.valor)
+        problemas.push(`valor: Bling ${b.valor} × site ${dinheiro(par.valor)}`);
+      if (dia(par.vencimento) !== b.vencimento)
+        problemas.push(`vencimento: Bling ${b.vencimento} × site ${dia(par.vencimento)}`);
+      if (nome(par.contraparte ?? "") !== nome(b.contraparte))
+        problemas.push(`nome: Bling "${b.contraparte}" × site "${par.contraparte ?? ""}"`);
+      divergentes.push({
+        ...b,
+        siteId: par.id,
+        diferenca: problemas.join("; ") || "mesma conta, casada por valor",
+        parEncontradoPor: "valor",
+      });
+      soNoBling.splice(i, 1);
+    }
+  };
+
+  // Duas passadas inteiras, e nesta ordem. Numa passada so — valor, senao nome,
+  // conta por conta — um casamento por nome consome a linha que a proxima conta
+  // precisava pelo valor, e o valor e a evidencia mais forte das duas.
+  casar(
+    (s, b) =>
+      dinheiro(s.valor) === b.valor && emDias(dia(s.vencimento), b.vencimento) <= JANELA_DIAS
+  );
+  casar(
+    (s, b) =>
+      nome(s.contraparte ?? "") !== "" &&
+      nome(s.contraparte ?? "") === nome(b.contraparte) &&
+      emDias(dia(s.vencimento), b.vencimento) <= JANELA_DIAS
+  );
+
+  const soNoSite: ContaConferida[] = orfaosDoSite
+    .filter((s) => !usados.has(s.id))
     .map((s) => ({
       documento: s.documento ?? s.descricao,
       contraparte: s.contraparte ?? "",
@@ -535,6 +632,21 @@ async function escrever(caminho: string, corpo: unknown): Promise<void> {
   }
 }
 
+interface ContaCompleta {
+  id?: number;
+  vencimento?: string;
+  valor?: number;
+  saldo?: number;
+  dataEmissao?: string;
+  competencia?: string;
+  numeroDocumento?: string;
+  historico?: string;
+  contato?: { id?: number };
+  formaPagamento?: { id?: number };
+  portador?: { id?: number };
+  categoria?: { id?: number };
+}
+
 export interface Classificacao {
   blingId: number;
   categoriaId: number;
@@ -554,13 +666,41 @@ export async function classificarContasBling(
   const saida: ResultadoClassificacao[] = [];
   for (const it of itens) {
     try {
-      const { data: atual } = await chamar<{ data: Record<string, unknown> }>(
+      const { data: atual } = await chamar<{ data: ContaCompleta }>(
         `/contas/pagar/${it.blingId}`
       );
       if (!atual) throw new Error("conta não encontrada no Bling");
-      const corpo = { ...atual, categoria: { id: it.categoriaId } };
-      delete (corpo as { id?: unknown }).id;
+
+      // Só os campos que o PUT documenta. Mandar a conta inteira do GET faz o
+      // Bling responder 200 e ignorar tudo em silêncio — o campo `categoria`
+      // não gravava e a conferência seguia mostrando o histórico. Nenhum erro,
+      // nenhum aviso: parecia classificado e não estava.
+      //
+      // `ocorrencia` fica de fora de proposito: e ela que define recorrencia, e
+      // mandar o valor errado transformaria um carne em conta unica.
+      const corpo: Record<string, unknown> = {
+        vencimento: atual.vencimento,
+        valor: atual.valor,
+        categoria: { id: it.categoriaId },
+      };
+      if (atual.contato?.id) corpo.contato = { id: atual.contato.id };
+      if (atual.formaPagamento?.id) corpo.formaPagamento = { id: atual.formaPagamento.id };
+      if (atual.portador?.id) corpo.portador = { id: atual.portador.id };
+      if (atual.saldo !== undefined) corpo.saldo = atual.saldo;
+      if (atual.dataEmissao) corpo.dataEmissao = atual.dataEmissao;
+      if (atual.competencia) corpo.competencia = atual.competencia;
+      if (atual.numeroDocumento) corpo.numeroDocumento = atual.numeroDocumento;
+      if (atual.historico) corpo.historico = atual.historico;
+
       await escrever(`/contas/pagar/${it.blingId}`, corpo);
+
+      // Confere relendo: o 200 do Bling nao prova que gravou.
+      const { data: depois } = await chamar<{ data: ContaCompleta }>(
+        `/contas/pagar/${it.blingId}`
+      );
+      if (Number(depois?.categoria?.id ?? 0) !== it.categoriaId) {
+        throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
+      }
       saida.push({ blingId: it.blingId, ok: true });
     } catch (err) {
       saida.push({

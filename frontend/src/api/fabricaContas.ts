@@ -99,3 +99,99 @@ export async function excluirConta(id: number): Promise<void> {
   });
   await semConteudo(res);
 }
+
+// --- anexos ------------------------------------------------------------------
+
+export interface AnexoConta {
+  id: number;
+  contaId: number;
+  nome: string;
+  tipo: string;
+  tamanho: number;
+  criadoEm: string;
+}
+
+export async function listarAnexos(contaId: number): Promise<AnexoConta[]> {
+  const res = await fetch(`${API_BASE}/api/fabrica-contas/${contaId}/anexos`, {
+    credentials: "include",
+  });
+  const r = await tratarResposta<{ anexos: AnexoConta[] }>(res);
+  return r.anexos;
+}
+
+export async function enviarAnexo(contaId: number, arquivo: File): Promise<AnexoConta> {
+  const corpo = new FormData();
+  corpo.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/fabrica-contas/${contaId}/anexos`, {
+    method: "POST",
+    credentials: "include",
+    body: corpo,
+  });
+  return tratarResposta<AnexoConta>(res);
+}
+
+export async function excluirAnexo(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/fabrica-contas/anexos/${id}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  await semConteudo(res);
+}
+
+// Abre numa aba nova. PDF e imagem o navegador mostra; o resto ele baixa.
+export function urlDoAnexo(id: number): string {
+  return `${API_BASE}/api/fabrica-contas/anexos/${id}`;
+}
+
+// --- conferência contra o Bling ---------------------------------------------
+
+export interface ContaConferida {
+  documento: string;
+  contraparte: string;
+  vencimento: string;
+  valor: number;
+  categoria: string;
+  diferenca?: string;
+  blingId?: number;
+  siteId?: number;
+  blingValor?: number;
+  blingVencimento?: string;
+  blingContraparte?: string;
+  parEncontradoPor?: "documento" | "valor";
+}
+
+export interface ConferenciaContas {
+  de: string;
+  ate: string;
+  noBling: number;
+  noSite: number;
+  conferem: number;
+  soNoBling: ContaConferida[];
+  soNoSite: ContaConferida[];
+  divergentes: ContaConferida[];
+}
+
+export async function conferirContraBling(de: string, ate: string): Promise<ConferenciaContas> {
+  const res = await fetch(
+    `${API_BASE}/api/fabrica-contas/conferir-bling?de=${de}&ate=${ate}`,
+    { credentials: "include" }
+  );
+  return tratarResposta<ConferenciaContas>(res);
+}
+
+// Traz o valor do Bling para a conta do site. Sentido único de propósito: o
+// Bling é a referência do contas a pagar, porque é lá que o provisionamento
+// vira o valor do boleto.
+export async function trazerValorDoBling(
+  contaId: number,
+  valor: number,
+  vencimento?: string
+): Promise<{ valorAnterior: number; vencimentoAnterior: string }> {
+  const res = await fetch(`${API_BASE}/api/fabrica-contas/${contaId}/valor-do-bling`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valor, vencimento }),
+  });
+  return tratarResposta<{ valorAnterior: number; vencimentoAnterior: string }>(res);
+}

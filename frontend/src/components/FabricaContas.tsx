@@ -6,6 +6,11 @@ import {
   atualizarConta,
   definirStatusConta,
   excluirConta,
+  listarAnexos,
+  enviarAnexo,
+  excluirAnexo,
+  urlDoAnexo,
+  type AnexoConta,
 } from "../api/fabricaContas";
 import type {
   Conta,
@@ -21,6 +26,7 @@ import { Modal } from "./Modal";
 import { FabricaDre } from "./FabricaDre";
 import { FabricaBens } from "./FabricaBens";
 import { FabricaFornecedores } from "./FabricaFornecedores";
+import { FabricaConferirBling } from "./FabricaConferirBling";
 import { BuscaSelecao } from "./BuscaSelecao";
 import type { ItemBusca } from "./BuscaSelecao";
 import { fetchFornecedores } from "../api/fabricaFornecedores";
@@ -153,9 +159,13 @@ export function FabricaContas() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [editandoId, setEditandoId] = useState<number | null>(null);
+  const [anexos, setAnexos] = useState<AnexoConta[]>([]);
+  const [anexando, setAnexando] = useState(false);
   const [form, setForm] = useState({ ...VAZIO });
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [aba, setAba] = useState<"contas" | "dre" | "bens" | "fornecedores">("contas");
+  const [aba, setAba] = useState<
+    "contas" | "dre" | "bens" | "fornecedores" | "conferir"
+  >("contas");
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   // O a receber nao e digitado: e a conta corrente das lojas.
   //
@@ -463,6 +473,30 @@ export function FabricaContas() {
     setForm({ ...VAZIO, tipo: filtroTipo, vencimento: hoje() });
     setMostrarForm(true);
     setErro(null);
+    setAnexos([]);
+  }
+
+  async function anexar(arquivo: File) {
+    if (!editandoId) return;
+    setAnexando(true);
+    setErro(null);
+    try {
+      const a = await enviarAnexo(editandoId, arquivo);
+      setAnexos((lista) => [a, ...lista]);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao anexar.");
+    } finally {
+      setAnexando(false);
+    }
+  }
+
+  async function removerAnexo(id: number) {
+    try {
+      await excluirAnexo(id);
+      setAnexos((lista) => lista.filter((a) => a.id !== id));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao apagar o anexo.");
+    }
   }
 
   function editar(c: Conta) {
@@ -485,6 +519,8 @@ export function FabricaContas() {
     });
     setMostrarForm(true);
     setErro(null);
+    setAnexos([]);
+    void listarAnexos(c.id).then(setAnexos).catch(() => setAnexos([]));
   }
 
   async function salvar() {
@@ -744,7 +780,7 @@ export function FabricaContas() {
       </p>
 
       <div className="financeiro-filtros ordem-sem-impressao">
-        {(["contas", "dre", "bens", "fornecedores"] as const).map((a) => (
+        {(["contas", "dre", "bens", "fornecedores", "conferir"] as const).map((a) => (
           <button
             key={a}
             type="button"
@@ -761,7 +797,9 @@ export function FabricaContas() {
                 ? "DRE"
                 : a === "bens"
                   ? "Bens"
-                  : "Fornecedores"}
+                  : a === "fornecedores"
+                    ? "Fornecedores"
+                    : "Conferir no Bling"}
           </button>
         ))}
       </div>
@@ -769,6 +807,7 @@ export function FabricaContas() {
       {aba === "dre" && <FabricaDre />}
       {aba === "bens" && <FabricaBens />}
       {aba === "fornecedores" && <FabricaFornecedores />}
+      {aba === "conferir" && <FabricaConferirBling />}
 
       {aba === "contas" && (
         <div className="contas-cartoes">
@@ -1058,6 +1097,51 @@ export function FabricaContas() {
               onChange={(e) => setForm((f) => ({ ...f, observacao: e.target.value }))}
             />
           </div>
+
+          {/* Anexo: boleto, comprovante, relatorio de rateio.
+              So aparece editando — conta que ainda nao existe nao tem onde
+              pendurar arquivo. */}
+          {editandoId && (
+            <div className="contas-anexos">
+              <label className="contas-anexo-add">
+                {anexando ? "Enviando…" : "+ Anexar arquivo"}
+                <input
+                  type="file"
+                  hidden
+                  disabled={anexando}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void anexar(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              {anexos.length === 0 ? (
+                <span className="financeiro-td-mudo">Nenhum anexo.</span>
+              ) : (
+                <ul className="contas-anexo-lista">
+                  {anexos.map((a) => (
+                    <li key={a.id}>
+                      <a href={urlDoAnexo(a.id)} target="_blank" rel="noreferrer">
+                        {a.nome}
+                      </a>
+                      <span className="financeiro-td-mudo">
+                        {" "}
+                        · {(a.tamanho / 1024).toFixed(0)} KB
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-excluir"
+                        onClick={() => void removerAnexo(a.id)}
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
 
         </Modal>
       )}

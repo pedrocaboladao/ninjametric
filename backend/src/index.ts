@@ -26,6 +26,7 @@ import { fabricaPixRouter } from "./routes/fabricaPix";
 import { fabricaEntradasRouter } from "./routes/fabricaEntradas";
 import { fabricaBlingRouter, fabricaBlingCallbackRouter } from "./routes/fabricaBling";
 import { shopeeRouter, shopeeCallbackRouter } from "./routes/shopee";
+import { shopeeAdsRouter, shopeeAdsCallbackRouter } from "./routes/shopeeAds";
 import { fabricaEmbalagensRouter } from "./routes/fabricaEmbalagens";
 import { fabricaEstoqueRouter } from "./routes/fabricaEstoque";
 import { fabricaPedidosRouter } from "./routes/fabricaPedidos";
@@ -104,6 +105,8 @@ app.use("/api/fabrica-bling", requireAuth, requirePermissao("fabrica_pedidos"), 
 // sem cookie de sessão, então fica antes do requireAuth.
 app.use("/api/shopee/callback", shopeeCallbackRouter);
 app.use("/api/shopee", requireAuth, requireAdmin, shopeeRouter);
+app.use("/api/shopee-ads/callback", shopeeAdsCallbackRouter);
+app.use("/api/shopee-ads", requireAuth, requireAdmin, shopeeAdsRouter);
 // mesma permissao do financeiro da fabrica: o cadastro de bens existe pra
 // alimentar a depreciacao do DRE, nao e modulo separado
 app.use("/api/fabrica-bens", requireAuth, requirePermissao("fabrica_financeiro"), fabricaBensRouter);
