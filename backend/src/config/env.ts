@@ -71,4 +71,10 @@ export const env = {
   shopeePartnerKey: process.env.SHOPEE_PARTNER_KEY ?? "",
   shopeeBaseUrl: process.env.SHOPEE_BASE_URL ?? "https://openplatform.sandbox.test-stable.shopee.sg",
   shopeeRedirectBase: process.env.SHOPEE_REDIRECT_BASE ?? "https://ninjametrics.cloud",
+  // App separado "ADS impetrus vision" (categoria Ads Service) — ver
+  // comentário em contas_shopee_ads no schema.sql sobre por que é um app à
+  // parte. Reaproveita shopeeBaseUrl/shopeeRedirectBase, só o partner
+  // id/key mudam.
+  shopeeAdsPartnerId: process.env.SHOPEE_ADS_PARTNER_ID ?? "",
+  shopeeAdsPartnerKey: process.env.SHOPEE_ADS_PARTNER_KEY ?? "",
 };
