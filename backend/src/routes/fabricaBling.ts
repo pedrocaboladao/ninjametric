@@ -18,6 +18,7 @@ import {
   puxarContatos,
   sincronizarContatos,
   criarFornecedorBling,
+  renomearContatoBling,
 } from "../services/blingContatosService";
 import {
   rodadaEmAndamento,
@@ -122,9 +123,10 @@ fabricaBlingRouter.get("/contas/categorias", async (_req, res) => {
 fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
   const bruto = Array.isArray((req.body ?? {}).itens) ? (req.body ?? {}).itens : [];
   const itens = bruto
-    .map((i: { blingId?: unknown; categoriaId?: unknown }) => ({
+    .map((i: { blingId?: unknown; categoriaId?: unknown; contatoId?: unknown }) => ({
       blingId: Number(i?.blingId),
       categoriaId: Number(i?.categoriaId),
+      contatoId: Number(i?.contatoId) > 0 ? Number(i.contatoId) : undefined,
     }))
     .filter(
       (i: { blingId: number; categoriaId: number }) =>
@@ -146,6 +148,17 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
 // de 3 requisicoes por segundo.
 // Cria fornecedor no Bling. Procura pelo documento antes: contato duplicado
 // não se apaga sem perder o histórico preso nele.
+fabricaBlingRouter.put("/contatos/:id/nome", async (req, res) => {
+  const id = Number(req.params.id);
+  const nome = String((req.body ?? {}).nome ?? "");
+  try {
+    await renomearContatoBling(id, nome);
+    res.json({ ok: true, id, nome: nome.trim() });
+  } catch (err) {
+    erro(res, err, "Falha ao renomear o contato.");
+  }
+});
+
 fabricaBlingRouter.post("/contatos/criar", async (req, res) => {
   const bruto = Array.isArray((req.body ?? {}).contatos) ? (req.body ?? {}).contatos : [];
   if (!bruto.length) return res.status(400).json({ error: "Informe contatos." });
