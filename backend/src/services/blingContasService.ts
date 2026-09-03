@@ -231,12 +231,27 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
 
   // indexa o site pelo documento; o que não tem número entra por
   // contraparte + vencimento + valor, que é o que sobra pra identificar a conta
-  const porChave = new Map<string, LinhaSite>();
-  const porFato = new Map<string, LinhaSite>();
+  // Lista, nao um por chave. Quatro vales de R$ 250,00 no mesmo dia com a
+  // mesma contraparte dao a mesma chave, e um Map so guardava o ultimo: os
+  // outros tres viravam inalcancaveis, e cada conta do Bling com aquela chave
+  // casava com a MESMA linha do site, de novo e de novo. Todas contadas como
+  // "conferem".
+  //
+  // O estrago nao e cosmetico: a conferencia dizia que conta batia sem nunca
+  // ter olhado pra ela, e as linhas de verdade apareciam como orfas do lado do
+  // site. Em setembro/2026 tres contas do Bling casaram com o vale do Ricardo.
+  const porChave = new Map<string, LinhaSite[]>();
+  const porFato = new Map<string, LinhaSite[]>();
+  const empilhar = (m: Map<string, LinhaSite[]>, k: string, s: LinhaSite) => {
+    const lista = m.get(k);
+    if (lista) lista.push(s);
+    else m.set(k, [s]);
+  };
   for (const s of site) {
     const k = chave(s.documento, s.descricao);
-    if (k) porChave.set(k, s);
-    porFato.set(
+    if (k) empilhar(porChave, k, s);
+    empilhar(
+      porFato,
       `${(s.contraparte ?? "").toUpperCase()}|${dia(s.vencimento)}|${dinheiro(s.valor)}`,
       s
     );
@@ -252,9 +267,13 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     const venc = dia(b.vencimento);
     const valor = dinheiro(b.valor);
     const k = chave(b.numeroDocumento, b.historico);
+    // Pega a primeira que ainda nao foi usada. Sem isso a mesma linha do site
+    // era entregue a varias contas do Bling.
+    const livre = (lista: LinhaSite[] | undefined) =>
+      lista?.find((s) => !vistos.has(s.id));
     const achado =
-      (k ? porChave.get(k) : undefined) ??
-      porFato.get(`${nome.toUpperCase()}|${venc}|${valor}`);
+      (k ? livre(porChave.get(k)) : undefined) ??
+      livre(porFato.get(`${nome.toUpperCase()}|${venc}|${valor}`));
     const linha: ContaConferida = {
       documento: k ?? b.historico ?? String(b.id),
       contraparte: nome,
