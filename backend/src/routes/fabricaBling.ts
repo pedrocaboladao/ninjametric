@@ -40,6 +40,7 @@ import {
   conferirPedidos,
   listarCategoriasBling,
   classificarContasBling,
+  criarContaBling,
 } from "../services/blingContasService";
 
 export const fabricaBlingRouter = Router();
@@ -134,6 +135,36 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
     console.error("[bling-classificar]", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao classificar." });
   }
+});
+
+// Cria conta a pagar no Bling. Aceita uma lista porque compra parcelada e
+// folha recorrente vem em bloco, e uma chamada por mes desperdicaria o teto
+// de 3 requisicoes por segundo.
+fabricaBlingRouter.post("/contas/criar", async (req, res) => {
+  const bruto = Array.isArray((req.body ?? {}).contas) ? (req.body ?? {}).contas : [];
+  if (!bruto.length) return res.status(400).json({ error: "Informe contas." });
+  if (bruto.length > 60) return res.status(400).json({ error: "No máximo 60 por vez." });
+  const criadas: Array<{ ok: boolean; id?: number; erro?: string; vencimento: string }> = [];
+  for (const c of bruto) {
+    try {
+      const r = await criarContaBling({
+        contatoId: Number(c?.contatoId),
+        categoriaId: Number(c?.categoriaId),
+        valor: Number(c?.valor),
+        vencimento: String(c?.vencimento ?? ""),
+        historico: typeof c?.historico === "string" ? c.historico : undefined,
+        numeroDocumento: typeof c?.numeroDocumento === "string" ? c.numeroDocumento : undefined,
+      });
+      criadas.push({ ok: true, id: r.id, vencimento: String(c?.vencimento ?? "") });
+    } catch (err) {
+      criadas.push({
+        ok: false,
+        erro: err instanceof Error ? err.message : "falhou",
+        vencimento: String(c?.vencimento ?? ""),
+      });
+    }
+  }
+  res.json({ total: criadas.length, ok: criadas.filter((x) => x.ok).length, criadas });
 });
 
 fabricaBlingRouter.get("/contas/conferir", async (req, res) => {

@@ -674,13 +674,17 @@ export async function listarCategoriasBling(): Promise<CategoriaBling[]> {
   return todas;
 }
 
-async function escrever(caminho: string, corpo: unknown): Promise<void> {
+async function escrever<T = void>(
+  caminho: string,
+  corpo: unknown,
+  metodo: "put" | "post" = "put"
+): Promise<T> {
   let espera = 2000;
   for (let tentativa = 1; ; tentativa++) {
     await vez();
     const token = await tokenValido();
     try {
-      await axios.put(`${BASE}${caminho}`, corpo, {
+      const resp = await axios[metodo]<T>(`${BASE}${caminho}`, corpo, {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/json",
@@ -688,7 +692,7 @@ async function escrever(caminho: string, corpo: unknown): Promise<void> {
         },
         timeout: 30000,
       });
-      return;
+      return resp.data;
     } catch (err) {
       const status = axios.isAxiosError(err) ? err.response?.status : undefined;
       if (status === 429 && tentativa < TENTATIVAS) {
@@ -785,4 +789,58 @@ export async function classificarContasBling(
     }
   }
   return saida;
+}
+
+// ---------------------------------------------------------------------------
+// Criar conta a pagar no Bling.
+//
+// Existe porque o extrato traz compra que ninguem lancou em lugar nenhum: em
+// 01 e 02/09/2026 foram R$ 255.208,78 de materia-prima — Oswaldo Cruz,
+// Fos-Quimica, Mineracao Matheus Leme — que sairam do banco e nao estavam nem
+// no site nem no ERP. Ate aqui eu so sabia classificar o que a funcionaria ja
+// tinha digitado.
+//
+// Manda so os campos documentados, pelo mesmo motivo do PUT: campo que o Bling
+// nao conhece ele ignora em silencio e devolve 200. E confere lendo de volta —
+// um POST que "deu certo" e nao gravou a categoria e pior que um erro.
+export interface NovaContaBling {
+  contatoId: number;
+  categoriaId: number;
+  valor: number;
+  vencimento: string;
+  historico?: string;
+  numeroDocumento?: string;
+  dataEmissao?: string;
+  competencia?: string;
+}
+
+export async function criarContaBling(nova: NovaContaBling): Promise<{ id: number }> {
+  if (!Number.isInteger(nova.contatoId) || nova.contatoId <= 0)
+    throw new Error("Informe o contato do Bling.");
+  if (!Number.isInteger(nova.categoriaId) || nova.categoriaId <= 0)
+    throw new Error("Informe a categoria do Bling.");
+  if (!Number.isFinite(nova.valor) || nova.valor <= 0) throw new Error("Valor inválido.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(nova.vencimento)) throw new Error("Vencimento inválido.");
+
+  const corpo: Record<string, unknown> = {
+    vencimento: nova.vencimento,
+    valor: nova.valor,
+    contato: { id: nova.contatoId },
+    categoria: { id: nova.categoriaId },
+    dataEmissao: nova.dataEmissao ?? nova.vencimento,
+    competencia: nova.competencia ?? nova.vencimento,
+  };
+  if (nova.historico) corpo.historico = nova.historico;
+  if (nova.numeroDocumento) corpo.numeroDocumento = nova.numeroDocumento;
+
+  const criada = await escrever<{ data?: { id?: number } }>("/contas/pagar", corpo, "post");
+  const id = Number(criada?.data?.id ?? 0);
+  if (!id) throw new Error("o Bling aceitou o POST mas não devolveu o id da conta");
+
+  const { data: depois } = await chamar<{ data: ContaCompleta }>(`/contas/pagar/${id}`);
+  if (Number(depois?.categoria?.id ?? 0) !== nova.categoriaId)
+    throw new Error(`conta ${id} criada, mas a categoria não gravou`);
+  if (Math.abs(Number(depois?.valor ?? 0) - nova.valor) > 0.02)
+    throw new Error(`conta ${id} criada com valor ${depois?.valor}, não ${nova.valor}`);
+  return { id };
 }
