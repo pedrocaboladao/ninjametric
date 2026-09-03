@@ -22,6 +22,7 @@ const LOJAS = [
   "Buy Gomes",
   "Macedo Tintas",
   "Eco Stone",
+  "Maringá Full",
 ];
 
 async function seed() {
