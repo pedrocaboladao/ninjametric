@@ -3,6 +3,12 @@ import { planilhaParaTexto } from "../services/fabricaPlanilhaArquivoService";
 import { Router, Request, Response } from "express";
 import { conferirVendasMl } from "../services/fabricaVendasMlService";
 import { idadeDoSaldo } from "../services/fabricaIdadeService";
+import {
+  conferirContasReceber,
+  criarContaReceber,
+} from "../services/blingContasService";
+import { contatoIdPorDocumento } from "../services/blingContatosService";
+import { listarClientes } from "../services/fabricaClientesService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import {
   listarApelidos,
@@ -192,6 +198,91 @@ fabricaPedidosRouter.get("/fechamentos/previa", async (req, res) => {
     res.json(await montarFechamento(de, ate));
   } catch (err) {
     erro(res, err, "Falha ao montar o fechamento.");
+  }
+});
+
+// Confere o fechamento contra os titulos a receber do Bling.
+//
+// Mora aqui, e nao no router do Bling, pelo mesmo motivo da conferencia de
+// contas a pagar: quem le e a tela de cobranca, e um usuario sem
+// `fabrica_pedidos` nao tem o que fazer com esta resposta.
+fabricaPedidosRouter.get("/fechamentos/conferir-bling", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  try {
+    const f = await montarFechamento(de, ate);
+    res.json(
+      await conferirContasReceber(
+        de,
+        ate,
+        f.linhas.map((l) => ({
+          clienteId: l.clienteId,
+          clienteNome: l.clienteNome,
+          previsto: l.previsto,
+        })),
+        f.id
+      )
+    );
+  } catch (err) {
+    erro(res, err, "Falha ao conferir contra o Bling.");
+  }
+});
+
+// Lanca no Bling o titulo das lojas que ainda nao tem.
+//
+// So cria o que falta: rodar duas vezes nao duplica, porque a conferencia
+// roda antes e diz quem ja tem titulo. E uma loja sem contato no ERP nao
+// derruba as outras — ela volta na lista de falhas com o motivo.
+fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
+  const b = req.body ?? {};
+  const de = String(b.de ?? "");
+  const ate = String(b.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  try {
+    const f = await montarFechamento(de, ate);
+    const conf = await conferirContasReceber(
+      de,
+      ate,
+      f.linhas.map((l) => ({
+        clienteId: l.clienteId,
+        clienteNome: l.clienteNome,
+        previsto: l.previsto,
+      })),
+      f.id
+    );
+    const clientes = await listarClientes();
+    const docPorId = new Map(clientes.map((c) => [c.id, c.cnpj ?? ""]));
+
+    const feitos: Array<{ loja: string; ok: boolean; id?: number; erro?: string }> = [];
+    for (const l of conf.linhas) {
+      if (l.tituloBling !== null || l.clienteId === null) continue;
+      if (l.previstoSite <= 0) continue;
+      try {
+        const contatoId = await contatoIdPorDocumento(docPorId.get(l.clienteId) ?? "");
+        if (!contatoId) throw new Error("loja sem contato no Bling (falta o CNPJ ou o cadastro)");
+        const r = await criarContaReceber({
+          contatoId,
+          valor: l.previstoSite,
+          vencimento: ate,
+          historico: `FECHAMENTO ${de} a ${ate} - ${l.loja}`,
+        });
+        feitos.push({ loja: l.loja, ok: true, id: r.id });
+      } catch (err) {
+        feitos.push({
+          loja: l.loja,
+          ok: false,
+          erro: err instanceof Error ? err.message : "falhou",
+        });
+      }
+    }
+    res.json({ total: feitos.length, ok: feitos.filter((x) => x.ok).length, feitos });
+  } catch (err) {
+    erro(res, err, "Falha ao espelhar o fechamento no Bling.");
   }
 });
 
