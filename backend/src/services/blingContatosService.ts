@@ -693,3 +693,21 @@ export async function criarFornecedorBling(
   if (!id) throw new Error(`o Bling aceitou o contato ${f.nome} mas não devolveu o id`);
   return { id, criado: true };
 }
+
+// Renomeia um contato do Bling. Existe por um erro de digitacao que o site
+// teria copiado: o banco esta cadastrado como "SICOOB METROPOLITANDO", sem o
+// N. Padronizar site e ERP nao pode significar espalhar o erro do ERP.
+export async function renomearContatoBling(id: number, nome: string): Promise<void> {
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Id de contato inválido.");
+  if (!nome.trim()) throw new Error("Informe o nome.");
+  // Le antes: o PUT do Bling substitui o contato, entao mandar so o nome
+  // apagaria documento, endereco e telefone.
+  const r = await chamar<{ data: ContatoBling }>("get", `/contatos/${id}`);
+  const atual = r.data;
+  const corpo: Record<string, unknown> = { ...atual, nome: nome.trim() };
+  delete corpo.id;
+  await chamar("put", `/contatos/${id}`, undefined, corpo);
+  const depois = await chamar<{ data: ContatoBling }>("get", `/contatos/${id}`);
+  if ((depois.data?.nome ?? "").trim() !== nome.trim())
+    throw new Error(`o Bling aceitou o PUT mas o nome do contato ${id} não gravou`);
+}

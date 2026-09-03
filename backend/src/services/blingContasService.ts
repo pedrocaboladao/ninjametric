@@ -728,6 +728,11 @@ interface ContaCompleta {
 export interface Classificacao {
   blingId: number;
   categoriaId: number;
+  // Trocar o contato da conta. Serve pra padronizar quem aparece como
+  // contraparte: o adiantamento de tres funcionarios usava o contato generico
+  // "ADIANTAMENTO SALARIAL" e o do quarto o nome da pessoa, e a conferencia
+  // marcava divergencia de nome todo mes por causa disso.
+  contatoId?: number;
 }
 
 export interface ResultadoClassificacao {
@@ -761,7 +766,8 @@ export async function classificarContasBling(
         valor: atual.valor,
         categoria: { id: it.categoriaId },
       };
-      if (atual.contato?.id) corpo.contato = { id: atual.contato.id };
+      const contato = it.contatoId ?? atual.contato?.id;
+      if (contato) corpo.contato = { id: contato };
       if (atual.formaPagamento?.id) corpo.formaPagamento = { id: atual.formaPagamento.id };
       if (atual.portador?.id) corpo.portador = { id: atual.portador.id };
       if (atual.saldo !== undefined) corpo.saldo = atual.saldo;
@@ -778,6 +784,9 @@ export async function classificarContasBling(
       );
       if (Number(depois?.categoria?.id ?? 0) !== it.categoriaId) {
         throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
+      }
+      if (it.contatoId && Number(depois?.contato?.id ?? 0) !== it.contatoId) {
+        throw new Error("o Bling aceitou o PUT mas o contato não gravou");
       }
       saida.push({ blingId: it.blingId, ok: true });
     } catch (err) {
