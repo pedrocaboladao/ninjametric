@@ -231,12 +231,27 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
 
   // indexa o site pelo documento; o que não tem número entra por
   // contraparte + vencimento + valor, que é o que sobra pra identificar a conta
-  const porChave = new Map<string, LinhaSite>();
-  const porFato = new Map<string, LinhaSite>();
+  // Lista, nao um por chave. Quatro vales de R$ 250,00 no mesmo dia com a
+  // mesma contraparte dao a mesma chave, e um Map so guardava o ultimo: os
+  // outros tres viravam inalcancaveis, e cada conta do Bling com aquela chave
+  // casava com a MESMA linha do site, de novo e de novo. Todas contadas como
+  // "conferem".
+  //
+  // O estrago nao e cosmetico: a conferencia dizia que conta batia sem nunca
+  // ter olhado pra ela, e as linhas de verdade apareciam como orfas do lado do
+  // site. Em setembro/2026 tres contas do Bling casaram com o vale do Ricardo.
+  const porChave = new Map<string, LinhaSite[]>();
+  const porFato = new Map<string, LinhaSite[]>();
+  const empilhar = (m: Map<string, LinhaSite[]>, k: string, s: LinhaSite) => {
+    const lista = m.get(k);
+    if (lista) lista.push(s);
+    else m.set(k, [s]);
+  };
   for (const s of site) {
     const k = chave(s.documento, s.descricao);
-    if (k) porChave.set(k, s);
-    porFato.set(
+    if (k) empilhar(porChave, k, s);
+    empilhar(
+      porFato,
       `${(s.contraparte ?? "").toUpperCase()}|${dia(s.vencimento)}|${dinheiro(s.valor)}`,
       s
     );
@@ -252,9 +267,13 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     const venc = dia(b.vencimento);
     const valor = dinheiro(b.valor);
     const k = chave(b.numeroDocumento, b.historico);
+    // Pega a primeira que ainda nao foi usada. Sem isso a mesma linha do site
+    // era entregue a varias contas do Bling.
+    const livre = (lista: LinhaSite[] | undefined) =>
+      lista?.find((s) => !vistos.has(s.id));
     const achado =
-      (k ? porChave.get(k) : undefined) ??
-      porFato.get(`${nome.toUpperCase()}|${venc}|${valor}`);
+      (k ? livre(porChave.get(k)) : undefined) ??
+      livre(porFato.get(`${nome.toUpperCase()}|${venc}|${valor}`));
     const linha: ContaConferida = {
       documento: k ?? b.historico ?? String(b.id),
       contraparte: nome,
@@ -728,6 +747,11 @@ interface ContaCompleta {
 export interface Classificacao {
   blingId: number;
   categoriaId: number;
+  // Trocar o contato da conta. Serve pra padronizar quem aparece como
+  // contraparte: o adiantamento de tres funcionarios usava o contato generico
+  // "ADIANTAMENTO SALARIAL" e o do quarto o nome da pessoa, e a conferencia
+  // marcava divergencia de nome todo mes por causa disso.
+  contatoId?: number;
 }
 
 export interface ResultadoClassificacao {
@@ -761,7 +785,8 @@ export async function classificarContasBling(
         valor: atual.valor,
         categoria: { id: it.categoriaId },
       };
-      if (atual.contato?.id) corpo.contato = { id: atual.contato.id };
+      const contato = it.contatoId ?? atual.contato?.id;
+      if (contato) corpo.contato = { id: contato };
       if (atual.formaPagamento?.id) corpo.formaPagamento = { id: atual.formaPagamento.id };
       if (atual.portador?.id) corpo.portador = { id: atual.portador.id };
       if (atual.saldo !== undefined) corpo.saldo = atual.saldo;
@@ -778,6 +803,9 @@ export async function classificarContasBling(
       );
       if (Number(depois?.categoria?.id ?? 0) !== it.categoriaId) {
         throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
+      }
+      if (it.contatoId && Number(depois?.contato?.id ?? 0) !== it.contatoId) {
+        throw new Error("o Bling aceitou o PUT mas o contato não gravou");
       }
       saida.push({ blingId: it.blingId, ok: true });
     } catch (err) {
@@ -842,5 +870,217 @@ export async function criarContaBling(nova: NovaContaBling): Promise<{ id: numbe
     throw new Error(`conta ${id} criada, mas a categoria não gravou`);
   if (Math.abs(Number(depois?.valor ?? 0) - nova.valor) > 0.02)
     throw new Error(`conta ${id} criada com valor ${depois?.valor}, não ${nova.valor}`);
+  return { id };
+}
+
+// ===========================================================================
+// CONTAS A RECEBER
+//
+// O site nao tem "conta a receber" digitada: o que a loja deve e derivado de
+// pedidos menos pagamentos — a conta corrente. O Bling espera titulo lancado.
+//
+// O espelho escolhido e o **fechamento**, nao a conta corrente: um titulo por
+// loja por ciclo, com o previsto da semana. Espelhar pedido a pedido daria
+// centenas de lancamentos por mes e nenhuma pergunta a mais respondida — o que
+// se cobra e o saldo do ciclo, que e o que a planilha mostra e o que vai no
+// WhatsApp da loja.
+//
+// A consequencia boa: a conferencia passa a comparar as tres pontas na mesma
+// unidade — previsto na planilha, previsto no site e titulo no Bling. Se as
+// tres nao baterem, alguem lancou venda ou pagamento num lugar so.
+
+async function baixarReceberDoBling(de: string, ate: string): Promise<ContaBling[]> {
+  // Mesmas duas armadilhas de /contas/pagar: o filtro de data e ignorado (por
+  // isso o recorte e local) e a listagem vem sem `historico`, `numeroDocumento`
+  // e o nome do contato, que so existem no GET de uma conta so.
+  const bruto: ContaBling[] = [];
+  for (let pagina = 1; pagina <= 60; pagina++) {
+    const r = await chamar<{ data?: ContaBling[] }>("/contas/receber", {
+      pagina,
+      limite: POR_PAGINA,
+    });
+    const lote = r.data ?? [];
+    bruto.push(...lote);
+    if (lote.length < POR_PAGINA) break;
+  }
+
+  const noPeriodo = bruto.filter((c) => {
+    const v = dia(c.vencimento);
+    return v >= de && v <= ate;
+  });
+
+  const nomePorContato = new Map<number, string>();
+  const contas: ContaBling[] = [];
+  for (const c of noPeriodo) {
+    try {
+      const d = await chamar<{ data?: ContaBling }>(`/contas/receber/${c.id}`);
+      const det: Partial<ContaBling> = d.data ?? {};
+      const idContato = det.contato?.id ?? c.contato?.id;
+      let nome = idContato ? nomePorContato.get(idContato) : undefined;
+      if (idContato && nome === undefined) {
+        try {
+          const ct = await chamar<{ data?: { nome?: string } }>(`/contatos/${idContato}`);
+          nome = ct.data?.nome ?? "";
+        } catch {
+          nome = "";
+        }
+        nomePorContato.set(idContato, nome);
+      }
+      contas.push({
+        ...c,
+        historico: det.historico ?? c.historico,
+        numeroDocumento: det.numeroDocumento ?? c.numeroDocumento,
+        contato: { id: idContato, nome: nome || undefined },
+      });
+    } catch {
+      contas.push(c);
+    }
+  }
+  return contas;
+}
+
+export interface LinhaReceber {
+  loja: string;
+  clienteId: number | null;
+  // o que a cobranca espera receber no ciclo
+  previstoSite: number;
+  // o titulo lancado no Bling
+  tituloBling: number | null;
+  blingId?: number;
+  vencimento: string;
+  diferenca?: string;
+}
+
+export interface ConferenciaReceber {
+  de: string;
+  ate: string;
+  fechamentoId: number | null;
+  previstoSite: number;
+  tituloBling: number;
+  conferem: number;
+  linhas: LinhaReceber[];
+}
+
+// Confere o fechamento do site contra os titulos a receber do Bling.
+//
+// Casa por nome da loja, normalizado. Nao por valor: dois clientes com o mesmo
+// previsto sao possiveis, e casar por valor faria a conferencia dizer que bate
+// justamente quando um dos dois esta faltando.
+export async function conferirContasReceber(
+  de: string,
+  ate: string,
+  linhasDoSite: Array<{ clienteId: number; clienteNome: string; previsto: number }>,
+  fechamentoId: number | null
+): Promise<ConferenciaReceber> {
+  const bling = await baixarReceberDoBling(de, ate);
+  const semAcento = (t: string) =>
+    (t ?? "")
+      .toUpperCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Z0-9]+/g, " ")
+      .trim();
+
+  const porNome = new Map<string, ContaBling[]>();
+  for (const b of bling) {
+    const k = semAcento(b.contato?.nome ?? "");
+    const lista = porNome.get(k);
+    if (lista) lista.push(b);
+    else porNome.set(k, [b]);
+  }
+
+  const usados = new Set<number>();
+  const linhas: LinhaReceber[] = [];
+  let conferem = 0;
+
+  for (const s of linhasDoSite) {
+    const k = semAcento(s.clienteNome);
+    // Nome igual, ou o do Bling comecando pelo do site: no ERP a loja esta com
+    // razao social completa e no site com o nome curto.
+    const candidatos =
+      porNome.get(k) ??
+      [...porNome.entries()].find(([nome]) => nome.startsWith(k) || k.startsWith(nome))?.[1] ??
+      [];
+    const achado = candidatos.find((c) => !usados.has(c.id));
+    if (achado) usados.add(achado.id);
+
+    const titulo = achado ? dinheiro(achado.valor) : null;
+    const previsto = dinheiro(s.previsto);
+    const problemas: string[] = [];
+    if (titulo === null) problemas.push("sem título no Bling");
+    else if (Math.abs(titulo - previsto) > 0.02)
+      problemas.push(`previsto ${previsto} × título ${titulo}`);
+    else conferem++;
+
+    linhas.push({
+      loja: s.clienteNome,
+      clienteId: s.clienteId,
+      previstoSite: previsto,
+      tituloBling: titulo,
+      blingId: achado?.id,
+      vencimento: achado ? dia(achado.vencimento) : ate,
+      diferenca: problemas.join("; ") || undefined,
+    });
+  }
+
+  // Titulo no Bling sem linha no fechamento: loja que saiu da cobranca, ou
+  // titulo lancado a mais. Aparece com previsto zero pra alguem olhar.
+  for (const b of bling) {
+    if (usados.has(b.id)) continue;
+    linhas.push({
+      loja: b.contato?.nome ?? `contato ${b.contato?.id ?? "?"}`,
+      clienteId: null,
+      previstoSite: 0,
+      tituloBling: dinheiro(b.valor),
+      blingId: b.id,
+      vencimento: dia(b.vencimento),
+      diferenca: "só no Bling — não está no fechamento",
+    });
+  }
+
+  return {
+    de,
+    ate,
+    fechamentoId,
+    previstoSite: linhas.reduce((s, l) => s + l.previstoSite, 0),
+    tituloBling: linhas.reduce((s, l) => s + (l.tituloBling ?? 0), 0),
+    conferem,
+    linhas,
+  };
+}
+
+export interface NovoTituloReceber {
+  contatoId: number;
+  valor: number;
+  vencimento: string;
+  historico?: string;
+  numeroDocumento?: string;
+}
+
+export async function criarContaReceber(t: NovoTituloReceber): Promise<{ id: number }> {
+  if (!Number.isInteger(t.contatoId) || t.contatoId <= 0)
+    throw new Error("Informe o contato do Bling.");
+  if (!Number.isFinite(t.valor) || t.valor <= 0) throw new Error("Valor inválido.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t.vencimento)) throw new Error("Vencimento inválido.");
+
+  const corpo: Record<string, unknown> = {
+    vencimento: t.vencimento,
+    valor: t.valor,
+    contato: { id: t.contatoId },
+    dataEmissao: t.vencimento,
+    competencia: t.vencimento,
+  };
+  if (t.historico) corpo.historico = t.historico;
+  if (t.numeroDocumento) corpo.numeroDocumento = t.numeroDocumento;
+
+  const criada = await escrever<{ data?: { id?: number } }>("/contas/receber", corpo, "post");
+  const id = Number(criada?.data?.id ?? 0);
+  if (!id) throw new Error("o Bling aceitou o POST mas não devolveu o id do título");
+
+  // Confere lendo de volta, igual em contas a pagar: POST que responde 200 e
+  // grava outra coisa e pior que erro, porque ninguem vai olhar.
+  const { data: depois } = await chamar<{ data: ContaBling }>(`/contas/receber/${id}`);
+  if (Math.abs(Number(depois?.valor ?? 0) - t.valor) > 0.02)
+    throw new Error(`título ${id} criado com valor ${depois?.valor}, não ${t.valor}`);
   return { id };
 }
