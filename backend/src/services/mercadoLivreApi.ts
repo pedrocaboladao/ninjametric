@@ -678,11 +678,15 @@ export async function getTaxaMlParaPreco(
 export async function getVisitasItem(lojaId: number, itemId: string, dataInicio: string, dataFim: string): Promise<number | null> {
   try {
     const accessToken = await getValidAccessToken(lojaId);
-    const { data } = await axios.get<{ total_visits: number }>(`${ML_API_BASE}/items/visits`, {
+    // Achado real: apesar de "ids" aceitar só 1 item com data, a resposta
+    // continua vindo como LISTA (1 elemento), não um objeto único — pegar
+    // `data.total_visits` direto sempre voltava undefined (nunca deu erro,
+    // só silenciosamente virava "0 visitas" em todo lugar que usa isso).
+    const { data } = await axios.get<Array<{ item_id: string; total_visits: number }>>(`${ML_API_BASE}/items/visits`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       params: { ids: itemId, date_from: dataInicio, date_to: dataFim },
     });
-    return data.total_visits;
+    return data[0]?.total_visits ?? null;
   } catch (err) {
     // Logado (não só engolido) — null aqui vira "0 visitas" na análise de
     // conversão (ver coletarConversaoDaLoja em agenteConversaoService.ts),
