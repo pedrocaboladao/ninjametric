@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { listLojas, atualizarImpostoLoja, atualizarCustoFixoLoja } from "../services/tokenStore";
+import { pool } from "../db/pool";
 import { temAcessoLoja } from "../services/usuariosService";
 import { requireAdmin } from "../middleware/requireAuth";
 
@@ -14,6 +15,27 @@ lojasRouter.get("/", async (req, res) => {
     res.json({ lojas: lojas.map((l) => ({ id: l.id, nome: l.nome })) });
   } catch (err) {
     console.error("Erro ao listar lojas:", err);
+    res.status(500).json({ error: "Falha ao listar lojas." });
+  }
+});
+
+// Mesma ideia do "/" acima, mas pro seletor de loja das telas da Shopee
+// (Financeiro Shopee etc.) — "/" filtra por ml_user_id, então uma loja só-
+// Shopee (ex: Catedral Ferramentas, sem Mercado Livre) nunca aparecia lá.
+// Achado real: o filtro ficava vazio pra essas lojas mesmo com a Shopee já
+// autorizada e os dados existindo no backend.
+lojasRouter.get("/shopee", async (req, res) => {
+  try {
+    const usuario = req.usuario!;
+    const { rows } = await pool.query<{ id: number; nome: string }>(
+      `SELECT l.id, l.nome FROM lojas l
+       INNER JOIN contas_shopee c ON c.loja_id = l.id
+       ORDER BY l.id`
+    );
+    const lojas = rows.filter((l) => temAcessoLoja(usuario, l.id));
+    res.json({ lojas });
+  } catch (err) {
+    console.error("Erro ao listar lojas da Shopee:", err);
     res.status(500).json({ error: "Falha ao listar lojas." });
   }
 });

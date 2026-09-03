@@ -18,6 +18,16 @@ export async function fetchLojas(): Promise<Loja[]> {
   return data.lojas;
 }
 
+// Igual fetchLojas, mas só lojas com Shopee autorizado — usado nas telas da
+// Shopee, já que fetchLojas filtra por Mercado Livre e deixaria de fora
+// lojas só-Shopee (ex: Catedral Ferramentas).
+export async function fetchLojasShopee(): Promise<Loja[]> {
+  const res = await fetch(`${API_BASE}/api/lojas/shopee`, { credentials: "include" });
+  if (!res.ok) throw new Error(`Falha ao buscar lojas: ${res.status}`);
+  const data = await res.json();
+  return data.lojas;
+}
+
 export async function fetchLojasTodas(): Promise<LojaTodas[]> {
   const res = await fetch(`${API_BASE}/api/lojas/todas`, { credentials: "include" });
   if (!res.ok) throw new Error(`Falha ao buscar lojas: ${res.status}`);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { fetchVendasFinanceirasShopee } from "../api/financeiroShopee";
-import { fetchLojas, type Loja } from "../api/lojas";
+import { fetchLojasShopee, type Loja } from "../api/lojas";
 import type { VendaFinanceiraShopee, ResultadoFinanceiroShopee } from "../types/financeiroShopee";
 import { formatCurrency, formatDataHora } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -90,7 +90,7 @@ export function FinanceiroShopee() {
   });
 
   useEffect(() => {
-    fetchLojas().then(setLojas).catch(() => {});
+    fetchLojasShopee().then(setLojas).catch(() => {});
   }, []);
 
   const periodoValido = Boolean(dataInicio && dataFim && dataInicio <= dataFim);
