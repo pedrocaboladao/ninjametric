@@ -53,6 +53,7 @@ import { iniciarSnapshotVendasNegativas } from "./services/vendasNegativasServic
 import { iniciarVerificacaoOportunidades } from "./services/agenteOportunidadesService";
 import { iniciarSnapshotCatalogo } from "./services/agenteCatalogoService";
 import { iniciarVerificacaoAgenteConversao } from "./services/agenteConversaoService";
+import { iniciarVerificacaoAgenteCriacaoAds } from "./services/agenteCriacaoAdsService";
 import { iniciarVerificacaoPlanoDiario } from "./services/agentePlanoDiarioService";
 import { iniciarSnapshotAnunciosNegativos } from "./services/anunciosNegativosService";
 import { iniciarSnapshotExperienciaCompra } from "./services/experienciaCompraService";
@@ -168,6 +169,7 @@ iniciarSnapshotVendasNegativas();
 iniciarVerificacaoOportunidades();
 iniciarSnapshotCatalogo();
 iniciarVerificacaoAgenteConversao();
+iniciarVerificacaoAgenteCriacaoAds();
 iniciarVerificacaoPlanoDiario();
 iniciarSnapshotAnunciosNegativos();
 iniciarSnapshotExperienciaCompra();

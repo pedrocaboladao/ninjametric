@@ -702,6 +702,19 @@ CREATE TABLE IF NOT EXISTS agente_conversao_pensamentos (
 );
 CREATE INDEX IF NOT EXISTS idx_agente_conversao_pensamentos_loja ON agente_conversao_pensamentos (loja_id);
 
+-- Agente de Criação de Ads: olha anúncios ATIVOS sem nenhuma campanha,
+-- com venda orgânica e tráfego real, e recomenda em texto corrido quais têm
+-- mais chance de performar bem se virarem campanha nova (ver
+-- agenteCriacaoAdsService.ts). 1x/semana (o sinal de 30 dias não muda
+-- rápido o bastante pra rodar diário como o resto dos agentes).
+CREATE TABLE IF NOT EXISTS agente_criacao_ads_pensamentos (
+  id SERIAL PRIMARY KEY,
+  pensamento TEXT NOT NULL,
+  loja_id INTEGER REFERENCES lojas(id),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agente_criacao_ads_pensamentos_loja ON agente_criacao_ads_pensamentos (loja_id);
+
 -- Resumo em texto corrido do Agente de Catálogo (mesmo padrão visual dos
 -- outros agentes) — montado por código puro a partir do snapshot
 -- (agente_catalogo_snapshot), sem IA (número já diz se vale baixar ou não,

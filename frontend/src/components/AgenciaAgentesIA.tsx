@@ -31,6 +31,7 @@ import {
   verificarOportunidadesAgora,
   fetchPensamentosCatalogo,
   fetchPensamentosConversao,
+  fetchPensamentosCriacaoAds,
   fetchPlanoDiario,
   verificarPlanoDiarioAgora,
   marcarItemPlano,
@@ -47,6 +48,7 @@ import type {
   Oportunidade,
   PensamentoCatalogo,
   PensamentoConversao,
+  PensamentoCriacaoAds,
   PlanoDiario,
   ResumoEscritorio,
   BriefingGrowthHacker,
@@ -484,6 +486,7 @@ const COR_OPORTUNIDADES = "#d9a33e";
 const COR_CATALOGO = "#2dd4bf";
 const COR_CONVERSAO = "#f97316";
 const COR_GROWTH = "#e11d48";
+const COR_CRIACAO_ADS = "#22c55e";
 const COR_VENDA = "#22c55e";
 const COR_VENDA_NEGATIVA = "#ef4444";
 
@@ -1975,7 +1978,7 @@ type ItemFeedTV =
   | {
       chave: string;
       tipo: "pensamento";
-      origem: "ads" | "growth" | "conversao" | "catalogo";
+      origem: "ads" | "growth" | "conversao" | "catalogo" | "criacaoAds";
       criadoEm: string;
       texto: string;
       janela: string | null;
@@ -2002,15 +2005,23 @@ export function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
   const carregar = useCallback(async (forcar = false) => {
     if (forcar) setAtualizandoFeed(true);
     try {
-      const [pensamentosAds, briefingsGrowth, pensamentosConversao, pensamentosCatalogo, oportunidades, vendas] =
-        await Promise.all([
-          fetchPensamentosAds(),
-          fetchBriefingsGrowthHacker(),
-          fetchPensamentosConversao(),
-          fetchPensamentosCatalogo(),
-          fetchOportunidades(),
-          fetchVendasRecentes(),
-        ]);
+      const [
+        pensamentosAds,
+        briefingsGrowth,
+        pensamentosConversao,
+        pensamentosCatalogo,
+        pensamentosCriacaoAds,
+        oportunidades,
+        vendas,
+      ] = await Promise.all([
+        fetchPensamentosAds(),
+        fetchBriefingsGrowthHacker(),
+        fetchPensamentosConversao(),
+        fetchPensamentosCatalogo(),
+        fetchPensamentosCriacaoAds(),
+        fetchOportunidades(),
+        fetchVendasRecentes(),
+      ]);
 
       const itens: ItemFeedTV[] = [
         ...pensamentosAds.map(
@@ -2048,6 +2059,16 @@ export function ModoTVEscritorio({ onSair }: { onSair: () => void }) {
             chave: `pensamento-catalogo-${p.id}`,
             tipo: "pensamento",
             origem: "catalogo",
+            criadoEm: p.criadoEm,
+            texto: p.pensamento,
+            janela: null,
+          }),
+        ),
+        ...pensamentosCriacaoAds.map(
+          (p): ItemFeedTV => ({
+            chave: `pensamento-criacao-ads-${p.id}`,
+            tipo: "pensamento",
+            origem: "criacaoAds",
             criadoEm: p.criadoEm,
             texto: p.pensamento,
             janela: null,
@@ -2358,23 +2379,26 @@ function SalaModoTV({ alertaAds }: { alertaAds: boolean }) {
   );
 }
 
-const COR_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo", string> = {
+const COR_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo" | "criacaoAds", string> = {
   ads: COR_ADS,
   growth: COR_GROWTH,
   conversao: COR_CONVERSAO,
   catalogo: COR_CATALOGO,
+  criacaoAds: COR_CRIACAO_ADS,
 };
-const ROTULO_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo", string> = {
+const ROTULO_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo" | "criacaoAds", string> = {
   ads: "Analista de Ads",
   growth: "Growth Hacker",
   conversao: "Conversão",
   catalogo: "Catálogo",
+  criacaoAds: "Criação de Ads",
 };
-const ICONE_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo", string> = {
+const ICONE_POR_ORIGEM: Record<"ads" | "growth" | "conversao" | "catalogo" | "criacaoAds", string> = {
   ads: "📣",
   growth: "🧠",
   conversao: "🔁",
   catalogo: "🏷️",
+  criacaoAds: "🚀",
 };
 
 // Texto comprido vira "bolha de chat" recolhida (3 linhas + reticências,
@@ -2691,6 +2715,77 @@ function AgenteCatalogo() {
   );
 }
 
+// Texto corrido, 1x/semana por loja — olha anúncios ATIVOS sem nenhuma
+// campanha (venda orgânica real + tráfego suficiente) e aponta quais têm
+// mais chance de performar bem virando Ads (ver agenteCriacaoAdsService.ts).
+// Não cria campanha nenhuma sozinho, só recomenda.
+function AgenteCriacaoAds() {
+  const [pensamentos, setPensamentos] = useState<PensamentoCriacaoAds[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+
+  const carregar = useCallback(async () => {
+    try {
+      setPensamentos(await fetchPensamentosCriacaoAds());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o feed.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  const lojasDisponiveis = new Map<number, string>();
+  for (const p of pensamentos ?? []) if (p.lojaId !== null && p.lojaNome !== null) lojasDisponiveis.set(p.lojaId, p.lojaNome);
+
+  const pensamentosDaLoja =
+    lojaFiltro === "todas" ? pensamentos : (pensamentos?.filter((p) => p.lojaId === lojaFiltro) ?? null);
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Agente de Criação de Ads</h1>
+          <p className="painel-sub">
+            Olha anúncios ativos que ainda não têm nenhuma campanha, mas já vendem organicamente com tráfego real, e
+            aponta quais têm mais chance de performar bem virando Ads novo — não cria campanha nenhuma sozinho, só
+            recomenda. Roda 1x por semana (o sinal de 30 dias não muda rápido o bastante pra rodar todo dia).
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+          >
+            <option value="todas">Todas as lojas</option>
+            {[...lojasDisponiveis.entries()].map(([id, nome]) => (
+              <option key={id} value={id}>
+                {nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="agente-feed">
+        <div className="agente-feed-topo">
+          <span className="painel-eyebrow">O que ele está pensando</span>
+        </div>
+
+        {pensamentosDaLoja !== null && pensamentosDaLoja.length === 0 && (
+          <div className="state-message">Nenhuma verificação registrada ainda.</div>
+        )}
+
+        {pensamentosDaLoja?.map((p) => <PensamentoCard key={p.id} pensamento={p} />)}
+      </div>
+    </>
+  );
+}
+
 // Cruza as 4 lojas de propósito (ao contrário dos outros agentes, que são
 // por loja) — lê o que Ads, Conversão e Catálogo escreveram nas últimas 24h
 // mais as Oportunidades em aberto, e prioriza tudo junto num plano do dia
@@ -2812,6 +2907,7 @@ export function AgenciaAgentesIA() {
     | "oportunidades"
     | "catalogo"
     | "conversao"
+    | "criacaoAds"
   >("plano");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
@@ -2902,6 +2998,13 @@ export function AgenciaAgentesIA() {
         >
           Agente de Conversão
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "criacaoAds" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("criacaoAds")}
+        >
+          Agente de Criação de Ads
+        </button>
       </div>
 
       {agente === "plano" && <PlanoDoDia />}
@@ -2914,6 +3017,7 @@ export function AgenciaAgentesIA() {
       {agente === "oportunidades" && <AgenteOportunidades />}
       {agente === "catalogo" && <AgenteCatalogo />}
       {agente === "conversao" && <AgenteConversao />}
+      {agente === "criacaoAds" && <AgenteCriacaoAds />}
 
       {modoTV && <ModoTVEscritorio onSair={sairDoModoTV} />}
     </div>

@@ -55,6 +55,14 @@ export interface PensamentoCatalogo {
   lojaNome: string | null;
 }
 
+export interface PensamentoCriacaoAds {
+  id: number;
+  pensamento: string;
+  criadoEm: string;
+  lojaId: number | null;
+  lojaNome: string | null;
+}
+
 export interface ItemPlanoDiario {
   id: number;
   descricao: string;

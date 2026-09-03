@@ -5,6 +5,7 @@ import type {
   Oportunidade,
   PensamentoCatalogo,
   PensamentoConversao,
+  PensamentoCriacaoAds,
   PlanoDiario,
   ResumoEscritorio,
   BriefingGrowthHacker,
@@ -81,6 +82,12 @@ export async function fetchPensamentosCatalogo(): Promise<PensamentoCatalogo[]> 
 export async function fetchPensamentosAds(): Promise<PensamentoAds[]> {
   const res = await fetch(`${API_BASE}/api/agentes/ads/pensamentos`, { credentials: "include" });
   const data = await tratarResposta<{ pensamentos: PensamentoAds[] }>(res);
+  return data.pensamentos;
+}
+
+export async function fetchPensamentosCriacaoAds(): Promise<PensamentoCriacaoAds[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/criacao-ads/pensamentos`, { credentials: "include" });
+  const data = await tratarResposta<{ pensamentos: PensamentoCriacaoAds[] }>(res);
   return data.pensamentos;
 }
 

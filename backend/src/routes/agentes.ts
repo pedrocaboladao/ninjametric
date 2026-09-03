@@ -20,6 +20,7 @@ import { buscarDadosAnuncio, registrarCorrecoes, type CamposSugeridosKit } from 
 import { verificarOportunidades, listarOportunidades } from "../services/agenteOportunidadesService";
 import { listarPensamentosCatalogo } from "../services/agenteCatalogoService";
 import { listarPensamentosConversao } from "../services/agenteConversaoService";
+import { listarPensamentosCriacaoAds } from "../services/agenteCriacaoAdsService";
 import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from "../services/agentePlanoDiarioService";
 import { buscarResumoEscritorio } from "../services/resumoEscritorioService";
 import { perguntarDiretorAds } from "../services/diretorAdsService";
@@ -221,6 +222,14 @@ agentesRouter.get("/catalogo/pensamentos", async (_req, res) => {
     res.json({ pensamentos: await listarPensamentosCatalogo() });
   } catch (err) {
     erro(res, err, "Falha ao carregar pensamentos de catálogo.");
+  }
+});
+
+agentesRouter.get("/criacao-ads/pensamentos", async (_req, res) => {
+  try {
+    res.json({ pensamentos: await listarPensamentosCriacaoAds() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar pensamentos de criação de ads.");
   }
 });
 
