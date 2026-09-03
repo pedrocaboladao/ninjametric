@@ -91,6 +91,11 @@ export async function fetchPensamentosCriacaoAds(): Promise<PensamentoCriacaoAds
   return data.pensamentos;
 }
 
+export async function verificarCriacaoAdsAgora(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/criacao-ads/verificar`, { method: "POST", credentials: "include" });
+  await tratarResposta(res);
+}
+
 export interface RespostaChatAgente {
   resposta: string;
   pensamento: string | null;

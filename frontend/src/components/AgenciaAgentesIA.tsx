@@ -32,6 +32,7 @@ import {
   fetchPensamentosCatalogo,
   fetchPensamentosConversao,
   fetchPensamentosCriacaoAds,
+  verificarCriacaoAdsAgora,
   fetchPlanoDiario,
   verificarPlanoDiarioAgora,
   marcarItemPlano,
@@ -2723,6 +2724,7 @@ function AgenteCriacaoAds() {
   const [pensamentos, setPensamentos] = useState<PensamentoCriacaoAds[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+  const [verificando, setVerificando] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -2735,6 +2737,19 @@ function AgenteCriacaoAds() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  async function verificarAgora() {
+    setVerificando(true);
+    setErro(null);
+    try {
+      await verificarCriacaoAdsAgora();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao verificar.");
+    } finally {
+      setVerificando(false);
+    }
+  }
 
   const lojasDisponiveis = new Map<number, string>();
   for (const p of pensamentos ?? []) if (p.lojaId !== null && p.lojaNome !== null) lojasDisponiveis.set(p.lojaId, p.lojaNome);
@@ -2750,7 +2765,8 @@ function AgenteCriacaoAds() {
           <p className="painel-sub">
             Olha anúncios ativos que ainda não têm nenhuma campanha, mas já vendem organicamente com tráfego real, e
             aponta quais têm mais chance de performar bem virando Ads novo — não cria campanha nenhuma sozinho, só
-            recomenda. Roda 1x por semana (o sinal de 30 dias não muda rápido o bastante pra rodar todo dia).
+            recomenda. Roda 1x por semana sozinho (o sinal de 30 dias não muda rápido o bastante pra rodar todo dia),
+            mas dá pra forçar uma checagem agora.
           </p>
         </div>
         <div className="financeiro-filtros">
@@ -2766,6 +2782,9 @@ function AgenteCriacaoAds() {
               </option>
             ))}
           </select>
+          <button type="button" className="btn-responder financeiro-btn-hoje" onClick={verificarAgora} disabled={verificando}>
+            {verificando ? "Verificando..." : "Verificar agora"}
+          </button>
         </div>
       </div>
 

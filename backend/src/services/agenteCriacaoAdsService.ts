@@ -210,6 +210,8 @@ Regras:
   }
 }
 
+// Exportado pra rota /criacao-ads/verificar (botão "Verificar agora" no
+// frontend) — mesmo padrão de verificarOportunidades/verificarPlanoDiario.
 export async function verificarAgenteCriacaoAds(): Promise<{ lojas: number; falhas: number }> {
   if (!obterClienteAnthropic()) {
     console.error("Agente de Criação de Ads: ANTHROPIC_API_KEY não configurada — rodada pulada.");
