@@ -711,3 +711,13 @@ export async function renomearContatoBling(id: number, nome: string): Promise<vo
   if ((depois.data?.nome ?? "").trim() !== nome.trim())
     throw new Error(`o Bling aceitou o PUT mas o nome do contato ${id} não gravou`);
 }
+
+// Acha o contato do Bling pelo CNPJ/CPF. Devolve null em vez de erro: quem
+// chama esta espelhando uma lista e uma loja sem contato nao pode derrubar as
+// outras.
+export async function contatoIdPorDocumento(documento: string): Promise<number | null> {
+  const doc = digitos(documento);
+  if (doc.length !== 11 && doc.length !== 14) return null;
+  const achado = await acharPorDocumento(doc);
+  return achado?.id ?? null;
+}
