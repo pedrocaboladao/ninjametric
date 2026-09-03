@@ -258,6 +258,12 @@ export function FabricaPedidos() {
   // Quantos pedidos o filtro tem de verdade, contra os que couberam na tela.
   const [totalPedidos, setTotalPedidos] = useState(0);
   const [mostrarTodos, setMostrarTodos] = useState(false);
+  // Pagina da tabela de pedidos. "Mostrar todos" resolvia o corte de 200, mas
+  // trocava por uma parede de 418 linhas — o Hudson nao achava o pedido nem
+  // rolando. Aqui os 418 continuam carregados (a busca e os totais precisam
+  // deles), so a tabela mostra um pedaco por vez.
+  const [pagina, setPagina] = useState(0);
+  const [porPagina, setPorPagina] = useState(50);
 
   // ajuste de estoque
   const [ajusteProdutoId, setAjusteProdutoId] = useState("");
@@ -412,6 +418,24 @@ export function FabricaPedidos() {
   //
   // Entao quando o termo casa com item, sai tambem a linha do item: so as linhas
   // daquele produto, com quantidade. Termo que so casa no cabecalho do pedido
+  // Paginar sobre uma lista cortada em 200 mentiria: a pagina 5 de 9 mostraria
+  // "nao tem mais" quando tem. Entao paginar implica carregar tudo.
+  const paginas = Math.max(1, Math.ceil(pedidosVisiveis.length / porPagina));
+  useEffect(() => {
+    if (pedidosVisiveis.length >= porPagina && totalPedidos > (pedidos?.length ?? 0) && !mostrarTodos) {
+      setMostrarTodos(true);
+    }
+  }, [pedidosVisiveis.length, porPagina, totalPedidos, pedidos, mostrarTodos]);
+
+  useEffect(() => {
+    setPagina(0);
+  }, [filtroCliente, filtroStatus, buscaPedido, porPagina]);
+
+  const pedidosNaPagina = useMemo(
+    () => pedidosVisiveis.slice(pagina * porPagina, pagina * porPagina + porPagina),
+    [pedidosVisiveis, pagina, porPagina]
+  );
+
   // (nome de loja, numero, data) nao gera essa linha.
   const achadoPedidos = useMemo(() => {
     const validos = pedidosVisiveis.filter((p) => p.status !== "CANCELADO");
@@ -1776,6 +1800,59 @@ export function FabricaPedidos() {
             </p>
           )}
 
+          {pedidosVisiveis.length > 0 && (
+            <div className="financeiro-filtros ordem-sem-impressao">
+              <span className="financeiro-td-mudo">
+                {pedidosVisiveis.length} pedido{pedidosVisiveis.length === 1 ? "" : "s"}
+                {paginas > 1 && (
+                  <>
+                    {" · mostrando "}
+                    {pagina * porPagina + 1}–
+                    {Math.min(pedidosVisiveis.length, pagina * porPagina + porPagina)}
+                  </>
+                )}
+              </span>
+              <label className="financeiro-td-mudo">
+                por página{" "}
+                <select
+                  className="clonar-input fabricacao-input-pequeno"
+                  value={porPagina}
+                  onChange={(e) => setPorPagina(Number(e.target.value))}
+                >
+                  {[25, 50, 100, 250].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                  <option value={100000}>todos</option>
+                </select>
+              </label>
+              {paginas > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    disabled={pagina === 0}
+                    onClick={() => setPagina((n) => Math.max(0, n - 1))}
+                  >
+                    ‹ anterior
+                  </button>
+                  <span className="financeiro-td-mudo">
+                    página {pagina + 1} de {paginas}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    disabled={pagina + 1 >= paginas}
+                    onClick={() => setPagina((n) => Math.min(paginas - 1, n + 1))}
+                  >
+                    próxima ›
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="financeiro-tabela-wrap">
             <table className="financeiro-tabela">
               <thead>
@@ -1804,7 +1881,7 @@ export function FabricaPedidos() {
                     </td>
                   </tr>
                 )}
-                {pedidosVisiveis.map((p) => (
+                {pedidosNaPagina.map((p) => (
                   <tr key={p.id} style={p.status === "CANCELADO" ? { opacity: 0.5 } : undefined}>
                     <td>
                       <button
