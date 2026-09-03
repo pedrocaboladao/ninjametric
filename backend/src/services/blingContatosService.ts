@@ -628,3 +628,68 @@ export async function puxarContatos(simulacao: boolean): Promise<ResultadoPuxada
 
   return { simulacao, clientes: clientes.length, linhas };
 }
+
+// ---------------------------------------------------------------------------
+// Criar fornecedor no Bling.
+//
+// `sincronizarContatos` cria contato a partir de fabrica_clientes — ou seja,
+// so as lojas. Fornecedor nao mora naquela tabela, e ate aqui so a funcionaria
+// cadastrava, à mão. O extrato de 01/09/2026 trouxe R$ 60.918,78 de
+// materia-prima de dois fornecedores que o ERP nao conhecia, e sem contato nao
+// se cria conta a pagar.
+//
+// Procura pelo documento antes de criar: contato duplicado no Bling nao se
+// apaga sem perder o historico preso nele.
+export interface NovoFornecedor {
+  nome: string;
+  documento: string;
+  pessoaFisica?: boolean;
+  ie?: string;
+  email?: string;
+  telefone?: string;
+  logradouro?: string;
+  numero?: string;
+  bairro?: string;
+  cep?: string;
+  cidade?: string;
+  uf?: string;
+}
+
+export async function criarFornecedorBling(
+  f: NovoFornecedor
+): Promise<{ id: number; criado: boolean }> {
+  const doc = digitos(f.documento);
+  if (doc.length !== 11 && doc.length !== 14)
+    throw new Error(`documento inválido para ${f.nome}: ${f.documento}`);
+  const pf = f.pessoaFisica ?? doc.length === 11;
+
+  const achado = await acharPorDocumento(doc);
+  if (achado) return { id: achado.id, criado: false };
+
+  const ie = (f.ie ?? "").trim();
+  const corpo: Record<string, unknown> = {
+    nome: f.nome,
+    tipo: pf ? "F" : "J",
+    numeroDocumento: doc,
+    situacao: "A",
+    indicadorIe: !pf && ie ? 1 : 9,
+    ...(!pf && ie ? { ie } : {}),
+    ...(f.email ? { email: f.email } : {}),
+    ...(f.telefone ? { telefone: f.telefone } : {}),
+    endereco: {
+      geral: {
+        endereco: f.logradouro ?? "",
+        numero: f.numero ?? "",
+        bairro: f.bairro ?? "",
+        cep: digitos(f.cep),
+        municipio: f.cidade ?? "",
+        uf: f.uf ?? "",
+      },
+    },
+  };
+
+  const r = await chamar<{ data?: { id?: number } }>("post", "/contatos", undefined, corpo);
+  const id = Number(r.data?.id ?? 0);
+  if (!id) throw new Error(`o Bling aceitou o contato ${f.nome} mas não devolveu o id`);
+  return { id, criado: true };
+}

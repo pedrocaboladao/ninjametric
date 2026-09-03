@@ -14,7 +14,11 @@ import {
   paraTexto,
   pedidoCru,
 } from "../services/blingPedidosService";
-import { puxarContatos, sincronizarContatos } from "../services/blingContatosService";
+import {
+  puxarContatos,
+  sincronizarContatos,
+  criarFornecedorBling,
+} from "../services/blingContatosService";
 import {
   rodadaEmAndamento,
   rodarEGuardar,
@@ -140,6 +144,39 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
 // Cria conta a pagar no Bling. Aceita uma lista porque compra parcelada e
 // folha recorrente vem em bloco, e uma chamada por mes desperdicaria o teto
 // de 3 requisicoes por segundo.
+// Cria fornecedor no Bling. Procura pelo documento antes: contato duplicado
+// não se apaga sem perder o histórico preso nele.
+fabricaBlingRouter.post("/contatos/criar", async (req, res) => {
+  const bruto = Array.isArray((req.body ?? {}).contatos) ? (req.body ?? {}).contatos : [];
+  if (!bruto.length) return res.status(400).json({ error: "Informe contatos." });
+  if (bruto.length > 30) return res.status(400).json({ error: "No máximo 30 por vez." });
+  const feitos: Array<{ nome: string; ok: boolean; id?: number; criado?: boolean; erro?: string }> =
+    [];
+  for (const c of bruto) {
+    const nome = String(c?.nome ?? "");
+    try {
+      const r = await criarFornecedorBling({
+        nome,
+        documento: String(c?.documento ?? ""),
+        pessoaFisica: c?.pessoaFisica === true ? true : undefined,
+        ie: typeof c?.ie === "string" ? c.ie : undefined,
+        email: typeof c?.email === "string" ? c.email : undefined,
+        telefone: typeof c?.telefone === "string" ? c.telefone : undefined,
+        logradouro: typeof c?.logradouro === "string" ? c.logradouro : undefined,
+        numero: typeof c?.numero === "string" ? c.numero : undefined,
+        bairro: typeof c?.bairro === "string" ? c.bairro : undefined,
+        cep: typeof c?.cep === "string" ? c.cep : undefined,
+        cidade: typeof c?.cidade === "string" ? c.cidade : undefined,
+        uf: typeof c?.uf === "string" ? c.uf : undefined,
+      });
+      feitos.push({ nome, ok: true, id: r.id, criado: r.criado });
+    } catch (err) {
+      feitos.push({ nome, ok: false, erro: err instanceof Error ? err.message : "falhou" });
+    }
+  }
+  res.json({ total: feitos.length, ok: feitos.filter((x) => x.ok).length, contatos: feitos });
+});
+
 fabricaBlingRouter.post("/contas/criar", async (req, res) => {
   const bruto = Array.isArray((req.body ?? {}).contas) ? (req.body ?? {}).contas : [];
   if (!bruto.length) return res.status(400).json({ error: "Informe contas." });
