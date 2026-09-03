@@ -1,5 +1,5 @@
 import { pool } from "../db/pool";
-import { chamarApiAssinada } from "./shopeeAdsAuth";
+import { chamarApiAssinada } from "./shopeeAuth";
 
 interface RespostaAdsDiario {
   error?: string;
@@ -16,7 +16,11 @@ function paraDDMMYYYY(dataISO: string): string {
 }
 
 async function listarLojaIdsComShopeeAds(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<number[]> {
-  const { rows } = await pool.query<{ loja_id: number }>("SELECT loja_id FROM contas_shopee_ads");
+  // O app principal já tem o escopo de Ads liberado pelo Suporte de
+  // Parceiros da Shopee (ver routes/shopee.ts) — não existe mais token
+  // separado pra Ads, é a mesma conta (contas_shopee) usada por
+  // pedidos/financeiro.
+  const { rows } = await pool.query<{ loja_id: number }>("SELECT loja_id FROM contas_shopee");
   return rows
     .map((r) => r.loja_id)
     .filter(
@@ -28,9 +32,8 @@ async function listarLojaIdsComShopeeAds(lojaIdFiltro?: number, lojasPermitidas?
 
 // Gasto de Ads da Shopee não é por venda (vem por dia, no nível da loja
 // inteira) — igual ao padrão do Financeiro do Mercado Livre (gastoAdsTotal),
-// entra só no total da janela, não em cada linha da tabela. Autorizar o app
-// de Ads é opcional e feito loja por loja (ver shopeeAdsAuth.ts) — lojas sem
-// token aí simplesmente não entram na soma, sem erro.
+// entra só no total da janela, não em cada linha da tabela. Lojas sem conta
+// Shopee conectada simplesmente não entram na soma, sem erro.
 export async function obterGastoAdsShopee(
   lojaIdFiltro: number | undefined,
   lojasPermitidas: number[] | undefined,
