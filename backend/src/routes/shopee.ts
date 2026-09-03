@@ -166,3 +166,26 @@ shopeeRouter.get("/ads-teste", async (req, res) => {
     erro(res, err, "Falha ao testar o Ads.");
   }
 });
+
+// Diagnóstico temporário: ainda não vimos o formato real de
+// get_product_campaign_list (só testamos o agregado diário até agora) — pra
+// montar o módulo de Gestão de Ads da Shopee com dado real, não suposição.
+// Remover depois de confirmar o formato.
+shopeeRouter.get("/campanhas-teste", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe ?lojaId=" });
+    return;
+  }
+  try {
+    const data = await chamarApiAssinada(lojaId, "/api/v2/ads/get_product_campaign_list", {
+      ad_type: "all",
+      campaign_status: "all",
+      offset: 0,
+      limit: 20,
+    });
+    res.json(data);
+  } catch (err) {
+    erro(res, err, "Falha ao testar a lista de campanhas.");
+  }
+});
