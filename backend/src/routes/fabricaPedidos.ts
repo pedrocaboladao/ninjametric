@@ -7,6 +7,7 @@ import {
   conferirContasReceber,
   criarContaReceber,
   atualizarContaReceber,
+  baixarContaReceber,
 } from "../services/blingContasService";
 import { contatoIdPorDocumento } from "../services/blingContatosService";
 import { listarClientes } from "../services/fabricaClientesService";
@@ -208,9 +209,16 @@ fabricaPedidosRouter.get("/fechamentos/previa", async (req, res) => {
 // e a criacao cria por contato. Resolver aqui, junto, garante que os dois usem
 // exatamente o mesmo id — foi a divergencia entre eles que gerou titulo
 // duplicado em 04/09/2026.
+type LinhaDoSite = {
+  clienteId: number;
+  clienteNome: string;
+  previsto: number;
+  emAberto: number;
+};
+
 async function comContato(
-  linhas: Array<{ clienteId: number; clienteNome: string; previsto: number }>
-): Promise<Array<{ clienteId: number; clienteNome: string; previsto: number; contatoId: number | null }>> {
+  linhas: LinhaDoSite[]
+): Promise<Array<LinhaDoSite & { contatoId: number | null }>> {
   const clientes = await listarClientes();
   const docPorId = new Map(clientes.map((c) => [c.id, c.cnpj ?? ""]));
   const saida = [];
@@ -268,7 +276,8 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
       ok: boolean;
       id?: number;
       erro?: string;
-      acao?: "criado" | "atualizado";
+      acao?: "criado" | "atualizado" | "baixado";
+      valor?: number;
     }> = [];
     // O Bling tem um limite proprio pra conta a receber, alem do teto de 3
     // chamadas por segundo: criar varias em sequencia devolve 400 com
@@ -314,12 +323,35 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
       // Sem isto ele ficava com o valor do dia em que nasceu, e a compra que
       // veio depois nunca chegava ao ERP.
       if (l.tituloBling !== null) {
-        if (!l.blingId || Math.abs(l.tituloBling - l.previstoSite) <= 0.02) continue;
+        if (!l.blingId) continue;
         try {
-          if (!primeira) await respirar(5000);
-          primeira = false;
-          await atualizarContaReceber(l.blingId, l.previstoSite);
-          feitos.push({ loja: l.loja, ok: true, id: l.blingId, acao: "atualizado" });
+          // primeiro o valor, se a loja comprou depois de o titulo nascer
+          if (Math.abs(l.tituloBling - l.previstoSite) > 0.02) {
+            if (!primeira) await respirar(5000);
+            primeira = false;
+            await atualizarContaReceber(l.blingId, l.previstoSite);
+            feitos.push({
+              loja: l.loja, ok: true, id: l.blingId,
+              acao: "atualizado", valor: l.previstoSite,
+            });
+          }
+
+          // depois a baixa: o saldo do titulo tem que ser o em aberto do site.
+          //
+          // A diferenca entre os dois e o que a loja pagou e ninguem baixou.
+          // Comparar saldo com saldo faz a operacao ser idempotente: rodar de
+          // novo na mesma situacao da zero e nao mexe em nada.
+          const saldo = l.saldoBling ?? l.tituloBling;
+          const alvo = l.emAbertoSite ?? l.previstoSite;
+          const falta = saldo - alvo;
+          if (falta > 0.02) {
+            if (!primeira) await respirar(5000);
+            primeira = false;
+            await baixarContaReceber(l.blingId, Number(falta.toFixed(2)), ate);
+            feitos.push({
+              loja: l.loja, ok: true, id: l.blingId, acao: "baixado", valor: Number(falta.toFixed(2)),
+            });
+          }
         } catch (err) {
           feitos.push({
             loja: l.loja,
@@ -356,6 +388,13 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
       ok: feitos.filter((x) => x.ok).length,
       criados: feitos.filter((x) => x.ok && x.acao === "criado").length,
       atualizados: feitos.filter((x) => x.ok && x.acao === "atualizado").length,
+      baixados: feitos.filter((x) => x.ok && x.acao === "baixado").length,
+      valorBaixado: Number(
+        feitos
+          .filter((x) => x.ok && x.acao === "baixado")
+          .reduce((a, x) => a + (x.valor ?? 0), 0)
+          .toFixed(2)
+      ),
       feitos,
     });
   } catch (err) {
