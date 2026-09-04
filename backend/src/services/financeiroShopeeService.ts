@@ -72,6 +72,7 @@ export interface VendaFinanceiraShopee {
   impostoTotal: number;
   taxaShopeeTotal: number;
   cupomVendedorTotal: number;
+  freteVendedorTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
 }
@@ -202,6 +203,7 @@ export async function listarVendasFinanceirasShopee(
       const taxaPedido = loja.taxas.get(pedido.order_sn);
       const taxaTotalPedido = (taxaPedido?.comissao ?? 0) + (taxaPedido?.taxaServico ?? 0);
       const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
+      const freteVendedorPedido = taxaPedido?.freteVendedor ?? 0;
 
       for (const linha of linhas) {
         const custoUnitario = linha.sku !== null ? custoPorSku.get(normalizarSku(linha.sku)) ?? null : null;
@@ -221,8 +223,18 @@ export async function listarVendasFinanceirasShopee(
           receitaTotalPedido > 0
             ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * cupomVendedorPedido)
             : 0;
+        // Frete real do vendedor (ver buscarTaxasPedidos em shopeeApi.ts) —
+        // mesmo rateio de taxa/cupom. Na prática costuma sair 0 (a Shopee
+        // reembolsa o frete integralmente via programa de frete grátis),
+        // mas fica pronto pro caso de não reembolsar.
+        const freteVendedorTotal =
+          receitaTotalPedido > 0
+            ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * freteVendedorPedido)
+            : 0;
         const margemContribuicao =
-          custoTotal !== null ? linha.receitaTotal - custoTotal - impostoTotal - taxaShopeeTotal - cupomVendedorTotal : null;
+          custoTotal !== null
+            ? linha.receitaTotal - custoTotal - impostoTotal - taxaShopeeTotal - cupomVendedorTotal - freteVendedorTotal
+            : null;
 
         vendas.push({
           orderSn: pedido.order_sn,
@@ -239,6 +251,7 @@ export async function listarVendasFinanceirasShopee(
           impostoTotal,
           taxaShopeeTotal,
           cupomVendedorTotal,
+          freteVendedorTotal,
           margemContribuicao,
           margemPercentual:
             margemContribuicao !== null && linha.receitaTotal > 0

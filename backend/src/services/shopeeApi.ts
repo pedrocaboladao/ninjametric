@@ -137,6 +137,7 @@ export interface ShopeeTaxaPedido {
   comissao: number;
   taxaServico: number;
   cupomVendedor: number;
+  freteVendedor: number;
 }
 
 interface RespostaEscrow {
@@ -146,6 +147,15 @@ interface RespostaEscrow {
     order_income?: {
       commission_fee?: number;
       service_fee?: number;
+      // net_* é o valor REAL descontado do vendedor — commission_fee/
+      // service_fee são o valor BRUTO, antes de um rebate promocional que a
+      // própria Shopee dá em campanha (seller_product_rebate). Achado ao
+      // vivo comparando com um sistema externo de referência (Catedral,
+      // 03/09): usar o bruto superestimava a taxa em até R$20 num pedido só
+      // de flash sale. net_commission_fee/net_service_fee sempre presentes
+      // nos 2 pedidos reais testados; cai pro bruto se um dia vier ausente.
+      net_commission_fee?: number;
+      net_service_fee?: number;
       // Valor do cupom aplicado na compra que fica por conta do vendedor
       // (não é a Shopee quem banca) — confirmado contra um pedido real
       // devolvido (260829MD7RM383, Catedral, cupom "CATE3OFFF"): o total do
@@ -154,6 +164,15 @@ interface RespostaEscrow {
       // Em pedido sem devolução, voucher_from_seller aqui no nível do
       // pedido é o valor a usar direto, sem precisar somar item a item.
       voucher_from_seller?: number;
+      // Frete real do vendedor = custo de envio menos o que o comprador
+      // pagou menos o que a própria Shopee reembolsa (programa de frete
+      // grátis). Confirmado ao vivo em 2 pedidos reais da Catedral:
+      // actual_shipping_fee bateu exatamente com shopee_shipping_rebate
+      // nos dois (custo líquido 0) — mas a fórmula fica genérica pro caso
+      // de um pedido onde a Shopee não cubra o frete inteiro.
+      actual_shipping_fee?: number;
+      buyer_paid_shipping_fee?: number;
+      shopee_shipping_rebate?: number;
     };
   };
 }
@@ -176,11 +195,16 @@ export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Pr
       if (data.error) return null;
       const income = data.response?.order_income;
       if (!income) return null;
+      const freteVendedor = Math.max(
+        0,
+        (income.actual_shipping_fee ?? 0) - (income.buyer_paid_shipping_fee ?? 0) - (income.shopee_shipping_rebate ?? 0)
+      );
       return {
         orderSn,
-        comissao: income.commission_fee ?? 0,
-        taxaServico: income.service_fee ?? 0,
+        comissao: income.net_commission_fee ?? income.commission_fee ?? 0,
+        taxaServico: income.net_service_fee ?? income.service_fee ?? 0,
         cupomVendedor: income.voucher_from_seller ?? 0,
+        freteVendedor,
       };
     } catch {
       return null;

@@ -13,6 +13,7 @@ export interface VendaFinanceiraShopee {
   impostoTotal: number;
   taxaShopeeTotal: number;
   cupomVendedorTotal: number;
+  freteVendedorTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
 }

@@ -138,22 +138,3 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     erro(res, err, "Falha ao buscar pedidos de teste.");
   }
 });
-
-// Diagnóstico temporário: resposta CRUA e completa do get_escrow_detail de
-// 1 pedido real — pra achar campo de frete do vendedor (falta mapear no
-// Financeiro Shopee) e investigar uma diferença pequena (~R$3) na taxa
-// calculada vs. um sistema externo de referência. Remover depois de usar.
-shopeeRouter.get("/escrow-cru-teste", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
-  const orderSn = String(req.query.orderSn ?? "");
-  if (!Number.isInteger(lojaId) || !orderSn) {
-    res.status(400).json({ error: "Informe ?lojaId= e ?orderSn=" });
-    return;
-  }
-  try {
-    const data = await chamarApiAssinada(lojaId, "/api/v2/payment/get_escrow_detail", { order_sn: orderSn });
-    res.json(data);
-  } catch (err) {
-    erro(res, err, "Falha ao buscar escrow cru.");
-  }
-});
