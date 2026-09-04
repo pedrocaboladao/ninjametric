@@ -272,6 +272,33 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
     // minutos, o que e aceitavel numa rotina que roda uma vez por mes — e muito
     // melhor do que metade dos titulos faltando sem ninguem perceber.
     const respirar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+    // O limite do Bling nao e so espacamento: mesmo com 5 segundos entre uma e
+    // outra ele recusa em lote, com `time_limit` no namespace CONTAS_RECEBER.
+    // Em 04/09/2026 foram quatro execucoes manuais pra criar 19 titulos.
+    //
+    // Como o fechamento mensal roda por tarefa agendada, sem ninguem lendo a
+    // resposta, a insistencia tem que estar aqui: espera crescente ate o Bling
+    // deixar. Quatro tentativas cobrem folgado o que se viu na pratica.
+    const limitou = (e: unknown) => {
+      const t = e instanceof Error ? e.message : String(e);
+      return t.includes("time_limit") || t.includes("Aguarde alguns instantes");
+    };
+    const criarInsistindo = async (dados: Parameters<typeof criarContaReceber>[0]) => {
+      const esperas = [0, 15000, 30000, 60000];
+      let ultimo: unknown;
+      for (const espera of esperas) {
+        if (espera) await respirar(espera);
+        try {
+          return await criarContaReceber(dados);
+        } catch (err) {
+          ultimo = err;
+          if (!limitou(err)) throw err;
+        }
+      }
+      throw ultimo;
+    };
+
     let primeira = true;
     for (const l of conf.linhas) {
       if (l.tituloBling !== null || l.clienteId === null) continue;
@@ -281,7 +308,7 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
         primeira = false;
         const contatoId = contatoPorCliente.get(l.clienteId);
         if (!contatoId) throw new Error("loja sem contato no Bling (falta o CNPJ ou o cadastro)");
-        const r = await criarContaReceber({
+        const r = await criarInsistindo({
           contatoId,
           valor: l.previstoSite,
           vencimento: ate,
