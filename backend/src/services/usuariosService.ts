@@ -11,6 +11,7 @@ export const MODULOS_VALIDOS = [
   "financeiro",
   "financeiro_shopee",
   "ads",
+  "ads_shopee",
   "contas",
   "dre",
   "correcoes",

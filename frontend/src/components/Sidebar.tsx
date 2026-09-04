@@ -38,6 +38,7 @@ export type View =
   | "contas"
   | "dre"
   | "ads"
+  | "ads_shopee"
   | "tarefas"
   | "funcionarios"
   | "usuarios"
@@ -87,6 +88,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeContas = temPermissao(usuario, "contas");
   const podeDre = temPermissao(usuario, "dre");
   const podeAds = temPermissao(usuario, "ads");
+  const podeAdsShopee = temPermissao(usuario, "ads_shopee");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const podeCorrecoes = temPermissao(usuario, "correcoes");
@@ -222,6 +224,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconMegaphone size={16} />
               <span>Gestão de Ads</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeAdsShopee && (
+          <>
+            <button
+              className={`sidebar-item ${view === "ads_shopee" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("ads_shopee")}
+            >
+              <IconMegaphone size={16} />
+              <span>Gestão de Ads (Shopee)</span>
             </button>
             <div className="sidebar-divider" />
           </>

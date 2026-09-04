@@ -16,6 +16,7 @@ import { produtosRouter } from "./routes/produtos";
 import { financeiroRouter } from "./routes/financeiro";
 import { financeiroShopeeRouter } from "./routes/financeiroShopee";
 import { adsRouter } from "./routes/ads";
+import { adsShopeeRouter } from "./routes/adsShopee";
 import { contasRouter } from "./routes/contas";
 import { dreRouter } from "./routes/dre";
 import { correcoesRouter } from "./routes/correcoes";
@@ -85,6 +86,7 @@ app.use("/api/produtos", requireAuth, requirePermissao("produtos"), produtosRout
 app.use("/api/financeiro", requireAuth, requirePermissao("financeiro"), financeiroRouter);
 app.use("/api/financeiro-shopee", requireAuth, requirePermissao("financeiro_shopee"), financeiroShopeeRouter);
 app.use("/api/ads", requireAuth, requirePermissao("ads"), adsRouter);
+app.use("/api/ads-shopee", requireAuth, requirePermissao("ads_shopee"), adsShopeeRouter);
 app.use("/api/contas", requireAuth, requirePermissao("contas"), contasRouter);
 app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);
 app.use("/api/correcoes", requireAuth, requirePermissao("correcoes"), correcoesRouter);
