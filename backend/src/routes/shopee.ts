@@ -167,6 +167,44 @@ shopeeRouter.get("/ads-teste", async (req, res) => {
   }
 });
 
+// Diagnóstico temporário: descobrir o que a API de Ads da Shopee realmente
+// expõe além do gasto agregado — lista de campanhas, saldo, etc. — pra
+// avaliar se dá pra construir um "Gestão de Ads" da Shopee igual ao do
+// Mercado Livre. Remover depois de usar.
+shopeeRouter.get("/ads-campanhas-teste", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe ?lojaId=" });
+    return;
+  }
+  const agora = new Date();
+  const seteDiasAtras = new Date(agora.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const paraDDMMYYYY = (d: Date) =>
+    `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
+
+  const tentativas: Record<string, { path: string; params: Record<string, string | number> }> = {
+    saldo: { path: "/api/v2/ads/get_total_balance", params: {} },
+    listaCampanhas: {
+      path: "/api/v2/ads/get_product_level_campaign_id_list",
+      params: { ad_type: "all", campaign_status: "all", offset: 0, limit: 20 },
+    },
+    gastoDiarioTotal: {
+      path: "/api/v2/ads/get_all_cpc_ads_daily_performance",
+      params: { start_date: paraDDMMYYYY(seteDiasAtras), end_date: paraDDMMYYYY(agora) },
+    },
+  };
+
+  const resultados: Record<string, unknown> = {};
+  for (const [chave, { path, params }] of Object.entries(tentativas)) {
+    try {
+      resultados[chave] = await chamarApiAssinada(lojaId, path, params);
+    } catch (err) {
+      resultados[chave] = { erro: err instanceof Error ? err.message : String(err) };
+    }
+  }
+  res.json(resultados);
+});
+
 // Diagnóstico temporário: ainda não vimos o formato real de
 // get_product_campaign_list (só testamos o agregado diário até agora) — pra
 // montar o módulo de Gestão de Ads da Shopee com dado real, não suposição.
