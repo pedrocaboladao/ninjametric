@@ -942,6 +942,12 @@ async function baixarReceberDoBling(de: string, ate: string): Promise<ContaBling
 export interface LinhaReceber {
   loja: string;
   clienteId: number | null;
+  // quanto do titulo ainda esta em aberto no Bling. Comparado com o em aberto
+  // do site, e ele que diz se falta dar baixa.
+  saldoBling?: number;
+  // o que a loja ainda deve segundo o site: previsto menos recebido menos
+  // desconto. E o alvo do saldo do titulo.
+  emAbertoSite?: number;
   // o que a cobranca espera receber no ciclo
   previstoSite: number;
   // o titulo lancado no Bling
@@ -983,6 +989,7 @@ export async function conferirContasReceber(
     clienteId: number;
     clienteNome: string;
     previsto: number;
+    emAberto?: number;
     contatoId?: number | null;
   }>,
   fechamentoId: number | null
@@ -1038,6 +1045,8 @@ export async function conferirContasReceber(
       clienteId: s.clienteId,
       previstoSite: previsto,
       tituloBling: titulo,
+      saldoBling: achado ? dinheiro(achado.saldo ?? achado.valor) : undefined,
+      emAbertoSite: s.emAberto === undefined ? undefined : dinheiro(s.emAberto),
       blingId: achado?.id,
       vencimento: achado ? dia(achado.vencimento) : ate,
       diferenca: problemas.join("; ") || undefined,
@@ -1142,4 +1151,46 @@ export async function atualizarContaReceber(
   if (Math.abs(dinheiro(depois?.valor) - valor) > 0.02)
     throw new Error(`o Bling aceitou o PUT mas o valor do título ${blingId} não gravou`);
   return { valorAnterior };
+}
+
+// Da baixa parcial ou total num titulo a receber.
+//
+// Sem isto o titulo ficava aberto pelo valor cheio o mes inteiro: a loja pagava
+// R$ 168.000,00 e o ERP seguia mostrando a divida original. Quem olhasse o
+// Bling concluiria que ninguem pagou nada.
+//
+// **E idempotente pelo saldo, nao pelo pagamento.** Quem chama compara o
+// `saldo` do titulo com o em aberto do site e manda so a diferenca; rodar duas
+// vezes na mesma situacao manda zero e nao faz nada. Amarrar no pagamento
+// exigiria guardar o que ja foi baixado de cada um, e uma tabela a mais que
+// pode discordar do ERP.
+export async function baixarContaReceber(
+  blingId: number,
+  valor: number,
+  data: string
+): Promise<{ saldoAntes: number; saldoDepois: number }> {
+  if (!Number.isFinite(valor) || valor <= 0) throw new Error("Valor de baixa inválido.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error("Data de baixa inválida.");
+
+  const { data: antes } = await chamar<{ data: ContaBling }>(`/contas/receber/${blingId}`);
+  if (!antes) throw new Error("título não encontrado no Bling");
+  const saldoAntes = dinheiro(antes.saldo ?? antes.valor);
+  if (valor > saldoAntes + 0.02)
+    throw new Error(`baixa de ${valor} maior que o saldo do título (${saldoAntes})`);
+
+  await escrever(
+    `/contas/receber/${blingId}/baixar`,
+    { valorPago: valor, dataPagamento: data, juros: 0, desconto: 0, acrescimos: 0, tarifas: 0 },
+    "post"
+  );
+
+  const { data: depois } = await chamar<{ data: ContaBling }>(`/contas/receber/${blingId}`);
+  const saldoDepois = dinheiro(depois?.saldo ?? depois?.valor);
+  // O Bling responde 200 e ignora o que nao entende: sem conferir o saldo, uma
+  // baixa que nao aconteceu passaria por feita.
+  if (Math.abs(saldoAntes - saldoDepois - valor) > 0.02)
+    throw new Error(
+      `o Bling aceitou a baixa mas o saldo nao mudou como devia: ${saldoAntes} -> ${saldoDepois}, esperado ${dinheiro(saldoAntes - valor)}`
+    );
+  return { saldoAntes, saldoDepois };
 }
