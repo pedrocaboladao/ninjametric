@@ -1758,3 +1758,28 @@ UPDATE fabrica_pagamentos
 -- que vier depois e cobrado dela mesma. Sem isso, virar a chave reescreveria
 -- agosto — a divida antiga pularia de dono e as duas tabelas parariam de bater.
 ALTER TABLE fabrica_clientes ADD COLUMN IF NOT EXISTS cobranca_pai_ate DATE;
+
+-- Resultado da sincronizacao com o Bling.
+--
+-- Ele vivia so na memoria do processo, e todo deploy reiniciava o backend e
+-- apagava o job. Na pratica: quem rodava um sync e demorava pra olhar perdia a
+-- lista de SKU faltando e de cliente nao reconhecido — que e justamente o
+-- aviso que faz a venda entrar ou ficar de fora.
+--
+-- Em 04/09/2026 foram seis deploys num dia, e o resultado do sync que trouxe
+-- R$ 153.285,02 sumiu antes de eu conferir.
+CREATE TABLE IF NOT EXISTS fabrica_sincronizacoes (
+  id TEXT PRIMARY KEY,
+  de DATE NOT NULL,
+  ate DATE NOT NULL,
+  estado TEXT NOT NULL,
+  feitos INTEGER NOT NULL DEFAULT 0,
+  total INTEGER NOT NULL DEFAULT 0,
+  iniciado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  terminado_em TIMESTAMPTZ,
+  resultado JSONB,
+  erro TEXT
+);
+
+CREATE INDEX IF NOT EXISTS fabrica_sincronizacoes_inicio
+  ON fabrica_sincronizacoes (iniciado_em DESC);

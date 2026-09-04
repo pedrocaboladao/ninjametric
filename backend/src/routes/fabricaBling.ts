@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
+import { pool } from "../db/pool";
 import {
   configurado,
   desconectar,
@@ -345,6 +346,39 @@ interface Sincronizacao {
 
 let sinc: Sincronizacao | null = null;
 
+// Guarda em banco a cada mudanca de estado.
+//
+// So a memoria nao servia: todo deploy reinicia o backend e apaga o job, e com
+// ele a lista de SKU faltando e de cliente nao reconhecido — que e o aviso que
+// decide se a venda entra ou fica de fora. Em 04/09/2026 foram seis deploys num
+// dia e o resultado de um sync de R$ 153.285,02 sumiu antes de ser lido.
+//
+// Falha ao gravar nao derruba a sincronizacao: perder o registro e ruim, perder
+// a importacao e pior.
+async function guardar(job: Sincronizacao): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO fabrica_sincronizacoes
+         (id, de, ate, estado, feitos, total, iniciado_em, terminado_em, resultado, erro)
+       VALUES ($1, $2::date, $3::date, $4, $5, $6, to_timestamp($7 / 1000.0),
+               CASE WHEN $8::bigint IS NULL THEN NULL ELSE to_timestamp($8 / 1000.0) END,
+               $9::jsonb, $10)
+       ON CONFLICT (id) DO UPDATE SET
+         estado = EXCLUDED.estado, feitos = EXCLUDED.feitos, total = EXCLUDED.total,
+         terminado_em = EXCLUDED.terminado_em, resultado = EXCLUDED.resultado,
+         erro = EXCLUDED.erro`,
+      [
+        job.id, job.de, job.ate, job.estado, job.feitos, job.total,
+        job.iniciadoEm, job.terminadoEm,
+        job.resultado ? JSON.stringify(job.resultado) : null,
+        job.erro,
+      ]
+    );
+  } catch (err) {
+    console.error("[fabrica-bling] gravar sincronizacao", err);
+  }
+}
+
 async function rodarSincronizacao(job: Sincronizacao): Promise<void> {
   try {
     const r = await buscarVendas(job.de, job.ate, (feitos, total) => {
@@ -364,10 +398,14 @@ async function rodarSincronizacao(job: Sincronizacao): Promise<void> {
       clientesFaltando: clientesFaltando(conf.linhas),
     };
     job.estado = "pronto";
+    job.terminadoEm = Date.now();
+    await guardar(job);
   } catch (err) {
     console.error("[fabrica-bling] sincronizar", err);
     job.erro = err instanceof Error ? err.message : "Falha ao sincronizar com o Bling.";
     job.estado = "erro";
+    job.terminadoEm = Date.now();
+    await guardar(job);
   } finally {
     job.terminadoEm = Date.now();
   }
@@ -412,6 +450,7 @@ fabricaBlingRouter.post("/sincronizar", (req, res) => {
     erro: null,
   };
   sinc = job;
+  void guardar(job);
   // solta de propósito: quem acompanha é o GET abaixo
   void rodarSincronizacao(job);
   res.status(202).json(resumo(job));
@@ -419,9 +458,45 @@ fabricaBlingRouter.post("/sincronizar", (req, res) => {
 
 // Como está indo. Quando termina, vem o resultado inteiro junto — a mesma
 // conferência que a importação por arquivo devolve.
-fabricaBlingRouter.get("/sincronizacao", (_req, res) => {
-  if (!sinc) return res.json({ estado: "nenhuma" });
-  res.json({ ...resumo(sinc), resultado: sinc.resultado });
+fabricaBlingRouter.get("/sincronizacao", async (_req, res) => {
+  // A da memoria manda enquanto existe: ela tem o progresso ao vivo. Sem ela,
+  // busca a ultima do banco — que e o caso depois de um deploy.
+  if (sinc) return res.json({ ...resumo(sinc), resultado: sinc.resultado });
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, to_char(de,'YYYY-MM-DD') AS de, to_char(ate,'YYYY-MM-DD') AS ate,
+              estado, feitos, total, erro, resultado,
+              to_char(iniciado_em,'YYYY-MM-DD"T"HH24:MI:SSOF') AS "iniciadoEm",
+              to_char(terminado_em,'YYYY-MM-DD"T"HH24:MI:SSOF') AS "terminadoEm"
+         FROM fabrica_sincronizacoes
+        ORDER BY iniciado_em DESC
+        LIMIT 1`
+    );
+    if (!rows[0]) return res.json({ estado: "nenhuma" });
+    res.json({ ...rows[0], daMemoria: false });
+  } catch (err) {
+    erro(res, err, "Falha ao ler a sincronização.");
+  }
+});
+
+// As ultimas sincronizacoes, pra achar um aviso que passou batido.
+fabricaBlingRouter.get("/sincronizacoes", async (_req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, to_char(de,'YYYY-MM-DD') AS de, to_char(ate,'YYYY-MM-DD') AS ate,
+              estado, feitos, total, erro,
+              to_char(iniciado_em,'YYYY-MM-DD"T"HH24:MI:SSOF') AS "iniciadoEm",
+              resultado -> 'skusFaltando' AS "skusFaltando",
+              resultado -> 'clientesFaltando' AS "clientesFaltando",
+              resultado -> 'pedidos' AS pedidos
+         FROM fabrica_sincronizacoes
+        ORDER BY iniciado_em DESC
+        LIMIT 30`
+    );
+    res.json({ sincronizacoes: rows });
+  } catch (err) {
+    erro(res, err, "Falha ao listar as sincronizações.");
+  }
 });
 
 // Espelha o cadastro de cliente daqui no contato do Bling — IE, e-mail,
