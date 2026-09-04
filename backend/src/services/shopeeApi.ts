@@ -52,6 +52,11 @@ async function listarPedidosNaJanela(
       time_to: timeToUnix,
       page_size: 50,
       cursor,
+      // Achado real: sem pedir explicitamente, order_status nunca vem no
+      // get_order_list (fica undefined) — e como pedidoValido() em
+      // financeiroShopeeService.ts filtra por esse campo, todo pedido
+      // (cancelado ou não pago incluso) passava como "válido" silenciosamente.
+      response_optional_fields: "order_status",
     });
     if (data.error) {
       throw new Error(`Shopee respondeu "${data.error}": ${data.message ?? ""}`);
