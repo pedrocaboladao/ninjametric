@@ -1178,9 +1178,13 @@ export async function baixarContaReceber(
   if (valor > saldoAntes + 0.02)
     throw new Error(`baixa de ${valor} maior que o saldo do título (${saldoAntes})`);
 
+  // Os nomes dos campos aqui nao seguem os do resto da API: a data e `data`,
+  // nao `dataPagamento`, e os acrescimos vem no singular. Mandar `dataPagamento`
+  // devolve 400 com "Data de pagamento esta invalida" e `element: dataPopup` —
+  // o Bling reclama do campo do formulario dele, nao do que voce mandou.
   await escrever(
     `/contas/receber/${blingId}/baixar`,
-    { valorPago: valor, dataPagamento: data, juros: 0, desconto: 0, acrescimos: 0, tarifas: 0 },
+    { data, valorPago: valor, juros: 0, desconto: 0, acrescimo: 0, tarifa: 0 },
     "post"
   );
 
