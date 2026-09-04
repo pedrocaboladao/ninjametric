@@ -963,13 +963,28 @@ export interface ConferenciaReceber {
 
 // Confere o fechamento do site contra os titulos a receber do Bling.
 //
-// Casa por nome da loja, normalizado. Nao por valor: dois clientes com o mesmo
-// previsto sao possiveis, e casar por valor faria a conferencia dizer que bate
-// justamente quando um dos dois esta faltando.
+// **Casa pelo contato do Bling, nao pelo nome.** O contato guarda a razao
+// social e o site guarda o nome curto: "IMPETRUS INDUSTRIA E COMERCIO DE TINTAS
+// E IMPERMEABILIZANTES" contra "Fabrica de Tintas", "GOMES E TAVARES ACESSORIOS"
+// contra "ModalTech/Collor Mix". Casar por nome nao reconhecia o titulo que
+// existia, a conferencia dizia que faltava, e `espelhar-bling` criava outro a
+// cada rodada — em 04/09/2026 saiu duplicata em duas lojas antes de eu notar.
+//
+// O contato e a mesma chave que a criacao usa, entao os dois lados falam a
+// mesma lingua. O nome vira so plano B, pra loja que ainda nao tem CNPJ.
+//
+// Nao casa por valor: dois clientes com o mesmo previsto sao possiveis, e casar
+// por valor faria a conferencia dizer que bate justamente quando um dos dois
+// esta faltando.
 export async function conferirContasReceber(
   de: string,
   ate: string,
-  linhasDoSite: Array<{ clienteId: number; clienteNome: string; previsto: number }>,
+  linhasDoSite: Array<{
+    clienteId: number;
+    clienteNome: string;
+    previsto: number;
+    contatoId?: number | null;
+  }>,
   fechamentoId: number | null
 ): Promise<ConferenciaReceber> {
   const bling = await baixarReceberDoBling(de, ate);
@@ -982,11 +997,16 @@ export async function conferirContasReceber(
       .trim();
 
   const porNome = new Map<string, ContaBling[]>();
-  for (const b of bling) {
-    const k = semAcento(b.contato?.nome ?? "");
-    const lista = porNome.get(k);
+  const porContato = new Map<number, ContaBling[]>();
+  const empilhar = <K>(m: Map<K, ContaBling[]>, k: K, b: ContaBling) => {
+    const lista = m.get(k);
     if (lista) lista.push(b);
-    else porNome.set(k, [b]);
+    else m.set(k, [b]);
+  };
+  for (const b of bling) {
+    empilhar(porNome, semAcento(b.contato?.nome ?? ""), b);
+    const id = Number(b.contato?.id ?? 0);
+    if (id) empilhar(porContato, id, b);
   }
 
   const usados = new Set<number>();
@@ -995,9 +1015,10 @@ export async function conferirContasReceber(
 
   for (const s of linhasDoSite) {
     const k = semAcento(s.clienteNome);
-    // Nome igual, ou o do Bling comecando pelo do site: no ERP a loja esta com
-    // razao social completa e no site com o nome curto.
+    // Contato primeiro: e a chave que a criacao usa. Nome so quando a loja nao
+    // tem contato resolvido.
     const candidatos =
+      (s.contatoId ? porContato.get(s.contatoId) : undefined) ??
       porNome.get(k) ??
       [...porNome.entries()].find(([nome]) => nome.startsWith(k) || k.startsWith(nome))?.[1] ??
       [];
