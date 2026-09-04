@@ -259,10 +259,22 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
     const docPorId = new Map(clientes.map((c) => [c.id, c.cnpj ?? ""]));
 
     const feitos: Array<{ loja: string; ok: boolean; id?: number; erro?: string }> = [];
+    // O Bling tem um limite proprio pra conta a receber, alem do teto de 3
+    // chamadas por segundo: criar varias em sequencia devolve 400 com
+    // `time_limit` no namespace CONTAS_RECEBER e a mensagem "aguarde alguns
+    // instantes". Em 04/09/2026 isso deixou passar 4 de 21.
+    //
+    // Cinco segundos entre uma e outra resolve. Vinte lojas levam cerca de dois
+    // minutos, o que e aceitavel numa rotina que roda uma vez por mes — e muito
+    // melhor do que metade dos titulos faltando sem ninguem perceber.
+    const respirar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    let primeira = true;
     for (const l of conf.linhas) {
       if (l.tituloBling !== null || l.clienteId === null) continue;
       if (l.previstoSite <= 0) continue;
       try {
+        if (!primeira) await respirar(5000);
+        primeira = false;
         const contatoId = await contatoIdPorDocumento(docPorId.get(l.clienteId) ?? "");
         if (!contatoId) throw new Error("loja sem contato no Bling (falta o CNPJ ou o cadastro)");
         const r = await criarContaReceber({
