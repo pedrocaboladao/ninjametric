@@ -201,6 +201,30 @@ fabricaPedidosRouter.get("/fechamentos/previa", async (req, res) => {
   }
 });
 
+// Resolve o contato do Bling de cada loja pelo CNPJ, uma vez so.
+//
+// E a chave que liga os dois lados: a conferencia procura o titulo por contato
+// e a criacao cria por contato. Resolver aqui, junto, garante que os dois usem
+// exatamente o mesmo id — foi a divergencia entre eles que gerou titulo
+// duplicado em 04/09/2026.
+async function comContato(
+  linhas: Array<{ clienteId: number; clienteNome: string; previsto: number }>
+): Promise<Array<{ clienteId: number; clienteNome: string; previsto: number; contatoId: number | null }>> {
+  const clientes = await listarClientes();
+  const docPorId = new Map(clientes.map((c) => [c.id, c.cnpj ?? ""]));
+  const saida = [];
+  for (const l of linhas) {
+    let contatoId: number | null = null;
+    try {
+      contatoId = await contatoIdPorDocumento(docPorId.get(l.clienteId) ?? "");
+    } catch {
+      contatoId = null;
+    }
+    saida.push({ ...l, contatoId });
+  }
+  return saida;
+}
+
 // Confere o fechamento contra os titulos a receber do Bling.
 //
 // Mora aqui, e nao no router do Bling, pelo mesmo motivo da conferencia de
@@ -214,18 +238,7 @@ fabricaPedidosRouter.get("/fechamentos/conferir-bling", async (req, res) => {
   }
   try {
     const f = await montarFechamento(de, ate);
-    res.json(
-      await conferirContasReceber(
-        de,
-        ate,
-        f.linhas.map((l) => ({
-          clienteId: l.clienteId,
-          clienteNome: l.clienteNome,
-          previsto: l.previsto,
-        })),
-        f.id
-      )
-    );
+    res.json(await conferirContasReceber(de, ate, await comContato(f.linhas), f.id));
   } catch (err) {
     erro(res, err, "Falha ao conferir contra o Bling.");
   }
@@ -245,18 +258,9 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
   }
   try {
     const f = await montarFechamento(de, ate);
-    const conf = await conferirContasReceber(
-      de,
-      ate,
-      f.linhas.map((l) => ({
-        clienteId: l.clienteId,
-        clienteNome: l.clienteNome,
-        previsto: l.previsto,
-      })),
-      f.id
-    );
-    const clientes = await listarClientes();
-    const docPorId = new Map(clientes.map((c) => [c.id, c.cnpj ?? ""]));
+    const linhas = await comContato(f.linhas);
+    const conf = await conferirContasReceber(de, ate, linhas, f.id);
+    const contatoPorCliente = new Map(linhas.map((l) => [l.clienteId, l.contatoId]));
 
     const feitos: Array<{ loja: string; ok: boolean; id?: number; erro?: string }> = [];
     // O Bling tem um limite proprio pra conta a receber, alem do teto de 3
@@ -275,7 +279,7 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
       try {
         if (!primeira) await respirar(5000);
         primeira = false;
-        const contatoId = await contatoIdPorDocumento(docPorId.get(l.clienteId) ?? "");
+        const contatoId = contatoPorCliente.get(l.clienteId);
         if (!contatoId) throw new Error("loja sem contato no Bling (falta o CNPJ ou o cadastro)");
         const r = await criarContaReceber({
           contatoId,
