@@ -145,8 +145,8 @@ export function FinanceiroShopee() {
           <span className="painel-eyebrow">Financeiro</span>
           <h1>Feed de vendas — Shopee</h1>
           <p className="painel-sub">
-            Receita, custo do produto, comissão + taxa de serviço líquida da Shopee (já descontando rebate
-            promocional), cupom, frete do vendedor e imposto por venda.
+            Receita, custo do produto, comissão + taxa de serviço da Shopee, cupom, frete do vendedor e imposto por
+            venda.
           </p>
         </div>
         <div className="financeiro-filtros">

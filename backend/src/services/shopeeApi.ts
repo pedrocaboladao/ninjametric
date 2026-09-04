@@ -145,17 +145,16 @@ interface RespostaEscrow {
   message?: string;
   response?: {
     order_income?: {
+      // commission_fee/service_fee (bruto) é o que REALMENTE sai do escrow
+      // — confirmado batendo a conta exata de um pedido real: order_selling_
+      // price - voucher_from_seller - commission_fee - service_fee =
+      // escrow_amount, centavo a centavo. Existe também net_commission_fee/
+      // net_service_fee (menor, já descontando seller_product_rebate) —
+      // tentamos usar esse valor por parecer "o real", mas a conta do
+      // escrow não fecha com ele; deve ser um rebate creditado por fora,
+      // não uma redução da taxa deste pedido. Não usar net_*.
       commission_fee?: number;
       service_fee?: number;
-      // net_* é o valor REAL descontado do vendedor — commission_fee/
-      // service_fee são o valor BRUTO, antes de um rebate promocional que a
-      // própria Shopee dá em campanha (seller_product_rebate). Achado ao
-      // vivo comparando com um sistema externo de referência (Catedral,
-      // 03/09): usar o bruto superestimava a taxa em até R$20 num pedido só
-      // de flash sale. net_commission_fee/net_service_fee sempre presentes
-      // nos 2 pedidos reais testados; cai pro bruto se um dia vier ausente.
-      net_commission_fee?: number;
-      net_service_fee?: number;
       // Valor do cupom aplicado na compra que fica por conta do vendedor
       // (não é a Shopee quem banca) — confirmado contra um pedido real
       // devolvido (260829MD7RM383, Catedral, cupom "CATE3OFFF"): o total do
@@ -201,8 +200,8 @@ export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Pr
       );
       return {
         orderSn,
-        comissao: income.net_commission_fee ?? income.commission_fee ?? 0,
-        taxaServico: income.net_service_fee ?? income.service_fee ?? 0,
+        comissao: income.commission_fee ?? 0,
+        taxaServico: income.service_fee ?? 0,
         cupomVendedor: income.voucher_from_seller ?? 0,
         freteVendedor,
       };
