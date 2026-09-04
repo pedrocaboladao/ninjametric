@@ -6,6 +6,7 @@ import { idadeDoSaldo } from "../services/fabricaIdadeService";
 import {
   conferirContasReceber,
   criarContaReceber,
+  atualizarContaReceber,
 } from "../services/blingContasService";
 import { contatoIdPorDocumento } from "../services/blingContatosService";
 import { listarClientes } from "../services/fabricaClientesService";
@@ -262,7 +263,13 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
     const conf = await conferirContasReceber(de, ate, linhas, f.id);
     const contatoPorCliente = new Map(linhas.map((l) => [l.clienteId, l.contatoId]));
 
-    const feitos: Array<{ loja: string; ok: boolean; id?: number; erro?: string }> = [];
+    const feitos: Array<{
+      loja: string;
+      ok: boolean;
+      id?: number;
+      erro?: string;
+      acao?: "criado" | "atualizado";
+    }> = [];
     // O Bling tem um limite proprio pra conta a receber, alem do teto de 3
     // chamadas por segundo: criar varias em sequencia devolve 400 com
     // `time_limit` no namespace CONTAS_RECEBER e a mensagem "aguarde alguns
@@ -301,7 +308,28 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
 
     let primeira = true;
     for (const l of conf.linhas) {
-      if (l.tituloBling !== null || l.clienteId === null) continue;
+      if (l.clienteId === null) continue;
+
+      // Titulo que ja existe com valor diferente: atualiza em vez de pular.
+      // Sem isto ele ficava com o valor do dia em que nasceu, e a compra que
+      // veio depois nunca chegava ao ERP.
+      if (l.tituloBling !== null) {
+        if (!l.blingId || Math.abs(l.tituloBling - l.previstoSite) <= 0.02) continue;
+        try {
+          if (!primeira) await respirar(5000);
+          primeira = false;
+          await atualizarContaReceber(l.blingId, l.previstoSite);
+          feitos.push({ loja: l.loja, ok: true, id: l.blingId, acao: "atualizado" });
+        } catch (err) {
+          feitos.push({
+            loja: l.loja,
+            ok: false,
+            erro: err instanceof Error ? err.message : "falhou",
+          });
+        }
+        continue;
+      }
+
       if (l.previstoSite <= 0) continue;
       try {
         if (!primeira) await respirar(5000);
@@ -314,7 +342,7 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
           vencimento: ate,
           historico: `FECHAMENTO ${de} a ${ate} - ${l.loja}`,
         });
-        feitos.push({ loja: l.loja, ok: true, id: r.id });
+        feitos.push({ loja: l.loja, ok: true, id: r.id, acao: "criado" });
       } catch (err) {
         feitos.push({
           loja: l.loja,
@@ -323,7 +351,13 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
         });
       }
     }
-    res.json({ total: feitos.length, ok: feitos.filter((x) => x.ok).length, feitos });
+    res.json({
+      total: feitos.length,
+      ok: feitos.filter((x) => x.ok).length,
+      criados: feitos.filter((x) => x.ok && x.acao === "criado").length,
+      atualizados: feitos.filter((x) => x.ok && x.acao === "atualizado").length,
+      feitos,
+    });
   } catch (err) {
     erro(res, err, "Falha ao espelhar o fechamento no Bling.");
   }

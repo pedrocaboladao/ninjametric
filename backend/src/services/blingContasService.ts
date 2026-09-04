@@ -1105,3 +1105,41 @@ export async function criarContaReceber(t: NovoTituloReceber): Promise<{ id: num
     throw new Error(`título ${id} criado com valor ${depois?.valor}, não ${t.valor}`);
   return { id };
 }
+
+// Atualiza o valor de um titulo a receber que ja existe.
+//
+// `espelhar-bling` so criava o que faltava, entao titulo lancado no meio do mes
+// ficava com o valor do dia em que nasceu: a loja comprava depois e o ERP
+// seguia mostrando o numero velho. Com fechamento mensal isso quase nao
+// aparece — o titulo nasce no ultimo dia, ja final — mas espelho pedido no meio
+// do mes ficava defasado ate o fechamento.
+//
+// Mesma cautela do PUT de contas a pagar: so os campos documentados, porque o
+// Bling responde 200 e ignora em silencio o que nao conhece. E confere lendo de
+// volta.
+export async function atualizarContaReceber(
+  blingId: number,
+  valor: number
+): Promise<{ valorAnterior: number }> {
+  if (!Number.isFinite(valor) || valor <= 0) throw new Error("Valor inválido.");
+  const { data: atual } = await chamar<{ data: ContaBling }>(`/contas/receber/${blingId}`);
+  if (!atual) throw new Error("título não encontrado no Bling");
+  const valorAnterior = dinheiro(atual.valor);
+
+  const corpo: Record<string, unknown> = {
+    vencimento: dia(atual.vencimento),
+    valor,
+    dataEmissao: dia(atual.vencimento),
+    competencia: dia(atual.vencimento),
+  };
+  if (atual.contato?.id) corpo.contato = { id: atual.contato.id };
+  if (atual.historico) corpo.historico = atual.historico;
+  if (atual.numeroDocumento) corpo.numeroDocumento = atual.numeroDocumento;
+
+  await escrever(`/contas/receber/${blingId}`, corpo);
+
+  const { data: depois } = await chamar<{ data: ContaBling }>(`/contas/receber/${blingId}`);
+  if (Math.abs(dinheiro(depois?.valor) - valor) > 0.02)
+    throw new Error(`o Bling aceitou o PUT mas o valor do título ${blingId} não gravou`);
+  return { valorAnterior };
+}
