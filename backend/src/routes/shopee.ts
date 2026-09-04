@@ -7,7 +7,6 @@ import {
   trocarCodigo,
   urlDeAutorizacao,
 } from "../services/shopeeAuth";
-import { listarPedidos } from "../services/shopeeApi";
 
 export const shopeeRouter = Router();
 // Callback fica num router PRÓPRIO, separado do admin-gated acima — mesmo
@@ -137,31 +136,5 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     });
   } catch (err) {
     erro(res, err, "Falha ao buscar pedidos de teste.");
-  }
-});
-
-// Diagnóstico temporário: descobrir os status REAIS de pedido que a Shopee
-// devolve (STATUS_CANCELADOS/STATUS_NAO_PAGOS em financeiroShopeeService.ts
-// nunca foram confirmados contra pedido de verdade, só documentação
-// pública) — comparando com o número de pedidos/cancelados que o sistema
-// externo do dono mostra pra Catedral hoje. Remover depois de confirmar.
-shopeeRouter.get("/status-pedidos-teste", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
-  const dias = Number(req.query.dias ?? 1);
-  if (!Number.isInteger(lojaId)) {
-    res.status(400).json({ error: "Informe ?lojaId=" });
-    return;
-  }
-  try {
-    const agora = Math.floor(Date.now() / 1000);
-    const inicio = agora - dias * 24 * 60 * 60;
-    const pedidos = await listarPedidos(lojaId, inicio, agora);
-    const porStatus: Record<string, number> = {};
-    for (const p of pedidos) {
-      porStatus[p.order_status] = (porStatus[p.order_status] ?? 0) + 1;
-    }
-    res.json({ totalPedidos: pedidos.length, porStatus, pedidos });
-  } catch (err) {
-    erro(res, err, "Falha ao buscar status de pedidos de teste.");
   }
 });
