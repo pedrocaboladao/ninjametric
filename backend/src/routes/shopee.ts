@@ -182,6 +182,11 @@ shopeeRouter.get("/ads-campanhas-teste", async (req, res) => {
   const paraDDMMYYYY = (d: Date) =>
     `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
 
+  // campaign_id real de Catedral, achado na 1a rodada deste diagnóstico
+  // (get_product_level_campaign_id_list) — usado aqui só pra testar os
+  // endpoints de detalhe/performance por campanha.
+  const CAMPANHA_TESTE = 83636236;
+
   const tentativas: Record<string, { path: string; params: Record<string, string | number> }> = {
     saldo: { path: "/api/v2/ads/get_total_balance", params: {} },
     listaCampanhas: {
@@ -191,6 +196,18 @@ shopeeRouter.get("/ads-campanhas-teste", async (req, res) => {
     gastoDiarioTotal: {
       path: "/api/v2/ads/get_all_cpc_ads_daily_performance",
       params: { start_date: paraDDMMYYYY(seteDiasAtras), end_date: paraDDMMYYYY(agora) },
+    },
+    infoCampanha: {
+      path: "/api/v2/ads/get_product_level_campaign_setting_info",
+      params: { campaign_id_list: `[${CAMPANHA_TESTE}]`, info_type_list: "[1,2,3,4]" },
+    },
+    performanceCampanha: {
+      path: "/api/v2/ads/get_product_campaign_daily_performance",
+      params: {
+        campaign_id_list: `[${CAMPANHA_TESTE}]`,
+        start_date: paraDDMMYYYY(seteDiasAtras),
+        end_date: paraDDMMYYYY(agora),
+      },
     },
   };
 
