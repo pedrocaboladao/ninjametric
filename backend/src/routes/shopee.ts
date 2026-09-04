@@ -199,12 +199,12 @@ shopeeRouter.get("/ads-campanhas-teste", async (req, res) => {
     },
     infoCampanha: {
       path: "/api/v2/ads/get_product_level_campaign_setting_info",
-      params: { campaign_id_list: `[${CAMPANHA_TESTE}]`, info_type_list: "[1,2,3,4]" },
+      params: { campaign_id_list: `${CAMPANHA_TESTE}`, info_type_list: "1,2,3,4" },
     },
     performanceCampanha: {
       path: "/api/v2/ads/get_product_campaign_daily_performance",
       params: {
-        campaign_id_list: `[${CAMPANHA_TESTE}]`,
+        campaign_id_list: `${CAMPANHA_TESTE}`,
         start_date: paraDDMMYYYY(seteDiasAtras),
         end_date: paraDDMMYYYY(agora),
       },
