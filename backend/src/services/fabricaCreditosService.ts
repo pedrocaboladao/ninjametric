@@ -250,9 +250,14 @@ export async function lancarAntecipacao(
 
 // Bonificação: 3,5% sobre o que a loja pagou, em qualquer pagamento.
 //
-// Pagou 90 de 100 e já leva os 3,5% dos 90 — mas marcado como PROVISÓRIO. Vira
-// definitivo no pagamento que zerar a conta. Se ela virar o mês sem quitar, o
-// alerta aparece e o crédito pode ser excluído.
+// **O prêmio é por pagar, não por quitar.** Pagou 90 de 100, leva os 3,5% dos
+// 90, definitivo. Não existe mais crédito provisório.
+//
+// Era o contrário até 04/09/2026: o crédito ficava provisório e só virava dela
+// zerando a conta, o que dava à loja um motivo pra fechar a dívida em vez de
+// pagar sempre um pedaço. O Hudson trocou a regra sabendo do custo — no período
+// de 27/07 a 06/09 a diferença era R$ 127.065,13 contra R$ 10.500,00. A escolha
+// foi premiar o fluxo de caixa.
 //
 // Roda dentro da transação do pagamento: bonificar e depois falhar deixaria
 // crédito de um pagamento que não existe.
@@ -262,15 +267,12 @@ export async function bonificarPagamento(
   pagamentoId: number,
   valorPago: number,
   data: string,
-  saldoAntes: number,
-  saldoDepois: number
+  saldoAntes: number
 ): Promise<{ bonus: number; provisorio: boolean; confirmados: number }> {
   // não havia dívida: isso é antecipação, e a bonificação dela já sai por
   // lancarAntecipacao. Bonificar aqui pagaria o prêmio duas vezes.
   if (saldoAntes <= 0.01) return { bonus: 0, provisorio: false, confirmados: 0 };
 
-  // um centavo de folga: NUMERIC fecha certinho, mas o saldo passa por Number()
-  const quitou = saldoDepois <= 0.01;
 
   const cfg = await cliente.query<{ percentual: string }>(
     "SELECT percentual FROM fabrica_bonificacao WHERE id = 1"
@@ -278,15 +280,14 @@ export async function bonificarPagamento(
   const percentual = cfg.rows[0] ? Number(cfg.rows[0].percentual) : 3.5;
   const bonus = Number(((valorPago * percentual) / 100).toFixed(2));
 
-  // quitou: os provisórios que ela vinha acumulando viram dela de vez
-  let confirmados = 0;
-  if (quitou) {
-    const r = await cliente.query(
-      "UPDATE fabrica_creditos SET provisorio = FALSE WHERE cliente_id = $1 AND provisorio",
-      [clienteId]
-    );
-    confirmados = r.rowCount ?? 0;
-  }
+  // Provisório de antes da mudança de regra vira definitivo no primeiro
+  // pagamento seguinte. Não faz sentido manter parado um crédito que a regra
+  // nova já teria liberado no dia em que foi gerado.
+  const r = await cliente.query(
+    "UPDATE fabrica_creditos SET provisorio = FALSE WHERE cliente_id = $1 AND provisorio",
+    [clienteId]
+  );
+  const confirmados = r.rowCount ?? 0;
 
   if (bonus <= 0) return { bonus: 0, provisorio: false, confirmados };
 
@@ -299,13 +300,11 @@ export async function bonificarPagamento(
       data,
       bonus,
       pagamentoId,
-      quitou
-        ? `${percentual}% por quitar 100% do fechamento`
-        : `${percentual}% sobre o pagamento — provisório até quitar`,
-      !quitou,
+      `${percentual}% sobre o pagamento`,
+      false,
     ]
   );
-  return { bonus, provisorio: !quitou, confirmados };
+  return { bonus, provisorio: false, confirmados };
 }
 
 // Lojas com crédito provisório pendurado e conta ainda aberta.

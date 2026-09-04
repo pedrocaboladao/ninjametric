@@ -329,8 +329,7 @@ export async function registrarPagamento(
       id,
       valor,
       String(rows[0].data),
-      saldoAntes,
-      saldoAntes - valor
+      saldoAntes
     );
     bonificacao = b.bonus;
     provisorio = b.provisorio;
