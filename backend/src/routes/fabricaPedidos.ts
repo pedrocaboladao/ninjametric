@@ -203,6 +203,24 @@ fabricaPedidosRouter.get("/fechamentos/previa", async (req, res) => {
   }
 });
 
+// Baixa um titulo a receber, um so, com o valor que se manda.
+//
+// Existe pra testar o comportamento do Bling num titulo pequeno antes de
+// aplicar nos grandes — foi o que faltou em 04/09/2026, quando a primeira
+// tentativa de baixa quitou R$ 1.597.464,97 de sete titulos de uma vez.
+fabricaPedidosRouter.post("/titulos/:blingId/baixar", async (req, res) => {
+  const blingId = Number(req.params.blingId);
+  const valor = Number((req.body ?? {}).valor);
+  const data = String((req.body ?? {}).data ?? "");
+  if (!Number.isInteger(blingId) || blingId <= 0)
+    return res.status(400).json({ error: "Id do título inválido." });
+  try {
+    res.json(await baixarContaReceber(blingId, valor, data));
+  } catch (err) {
+    erro(res, err, "Falha ao baixar o título.");
+  }
+});
+
 // Resolve o contato do Bling de cada loja pelo CNPJ, uma vez so.
 //
 // E a chave que liga os dois lados: a conferencia procura o titulo por contato
