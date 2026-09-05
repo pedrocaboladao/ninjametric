@@ -719,7 +719,9 @@ async function publicarUmaCopia(
     const { title: _titulo, ...payloadSemTitulo } = payload;
     novoItem = await criarItemComFallbacks(
       lojaDestinoId,
-      { ...payloadSemTitulo, family_name: titulo.slice(0, 120) },
+      // Limite real do Mercado Livre é 60 caracteres (achado ao vivo: erro
+      // "item.family_name.length_invalid" cortando em 120).
+      { ...payloadSemTitulo, family_name: titulo.slice(0, 60) },
       original.attributes,
       original.title
     );
@@ -821,7 +823,9 @@ async function publicarFamiliaDeItens(
   titulo: string,
   opcoes: OpcoesClone
 ): Promise<ResultadoClone> {
-  const familyName = titulo.slice(0, 120);
+  // Limite real do Mercado Livre é 60 caracteres (achado ao vivo: erro
+  // "item.family_name.length_invalid" cortando em 120).
+  const familyName = titulo.slice(0, 60);
   const avisos: string[] = [];
 
   const resultados = await comConcorrenciaLimitada(fontes, CONCORRENCIA_FAMILIA, async (fonte, index) => {
