@@ -354,22 +354,17 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
             });
           }
 
-          // depois a baixa: o saldo do titulo tem que ser o em aberto do site.
+          // A BAIXA NAO ENTRA AQUI, e nao e esquecimento.
           //
-          // A diferenca entre os dois e o que a loja pagou e ninguem baixou.
-          // Comparar saldo com saldo faz a operacao ser idempotente: rodar de
-          // novo na mesma situacao da zero e nao mexe em nada.
-          const saldo = l.saldoBling ?? l.tituloBling;
-          const alvo = l.emAbertoSite ?? l.previstoSite;
-          const falta = saldo - alvo;
-          if (falta > 0.02) {
-            if (!primeira) await respirar(5000);
-            primeira = false;
-            await baixarContaReceber(l.blingId, Number(falta.toFixed(2)), ate);
-            feitos.push({
-              loja: l.loja, ok: true, id: l.blingId, acao: "baixado", valor: Number(falta.toFixed(2)),
-            });
-          }
+          // Em 04/09/2026 esta funcao dava baixa sozinha e o Bling, em vez de
+          // baixar a parte pedida, registrou recebimento de R$ 0,00 e quitou o
+          // titulo inteiro — R$ 1.597.464,97 em sete lojas, que sumiram da
+          // lista de contas a receber como se estivessem pagas.
+          //
+          // O espelho roda por tarefa agendada, sem ninguem lendo a resposta.
+          // Enquanto nao houver teste provando que o Bling aceita baixa
+          // parcial, a baixa fica so na rota manual de um titulo so
+          // (`POST /titulos/:blingId/baixar`), onde alguem ve o resultado.
         } catch (err) {
           feitos.push({
             loja: l.loja,
@@ -406,13 +401,6 @@ fabricaPedidosRouter.post("/fechamentos/espelhar-bling", async (req, res) => {
       ok: feitos.filter((x) => x.ok).length,
       criados: feitos.filter((x) => x.ok && x.acao === "criado").length,
       atualizados: feitos.filter((x) => x.ok && x.acao === "atualizado").length,
-      baixados: feitos.filter((x) => x.ok && x.acao === "baixado").length,
-      valorBaixado: Number(
-        feitos
-          .filter((x) => x.ok && x.acao === "baixado")
-          .reduce((a, x) => a + (x.valor ?? 0), 0)
-          .toFixed(2)
-      ),
       feitos,
     });
   } catch (err) {
