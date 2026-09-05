@@ -1182,9 +1182,13 @@ export async function baixarContaReceber(
   // nao `dataPagamento`, e os acrescimos vem no singular. Mandar `dataPagamento`
   // devolve 400 com "Data de pagamento esta invalida" e `element: dataPopup` —
   // o Bling reclama do campo do formulario dele, nao do que voce mandou.
+  // `valor` e `valorPago` juntos de proposito: com `valorPago` sozinho o Bling
+  // registrou um recebimento de R$ 0,00 e mesmo assim quitou o titulo inteiro —
+  // em 04/09/2026 isso fechou R$ 1.597.464,97 de uma vez. Campo que ele nao
+  // conhece ele ignora, entao mandar os dois custa nada e cobre os dois nomes.
   await escrever(
     `/contas/receber/${blingId}/baixar`,
-    { data, valorPago: valor, juros: 0, desconto: 0, acrescimo: 0, tarifa: 0 },
+    { data, valor, valorPago: valor, juros: 0, desconto: 0, acrescimo: 0, tarifa: 0 },
     "post"
   );
 
@@ -1192,9 +1196,18 @@ export async function baixarContaReceber(
   const saldoDepois = dinheiro(depois?.saldo ?? depois?.valor);
   // O Bling responde 200 e ignora o que nao entende: sem conferir o saldo, uma
   // baixa que nao aconteceu passaria por feita.
-  if (Math.abs(saldoAntes - saldoDepois - valor) > 0.02)
+  if (Math.abs(saldoAntes - saldoDepois - valor) > 0.02) {
+    // Quitou tudo quando so devia baixar uma parte: e o pior caso, porque o
+    // titulo some da lista de contas a receber e parece pago. Diz isso com
+    // todas as letras — em 04/09/2026 eu li esse mesmo estado como "nao mudou"
+    // e reportei o contrario do que tinha acontecido.
+    const quitouTudo = saldoDepois <= 0.02 && valor < saldoAntes - 0.02;
     throw new Error(
-      `o Bling aceitou a baixa mas o saldo nao mudou como devia: ${saldoAntes} -> ${saldoDepois}, esperado ${dinheiro(saldoAntes - valor)}`
+      quitouTudo
+        ? `ATENCAO: o Bling QUITOU O TITULO INTEIRO (${saldoAntes}) quando a baixa era de ${valor}. ` +
+          `O titulo ${blingId} esta fechado indevidamente — apagar o recebimento em Financeiro > Recebimentos reabre.`
+        : `o Bling aceitou a baixa mas o saldo nao mudou como devia: ${saldoAntes} -> ${saldoDepois}, esperado ${dinheiro(saldoAntes - valor)}`
     );
+  }
   return { saldoAntes, saldoDepois };
 }
