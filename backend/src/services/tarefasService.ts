@@ -4,6 +4,7 @@ export interface Cartao {
   id: number;
   colunaId: number;
   titulo: string;
+  descricao: string | null;
   concluido: boolean;
   ordem: number;
   // Visão do dono: pra quem esse cartão foi compartilhado (null = ninguém).
@@ -27,6 +28,7 @@ interface LinhaCartao {
   id: number;
   coluna_id: number;
   titulo: string;
+  descricao: string | null;
   concluido: boolean;
   ordem: number;
   compartilhado_com_usuario_id: number | null;
@@ -39,6 +41,7 @@ function linhaParaCartao(r: LinhaCartao): Cartao {
     id: r.id,
     colunaId: r.coluna_id,
     titulo: r.titulo,
+    descricao: r.descricao,
     concluido: r.concluido,
     ordem: r.ordem,
     compartilhadoComUsuarioId: r.compartilhado_com_usuario_id,
@@ -82,7 +85,7 @@ export async function listarQuadro(usuarioId: number): Promise<Coluna[]> {
     [usuarioId]
   );
   const { rows: cartoesRows } = await pool.query(
-    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
+    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.descricao, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
             dest.nome AS compartilhado_com_nome
      FROM tarefas_cartoes tc
      JOIN tarefas_colunas col ON col.id = tc.coluna_id
@@ -114,7 +117,7 @@ export async function listarQuadro(usuarioId: number): Promise<Coluna[]> {
   // se tiver pelo menos 1, pra não poluir o quadro de quem nunca recebeu
   // nada.
   const { rows: compartilhadosRows } = await pool.query(
-    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
+    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.descricao, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
             criador.nome AS criado_por_nome
      FROM tarefas_cartoes tc
      JOIN tarefas_colunas col ON col.id = tc.coluna_id
@@ -198,7 +201,7 @@ export async function criarCartao(
   const { rows: inseridos } = await pool.query(
     `INSERT INTO tarefas_cartoes (coluna_id, titulo, ordem, compartilhado_com_usuario_id)
      VALUES ($1, $2, $3, $4)
-     RETURNING id, coluna_id, titulo, concluido, ordem, compartilhado_com_usuario_id`,
+     RETURNING id, coluna_id, titulo, descricao, concluido, ordem, compartilhado_com_usuario_id`,
     [colunaId, titulo, ordem, compartilharComUsuarioId ?? null]
   );
   return linhaParaCartao(inseridos[0]);
@@ -206,6 +209,7 @@ export async function criarCartao(
 
 export interface AtualizacaoCartao {
   titulo?: string;
+  descricao?: string | null;
   concluido?: boolean;
   colunaId?: number;
   ordem?: number;
@@ -260,6 +264,10 @@ export async function atualizarCartao(id: number, usuarioId: number, dados: Atua
   if (dados.titulo !== undefined) {
     campos.push(`titulo = $${i++}`);
     valores.push(dados.titulo);
+  }
+  if (dados.descricao !== undefined) {
+    campos.push(`descricao = $${i++}`);
+    valores.push(dados.descricao);
   }
   if (dados.concluido !== undefined) {
     campos.push(`concluido = $${i++}`);
@@ -326,7 +334,7 @@ export interface CartaoArquivado extends Cartao {
 
 export async function listarArquivados(usuarioId: number): Promise<CartaoArquivado[]> {
   const { rows } = await pool.query(
-    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
+    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.descricao, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
             col.nome AS coluna_nome
      FROM tarefas_cartoes tc
      JOIN tarefas_colunas col ON col.id = tc.coluna_id

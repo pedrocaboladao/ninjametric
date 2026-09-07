@@ -122,6 +122,10 @@ CREATE INDEX IF NOT EXISTS idx_tarefas_cartoes_coluna ON tarefas_cartoes (coluna
 -- banco.
 ALTER TABLE tarefas_cartoes ADD COLUMN IF NOT EXISTS compartilhado_com_usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
 
+-- Texto detalhado do cartão (abre num modal pra editar, separado do título
+-- curto que já existia).
+ALTER TABLE tarefas_cartoes ADD COLUMN IF NOT EXISTS descricao TEXT;
+
 -- Módulo Funcionários (ranking gamificado de empacotadores)
 CREATE TABLE IF NOT EXISTS empacotadores (
   id SERIAL PRIMARY KEY,

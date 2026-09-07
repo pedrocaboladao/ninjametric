@@ -2,18 +2,19 @@ import { useState } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { Cartao } from "../types/tarefas";
-import { IconTrash } from "./icons";
+import { IconTrash, IconExpand } from "./icons";
 
 interface Props {
   cartao: Cartao;
   onConcluir: (cartao: Cartao, concluido: boolean) => void;
   onExcluir: (id: number) => void;
+  onAbrir: (cartao: Cartao) => void;
   // true dentro da coluna sintética "Compartilhadas comigo" — o destinatário
   // só pode marcar concluído, não arrasta nem exclui (ver tarefasService.ts).
   somenteConcluir?: boolean;
 }
 
-export function CartaoTarefa({ cartao, onConcluir, onExcluir, somenteConcluir = false }: Props) {
+export function CartaoTarefa({ cartao, onConcluir, onExcluir, onAbrir, somenteConcluir = false }: Props) {
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: cartao.id,
@@ -41,8 +42,15 @@ export function CartaoTarefa({ cartao, onConcluir, onExcluir, somenteConcluir = 
           onChange={(e) => onConcluir(cartao, e.target.checked)}
         />
       </label>
-      <span className={`tarefa-cartao-titulo ${cartao.concluido ? "tarefa-cartao-titulo-concluido" : ""}`}>
+      <span
+        className={`tarefa-cartao-titulo ${cartao.concluido ? "tarefa-cartao-titulo-concluido" : ""}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onAbrir(cartao);
+        }}
+      >
         {cartao.titulo}
+        {cartao.descricao && <span className="tarefa-cartao-tem-descricao" title="Tem descrição" />}
       </span>
       {cartao.criadoPorNome && <span className="tarefa-cartao-tag-compartilhado">de {cartao.criadoPorNome}</span>}
       {cartao.compartilhadoComNome && (
@@ -50,6 +58,16 @@ export function CartaoTarefa({ cartao, onConcluir, onExcluir, somenteConcluir = 
           ↗ {cartao.compartilhadoComNome}
         </span>
       )}
+      <button
+        className="tarefa-cartao-abrir"
+        onClick={(e) => {
+          e.stopPropagation();
+          onAbrir(cartao);
+        }}
+        title="Abrir cartão"
+      >
+        <IconExpand size={13} />
+      </button>
       {!somenteConcluir &&
         (confirmandoExclusao ? (
           <span className="tarefa-cartao-confirmar" onClick={(e) => e.stopPropagation()}>

@@ -29,6 +29,7 @@ import {
 } from "../api/tarefas";
 import { ColunaTarefas } from "./ColunaTarefas";
 import { CartaoTarefa } from "./CartaoTarefa";
+import { CartaoTarefaModal } from "./CartaoTarefaModal";
 import { TarefasArquivados } from "./TarefasArquivados";
 import { IconPlus } from "./icons";
 
@@ -44,6 +45,9 @@ export function Tarefas() {
   const [novaColunaAberta, setNovaColunaAberta] = useState(false);
   const [nomeNovaColuna, setNomeNovaColuna] = useState("");
   const [usuariosParaCompartilhar, setUsuariosParaCompartilhar] = useState<UsuarioParaCompartilhar[]>([]);
+  const [cartaoAberto, setCartaoAberto] = useState<Cartao | null>(null);
+  const [salvandoCartao, setSalvandoCartao] = useState(false);
+  const [erroSalvarCartao, setErroSalvarCartao] = useState<string | null>(null);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -198,6 +202,31 @@ export function Tarefas() {
     carregarQuadro();
   }
 
+  function handleAbrirCartao(cartao: Cartao) {
+    setErroSalvarCartao(null);
+    setCartaoAberto(cartao);
+  }
+
+  function handleFecharCartaoModal() {
+    setCartaoAberto(null);
+    setErroSalvarCartao(null);
+  }
+
+  async function handleSalvarCartaoModal(titulo: string, descricao: string) {
+    if (!cartaoAberto) return;
+    setSalvandoCartao(true);
+    setErroSalvarCartao(null);
+    try {
+      await atualizarCartao(cartaoAberto.id, { titulo, descricao: descricao.trim() || null });
+      setCartaoAberto(null);
+      carregarQuadro();
+    } catch (err) {
+      setErroSalvarCartao(err instanceof Error ? err.message : "Falha ao salvar cartão.");
+    } finally {
+      setSalvandoCartao(false);
+    }
+  }
+
   async function handleAdicionarCartao(colunaId: number, titulo: string, compartilharComUsuarioId: number | null) {
     await criarCartao(colunaId, titulo, compartilharComUsuarioId);
     carregarQuadro();
@@ -297,6 +326,7 @@ export function Tarefas() {
                 usuariosParaCompartilhar={usuariosParaCompartilhar}
                 onConcluirCartao={handleConcluirCartao}
                 onExcluirCartao={handleExcluirCartao}
+                onAbrirCartao={handleAbrirCartao}
                 onAdicionarCartao={handleAdicionarCartao}
                 onRenomear={handleRenomearColuna}
                 onExcluirColuna={handleExcluirColuna}
@@ -335,10 +365,21 @@ export function Tarefas() {
 
           <DragOverlay>
             {activeCartao && (
-              <CartaoTarefa cartao={activeCartao} onConcluir={() => {}} onExcluir={() => {}} />
+              <CartaoTarefa cartao={activeCartao} onConcluir={() => {}} onExcluir={() => {}} onAbrir={() => {}} />
             )}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {cartaoAberto && (
+        <CartaoTarefaModal
+          cartao={cartaoAberto}
+          somenteLeitura={encontrarColunaDoCartao(colunas ?? [], cartaoAberto.id)?.especial === "compartilhadas"}
+          salvando={salvandoCartao}
+          erro={erroSalvarCartao}
+          onSalvar={handleSalvarCartaoModal}
+          onFechar={handleFecharCartaoModal}
+        />
       )}
     </div>
   );

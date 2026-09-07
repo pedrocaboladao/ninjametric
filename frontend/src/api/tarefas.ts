@@ -56,6 +56,7 @@ export async function fetchUsuariosParaCompartilhar(): Promise<UsuarioParaCompar
 
 export interface AtualizacaoCartao {
   titulo?: string;
+  descricao?: string | null;
   concluido?: boolean;
   colunaId?: number;
   ordem?: number;

@@ -2,6 +2,7 @@ export interface Cartao {
   id: number;
   colunaId: number;
   titulo: string;
+  descricao: string | null;
   concluido: boolean;
   ordem: number;
   compartilhadoComUsuarioId: number | null;

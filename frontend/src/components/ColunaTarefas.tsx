@@ -21,6 +21,7 @@ interface Props {
   usuariosParaCompartilhar: UsuarioParaCompartilhar[];
   onConcluirCartao: (cartao: Cartao, concluido: boolean) => void;
   onExcluirCartao: (id: number) => void;
+  onAbrirCartao: (cartao: Cartao) => void;
   onAdicionarCartao: (colunaId: number, titulo: string, compartilharComUsuarioId: number | null) => void;
   onRenomear: (id: number, nome: string) => void;
   onExcluirColuna: (id: number) => void;
@@ -33,6 +34,7 @@ export function ColunaTarefas({
   usuariosParaCompartilhar,
   onConcluirCartao,
   onExcluirCartao,
+  onAbrirCartao,
   onAdicionarCartao,
   onRenomear,
   onExcluirColuna,
@@ -159,6 +161,7 @@ export function ColunaTarefas({
               cartao={cartao}
               onConcluir={onConcluirCartao}
               onExcluir={onExcluirCartao}
+              onAbrir={onAbrirCartao}
               somenteConcluir={compartilhadas}
             />
           ))}

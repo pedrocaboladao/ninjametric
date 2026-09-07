@@ -2171,6 +2171,11 @@
   color: var(--text-primary);
   line-height: 1.4;
   word-break: break-word;
+  cursor: pointer;
+}
+
+.tarefa-cartao-titulo:hover {
+  text-decoration: underline;
 }
 
 .tarefa-cartao-titulo-concluido {
@@ -2254,6 +2259,57 @@
   color: var(--text-secondary);
   font-family: var(--sans);
   font-size: 12px;
+}
+
+.tarefa-cartao-abrir {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.tarefa-cartao:hover .tarefa-cartao-abrir {
+  opacity: 1;
+}
+
+.tarefa-cartao-abrir:hover {
+  color: var(--accent);
+}
+
+.tarefa-cartao-tem-descricao {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
+.tarefa-cartao-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tarefa-cartao-modal-textarea {
+  resize: vertical;
+}
+
+.tarefa-cartao-modal-descricao {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
 }
 
 .tarefa-cartao-tag-compartilhado {
