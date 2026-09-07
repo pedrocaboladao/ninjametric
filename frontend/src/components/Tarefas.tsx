@@ -11,7 +11,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import type { Coluna, Cartao, CartaoArquivado } from "../types/tarefas";
+import type { Coluna, Cartao, CartaoArquivado, UsuarioParaCompartilhar } from "../types/tarefas";
 import {
   fetchQuadro,
   criarColuna,
@@ -25,6 +25,7 @@ import {
   arquivarConcluidos,
   fetchArquivados,
   restaurarCartao,
+  fetchUsuariosParaCompartilhar,
 } from "../api/tarefas";
 import { ColunaTarefas } from "./ColunaTarefas";
 import { CartaoTarefa } from "./CartaoTarefa";
@@ -42,11 +43,13 @@ export function Tarefas() {
   const [activeCartao, setActiveCartao] = useState<Cartao | null>(null);
   const [novaColunaAberta, setNovaColunaAberta] = useState(false);
   const [nomeNovaColuna, setNomeNovaColuna] = useState("");
+  const [usuariosParaCompartilhar, setUsuariosParaCompartilhar] = useState<UsuarioParaCompartilhar[]>([]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   useEffect(() => {
     carregarQuadro();
+    fetchUsuariosParaCompartilhar().then(setUsuariosParaCompartilhar).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -100,6 +103,10 @@ export function Tarefas() {
       : encontrarColunaDoCartao(colunas, Number(overId));
 
     if (!colunaDestino || colunaOrigem.id === colunaDestino.id) return;
+    // Cartões da coluna sintética "Compartilhadas comigo" não são
+    // arrastáveis (ver CartaoTarefa), mas evita mover QUALQUER cartão pra
+    // dentro dela também — não existe linha real dela no banco.
+    if (colunaOrigem.especial === "compartilhadas" || colunaDestino.especial === "compartilhadas") return;
 
     setColunas((atual) => {
       if (!atual) return atual;
@@ -133,7 +140,7 @@ export function Tarefas() {
     const activeId = Number(active.id);
     const overId = String(over.id);
     const colunaAtual = encontrarColunaDoCartao(colunas, activeId);
-    if (!colunaAtual) return;
+    if (!colunaAtual || colunaAtual.especial === "compartilhadas") return;
 
     let cartoesFinais = colunaAtual.cartoes;
     if (!overId.startsWith("coluna-")) {
@@ -162,6 +169,16 @@ export function Tarefas() {
 
   async function handleConcluirCartao(cartao: Cartao, concluido: boolean) {
     if (!colunas) return;
+    // Cartão da coluna sintética "Compartilhadas comigo" — o destinatário só
+    // pode marcar concluído (o backend rejeita qualquer outro campo junto,
+    // ver tarefasService.ts), nunca mover pra própria coluna "Concluídos".
+    const colunaDoCartao = encontrarColunaDoCartao(colunas, cartao.id);
+    if (colunaDoCartao?.especial === "compartilhadas") {
+      await atualizarCartao(cartao.id, { concluido });
+      carregarQuadro();
+      return;
+    }
+
     const colunaConcluidos = colunas.find((c) => c.especial === "concluidos");
 
     if (concluido && colunaConcluidos) {
@@ -181,8 +198,8 @@ export function Tarefas() {
     carregarQuadro();
   }
 
-  async function handleAdicionarCartao(colunaId: number, titulo: string) {
-    await criarCartao(colunaId, titulo);
+  async function handleAdicionarCartao(colunaId: number, titulo: string, compartilharComUsuarioId: number | null) {
+    await criarCartao(colunaId, titulo, compartilharComUsuarioId);
     carregarQuadro();
   }
 
@@ -277,6 +294,7 @@ export function Tarefas() {
               <ColunaTarefas
                 key={coluna.id}
                 coluna={coluna}
+                usuariosParaCompartilhar={usuariosParaCompartilhar}
                 onConcluirCartao={handleConcluirCartao}
                 onExcluirCartao={handleExcluirCartao}
                 onAdicionarCartao={handleAdicionarCartao}

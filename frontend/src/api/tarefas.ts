@@ -1,4 +1,4 @@
-import type { Coluna, Cartao, CartaoArquivado } from "../types/tarefas";
+import type { Coluna, Cartao, CartaoArquivado, UsuarioParaCompartilhar } from "../types/tarefas";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -38,8 +38,20 @@ export async function mudarCorColuna(id: number, cor: string | null): Promise<vo
   await chamar(`/api/tarefas/colunas/${id}`, { method: "PATCH", body: JSON.stringify({ cor }) });
 }
 
-export async function criarCartao(colunaId: number, titulo: string): Promise<Cartao> {
-  return chamar("/api/tarefas/cartoes", { method: "POST", body: JSON.stringify({ colunaId, titulo }) });
+export async function criarCartao(
+  colunaId: number,
+  titulo: string,
+  compartilharComUsuarioId?: number | null
+): Promise<Cartao> {
+  return chamar("/api/tarefas/cartoes", {
+    method: "POST",
+    body: JSON.stringify({ colunaId, titulo, compartilharComUsuarioId }),
+  });
+}
+
+export async function fetchUsuariosParaCompartilhar(): Promise<UsuarioParaCompartilhar[]> {
+  const data = await chamar<{ usuarios: UsuarioParaCompartilhar[] }>("/api/tarefas/usuarios-para-compartilhar");
+  return data.usuarios;
 }
 
 export interface AtualizacaoCartao {
@@ -48,6 +60,7 @@ export interface AtualizacaoCartao {
   colunaId?: number;
   ordem?: number;
   arquivado?: boolean;
+  compartilharComUsuarioId?: number | null;
 }
 
 export async function atualizarCartao(id: number, dados: AtualizacaoCartao): Promise<void> {

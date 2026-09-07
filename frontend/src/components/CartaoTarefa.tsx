@@ -8,12 +8,16 @@ interface Props {
   cartao: Cartao;
   onConcluir: (cartao: Cartao, concluido: boolean) => void;
   onExcluir: (id: number) => void;
+  // true dentro da coluna sintética "Compartilhadas comigo" — o destinatário
+  // só pode marcar concluído, não arrasta nem exclui (ver tarefasService.ts).
+  somenteConcluir?: boolean;
 }
 
-export function CartaoTarefa({ cartao, onConcluir, onExcluir }: Props) {
+export function CartaoTarefa({ cartao, onConcluir, onExcluir, somenteConcluir = false }: Props) {
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: cartao.id,
+    disabled: somenteConcluir,
   });
 
   const style = {
@@ -23,7 +27,13 @@ export function CartaoTarefa({ cartao, onConcluir, onExcluir }: Props) {
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="tarefa-cartao" {...attributes} {...listeners}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="tarefa-cartao"
+      {...(somenteConcluir ? {} : attributes)}
+      {...(somenteConcluir ? {} : listeners)}
+    >
       <label className="tarefa-cartao-checkbox" onClick={(e) => e.stopPropagation()}>
         <input
           type="checkbox"
@@ -34,23 +44,30 @@ export function CartaoTarefa({ cartao, onConcluir, onExcluir }: Props) {
       <span className={`tarefa-cartao-titulo ${cartao.concluido ? "tarefa-cartao-titulo-concluido" : ""}`}>
         {cartao.titulo}
       </span>
-      {confirmandoExclusao ? (
-        <span className="tarefa-cartao-confirmar" onClick={(e) => e.stopPropagation()}>
-          <button onClick={() => onExcluir(cartao.id)}>Excluir</button>
-          <button onClick={() => setConfirmandoExclusao(false)}>Cancelar</button>
+      {cartao.criadoPorNome && <span className="tarefa-cartao-tag-compartilhado">de {cartao.criadoPorNome}</span>}
+      {cartao.compartilhadoComNome && (
+        <span className="tarefa-cartao-tag-compartilhado" title={`Compartilhado com ${cartao.compartilhadoComNome}`}>
+          ↗ {cartao.compartilhadoComNome}
         </span>
-      ) : (
-        <button
-          className="tarefa-cartao-excluir"
-          onClick={(e) => {
-            e.stopPropagation();
-            setConfirmandoExclusao(true);
-          }}
-          title="Excluir cartão"
-        >
-          <IconTrash size={13} />
-        </button>
       )}
+      {!somenteConcluir &&
+        (confirmandoExclusao ? (
+          <span className="tarefa-cartao-confirmar" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => onExcluir(cartao.id)}>Excluir</button>
+            <button onClick={() => setConfirmandoExclusao(false)}>Cancelar</button>
+          </span>
+        ) : (
+          <button
+            className="tarefa-cartao-excluir"
+            onClick={(e) => {
+              e.stopPropagation();
+              setConfirmandoExclusao(true);
+            }}
+            title="Excluir cartão"
+          >
+            <IconTrash size={13} />
+          </button>
+        ))}
     </div>
   );
 }

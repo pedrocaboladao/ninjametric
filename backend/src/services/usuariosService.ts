@@ -106,6 +106,14 @@ export async function listarUsuarios(): Promise<UsuarioComPermissoes[]> {
   return usuarios;
 }
 
+// Lista enxuta (só id/nome) pra escolher com quem compartilhar um cartão
+// de Tarefas — sem dado sensível (permissão/loja), por isso não é
+// admin-only como listarUsuarios().
+export async function listarUsuariosParaCompartilhar(usuarioIdAtual: number): Promise<{ id: number; nome: string }[]> {
+  const { rows } = await pool.query("SELECT id, nome FROM usuarios WHERE id != $1 ORDER BY nome", [usuarioIdAtual]);
+  return rows;
+}
+
 export async function buscarUsuarioPorUsername(
   username: string
 ): Promise<(Usuario & { senhaHash: string }) | null> {

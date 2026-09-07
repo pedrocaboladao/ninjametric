@@ -4,6 +4,14 @@ export interface Cartao {
   titulo: string;
   concluido: boolean;
   ordem: number;
+  compartilhadoComUsuarioId: number | null;
+  compartilhadoComNome: string | null;
+  criadoPorNome: string | null;
+}
+
+export interface UsuarioParaCompartilhar {
+  id: number;
+  nome: string;
 }
 
 export interface Coluna {

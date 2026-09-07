@@ -6,6 +6,12 @@ export interface Cartao {
   titulo: string;
   concluido: boolean;
   ordem: number;
+  // Visão do dono: pra quem esse cartão foi compartilhado (null = ninguém).
+  compartilhadoComUsuarioId: number | null;
+  compartilhadoComNome: string | null;
+  // Visão do destinatário: só preenchido nos cartões dentro da coluna
+  // sintética "Compartilhadas comigo" (ver listarQuadro) — quem criou.
+  criadoPorNome: string | null;
 }
 
 export interface Coluna {
@@ -23,11 +29,27 @@ interface LinhaCartao {
   titulo: string;
   concluido: boolean;
   ordem: number;
+  compartilhado_com_usuario_id: number | null;
+  compartilhado_com_nome?: string | null;
+  criado_por_nome?: string | null;
 }
 
 function linhaParaCartao(r: LinhaCartao): Cartao {
-  return { id: r.id, colunaId: r.coluna_id, titulo: r.titulo, concluido: r.concluido, ordem: r.ordem };
+  return {
+    id: r.id,
+    colunaId: r.coluna_id,
+    titulo: r.titulo,
+    concluido: r.concluido,
+    ordem: r.ordem,
+    compartilhadoComUsuarioId: r.compartilhado_com_usuario_id,
+    compartilhadoComNome: r.compartilhado_com_nome ?? null,
+    criadoPorNome: r.criado_por_nome ?? null,
+  };
 }
+
+// Coluna sintética "Compartilhadas comigo" (não existe linha no banco pra
+// ela) — id negativo pra nunca colidir com um id real (SERIAL começa em 1).
+const ID_COLUNA_COMPARTILHADAS = -1;
 
 const COLUNAS_PADRAO = ["Em andamento", "Hangar", "Catedral Impermeabilizantes", "Inga Collors", "Perpétua"];
 
@@ -60,9 +82,11 @@ export async function listarQuadro(usuarioId: number): Promise<Coluna[]> {
     [usuarioId]
   );
   const { rows: cartoesRows } = await pool.query(
-    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem
+    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
+            dest.nome AS compartilhado_com_nome
      FROM tarefas_cartoes tc
      JOIN tarefas_colunas col ON col.id = tc.coluna_id
+     LEFT JOIN usuarios dest ON dest.id = tc.compartilhado_com_usuario_id
      WHERE col.usuario_id = $1 AND tc.arquivado = false
      ORDER BY tc.ordem, tc.id`,
     [usuarioId]
@@ -76,7 +100,7 @@ export async function listarQuadro(usuarioId: number): Promise<Coluna[]> {
     cartoesPorColuna.set(c.colunaId, lista);
   }
 
-  return colunasRows.map((c) => ({
+  const colunas: Coluna[] = colunasRows.map((c) => ({
     id: c.id,
     nome: c.nome,
     especial: c.especial,
@@ -84,6 +108,33 @@ export async function listarQuadro(usuarioId: number): Promise<Coluna[]> {
     ordem: c.ordem,
     cartoes: cartoesPorColuna.get(c.id) ?? [],
   }));
+
+  // Cartões de OUTRO usuário compartilhados com este — aparecem numa coluna
+  // sintética no fim do quadro (não existe linha dela no banco). Só entra
+  // se tiver pelo menos 1, pra não poluir o quadro de quem nunca recebeu
+  // nada.
+  const { rows: compartilhadosRows } = await pool.query(
+    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
+            criador.nome AS criado_por_nome
+     FROM tarefas_cartoes tc
+     JOIN tarefas_colunas col ON col.id = tc.coluna_id
+     JOIN usuarios criador ON criador.id = col.usuario_id
+     WHERE tc.compartilhado_com_usuario_id = $1 AND tc.arquivado = false
+     ORDER BY tc.ordem, tc.id`,
+    [usuarioId]
+  );
+  if (compartilhadosRows.length > 0) {
+    colunas.push({
+      id: ID_COLUNA_COMPARTILHADAS,
+      nome: "Compartilhadas comigo",
+      especial: "compartilhadas",
+      cor: null,
+      ordem: 99999,
+      cartoes: compartilhadosRows.map(linhaParaCartao),
+    });
+  }
+
+  return colunas;
 }
 
 export async function criarColuna(usuarioId: number, nome: string): Promise<Coluna> {
@@ -132,7 +183,12 @@ export async function mudarCorColuna(id: number, usuarioId: number, cor: string 
   await pool.query("UPDATE tarefas_colunas SET cor = $1 WHERE id = $2", [cor, id]);
 }
 
-export async function criarCartao(usuarioId: number, colunaId: number, titulo: string): Promise<Cartao> {
+export async function criarCartao(
+  usuarioId: number,
+  colunaId: number,
+  titulo: string,
+  compartilharComUsuarioId?: number | null
+): Promise<Cartao> {
   await garantirColunaDoUsuario(colunaId, usuarioId);
   const { rows } = await pool.query(
     "SELECT COALESCE(MAX(ordem), -1) + 1 AS proxima FROM tarefas_cartoes WHERE coluna_id = $1",
@@ -140,8 +196,10 @@ export async function criarCartao(usuarioId: number, colunaId: number, titulo: s
   );
   const ordem = rows[0].proxima;
   const { rows: inseridos } = await pool.query(
-    "INSERT INTO tarefas_cartoes (coluna_id, titulo, ordem) VALUES ($1, $2, $3) RETURNING id, coluna_id, titulo, concluido, ordem",
-    [colunaId, titulo, ordem]
+    `INSERT INTO tarefas_cartoes (coluna_id, titulo, ordem, compartilhado_com_usuario_id)
+     VALUES ($1, $2, $3, $4)
+     RETURNING id, coluna_id, titulo, concluido, ordem, compartilhado_com_usuario_id`,
+    [colunaId, titulo, ordem, compartilharComUsuarioId ?? null]
   );
   return linhaParaCartao(inseridos[0]);
 }
@@ -152,6 +210,7 @@ export interface AtualizacaoCartao {
   colunaId?: number;
   ordem?: number;
   arquivado?: boolean;
+  compartilharComUsuarioId?: number | null;
 }
 
 async function garantirCartaoDoUsuario(id: number, usuarioId: number): Promise<void> {
@@ -166,8 +225,30 @@ async function garantirCartaoDoUsuario(id: number, usuarioId: number): Promise<v
   }
 }
 
+// Aceita tanto o dono da coluna quanto o destinatário do compartilhamento
+// — quem chama decide o que cada um pode fazer com base em "dono".
+async function garantirAcessoAoCartao(id: number, usuarioId: number): Promise<{ dono: boolean }> {
+  const { rows } = await pool.query(
+    `SELECT col.usuario_id = $2 AS dono
+     FROM tarefas_cartoes tc
+     JOIN tarefas_colunas col ON col.id = tc.coluna_id
+     WHERE tc.id = $1 AND (col.usuario_id = $2 OR tc.compartilhado_com_usuario_id = $2)`,
+    [id, usuarioId]
+  );
+  if (!rows[0]) {
+    throw new Error("Cartão não encontrado.");
+  }
+  return { dono: rows[0].dono };
+}
+
 export async function atualizarCartao(id: number, usuarioId: number, dados: AtualizacaoCartao): Promise<void> {
-  await garantirCartaoDoUsuario(id, usuarioId);
+  const { dono } = await garantirAcessoAoCartao(id, usuarioId);
+  if (!dono) {
+    const camposNaoPermitidos = Object.keys(dados).filter((k) => k !== "concluido");
+    if (camposNaoPermitidos.length > 0) {
+      throw new Error("Você só pode marcar essa tarefa compartilhada como concluída ou pendente.");
+    }
+  }
   if (dados.colunaId !== undefined) {
     await garantirColunaDoUsuario(dados.colunaId, usuarioId);
   }
@@ -195,6 +276,10 @@ export async function atualizarCartao(id: number, usuarioId: number, dados: Atua
   if (dados.arquivado !== undefined) {
     campos.push(`arquivado = $${i++}`);
     valores.push(dados.arquivado);
+  }
+  if (dados.compartilharComUsuarioId !== undefined) {
+    campos.push(`compartilhado_com_usuario_id = $${i++}`);
+    valores.push(dados.compartilharComUsuarioId);
   }
 
   if (campos.length === 0) return;
@@ -241,7 +326,8 @@ export interface CartaoArquivado extends Cartao {
 
 export async function listarArquivados(usuarioId: number): Promise<CartaoArquivado[]> {
   const { rows } = await pool.query(
-    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, col.nome AS coluna_nome
+    `SELECT tc.id, tc.coluna_id, tc.titulo, tc.concluido, tc.ordem, tc.compartilhado_com_usuario_id,
+            col.nome AS coluna_nome
      FROM tarefas_cartoes tc
      JOIN tarefas_colunas col ON col.id = tc.coluna_id
      WHERE tc.arquivado = true AND col.usuario_id = $1

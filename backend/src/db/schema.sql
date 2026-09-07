@@ -115,6 +115,13 @@ CREATE TABLE IF NOT EXISTS tarefas_cartoes (
 
 CREATE INDEX IF NOT EXISTS idx_tarefas_cartoes_coluna ON tarefas_cartoes (coluna_id, ordem);
 
+-- Compartilhar um cartão com outro usuário (ex.: dono cria, funcionário
+-- executa) — 1 destinatário só, não lista (ver tarefasService.ts). O
+-- cartão continua fisicamente na coluna do dono; no quadro do destinatário
+-- ele aparece numa coluna sintética montada em memória, não numa linha do
+-- banco.
+ALTER TABLE tarefas_cartoes ADD COLUMN IF NOT EXISTS compartilhado_com_usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL;
+
 -- Módulo Funcionários (ranking gamificado de empacotadores)
 CREATE TABLE IF NOT EXISTS empacotadores (
   id SERIAL PRIMARY KEY,

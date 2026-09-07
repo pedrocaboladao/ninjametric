@@ -13,6 +13,7 @@ import {
   listarArquivados,
   restaurarCartao,
 } from "../services/tarefasService";
+import { listarUsuariosParaCompartilhar } from "../services/usuariosService";
 
 const REGEX_COR_HEX = /^#[0-9a-fA-F]{6}$/;
 
@@ -88,14 +89,26 @@ tarefasRouter.delete("/colunas/:id", async (req, res) => {
   }
 });
 
+tarefasRouter.get("/usuarios-para-compartilhar", async (req, res) => {
+  try {
+    res.json({ usuarios: await listarUsuariosParaCompartilhar(req.usuario!.id) });
+  } catch (err) {
+    erro(res, err, "Falha ao listar usuários.");
+  }
+});
+
 tarefasRouter.post("/cartoes", async (req, res) => {
-  const { colunaId, titulo } = req.body;
+  const { colunaId, titulo, compartilharComUsuarioId } = req.body;
   if (!Number.isInteger(colunaId) || typeof titulo !== "string" || !titulo.trim()) {
     res.status(400).json({ error: "Informe a coluna e o título do cartão." });
     return;
   }
+  if (compartilharComUsuarioId !== undefined && compartilharComUsuarioId !== null && !Number.isInteger(compartilharComUsuarioId)) {
+    res.status(400).json({ error: "compartilharComUsuarioId inválido." });
+    return;
+  }
   try {
-    res.json(await criarCartao(req.usuario!.id, colunaId, titulo.trim()));
+    res.json(await criarCartao(req.usuario!.id, colunaId, titulo.trim(), compartilharComUsuarioId ?? null));
   } catch (err) {
     erro(res, err, "Falha ao criar cartão.");
   }

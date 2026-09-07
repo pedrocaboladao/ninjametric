@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import type { Coluna, Cartao } from "../types/tarefas";
+import type { Coluna, Cartao, UsuarioParaCompartilhar } from "../types/tarefas";
 import { CartaoTarefa } from "./CartaoTarefa";
 import { IconPlus, IconMore, IconLock, IconArchiveBox } from "./icons";
 
@@ -18,9 +18,10 @@ const CORES_PRESET = [
 
 interface Props {
   coluna: Coluna;
+  usuariosParaCompartilhar: UsuarioParaCompartilhar[];
   onConcluirCartao: (cartao: Cartao, concluido: boolean) => void;
   onExcluirCartao: (id: number) => void;
-  onAdicionarCartao: (colunaId: number, titulo: string) => void;
+  onAdicionarCartao: (colunaId: number, titulo: string, compartilharComUsuarioId: number | null) => void;
   onRenomear: (id: number, nome: string) => void;
   onExcluirColuna: (id: number) => void;
   onMudarCor: (id: number, cor: string | null) => void;
@@ -29,6 +30,7 @@ interface Props {
 
 export function ColunaTarefas({
   coluna,
+  usuariosParaCompartilhar,
   onConcluirCartao,
   onExcluirCartao,
   onAdicionarCartao,
@@ -42,9 +44,11 @@ export function ColunaTarefas({
   const [nomeTemp, setNomeTemp] = useState(coluna.nome);
   const [adicionando, setAdicionando] = useState(false);
   const [tituloNovoCartao, setTituloNovoCartao] = useState("");
+  const [compartilharCom, setCompartilharCom] = useState<string>("");
 
   const { setNodeRef } = useDroppable({ id: `coluna-${coluna.id}` });
   const especial = coluna.especial === "concluidos";
+  const compartilhadas = coluna.especial === "compartilhadas";
 
   function confirmarRenomear() {
     if (nomeTemp.trim() && nomeTemp.trim() !== coluna.nome) {
@@ -56,8 +60,9 @@ export function ColunaTarefas({
   function confirmarNovoCartao(e: React.FormEvent) {
     e.preventDefault();
     if (!tituloNovoCartao.trim()) return;
-    onAdicionarCartao(coluna.id, tituloNovoCartao.trim());
+    onAdicionarCartao(coluna.id, tituloNovoCartao.trim(), compartilharCom ? Number(compartilharCom) : null);
     setTituloNovoCartao("");
+    setCompartilharCom("");
     setAdicionando(false);
   }
 
@@ -85,10 +90,12 @@ export function ColunaTarefas({
           </span>
         )}
         <span className="tarefa-coluna-contagem">{coluna.cartoes.length}</span>
-        <button className="tarefa-coluna-icone-btn" onClick={() => setAdicionando(true)} title="Adicionar cartão">
-          <IconPlus size={15} />
-        </button>
-        {!especial && (
+        {!compartilhadas && (
+          <button className="tarefa-coluna-icone-btn" onClick={() => setAdicionando(true)} title="Adicionar cartão">
+            <IconPlus size={15} />
+          </button>
+        )}
+        {!especial && !compartilhadas && (
           <div className="tarefa-coluna-menu-wrap">
             <button className="tarefa-coluna-icone-btn" onClick={() => setMenuAberto((v) => !v)} title="Opções">
               <IconMore />
@@ -152,41 +159,57 @@ export function ColunaTarefas({
               cartao={cartao}
               onConcluir={onConcluirCartao}
               onExcluir={onExcluirCartao}
+              somenteConcluir={compartilhadas}
             />
           ))}
         </SortableContext>
 
-        {adicionando ? (
-          <form className="tarefa-novo-cartao-form" onSubmit={confirmarNovoCartao}>
-            <textarea
-              className="tarefa-novo-cartao-input"
-              autoFocus
-              rows={2}
-              value={tituloNovoCartao}
-              onChange={(e) => setTituloNovoCartao(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  confirmarNovoCartao(e);
-                }
-                if (e.key === "Escape") setAdicionando(false);
-              }}
-              placeholder="Título do cartão..."
-            />
-            <div className="tarefa-novo-cartao-acoes">
-              <button type="submit" className="btn-responder">
-                Adicionar
-              </button>
-              <button type="button" className="btn-excluir" onClick={() => setAdicionando(false)}>
-                Cancelar
-              </button>
-            </div>
-          </form>
-        ) : (
-          <button className="tarefa-adicionar-cartao" onClick={() => setAdicionando(true)}>
-            <IconPlus size={14} /> Adicionar um cartão
-          </button>
-        )}
+        {!compartilhadas &&
+          (adicionando ? (
+            <form className="tarefa-novo-cartao-form" onSubmit={confirmarNovoCartao}>
+              <textarea
+                className="tarefa-novo-cartao-input"
+                autoFocus
+                rows={2}
+                value={tituloNovoCartao}
+                onChange={(e) => setTituloNovoCartao(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    confirmarNovoCartao(e);
+                  }
+                  if (e.key === "Escape") setAdicionando(false);
+                }}
+                placeholder="Título do cartão..."
+              />
+              {usuariosParaCompartilhar.length > 0 && (
+                <select
+                  className="tarefa-novo-cartao-compartilhar"
+                  value={compartilharCom}
+                  onChange={(e) => setCompartilharCom(e.target.value)}
+                >
+                  <option value="">Compartilhar com... (ninguém)</option>
+                  {usuariosParaCompartilhar.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.nome}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <div className="tarefa-novo-cartao-acoes">
+                <button type="submit" className="btn-responder">
+                  Adicionar
+                </button>
+                <button type="button" className="btn-excluir" onClick={() => setAdicionando(false)}>
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button className="tarefa-adicionar-cartao" onClick={() => setAdicionando(true)}>
+              <IconPlus size={14} /> Adicionar um cartão
+            </button>
+          ))}
 
         {especial && coluna.cartoes.length > 0 && (
           <button className="tarefa-arquivar-concluidos" onClick={onArquivarConcluidos}>
