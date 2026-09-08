@@ -750,7 +750,11 @@ export async function getAdvertiserId(lojaId: number): Promise<number | null> {
       { headers: { Authorization: `Bearer ${accessToken}` }, params: { product_id: "PADS" } }
     );
     return data.advertisers?.[0]?.advertiser_id ?? null;
-  } catch {
+  } catch (err) {
+    // Antes tratava QUALQUER erro (token vencido, 500 do ML, rede) igual a
+    // "loja nunca abriu o Product Ads" — mesmo sintoma (null), sem distinguir
+    // no log. Só loga; continua devolvendo null igual antes.
+    console.error(`Erro ao buscar advertiser_id da loja ${lojaId}:`, err);
     return null;
   }
 }
