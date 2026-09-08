@@ -127,7 +127,12 @@ export async function listarCampanhasAds(
         return campanhas.map((c) =>
           mapearCampanha(loja.id, loja.nome, c, metaAnteriorPorCampanha.get(`${loja.id}-${c.id}`) ?? null)
         );
-      } catch {
+      } catch (err) {
+        // Antes engolia o erro em silêncio — uma loja sumia da tela de Ads
+        // sem nenhum rastro de por quê (token vencido, erro do ML, etc.).
+        // Só loga; o retorno vazio continua igual, não muda o resultado
+        // pras outras lojas.
+        console.error(`Erro ao buscar campanhas de Ads da loja ${loja.id} (${loja.nome}):`, err);
         return [];
       }
     })
