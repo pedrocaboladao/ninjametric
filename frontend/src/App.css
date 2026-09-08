@@ -1215,7 +1215,8 @@
 }
 
 .btn-excluir,
-.btn-responder {
+.btn-responder,
+.btn-sugerir-ia {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1228,6 +1229,16 @@
   border: 1px solid var(--border-strong);
   background: transparent;
   color: var(--text-secondary);
+}
+
+.btn-sugerir-ia:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn-sugerir-ia:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .btn-excluir:hover {

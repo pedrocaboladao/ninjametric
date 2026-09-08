@@ -34,8 +34,13 @@ export function usePerguntas(ativo = true) {
     };
   }, [carregar, ativo]);
 
-  async function responder(lojaId: number, questionId: number, texto: string) {
-    await responderPergunta(lojaId, questionId, texto);
+  async function responder(
+    lojaId: number,
+    questionId: number,
+    texto: string,
+    contexto?: { perguntaTexto: string; produtoTitulo: string | null; respostaSugerida: string | null }
+  ) {
+    await responderPergunta(lojaId, questionId, texto, contexto);
     setPerguntas((atual) => atual?.filter((p) => p.id !== questionId) ?? atual);
   }
 

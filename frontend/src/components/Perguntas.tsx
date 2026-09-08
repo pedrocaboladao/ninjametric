@@ -16,7 +16,12 @@ interface Props {
   perguntas: PerguntaPendente[] | null;
   error: string | null;
   loading: boolean;
-  responder: (lojaId: number, questionId: number, texto: string) => Promise<void>;
+  responder: (
+    lojaId: number,
+    questionId: number,
+    texto: string,
+    contexto?: { perguntaTexto: string; produtoTitulo: string | null; respostaSugerida: string | null }
+  ) => Promise<void>;
   excluir: (lojaId: number, questionId: number) => Promise<void>;
 }
 

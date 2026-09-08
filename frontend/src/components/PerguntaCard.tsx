@@ -1,11 +1,17 @@
 import { useState } from "react";
 import type { PerguntaPendente } from "../types/perguntas";
 import { formatCurrency, formatDataHora } from "../utils/format";
-import { IconTrash, IconExternalLink } from "./icons";
+import { sugerirRespostaPergunta } from "../api/perguntas";
+import { IconTrash, IconExternalLink, IconWand } from "./icons";
 
 interface Props {
   pergunta: PerguntaPendente;
-  onResponder: (lojaId: number, questionId: number, texto: string) => Promise<void>;
+  onResponder: (
+    lojaId: number,
+    questionId: number,
+    texto: string,
+    contexto?: { perguntaTexto: string; produtoTitulo: string | null; respostaSugerida: string | null }
+  ) => Promise<void>;
   onExcluir: (lojaId: number, questionId: number) => Promise<void>;
 }
 
@@ -13,7 +19,30 @@ export function PerguntaCard({ pergunta, onResponder, onExcluir }: Props) {
   const [resposta, setResposta] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [excluindo, setExcluindo] = useState(false);
+  const [sugerindo, setSugerindo] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  // Guarda a sugestão original da IA pra registrar no histórico junto com o
+  // que foi de fato enviado (mesmo que o usuário edite antes de mandar).
+  const [respostaSugerida, setRespostaSugerida] = useState<string | null>(null);
+
+  async function handleSugerir() {
+    if (sugerindo) return;
+    setSugerindo(true);
+    setErro(null);
+    try {
+      const sugestao = await sugerirRespostaPergunta(pergunta.lojaId, pergunta.texto, pergunta.produto?.titulo ?? null);
+      if (sugestao) {
+        setResposta(sugestao);
+        setRespostaSugerida(sugestao);
+      } else {
+        setErro("IA não conseguiu sugerir uma resposta agora — escreva na mão.");
+      }
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao sugerir resposta.");
+    } finally {
+      setSugerindo(false);
+    }
+  }
 
   async function handleResponder(e: React.FormEvent) {
     e.preventDefault();
@@ -21,7 +50,11 @@ export function PerguntaCard({ pergunta, onResponder, onExcluir }: Props) {
     setEnviando(true);
     setErro(null);
     try {
-      await onResponder(pergunta.lojaId, pergunta.id, resposta.trim());
+      await onResponder(pergunta.lojaId, pergunta.id, resposta.trim(), {
+        perguntaTexto: pergunta.texto,
+        produtoTitulo: pergunta.produto?.titulo ?? null,
+        respostaSugerida,
+      });
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Erro ao responder.");
     } finally {
@@ -82,6 +115,9 @@ export function PerguntaCard({ pergunta, onResponder, onExcluir }: Props) {
         <div className="pergunta-acoes">
           <button type="button" className="btn-excluir" onClick={handleExcluir} disabled={excluindo}>
             <IconTrash /> {excluindo ? "Excluindo..." : "Excluir"}
+          </button>
+          <button type="button" className="btn-sugerir-ia" onClick={handleSugerir} disabled={sugerindo}>
+            <IconWand size={14} /> {sugerindo ? "Pensando..." : "Sugerir com IA"}
           </button>
           <button type="submit" className="btn-responder" disabled={!resposta.trim() || enviando}>
             {enviando ? "Enviando..." : "Responder"}

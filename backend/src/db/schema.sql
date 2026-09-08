@@ -726,6 +726,23 @@ CREATE TABLE IF NOT EXISTS agente_criacao_ads_pensamentos (
 );
 CREATE INDEX IF NOT EXISTS idx_agente_criacao_ads_pensamentos_loja ON agente_criacao_ads_pensamentos (loja_id);
 
+-- Histórico real de perguntas respondidas — cada resposta de verdade
+-- enviada (via IA aceita/editada ou digitada na mão) vira 1 linha aqui.
+-- Serve de "memória" pro perguntasIAService.ts: exemplos reais (não
+-- inventados) de como a loja já respondeu, usados como referência nas
+-- próximas sugestões. Não é fine-tuning nem aprendizado automático do
+-- modelo — é só contexto real injetado no prompt a cada sugestão nova.
+CREATE TABLE IF NOT EXISTS perguntas_ia_historico (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id),
+  produto_titulo TEXT,
+  pergunta_texto TEXT NOT NULL,
+  resposta_sugerida TEXT,
+  resposta_enviada TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_perguntas_ia_historico_loja ON perguntas_ia_historico (loja_id, criado_em DESC);
+
 -- Resumo em texto corrido do Agente de Catálogo (mesmo padrão visual dos
 -- outros agentes) — montado por código puro a partir do snapshot
 -- (agente_catalogo_snapshot), sem IA (número já diz se vale baixar ou não,
