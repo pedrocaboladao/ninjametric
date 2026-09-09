@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { PerguntaCard } from "./PerguntaCard";
 import { corDaLoja } from "../utils/format";
 import type { PerguntaPendente } from "../types/perguntas";
@@ -26,6 +27,8 @@ interface Props {
 }
 
 export function Perguntas({ perguntas, error, loading, responder, excluir }: Props) {
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+
   if (loading) {
     return <div className="state-message">Carregando perguntas...</div>;
   }
@@ -38,7 +41,11 @@ export function Perguntas({ perguntas, error, loading, responder, excluir }: Pro
     return null;
   }
 
-  const grupos = agruparPorLoja(perguntas);
+  const lojasDisponiveis = new Map<number, string>();
+  for (const p of perguntas) lojasDisponiveis.set(p.lojaId, p.lojaNome);
+
+  const perguntasFiltradas = lojaFiltro === "todas" ? perguntas : perguntas.filter((p) => p.lojaId === lojaFiltro);
+  const grupos = agruparPorLoja(perguntasFiltradas);
 
   return (
     <div className="perguntas">
@@ -47,7 +54,21 @@ export function Perguntas({ perguntas, error, loading, responder, excluir }: Pro
           <h1>Perguntas</h1>
           <p className="painel-sub">Centralize e responda as perguntas das 4 contas sem entrar em cada uma.</p>
         </div>
-        <span className="perguntas-contagem">{perguntas.length} aguardando resposta</span>
+        <div className="perguntas-header-direita">
+          <select
+            className="dashboard-select"
+            value={lojaFiltro}
+            onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+          >
+            <option value="todas">Todas as lojas</option>
+            {[...lojasDisponiveis.entries()].map(([id, nome]) => (
+              <option key={id} value={id}>
+                {nome}
+              </option>
+            ))}
+          </select>
+          <span className="perguntas-contagem">{perguntasFiltradas.length} aguardando resposta</span>
+        </div>
       </div>
 
       {grupos.length === 0 && <div className="state-message">Nenhuma pergunta pendente. Tudo em dia!</div>}

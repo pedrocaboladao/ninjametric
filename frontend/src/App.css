@@ -1069,6 +1069,12 @@
   margin-bottom: 4px;
 }
 
+.perguntas-header-direita {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .perguntas-contagem {
   background: var(--bg-panel);
   border: 1px solid var(--border);
