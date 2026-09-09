@@ -214,6 +214,40 @@ interface LinhaSite {
   vencimento: string;
 }
 
+// As contas a pagar do Bling num periodo, cruas — sem parear com nada.
+//
+// Existe porque a conferencia so devolve o que sobrou, e o que sobrou depende
+// do pareamento. Quando o pareamento erra, o erro fica invisivel: em agosto de
+// 2026 a MAKRO CAPITAL do Bling foi casada com outra conta de valor parecido,
+// sumiu da lista de orfas, e a MAKRO do site apareceu como ausente. O total
+// batia — porque par errado tambem conta como par.
+//
+// Com a lista crua da pra perguntar o que importa direto: essa conta existe la?
+export async function listarContasBling(de: string, ate: string): Promise<
+  Array<{
+    id: number;
+    vencimento: string;
+    valor: number;
+    contato: string;
+    contatoId: number | null;
+    historico: string;
+    numeroDocumento: string;
+    situacao: number | null;
+  }>
+> {
+  const contas = await baixarDoBling(de, ate);
+  return contas.map((c) => ({
+    id: c.id,
+    vencimento: dia(c.vencimento),
+    valor: dinheiro(c.valor),
+    contato: c.contato?.nome ?? "",
+    contatoId: c.contato?.id ?? null,
+    historico: (c.historico ?? "").trim(),
+    numeroDocumento: (c.numeroDocumento ?? "").trim(),
+    situacao: c.situacao === undefined ? null : Number(c.situacao),
+  }));
+}
+
 export async function conferirContasPagar(de: string, ate: string): Promise<ConferenciaContas> {
   const [bling, { rows: site }, plano] = await Promise.all([
     baixarDoBling(de, ate),

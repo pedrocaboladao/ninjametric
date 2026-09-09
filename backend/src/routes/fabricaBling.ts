@@ -41,6 +41,7 @@ import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVenda
 
 import {
   conferirContasPagar,
+  listarContasBling,
   procurarContatos,
   espiarContas,
   contasDoFornecedor,
@@ -251,6 +252,23 @@ fabricaBlingRouter.post("/contas/criar", async (req, res) => {
     }
   }
   res.json({ total: criadas.length, ok: criadas.filter((x) => x.ok).length, criadas });
+});
+
+// Lista crua das contas a pagar do Bling num periodo. Sem pareamento: serve
+// pra perguntar "essa conta existe la?" sem depender de quem casou com quem.
+fabricaBlingRouter.get("/contas/listar", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe de e ate no formato AAAA-MM-DD." });
+  }
+  try {
+    const contas = await listarContasBling(de, ate);
+    res.json({ de, ate, total: contas.length, contas });
+  } catch (err) {
+    console.error("[bling-listar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
+  }
 });
 
 fabricaBlingRouter.get("/contas/conferir", async (req, res) => {
