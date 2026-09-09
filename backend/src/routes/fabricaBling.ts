@@ -20,6 +20,7 @@ import {
   sincronizarContatos,
   criarFornecedorBling,
   renomearContatoBling,
+  atualizarContatoBling,
 } from "../services/blingContatosService";
 import {
   rodadaEmAndamento,
@@ -169,6 +170,26 @@ fabricaBlingRouter.put("/contatos/:id/nome", async (req, res) => {
     res.json({ ok: true, id, nome: nome.trim() });
   } catch (err) {
     erro(res, err, "Falha ao renomear o contato.");
+  }
+});
+
+// Completa o cadastro de um contato que ja existe. Nasceu pro CPF que o extrato
+// do Sicoob mascara: o contato entra sem documento e ganha o numero quando o
+// fornecedor manda.
+fabricaBlingRouter.put("/contatos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const b = req.body ?? {};
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  try {
+    await atualizarContatoBling(id, {
+      nome: texto(b.nome),
+      documento: texto(b.documento),
+      telefone: texto(b.telefone),
+      email: texto(b.email),
+    });
+    res.json({ ok: true, id });
+  } catch (err) {
+    erro(res, err, "Falha ao atualizar o contato.");
   }
 });
 
