@@ -127,6 +127,42 @@ async function acharPorDocumento(doc: string): Promise<ContatoBling | null> {
   return null;
 }
 
+// Procura por nome, para quem nao tem documento.
+//
+// Existe porque o extrato do Sicoob mascara CPF de pessoa fisica: o corte de
+// manta e o cortador de mantas chegam como `***.450.489-**`, e sem os cinco
+// digitos que faltam nao da pra cadastrar pelo caminho normal. O Bling aceita
+// contato sem documento — a `RECICLADA ROGÉRIO` esta assim la desde antes.
+//
+// A comparacao e no nome inteiro, sem acento e sem pontuacao. Comparar por
+// primeira palavra ja pareou VALE TRANSPORTE com VALE ALIMENTACAO uma vez;
+// aqui o estrago seria pendurar nota de um fornecedor no cadastro de outro.
+function semAcento(t: string): string {
+  return t
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function acharPorNome(nome: string): Promise<ContatoBling | null> {
+  const alvo = semAcento(nome);
+  if (!alvo) return null;
+  try {
+    const r = await chamar<{ data?: ContatoBling[] }>("get", "/contatos", {
+      pesquisa: nome,
+      limite: POR_PAGINA,
+    });
+    return (r.data ?? []).find((c) => semAcento(c.nome ?? "") === alvo) ?? null;
+  } catch {
+    // busca que o Bling recusou nao prova que o contato nao existe: melhor
+    // deixar o POST seguir do que travar o cadastro por causa do filtro.
+    return null;
+  }
+}
+
 interface ClienteCadastro {
   id: number;
   nome: string;
@@ -642,7 +678,9 @@ export async function puxarContatos(simulacao: boolean): Promise<ResultadoPuxada
 // apaga sem perder o historico preso nele.
 export interface NovoFornecedor {
   nome: string;
+  /** CPF ou CNPJ. Vazio so para quem nao tem documento — ver `pessoaFisica`. */
   documento: string;
+  /** Obrigatorio quando `documento` vem vazio: sem os digitos nao da pra inferir. */
   pessoaFisica?: boolean;
   ie?: string;
   email?: string;
@@ -659,18 +697,23 @@ export async function criarFornecedorBling(
   f: NovoFornecedor
 ): Promise<{ id: number; criado: boolean }> {
   const doc = digitos(f.documento);
-  if (doc.length !== 11 && doc.length !== 14)
+  if (doc && doc.length !== 11 && doc.length !== 14)
     throw new Error(`documento inválido para ${f.nome}: ${f.documento}`);
+
+  // Sem documento nao da pra deduzir pessoa fisica pelo tamanho, entao o
+  // chamador precisa dizer. Errar aqui cadastra uma pessoa como empresa.
+  if (!doc && f.pessoaFisica === undefined)
+    throw new Error(`${f.nome} veio sem documento: informe pessoaFisica true ou false`);
   const pf = f.pessoaFisica ?? doc.length === 11;
 
-  const achado = await acharPorDocumento(doc);
+  const achado = doc ? await acharPorDocumento(doc) : await acharPorNome(f.nome);
   if (achado) return { id: achado.id, criado: false };
 
   const ie = (f.ie ?? "").trim();
   const corpo: Record<string, unknown> = {
     nome: f.nome,
     tipo: pf ? "F" : "J",
-    numeroDocumento: doc,
+    ...(doc ? { numeroDocumento: doc } : {}),
     situacao: "A",
     indicadorIe: !pf && ie ? 1 : 9,
     ...(!pf && ie ? { ie } : {}),

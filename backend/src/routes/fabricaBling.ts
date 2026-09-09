@@ -123,17 +123,29 @@ fabricaBlingRouter.get("/contas/categorias", async (_req, res) => {
 // escrever no ERP em lote as cegas e o tipo de coisa que nao tem desfazer.
 fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
   const bruto = Array.isArray((req.body ?? {}).itens) ? (req.body ?? {}).itens : [];
+  const numero = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
   const itens = bruto
-    .map((i: { blingId?: unknown; categoriaId?: unknown; contatoId?: unknown }) => ({
-      blingId: Number(i?.blingId),
-      categoriaId: Number(i?.categoriaId),
-      contatoId: Number(i?.contatoId) > 0 ? Number(i.contatoId) : undefined,
-    }))
+    .map(
+      (i: { blingId?: unknown; categoriaId?: unknown; contatoId?: unknown; valor?: unknown }) => ({
+        blingId: Number(i?.blingId),
+        categoriaId: numero(i?.categoriaId),
+        contatoId: numero(i?.contatoId),
+        valor: numero(i?.valor),
+      })
+    )
+    // Basta um campo pra mexer. Exigir `categoriaId` sempre obrigava a
+    // reenviar a categoria que ja estava certa so pra corrigir um valor — e
+    // reenviar categoria e justamente onde se erra por descuido.
     .filter(
-      (i: { blingId: number; categoriaId: number }) =>
-        Number.isInteger(i.blingId) && i.blingId > 0 && Number.isInteger(i.categoriaId) && i.categoriaId > 0
+      (i: { blingId: number; categoriaId?: number; contatoId?: number; valor?: number }) =>
+        Number.isInteger(i.blingId) &&
+        i.blingId > 0 &&
+        (i.categoriaId !== undefined || i.contatoId !== undefined || i.valor !== undefined)
     );
-  if (!itens.length) return res.status(400).json({ error: "Informe itens com blingId e categoriaId." });
+  if (!itens.length)
+    return res
+      .status(400)
+      .json({ error: "Informe itens com blingId e ao menos categoriaId, contatoId ou valor." });
   if (itens.length > 500) return res.status(400).json({ error: "No maximo 500 por vez." });
   try {
     const r = await classificarContasBling(itens);
@@ -172,7 +184,9 @@ fabricaBlingRouter.post("/contatos/criar", async (req, res) => {
       const r = await criarFornecedorBling({
         nome,
         documento: String(c?.documento ?? ""),
-        pessoaFisica: c?.pessoaFisica === true ? true : undefined,
+        // passa o booleano como veio: `false` explicito importa quando nao ha
+        // documento, porque ai e ele que decide entre pessoa fisica e juridica.
+        pessoaFisica: typeof c?.pessoaFisica === "boolean" ? c.pessoaFisica : undefined,
         ie: typeof c?.ie === "string" ? c.ie : undefined,
         email: typeof c?.email === "string" ? c.email : undefined,
         telefone: typeof c?.telefone === "string" ? c.telefone : undefined,
