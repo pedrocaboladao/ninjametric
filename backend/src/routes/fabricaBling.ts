@@ -20,6 +20,7 @@ import {
   sincronizarContatos,
   criarFornecedorBling,
   renomearContatoBling,
+  atualizarContatoBling,
 } from "../services/blingContatosService";
 import {
   rodadaEmAndamento,
@@ -40,6 +41,7 @@ import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVenda
 
 import {
   conferirContasPagar,
+  listarContasBling,
   procurarContatos,
   espiarContas,
   contasDoFornecedor,
@@ -172,6 +174,26 @@ fabricaBlingRouter.put("/contatos/:id/nome", async (req, res) => {
   }
 });
 
+// Completa o cadastro de um contato que ja existe. Nasceu pro CPF que o extrato
+// do Sicoob mascara: o contato entra sem documento e ganha o numero quando o
+// fornecedor manda.
+fabricaBlingRouter.put("/contatos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const b = req.body ?? {};
+  const texto = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+  try {
+    await atualizarContatoBling(id, {
+      nome: texto(b.nome),
+      documento: texto(b.documento),
+      telefone: texto(b.telefone),
+      email: texto(b.email),
+    });
+    res.json({ ok: true, id });
+  } catch (err) {
+    erro(res, err, "Falha ao atualizar o contato.");
+  }
+});
+
 fabricaBlingRouter.post("/contatos/criar", async (req, res) => {
   const bruto = Array.isArray((req.body ?? {}).contatos) ? (req.body ?? {}).contatos : [];
   if (!bruto.length) return res.status(400).json({ error: "Informe contatos." });
@@ -230,6 +252,23 @@ fabricaBlingRouter.post("/contas/criar", async (req, res) => {
     }
   }
   res.json({ total: criadas.length, ok: criadas.filter((x) => x.ok).length, criadas });
+});
+
+// Lista crua das contas a pagar do Bling num periodo. Sem pareamento: serve
+// pra perguntar "essa conta existe la?" sem depender de quem casou com quem.
+fabricaBlingRouter.get("/contas/listar", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe de e ate no formato AAAA-MM-DD." });
+  }
+  try {
+    const contas = await listarContasBling(de, ate);
+    res.json({ de, ate, total: contas.length, contas });
+  } catch (err) {
+    console.error("[bling-listar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
+  }
 });
 
 fabricaBlingRouter.get("/contas/conferir", async (req, res) => {
