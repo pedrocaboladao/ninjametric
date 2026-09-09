@@ -746,7 +746,13 @@ interface ContaCompleta {
 
 export interface Classificacao {
   blingId: number;
-  categoriaId: number;
+  /** Deixe de fora pra manter a categoria que a conta ja tem. */
+  categoriaId?: number;
+  // Corrigir o valor da conta. O Bling manda no contas a pagar, mas manda
+  // errado quando alguem digita errado: o salario do Douglas estava 1.657,59
+  // la e 1.675,59 no site, e o extrato deu razao ao site — 57 no lugar do 75.
+  // Antes disso a unica saida era abrir a conta na tela do Bling.
+  valor?: number;
   // Trocar o contato da conta. Serve pra padronizar quem aparece como
   // contraparte: o adiantamento de tres funcionarios usava o contato generico
   // "ADIANTAMENTO SALARIAL" e o do quarto o nome da pessoa, e a conferencia
@@ -780,10 +786,15 @@ export async function classificarContasBling(
       //
       // `ocorrencia` fica de fora de proposito: e ela que define recorrencia, e
       // mandar o valor errado transformaria um carne em conta unica.
+      const categoriaId = it.categoriaId ?? Number(atual.categoria?.id ?? 0);
+      if (!categoriaId) throw new Error("conta sem categoria no Bling: informe categoriaId");
+      const valor = it.valor ?? Number(atual.valor);
+      if (!Number.isFinite(valor) || valor <= 0) throw new Error(`valor invalido: ${it.valor}`);
+
       const corpo: Record<string, unknown> = {
         vencimento: atual.vencimento,
-        valor: atual.valor,
-        categoria: { id: it.categoriaId },
+        valor,
+        categoria: { id: categoriaId },
       };
       const contato = it.contatoId ?? atual.contato?.id;
       if (contato) corpo.contato = { id: contato };
@@ -801,8 +812,15 @@ export async function classificarContasBling(
       const { data: depois } = await chamar<{ data: ContaCompleta }>(
         `/contas/pagar/${it.blingId}`
       );
-      if (Number(depois?.categoria?.id ?? 0) !== it.categoriaId) {
+      if (Number(depois?.categoria?.id ?? 0) !== categoriaId) {
         throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
+      }
+      // O saldo acompanha o valor numa conta em aberto; numa ja baixada, nao.
+      // Por isso a conferencia e no valor, que e o campo que se mandou.
+      if (Math.abs(Number(depois?.valor ?? 0) - valor) > 0.02) {
+        throw new Error(
+          `o Bling aceitou o PUT mas o valor nao gravou: ${depois?.valor} em vez de ${valor}`
+        );
       }
       if (it.contatoId && Number(depois?.contato?.id ?? 0) !== it.contatoId) {
         throw new Error("o Bling aceitou o PUT mas o contato não gravou");
