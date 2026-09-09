@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PerguntaCard } from "./PerguntaCard";
 import { corDaLoja } from "../utils/format";
 import type { PerguntaPendente } from "../types/perguntas";
+import type { Usuario } from "../types/usuarios";
 
 function agruparPorLoja(perguntas: PerguntaPendente[]): Array<{ lojaId: number; lojaNome: string; itens: PerguntaPendente[] }> {
   const grupos = new Map<number, { lojaId: number; lojaNome: string; itens: PerguntaPendente[] }>();
@@ -24,10 +25,11 @@ interface Props {
     contexto?: { perguntaTexto: string; produtoTitulo: string | null; respostaSugerida: string | null }
   ) => Promise<void>;
   excluir: (lojaId: number, questionId: number) => Promise<void>;
+  usuario: Usuario;
 }
 
-export function Perguntas({ perguntas, error, loading, responder, excluir }: Props) {
-  const [lojaFiltro, setLojaFiltro] = useState<number | "todas">("todas");
+export function Perguntas({ perguntas, error, loading, responder, excluir, usuario }: Props) {
+  const [lojaFiltro, setLojaFiltro] = useState<number | "todas" | "minhas">("todas");
 
   if (loading) {
     return <div className="state-message">Carregando perguntas...</div>;
@@ -44,7 +46,12 @@ export function Perguntas({ perguntas, error, loading, responder, excluir }: Pro
   const lojasDisponiveis = new Map<number, string>();
   for (const p of perguntas) lojasDisponiveis.set(p.lojaId, p.lojaNome);
 
-  const perguntasFiltradas = lojaFiltro === "todas" ? perguntas : perguntas.filter((p) => p.lojaId === lojaFiltro);
+  const perguntasFiltradas =
+    lojaFiltro === "todas"
+      ? perguntas
+      : lojaFiltro === "minhas"
+        ? perguntas.filter((p) => usuario.lojas.includes(p.lojaId))
+        : perguntas.filter((p) => p.lojaId === lojaFiltro);
   const grupos = agruparPorLoja(perguntasFiltradas);
 
   return (
@@ -58,9 +65,13 @@ export function Perguntas({ perguntas, error, loading, responder, excluir }: Pro
           <select
             className="dashboard-select"
             value={lojaFiltro}
-            onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+            onChange={(e) => {
+              const valor = e.target.value;
+              setLojaFiltro(valor === "todas" || valor === "minhas" ? valor : Number(valor));
+            }}
           >
             <option value="todas">Todas as lojas</option>
+            <option value="minhas">Minhas lojas</option>
             {[...lojasDisponiveis.entries()].map(([id, nome]) => (
               <option key={id} value={id}>
                 {nome}

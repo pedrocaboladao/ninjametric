@@ -193,6 +193,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
             loading={perguntas.loading}
             responder={perguntas.responder}
             excluir={perguntas.excluir}
+            usuario={usuario}
           />
         )}
         {view === "clonar" && temPermissao(usuario, "clonar") && <ClonarAnuncio />}
