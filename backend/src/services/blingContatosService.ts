@@ -740,19 +740,54 @@ export async function criarFornecedorBling(
 // Renomeia um contato do Bling. Existe por um erro de digitacao que o site
 // teria copiado: o banco esta cadastrado como "SICOOB METROPOLITANDO", sem o
 // N. Padronizar site e ERP nao pode significar espalhar o erro do ERP.
-export async function renomearContatoBling(id: number, nome: string): Promise<void> {
+export interface CamposContato {
+  nome?: string;
+  /** CPF ou CNPJ. Serve pra completar quem foi cadastrado sem documento. */
+  documento?: string;
+  telefone?: string;
+  email?: string;
+}
+
+export async function atualizarContatoBling(id: number, campos: CamposContato): Promise<void> {
   if (!Number.isInteger(id) || id <= 0) throw new Error("Id de contato inválido.");
-  if (!nome.trim()) throw new Error("Informe o nome.");
-  // Le antes: o PUT do Bling substitui o contato, entao mandar so o nome
+
+  const nome = campos.nome?.trim();
+  const doc = digitos(campos.documento);
+  const telefone = campos.telefone?.trim();
+  const email = campos.email?.trim();
+  if (!nome && !doc && !telefone && !email) throw new Error("Informe algum campo pra mudar.");
+  if (campos.documento && doc.length !== 11 && doc.length !== 14)
+    throw new Error(`documento inválido: ${campos.documento}`);
+
+  // Le antes: o PUT do Bling substitui o contato, entao mandar so um campo
   // apagaria documento, endereco e telefone.
   const r = await chamar<{ data: ContatoBling }>("get", `/contatos/${id}`);
   const atual = r.data;
-  const corpo: Record<string, unknown> = { ...atual, nome: nome.trim() };
+  const corpo: Record<string, unknown> = {
+    ...atual,
+    ...(nome ? { nome } : {}),
+    // Quem nasceu sem documento nasceu com o tipo declarado na criacao; o
+    // documento agora confirma. Trocar o tipo aqui seria decidir por conta
+    // propria que uma pessoa virou empresa.
+    ...(doc ? { numeroDocumento: doc } : {}),
+    ...(telefone ? { telefone } : {}),
+    ...(email ? { email } : {}),
+  };
   delete corpo.id;
   await chamar("put", `/contatos/${id}`, undefined, corpo);
-  const depois = await chamar<{ data: ContatoBling }>("get", `/contatos/${id}`);
-  if ((depois.data?.nome ?? "").trim() !== nome.trim())
+
+  // Rele e confere cada campo que se mandou. O 200 do Bling nunca provou que
+  // gravou — foi assim que a categoria passou 45 contas sem gravar.
+  const depois = (await chamar<{ data: ContatoBling }>("get", `/contatos/${id}`)).data;
+  if (nome && (depois?.nome ?? "").trim() !== nome)
     throw new Error(`o Bling aceitou o PUT mas o nome do contato ${id} não gravou`);
+  if (doc && digitos(depois?.numeroDocumento) !== doc)
+    throw new Error(`o Bling aceitou o PUT mas o documento do contato ${id} não gravou`);
+}
+
+export async function renomearContatoBling(id: number, nome: string): Promise<void> {
+  if (!nome.trim()) throw new Error("Informe o nome.");
+  await atualizarContatoBling(id, { nome });
 }
 
 // Acha o contato do Bling pelo CNPJ/CPF. Devolve null em vez de erro: quem
