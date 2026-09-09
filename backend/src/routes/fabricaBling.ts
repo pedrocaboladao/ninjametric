@@ -172,7 +172,9 @@ fabricaBlingRouter.post("/contatos/criar", async (req, res) => {
       const r = await criarFornecedorBling({
         nome,
         documento: String(c?.documento ?? ""),
-        pessoaFisica: c?.pessoaFisica === true ? true : undefined,
+        // passa o booleano como veio: `false` explicito importa quando nao ha
+        // documento, porque ai e ele que decide entre pessoa fisica e juridica.
+        pessoaFisica: typeof c?.pessoaFisica === "boolean" ? c.pessoaFisica : undefined,
         ie: typeof c?.ie === "string" ? c.ie : undefined,
         email: typeof c?.email === "string" ? c.email : undefined,
         telefone: typeof c?.telefone === "string" ? c.telefone : undefined,
