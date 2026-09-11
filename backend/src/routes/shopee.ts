@@ -138,3 +138,32 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     erro(res, err, "Falha ao buscar pedidos de teste.");
   }
 });
+
+// Diagnóstico temporário — só pra confirmar se o app tem a permissão "Chat"
+// liberada na Shopee antes de investir na automação de verdade. Remover
+// depois de confirmado (junto com o botão/uso no front, se algum vier a
+// existir — por ora só é chamado direto pela URL, como pedidos-teste acima).
+shopeeRouter.get("/chat-teste", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe ?lojaId=" });
+    return;
+  }
+  try {
+    const data = await chamarApiAssinada<{
+      error?: string;
+      message?: string;
+      response?: { conversations?: unknown[]; more?: boolean };
+    }>(lojaId, "/api/v2/sellerchat/get_conversation_list", {
+      direction: "latest",
+      page_size: 5,
+    });
+    if (data.error) {
+      res.status(400).json({ error: `Shopee respondeu "${data.error}": ${data.message ?? ""}`, bruto: data });
+      return;
+    }
+    res.json({ ok: true, conversas: data.response?.conversations?.length ?? 0, bruto: data });
+  } catch (err) {
+    erro(res, err, "Falha ao consultar o chat de teste.");
+  }
+});
