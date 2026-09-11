@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import axios from "axios";
 import { pool } from "../db/pool";
 import {
   configurado,
@@ -164,6 +165,13 @@ shopeeRouter.get("/chat-teste", async (req, res) => {
     }
     res.json({ ok: true, conversas: data.response?.conversations?.length ?? 0, bruto: data });
   } catch (err) {
+    // erro() genérico só mostra "Request failed with status code X" pra erro
+    // do axios — o corpo real da resposta (onde a Shopee explica o motivo)
+    // fica escondido. Aqui é só diagnóstico, então expõe tudo.
+    if (axios.isAxiosError(err)) {
+      res.status(400).json({ error: `HTTP ${err.response?.status}`, corpo: err.response?.data ?? null });
+      return;
+    }
     erro(res, err, "Falha ao consultar o chat de teste.");
   }
 });
