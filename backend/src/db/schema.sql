@@ -1832,3 +1832,29 @@ CREATE TABLE IF NOT EXISTS fabrica_sincronizacoes (
 
 CREATE INDEX IF NOT EXISTS fabrica_sincronizacoes_inicio
   ON fabrica_sincronizacoes (iniciado_em DESC);
+
+-- Módulo "Discrepâncias": qualquer usuário cola o link de um anúncio de uma
+-- das nossas lojas com preço fora do combinado entre o grupo. loja_id é
+-- descoberto sozinho a partir do link (achando qual loja é dona do anúncio
+-- no Mercado Livre), não escolhido a mão — ver discrepanciasService.ts.
+CREATE TABLE IF NOT EXISTS discrepancias (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL,
+  link TEXT NOT NULL,
+  mlb TEXT NOT NULL,
+  sku TEXT,
+  titulo TEXT,
+  preco NUMERIC(12, 2),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_discrepancias_loja ON discrepancias (loja_id);
+CREATE INDEX IF NOT EXISTS idx_discrepancias_usuario ON discrepancias (usuario_id);
+
+-- Diferente de todo outro módulo, "Discrepâncias" nasce liberado pra geral —
+-- concede a permissão pra todo usuário já existente de uma vez (idempotente
+-- via ON CONFLICT). Usuário novo daqui pra frente passa pelo checkbox normal
+-- da tela de Usuários, igual qualquer outro módulo.
+INSERT INTO usuarios_permissoes (usuario_id, modulo)
+SELECT id, 'discrepancias' FROM usuarios
+ON CONFLICT DO NOTHING;

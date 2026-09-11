@@ -28,6 +28,7 @@ export const MODULOS: Modulo[] = [
   { chave: "market_intelligence", label: "Inteligência de Mercado" },
   { chave: "tarefas", label: "Tarefas" },
   { chave: "funcionarios", label: "Funcionários" },
+  { chave: "discrepancias", label: "Discrepâncias" },
 ];
 
 export function temPermissao(usuario: { admin: boolean; permissoes: string[] } | null, modulo: string): boolean {

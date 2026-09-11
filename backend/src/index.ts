@@ -8,6 +8,7 @@ import { dashboardRouter } from "./routes/dashboard";
 import { perguntasRouter } from "./routes/perguntas";
 import { clonarAnuncioRouter } from "./routes/clonarAnuncio";
 import { lojasRouter } from "./routes/lojas";
+import { discrepanciasRouter } from "./routes/discrepancias";
 import { tarefasRouter } from "./routes/tarefas";
 import { empacotadoresRouter } from "./routes/empacotadores";
 import { usuariosRouter } from "./routes/usuarios";
@@ -100,6 +101,7 @@ app.use("/api/fabrica-pedidos", requireAuth, requirePermissao("fabrica_pedidos")
 app.use("/api/fabrica-contas", requireAuth, requirePermissao("fabrica_financeiro"), fabricaContasRouter);
 app.use("/api/fabrica-pix", requireAuth, requirePermissao("fabrica_financeiro"), fabricaPixRouter);
 app.use("/api/fabrica-entradas", requireAuth, requirePermissao("fabrica_estoque"), fabricaEntradasRouter);
+app.use("/api/discrepancias", requireAuth, requirePermissao("discrepancias"), discrepanciasRouter);
 // O callback do Bling chega pelo navegador vindo de fora, sem o cookie da
 // sessão — por isso fica antes do requireAuth. O que protege é o state, que
 // só existe se alguém autenticado começou a autorização.

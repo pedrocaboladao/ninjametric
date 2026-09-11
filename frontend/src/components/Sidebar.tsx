@@ -55,7 +55,8 @@ export type View =
   | "promocoes"
   | "pesquisa"
   | "agentes"
-  | "market_intelligence";
+  | "market_intelligence"
+  | "discrepancias";
 
 interface Props {
   view: View;
@@ -113,6 +114,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
+  const podeDiscrepancias = temPermissao(usuario, "discrepancias");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
   // Fabrica Distribuidora: operacao propria, separada das 20 lojas.
   // Esta lista cresce a cada modulo novo da fabrica (produtos, pedidos, financeiro...).
@@ -343,6 +345,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconSearch size={16} />
               <span>Pesquisa de Mercado</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeDiscrepancias && (
+          <>
+            <button
+              className={`sidebar-item ${view === "discrepancias" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("discrepancias")}
+            >
+              <IconMegaphone size={16} />
+              <span>Discrepâncias</span>
             </button>
             <div className="sidebar-divider" />
           </>
