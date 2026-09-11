@@ -150,6 +150,14 @@ shopeeRouter.get("/chat-teste", async (req, res) => {
     res.status(400).json({ error: "Informe ?lojaId=" });
     return;
   }
+  // Aceita qualquer parâmetro extra pela própria URL (?page_size=5&type=...)
+  // pra poder tentar variações rápido sem precisar de outro deploy a cada
+  // tentativa — só enquanto estamos descobrindo o formato certo.
+  const paramsExtras: Record<string, string> = {};
+  for (const [chave, valor] of Object.entries(req.query)) {
+    if (chave === "lojaId" || typeof valor !== "string") continue;
+    paramsExtras[chave] = valor;
+  }
   try {
     const data = await chamarApiAssinada<{
       error?: string;
@@ -158,6 +166,7 @@ shopeeRouter.get("/chat-teste", async (req, res) => {
     }>(lojaId, "/api/v2/sellerchat/get_conversation_list", {
       direction: "latest",
       page_size: 5,
+      ...paramsExtras,
     });
     if (data.error) {
       res.status(400).json({ error: `Shopee respondeu "${data.error}": ${data.message ?? ""}`, bruto: data });
