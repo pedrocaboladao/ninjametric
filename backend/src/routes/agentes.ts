@@ -21,6 +21,7 @@ import { verificarOportunidades, listarOportunidades } from "../services/agenteO
 import { listarPensamentosCatalogo } from "../services/agenteCatalogoService";
 import { listarPensamentosConversao } from "../services/agenteConversaoService";
 import { listarPensamentosCriacaoAds, verificarAgenteCriacaoAds } from "../services/agenteCriacaoAdsService";
+import { listarHistoricoChatShopee, verificarChatShopeeTodasLojas } from "../services/shopeeChatAutoService";
 import { listarPlanoDiario, marcarItemPlano, verificarPlanoDiarioAgora } from "../services/agentePlanoDiarioService";
 import { buscarResumoEscritorio } from "../services/resumoEscritorioService";
 import { perguntarDiretorAds } from "../services/diretorAdsService";
@@ -239,6 +240,26 @@ agentesRouter.post("/criacao-ads/verificar", async (_req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao verificar criação de ads.");
+  }
+});
+
+// Piloto de resposta automática no chat da Shopee (só Catedral por
+// enquanto) — ver shopeeChatAutoService.ts. Sem revisão humana antes do
+// envio: esse histórico é o registro de auditoria de tudo que já saiu.
+agentesRouter.get("/chat-shopee/historico", async (_req, res) => {
+  try {
+    res.json({ historico: await listarHistoricoChatShopee() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o histórico do chat automático.");
+  }
+});
+
+agentesRouter.post("/chat-shopee/verificar", async (_req, res) => {
+  try {
+    const resultado = await verificarChatShopeeTodasLojas();
+    res.json({ ok: true, ...resultado });
+  } catch (err) {
+    erro(res, err, "Falha ao verificar o chat automático.");
   }
 });
 

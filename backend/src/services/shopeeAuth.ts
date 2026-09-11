@@ -154,7 +154,11 @@ export async function tokenValido(lojaId: number): Promise<ShopeeTokenValido> {
 export async function chamarApiAssinada<T>(
   lojaId: number,
   path: string,
-  params: Record<string, string | number> = {},
+  // "unknown" (não só string|number) porque POST manda o corpo inteiro pro
+  // axios sem tocar — só o caminho GET precisa virar string pra querystring
+  // (ver o for abaixo). Um POST como send_message manda campo aninhado
+  // (content: {text: "..."}), que não caberia em string|number.
+  params: Record<string, unknown> = {},
   method: "GET" | "POST" = "GET"
 ): Promise<T> {
   exigirConfig();

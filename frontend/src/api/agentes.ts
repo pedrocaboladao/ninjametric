@@ -6,6 +6,7 @@ import type {
   PensamentoCatalogo,
   PensamentoConversao,
   PensamentoCriacaoAds,
+  RespostaChatShopee,
   PlanoDiario,
   ResumoEscritorio,
   BriefingGrowthHacker,
@@ -93,6 +94,17 @@ export async function fetchPensamentosCriacaoAds(): Promise<PensamentoCriacaoAds
 
 export async function verificarCriacaoAdsAgora(): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agentes/criacao-ads/verificar`, { method: "POST", credentials: "include" });
+  await tratarResposta(res);
+}
+
+export async function fetchHistoricoChatShopee(): Promise<RespostaChatShopee[]> {
+  const res = await fetch(`${API_BASE}/api/agentes/chat-shopee/historico`, { credentials: "include" });
+  const data = await tratarResposta<{ historico: RespostaChatShopee[] }>(res);
+  return data.historico;
+}
+
+export async function verificarChatShopeeAgora(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agentes/chat-shopee/verificar`, { method: "POST", credentials: "include" });
   await tratarResposta(res);
 }
 

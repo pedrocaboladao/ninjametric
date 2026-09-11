@@ -743,6 +743,27 @@ CREATE TABLE IF NOT EXISTS perguntas_ia_historico (
 );
 CREATE INDEX IF NOT EXISTS idx_perguntas_ia_historico_loja ON perguntas_ia_historico (loja_id, criado_em DESC);
 
+-- Registro de toda mensagem de chat da Shopee respondida automaticamente
+-- pela IA (ver shopeeChatAutoService.ts) — diferente de perguntas_ia_historico
+-- (Mercado Livre), aqui a IA envia sozinha, sem revisão humana antes (decisão
+-- explícita do dono, pelo prazo de 5h da Shopee). Essa tabela é ao mesmo
+-- tempo o log de auditoria (só forma de saber o que foi enviado sem
+-- revisão) e a trava de idempotência: (conversation_id, mensagem_id) evita
+-- responder a mesma mensagem duas vezes se a checagem rodar de novo antes
+-- da Shopee refletir a resposta.
+CREATE TABLE IF NOT EXISTS shopee_chat_ia_historico (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER REFERENCES lojas(id),
+  conversation_id TEXT NOT NULL,
+  mensagem_id TEXT NOT NULL,
+  cliente_nome TEXT,
+  mensagem_cliente TEXT NOT NULL,
+  resposta_enviada TEXT NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_shopee_chat_ia_historico_conversation ON shopee_chat_ia_historico (conversation_id);
+CREATE INDEX IF NOT EXISTS idx_shopee_chat_ia_historico_loja ON shopee_chat_ia_historico (loja_id, criado_em DESC);
+
 -- Resumo em texto corrido do Agente de Catálogo (mesmo padrão visual dos
 -- outros agentes) — montado por código puro a partir do snapshot
 -- (agente_catalogo_snapshot), sem IA (número já diz se vale baixar ou não,

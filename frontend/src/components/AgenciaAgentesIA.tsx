@@ -33,6 +33,8 @@ import {
   fetchPensamentosConversao,
   fetchPensamentosCriacaoAds,
   verificarCriacaoAdsAgora,
+  fetchHistoricoChatShopee,
+  verificarChatShopeeAgora,
   fetchPlanoDiario,
   verificarPlanoDiarioAgora,
   marcarItemPlano,
@@ -50,6 +52,7 @@ import type {
   PensamentoCatalogo,
   PensamentoConversao,
   PensamentoCriacaoAds,
+  RespostaChatShopee,
   PlanoDiario,
   ResumoEscritorio,
   BriefingGrowthHacker,
@@ -2805,6 +2808,85 @@ function AgenteCriacaoAds() {
   );
 }
 
+// Piloto: responde sozinha (sem revisão humana antes) as mensagens de chat
+// da Shopee pendentes, só da Catedral por enquanto — ver
+// shopeeChatAutoService.ts. Essa tela é o registro de auditoria de tudo que
+// já saiu, já que não existe aprovação prévia.
+function AgenteChatShopee() {
+  const [historico, setHistorico] = useState<RespostaChatShopee[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [verificando, setVerificando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      setHistorico(await fetchHistoricoChatShopee());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Erro ao carregar o histórico.");
+    }
+  }, []);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function verificarAgora() {
+    setVerificando(true);
+    setErro(null);
+    try {
+      await verificarChatShopeeAgora();
+      await carregar();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao verificar.");
+    } finally {
+      setVerificando(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Chat Shopee (piloto)</h1>
+          <p className="painel-sub">
+            Responde sozinha mensagens de chat pendentes na Shopee — sem revisão humana antes de enviar, pra garantir o
+            prazo de 5h da Shopee mesmo fora do horário comercial. Roda a cada 5 minutos sozinha, mas dá pra forçar uma
+            checagem agora. Piloto restrito à Catedral, só mensagens de texto.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <button type="button" className="btn-responder financeiro-btn-hoje" onClick={verificarAgora} disabled={verificando}>
+            {verificando ? "Verificando..." : "Verificar agora"}
+          </button>
+        </div>
+      </div>
+
+      {erro && <div className="state-message state-error">{erro}</div>}
+
+      <div className="agente-feed">
+        <div className="agente-feed-topo">
+          <span className="painel-eyebrow">Mensagens respondidas automaticamente</span>
+        </div>
+
+        {historico !== null && historico.length === 0 && (
+          <div className="state-message">Nenhuma mensagem respondida automaticamente ainda.</div>
+        )}
+
+        {historico?.map((h) => (
+          <div key={h.id} className="agente-pensamento-card">
+            <div className="pergunta-meta">
+              <b>{h.clienteNome ?? "Cliente"}</b> {h.lojaNome ? `(${h.lojaNome})` : ""} — {formatDataHora(h.criadoEm)}
+            </div>
+            <p className="pergunta-texto">{h.mensagemCliente}</p>
+            <p className="pergunta-texto">
+              <b>Resposta automática:</b> {h.respostaEnviada}
+            </p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
 // Cruza as 4 lojas de propósito (ao contrário dos outros agentes, que são
 // por loja) — lê o que Ads, Conversão e Catálogo escreveram nas últimas 24h
 // mais as Oportunidades em aberto, e prioriza tudo junto num plano do dia
@@ -2927,6 +3009,7 @@ export function AgenciaAgentesIA() {
     | "catalogo"
     | "conversao"
     | "criacaoAds"
+    | "chatShopee"
   >("plano");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
@@ -3024,6 +3107,13 @@ export function AgenciaAgentesIA() {
         >
           Agente de Criação de Ads
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "chatShopee" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("chatShopee")}
+        >
+          Chat Shopee (piloto)
+        </button>
       </div>
 
       {agente === "plano" && <PlanoDoDia />}
@@ -3037,6 +3127,7 @@ export function AgenciaAgentesIA() {
       {agente === "catalogo" && <AgenteCatalogo />}
       {agente === "conversao" && <AgenteConversao />}
       {agente === "criacaoAds" && <AgenteCriacaoAds />}
+      {agente === "chatShopee" && <AgenteChatShopee />}
 
       {modoTV && <ModoTVEscritorio onSair={sairDoModoTV} />}
     </div>

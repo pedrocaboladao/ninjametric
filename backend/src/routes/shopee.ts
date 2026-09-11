@@ -1,5 +1,4 @@
 import { Router, Request, Response } from "express";
-import axios from "axios";
 import { pool } from "../db/pool";
 import {
   configurado,
@@ -140,47 +139,3 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
   }
 });
 
-// Diagnóstico temporário — só pra confirmar se o app tem a permissão "Chat"
-// liberada na Shopee antes de investir na automação de verdade. Remover
-// depois de confirmado (junto com o botão/uso no front, se algum vier a
-// existir — por ora só é chamado direto pela URL, como pedidos-teste acima).
-shopeeRouter.get("/chat-teste", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
-  if (!Number.isInteger(lojaId)) {
-    res.status(400).json({ error: "Informe ?lojaId=" });
-    return;
-  }
-  // Aceita qualquer parâmetro extra pela própria URL (?page_size=5&type=...)
-  // pra poder tentar variações rápido sem precisar de outro deploy a cada
-  // tentativa — só enquanto estamos descobrindo o formato certo.
-  const paramsExtras: Record<string, string> = {};
-  for (const [chave, valor] of Object.entries(req.query)) {
-    if (chave === "lojaId" || typeof valor !== "string") continue;
-    paramsExtras[chave] = valor;
-  }
-  try {
-    const data = await chamarApiAssinada<{
-      error?: string;
-      message?: string;
-      response?: { conversations?: unknown[]; more?: boolean };
-    }>(lojaId, "/api/v2/sellerchat/get_conversation_list", {
-      direction: "latest",
-      page_size: 5,
-      ...paramsExtras,
-    });
-    if (data.error) {
-      res.status(400).json({ error: `Shopee respondeu "${data.error}": ${data.message ?? ""}`, bruto: data });
-      return;
-    }
-    res.json({ ok: true, conversas: data.response?.conversations?.length ?? 0, bruto: data });
-  } catch (err) {
-    // erro() genérico só mostra "Request failed with status code X" pra erro
-    // do axios — o corpo real da resposta (onde a Shopee explica o motivo)
-    // fica escondido. Aqui é só diagnóstico, então expõe tudo.
-    if (axios.isAxiosError(err)) {
-      res.status(400).json({ error: `HTTP ${err.response?.status}`, corpo: err.response?.data ?? null });
-      return;
-    }
-    erro(res, err, "Falha ao consultar o chat de teste.");
-  }
-});

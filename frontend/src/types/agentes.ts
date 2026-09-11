@@ -63,6 +63,17 @@ export interface PensamentoCriacaoAds {
   lojaNome: string | null;
 }
 
+export interface RespostaChatShopee {
+  id: number;
+  lojaId: number | null;
+  lojaNome: string | null;
+  conversationId: string;
+  clienteNome: string | null;
+  mensagemCliente: string;
+  respostaEnviada: string;
+  criadoEm: string;
+}
+
 export interface ItemPlanoDiario {
   id: number;
   descricao: string;
