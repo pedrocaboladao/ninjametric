@@ -15,6 +15,7 @@ import {
   perguntarGrowthHacker,
   fetchMensagensGrowthHacker,
   perguntarDiretorAds,
+  perguntarDiretorAdsShopee,
   perguntarConsultorPreco,
   fetchBriefingsGrowthHacker,
   verificarBriefingGrowthHackerAgora,
@@ -58,7 +59,7 @@ import type {
   BriefingGrowthHacker,
 } from "../types/agentes";
 import { formatDataHora, formatCurrency } from "../utils/format";
-import { fetchLojas, type Loja } from "../api/lojas";
+import { fetchLojas, fetchLojasShopee, type Loja } from "../api/lojas";
 
 // Robô parado num ambiente (só chão + paredes, sem móveis) com um balão de
 // fala animado (efeito "digitando...") ao lado. Desenhado à mão em SVG, no
@@ -1127,6 +1128,67 @@ function DiretorAdsGrupo() {
           nomeLojaSelecionada
             ? `Análise focada só na ${nomeLojaSelecionada} — mesma profundidade, sem o resto do grupo disputando espaço na resposta.`
             : "Pergunte sobre o Ads de qualquer loja do grupo — competição saudável entre as outras contas, mas nenhuma pode ultrapassar as suas 4 num produto disputado. Quer focar numa loja só? Selecione ela ali em cima."
+        }
+      />
+    </>
+  );
+}
+
+// Mesma ideia do Diretor de Ads do Mercado Livre, mas pra Shopee — sem
+// nenhuma política de soberania entre lojas (não faz sentido ainda, só a
+// Catedral tem Shopee conectado hoje, mas o código já nasce pronto pra
+// analisar todas as lojas que forem entrando).
+function DiretorAdsShopee() {
+  const [lojas, setLojas] = useState<Loja[]>([]);
+  const [lojaSelecionada, setLojaSelecionada] = useState<number | "todas">("todas");
+
+  useEffect(() => {
+    fetchLojasShopee()
+      .then(setLojas)
+      .catch(() => {});
+  }, []);
+
+  const perguntar = useCallback(
+    (pergunta: string, historico: MensagemChat[]) =>
+      perguntarDiretorAdsShopee(pergunta, historico, lojaSelecionada === "todas" ? undefined : lojaSelecionada),
+    [lojaSelecionada]
+  );
+
+  const nomeLojaSelecionada = lojaSelecionada === "todas" ? null : lojas.find((l) => l.id === lojaSelecionada)?.nome;
+
+  return (
+    <>
+      <div className="financeiro-topo">
+        <div>
+          <h1>Diretor de Ads Shopee</h1>
+          <p className="painel-sub">
+            Chefão de Ads da Shopee — analisa e recomenda ação pra todas as lojas com Shopee conectado, sem
+            favoritismo entre elas: só números e o que fazer.
+          </p>
+        </div>
+        <div className="financeiro-filtros">
+          <select
+            className="dashboard-select"
+            value={lojaSelecionada}
+            onChange={(e) => setLojaSelecionada(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+          >
+            <option value="todas">Todas as lojas (Shopee)</option>
+            {lojas.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <ChatAgente
+        perguntar={perguntar}
+        placeholder={nomeLojaSelecionada ? `Ex: como está o Ads da ${nomeLojaSelecionada}?` : "Ex: como está o Ads da Shopee hoje?"}
+        mensagemVazia={
+          nomeLojaSelecionada
+            ? `Análise focada só na ${nomeLojaSelecionada}.`
+            : "Pergunte sobre o Ads Shopee de qualquer loja conectada. Quer focar numa loja só? Selecione ela ali em cima."
         }
       />
     </>
@@ -3010,6 +3072,7 @@ export function AgenciaAgentesIA() {
     | "conversao"
     | "criacaoAds"
     | "chatShopee"
+    | "diretorAdsShopee"
   >("plano");
   const [modoTV, setModoTV] = useState(false);
   // Estável de propósito — se fosse uma arrow function inline no JSX, toda
@@ -3114,6 +3177,13 @@ export function AgenciaAgentesIA() {
         >
           Chat Shopee (piloto)
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${agente === "diretorAdsShopee" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAgente("diretorAdsShopee")}
+        >
+          Diretor de Ads Shopee
+        </button>
       </div>
 
       {agente === "plano" && <PlanoDoDia />}
@@ -3128,6 +3198,7 @@ export function AgenciaAgentesIA() {
       {agente === "conversao" && <AgenteConversao />}
       {agente === "criacaoAds" && <AgenteCriacaoAds />}
       {agente === "chatShopee" && <AgenteChatShopee />}
+      {agente === "diretorAdsShopee" && <DiretorAdsShopee />}
 
       {modoTV && <ModoTVEscritorio onSair={sairDoModoTV} />}
     </div>

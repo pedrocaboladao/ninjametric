@@ -155,6 +155,20 @@ export async function perguntarDiretorAds(
   return tratarResposta<RespostaChatAgente>(res);
 }
 
+export async function perguntarDiretorAdsShopee(
+  pergunta: string,
+  historico: MensagemChat[],
+  lojaId?: number
+): Promise<RespostaChatAgente> {
+  const res = await fetch(`${API_BASE}/api/agentes/diretor-ads-shopee/perguntar`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pergunta, historico, lojaId }),
+  });
+  return tratarResposta<RespostaChatAgente>(res);
+}
+
 export async function perguntarConsultorPreco(pergunta: string, historico: MensagemChat[]): Promise<RespostaChatAgente> {
   const res = await fetch(`${API_BASE}/api/agentes/consultor-preco/perguntar`, {
     method: "POST",
