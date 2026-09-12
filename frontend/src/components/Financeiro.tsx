@@ -143,7 +143,9 @@ function GerenciarImpostos({ onFechar }: { onFechar: () => void }) {
       {lojas === null && <div className="state-message">Carregando...</div>}
       {lojas?.map((l) => (
         <div key={l.id} className="financeiro-impostos-linha">
-          <span>{l.nome}</span>
+          <span>
+            {l.nome} <span className="financeiro-td-mudo">#{l.id}{!l.autorizada ? " · não autorizada" : ""}</span>
+          </span>
           <div className="financeiro-impostos-campo">
             <input
               type="text"
@@ -213,7 +215,9 @@ function GerenciarCustoFixo({ onFechar }: { onFechar: () => void }) {
       {lojas === null && <div className="state-message">Carregando...</div>}
       {lojas?.map((l) => (
         <div key={l.id} className="financeiro-impostos-linha">
-          <span>{l.nome}</span>
+          <span>
+            {l.nome} <span className="financeiro-td-mudo">#{l.id}{!l.autorizada ? " · não autorizada" : ""}</span>
+          </span>
           <div className="financeiro-impostos-campo">
             <span>R$</span>
             <input
