@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import axios from "axios";
 import { pool } from "../db/pool";
 import {
   configurado,
@@ -136,6 +137,56 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     });
   } catch (err) {
     erro(res, err, "Falha ao buscar pedidos de teste.");
+  }
+});
+
+// Diagnóstico temporário — pra investigar por que o piloto de chat
+// automático (shopeeChatAutoService.ts) não está respondendo nada.
+// Devolve a lista crua de conversas da Shopee + o resultado de aplicar o
+// mesmo filtro usado de verdade (unread_count>0, texto, última mensagem do
+// cliente), pra comparar contra a realidade sem adivinhar. Remover depois.
+shopeeRouter.get("/chat-diag", async (req, res) => {
+  const lojaId = Number(req.query.lojaId) || 2;
+  try {
+    const data = await chamarApiAssinada<{
+      error?: string;
+      message?: string;
+      response?: {
+        conversations?: Array<{
+          conversation_id: string;
+          to_id: number;
+          to_name: string;
+          unread_count: number;
+          latest_message_id: string;
+          latest_message_type: string;
+          latest_message_content?: { text?: string };
+          latest_message_from_id: number;
+        }>;
+      };
+    }>(lojaId, "/api/v2/sellerchat/get_conversation_list", { type: "all", direction: "latest", page_size: 20 });
+
+    if (data.error) {
+      res.status(400).json({ error: `Shopee respondeu "${data.error}": ${data.message ?? ""}`, bruto: data });
+      return;
+    }
+
+    const conversas = data.response?.conversations ?? [];
+    const pendentes = conversas.filter(
+      (c) => c.unread_count > 0 && c.latest_message_type === "text" && c.latest_message_from_id === c.to_id
+    );
+
+    res.json({
+      totalConversas: conversas.length,
+      totalPendentesPeloFiltro: pendentes.length,
+      pendentes,
+      todasConversas: conversas,
+    });
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      res.status(400).json({ error: `HTTP ${err.response?.status}`, corpo: err.response?.data ?? null });
+      return;
+    }
+    erro(res, err, "Falha ao consultar o chat de diagnóstico.");
   }
 });
 
