@@ -6,15 +6,20 @@ import { obterGastoAdsShopee } from "./shopeeAdsService";
 
 const DIAS_JANELA = 7;
 
-// Enum de status real da Shopee ainda não confirmado contra uma resposta ao
-// vivo (a loja piloto não teve pedido de verdade até agora) — usa o
-// conjunto documentado publicamente. Revisar assim que o primeiro pedido
-// real da Catedral aparecer.
+// Enum de status confirmado ao vivo contra pedidos reais da Perpétua
+// (READY_TO_SHIP, UNPAID, CANCELLED, SHIPPED, TO_CONFIRM_RECEIVE, COMPLETED,
+// TO_RETURN) — bateu exatamente com o total/cancelados que a Shopee mostra.
 const STATUS_CANCELADOS = new Set(["CANCELLED", "IN_CANCEL"]);
 const STATUS_NAO_PAGOS = new Set(["UNPAID", "INVOICE_PENDING"]);
+// Devolução em andamento (comprador pediu, ainda não resolvida) — mesmo
+// tratamento conservador de CANCELLED/UNPAID: não conta como venda enquanto
+// o dinheiro pode voltar pro comprador. Como o status é buscado ao vivo (não
+// trava no que era na hora da venda), se a devolução for negada o pedido
+// volta a contar sozinho na próxima atualização, sem precisar de ajuste.
+const STATUS_EM_DEVOLUCAO = new Set(["TO_RETURN"]);
 
 function pedidoValido(status: string): boolean {
-  return !STATUS_CANCELADOS.has(status) && !STATUS_NAO_PAGOS.has(status);
+  return !STATUS_CANCELADOS.has(status) && !STATUS_NAO_PAGOS.has(status) && !STATUS_EM_DEVOLUCAO.has(status);
 }
 
 // Mesma lógica de normalização do Financeiro do Mercado Livre
