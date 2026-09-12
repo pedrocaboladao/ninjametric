@@ -45,8 +45,16 @@ clonarAnuncioRouter.post("/preview", async (req, res) => {
 });
 
 clonarAnuncioRouter.post("/publicar", async (req, res) => {
-  const { url, lojaDestinoId, titulos, listingType, ativarFlex, imagensPersonalizadas, imagensPorVariacao } =
-    req.body;
+  const {
+    url,
+    lojaDestinoId,
+    titulos,
+    listingType,
+    ativarFlex,
+    imagensPersonalizadas,
+    imagensPorVariacao,
+    vincularCatalogo,
+  } = req.body;
   const usuario = req.usuario!;
 
   if (
@@ -77,6 +85,7 @@ clonarAnuncioRouter.post("/publicar", async (req, res) => {
         imagensPersonalizadas: Array.isArray(imagensPersonalizadas) ? imagensPersonalizadas : undefined,
         imagensPorVariacao:
           imagensPorVariacao && typeof imagensPorVariacao === "object" ? imagensPorVariacao : undefined,
+        vincularCatalogo: Boolean(vincularCatalogo),
       },
       lojasEfetivasParaClonagem(usuario)
     );

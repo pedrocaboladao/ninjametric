@@ -208,6 +208,12 @@ export interface MlItemFull {
   // item/anúncio separado, todos com o mesmo family_id.
   family_id?: number;
   user_product_id?: string;
+  // Presentes quando o anúncio compete no "buy box" de um produto de
+  // catálogo — catalog_product_id é o mesmo id que aparece na URL pública
+  // (mercadolivre.com.br/.../p/MLB...). Usado pra clonar mantendo o vínculo
+  // de catálogo em vez de criar um anúncio solto (ver clonarAnuncioService.ts).
+  catalog_listing?: boolean;
+  catalog_product_id?: string | null;
   shipping: {
     mode: string;
     local_pick_up: boolean;
@@ -353,8 +359,14 @@ export async function getAtributosDaCategoria(categoryId: string): Promise<MlCat
 export interface NovoItemPayload {
   // No modelo User Product (quando family_name é usado), o título é gerado
   // automaticamente pelo Mercado Livre a partir do family_name + atributos —
-  // enviar "title" junto dá erro "The fields [title] are invalid".
+  // enviar "title" junto dá erro "The fields [title] are invalid". Mesma
+  // regra vale pra anúncio de catálogo (catalog_listing): o título vem do
+  // produto de catálogo, não do vendedor.
   title?: string;
+  // Vincula o anúncio novo ao mesmo produto de catálogo do original — ele
+  // passa a competir no buy box em vez de ser um anúncio solto.
+  catalog_listing?: boolean;
+  catalog_product_id?: string;
   category_id: string;
   price: number;
   currency_id: string;

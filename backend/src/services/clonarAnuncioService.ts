@@ -556,6 +556,10 @@ export interface PreviewAnuncio {
   descricao: string;
   linkOriginal: string;
   lojaOrigemId: number;
+  // Presente quando o anúncio original compete no buy box de um produto de
+  // catálogo — habilita a opção de clonar mantendo esse vínculo (ver
+  // OpcoesClone.vincularCatalogo), em vez de criar um anúncio solto.
+  catalogProductId: string | null;
 }
 
 export async function montarPreview(url: string, lojasPermitidas?: number[]): Promise<PreviewAnuncio> {
@@ -593,6 +597,7 @@ export async function montarPreview(url: string, lojasPermitidas?: number[]): Pr
     descricao,
     linkOriginal: item.permalink,
     lojaOrigemId: lojaId,
+    catalogProductId: item.catalog_listing ? item.catalog_product_id ?? null : null,
   };
 }
 
@@ -600,6 +605,10 @@ export interface OpcoesClone {
   titulos: string[];
   listingType: string;
   ativarFlex: boolean;
+  // Só tem efeito quando o anúncio original é de catálogo (ver
+  // PreviewAnuncio.catalogProductId) — vincula o clone ao mesmo produto de
+  // catálogo em vez de criar um anúncio solto.
+  vincularCatalogo?: boolean;
   imagensPersonalizadas?: string[];
   imagensPorVariacao?: Record<number, string[]>;
 }
@@ -660,6 +669,16 @@ async function publicarUmaCopia(
       free_shipping: original.shipping.free_shipping,
     },
   };
+
+  // Vincula o clone ao mesmo produto de catálogo do original, em vez de
+  // criar um anúncio solto — o Mercado Livre não aceita título customizado
+  // nesse caso (vem do produto de catálogo, não do vendedor), mesma regra
+  // já vale pro modelo User Product.
+  if (opcoes.vincularCatalogo && original.catalog_product_id) {
+    payload.catalog_listing = true;
+    payload.catalog_product_id = original.catalog_product_id;
+    delete payload.title;
+  }
 
   if (temVariacoes) {
     payload.variations = original.variations.map((v) => {

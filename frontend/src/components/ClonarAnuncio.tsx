@@ -17,6 +17,7 @@ export function ClonarAnuncio() {
   const [quantidadeClones, setQuantidadeClones] = useState(1);
   const [listingType, setListingType] = useState<string>(TIPOS_ANUNCIO[0].value);
   const [ativarFlex, setAtivarFlex] = useState(false);
+  const [vincularCatalogo, setVincularCatalogo] = useState(false);
   const [usarImagensPersonalizadas, setUsarImagensPersonalizadas] = useState(false);
   const [imagensTexto, setImagensTexto] = useState("");
   const [imagensPorVariacaoTexto, setImagensPorVariacaoTexto] = useState<Record<number, string>>({});
@@ -49,6 +50,7 @@ export function ClonarAnuncio() {
       try {
         const dados = await buscarPreview(url.trim(), Number(lojaDestinoId));
         setPreview(dados);
+        if (!dados.catalogProductId) setVincularCatalogo(false);
       } catch (err) {
         setErro(err instanceof Error ? err.message : "Erro ao buscar anúncio.");
       } finally {
@@ -69,6 +71,7 @@ export function ClonarAnuncio() {
     setQuantidadeClones(1);
     setListingType(TIPOS_ANUNCIO[0].value);
     setAtivarFlex(false);
+    setVincularCatalogo(false);
     setUsarImagensPersonalizadas(false);
     setImagensTexto("");
     setImagensPorVariacaoTexto({});
@@ -126,6 +129,7 @@ export function ClonarAnuncio() {
         ativarFlex,
         imagensPersonalizadas,
         imagensPorVariacao,
+        vincularCatalogo,
       });
       setResultados(resultado);
     } catch (err) {
@@ -250,14 +254,36 @@ export function ClonarAnuncio() {
             </div>
           )}
 
+          {preview?.catalogProductId && (
+            <label className="clonar-checkbox-bloco">
+              <input
+                type="checkbox"
+                checked={vincularCatalogo}
+                onChange={(e) => {
+                  setVincularCatalogo(e.target.checked);
+                  if (e.target.checked) setQuantidadeClones(1);
+                }}
+              />
+              <div>
+                <div className="clonar-checkbox-titulo">Vincular ao catálogo</div>
+                <div className="clonar-checkbox-desc">
+                  Esse anúncio compete no catálogo do Mercado Livre (produto {preview.catalogProductId}). Marque pra o
+                  clone entrar na mesma disputa em vez de virar um anúncio solto — o título vem do catálogo, não do
+                  que você digitar no próximo passo, e só permite 1 clone por vez.
+                </div>
+              </div>
+            </label>
+          )}
+
           <div className="clonar-campo">
             <label>Quantidade de clones</label>
             <input
               className="clonar-input"
               type="number"
               min={1}
-              max={20}
+              max={vincularCatalogo ? 1 : 20}
               value={quantidadeClones}
+              disabled={vincularCatalogo}
               onChange={(e) => setQuantidadeClones(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
             />
           </div>
@@ -424,6 +450,12 @@ export function ClonarAnuncio() {
                 {ativarFlex ? " · Flex ativado" : ""}
               </b>
             </div>
+            {vincularCatalogo && preview.catalogProductId && (
+              <div className="clonar-resumo-linha">
+                <span>Catálogo</span>
+                <b>Vinculado ao produto {preview.catalogProductId}</b>
+              </div>
+            )}
           </div>
 
           {preview.numVariacoes > 0 && !usarImagensPersonalizadas && (

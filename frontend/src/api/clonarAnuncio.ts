@@ -34,6 +34,7 @@ export interface PublicarParams {
   ativarFlex: boolean;
   imagensPersonalizadas?: string[];
   imagensPorVariacao?: Record<number, string[]>;
+  vincularCatalogo?: boolean;
 }
 
 export async function publicarClone(params: PublicarParams): Promise<ResultadoClone[]> {

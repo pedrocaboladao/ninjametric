@@ -21,6 +21,9 @@ export interface PreviewAnuncio {
   descricao: string;
   linkOriginal: string;
   lojaOrigemId: number;
+  // Presente quando o anúncio original compete no buy box de um produto de
+  // catálogo — habilita a opção de clonar mantendo o vínculo.
+  catalogProductId: string | null;
 }
 
 export interface ResultadoClone {
