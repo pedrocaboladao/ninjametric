@@ -8,6 +8,7 @@ import {
   trocarCodigo,
   urlDeAutorizacao,
 } from "../services/shopeeAuth";
+import { listarPedidos } from "../services/shopeeApi";
 
 export const shopeeRouter = Router();
 // Callback fica num router PRÓPRIO, separado do admin-gated acima — mesmo
@@ -137,6 +138,35 @@ shopeeRouter.get("/pedidos-teste", async (req, res) => {
     });
   } catch (err) {
     erro(res, err, "Falha ao buscar pedidos de teste.");
+  }
+});
+
+// Diagnóstico temporário — pra investigar a diferença de vendas/valores
+// entre o nosso Financeiro Shopee e uma ferramenta externa (Mercado Turbo).
+// Devolve todo pedido cru da janela + contagem por order_status real, pra
+// comparar contra o que pedidoValido() em financeiroShopeeService.ts
+// assume hoje (CANCELLED/IN_CANCEL/UNPAID/INVOICE_PENDING) — esse conjunto
+// nunca foi confirmado contra uma resposta ao vivo (ver comentário em
+// financeiroShopeeService.ts). Remover depois.
+shopeeRouter.get("/pedidos-status-diag", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const dataInicio = typeof req.query.dataInicio === "string" ? req.query.dataInicio : undefined;
+  const dataFim = typeof req.query.dataFim === "string" ? req.query.dataFim : undefined;
+  if (!Number.isInteger(lojaId) || !dataInicio || !dataFim) {
+    res.status(400).json({ error: "Informe ?lojaId=&dataInicio=AAAA-MM-DD&dataFim=AAAA-MM-DD" });
+    return;
+  }
+  try {
+    const timeFrom = Math.floor(new Date(`${dataInicio}T00:00:00-03:00`).getTime() / 1000);
+    const timeTo = Math.floor(new Date(`${dataFim}T23:59:59-03:00`).getTime() / 1000);
+    const pedidos = await listarPedidos(lojaId, timeFrom, timeTo);
+    const contagemPorStatus: Record<string, number> = {};
+    for (const p of pedidos) {
+      contagemPorStatus[p.order_status] = (contagemPorStatus[p.order_status] ?? 0) + 1;
+    }
+    res.json({ totalPedidos: pedidos.length, contagemPorStatus, amostra: pedidos.slice(0, 10) });
+  } catch (err) {
+    erro(res, err, "Falha ao buscar diagnóstico de status.");
   }
 });
 

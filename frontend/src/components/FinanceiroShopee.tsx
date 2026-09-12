@@ -132,6 +132,14 @@ export function FinanceiroShopee() {
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
   const semCustoCadastrado = (vendas?.length ?? 0) - comMargem.length;
+  // Vendas sem custo cadastrado ainda entram no card "Vendas" e em
+  // "Custo, Imposto & Taxa" (imposto/taxa/cupom não dependem do custo) mas
+  // ficam de fora inteiras da soma de margem — sem mostrar esse valor, os
+  // três cards nunca batem entre si e parece que a conta está errada
+  // quando na real é só custo faltando cadastrar (mesmo problema já exposto
+  // no Financeiro do Mercado Livre via o "não calculado" do donut).
+  const receitaSemCustoCadastrado =
+    vendas?.filter((v) => v.margemContribuicao === null).reduce((s, v) => s + v.receitaTotal, 0) ?? 0;
 
   // Gasto de Ads não é por venda (vem por dia, no nível da loja inteira) —
   // por isso só desconta aqui, no total da janela, igual ao Financeiro do ML.
@@ -289,7 +297,10 @@ export function FinanceiroShopee() {
                   Total: {resumoPedidos.totalPedidos} · Canceladas: {resumoPedidos.pedidosCancelados}
                 </span>
                 {semCustoCadastrado > 0 && (
-                  <span className="financeiro-stat-sub">{semCustoCadastrado} sem custo cadastrado</span>
+                  <span className="financeiro-stat-sub">
+                    {semCustoCadastrado} sem custo cadastrado ({formatCurrency(receitaSemCustoCadastrado)} em vendas
+                    fora da margem)
+                  </span>
                 )}
               </div>
               <div className="financeiro-stat-card">
