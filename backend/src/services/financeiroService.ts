@@ -3,6 +3,7 @@ import { searchOrders, getCustoFreteDoEnvio, getItemsBasicInfo, MlOrder } from "
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre, janelaMesAtual } from "./dateUtils";
 import { obterGastoAdsHistorico } from "./adsService";
+import { listarVendasFinanceirasShopee, listarLojasComShopee } from "./financeiroShopeeService";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 const STATUS_CANCELADO = "cancelled";
@@ -295,6 +296,11 @@ export async function listarVendasFinanceiras(
   return resultado;
 }
 
+export interface DetalheEquilibrio {
+  label: string;
+  valor: number;
+}
+
 export interface PontoEquilibrio {
   margemAposAds: number;
   custoFixoMensal: number;
@@ -302,11 +308,15 @@ export interface PontoEquilibrio {
   diasNoMes: number;
   projecaoFechamento: number;
   percentualAtingido: number | null;
+  detalhamento: DetalheEquilibrio[];
 }
 
 // Sempre o mês corrente (dia 1 até hoje), independente do período escolhido
 // nos filtros da tela — ponto de equilíbrio é um conceito de mês fechado,
 // não faz sentido variar com um filtro de data arbitrário.
+//
+// Soma Mercado Livre + Shopee no mesmo número — pro dono, é a margem real da
+// loja inteira, não faz sentido bater meta só olhando um canal de venda.
 export async function calcularPontoEquilibrio(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
@@ -316,23 +326,73 @@ export async function calcularPontoEquilibrio(
   const dataInicio = mes.inicioDia.slice(0, 10);
   const dataFim = mes.agora.slice(0, 10);
 
-  const [{ vendas, gastoAdsTotal }, lojas] = await Promise.all([
+  // Best-effort: um token da Shopee expirado/revogado não pode derrubar o
+  // ponto de equilíbrio inteiro (inclusive pra loja que nem usa Shopee) — na
+  // pior hipótese, essa rodada só some com a margem da Shopee, igual ficava
+  // antes dessa loja ter Shopee conectado.
+  const vendasShopeePromise = listarVendasFinanceirasShopee(
+    lojaIdFiltro,
+    lojasPermitidas,
+    dataInicio,
+    dataFim,
+    forcarAtualizacao
+  ).catch((err) => {
+    console.error("Ponto de equilíbrio: falha ao buscar dados da Shopee, seguindo só com Mercado Livre:", err);
+    return {
+      vendas: [],
+      resumoPedidos: { totalPedidos: 0, pedidosAprovados: 0, pedidosCancelados: 0, valorCancelado: 0 },
+      gastoAdsTotal: 0,
+    };
+  });
+
+  const [{ vendas, gastoAdsTotal }, vendasShopee, lojas, lojasComShopee] = await Promise.all([
     listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim, forcarAtualizacao),
+    vendasShopeePromise,
     listLojas(),
+    listarLojasComShopee(),
   ]);
+  const idsComShopee = new Set(lojasComShopee.map((l) => l.id));
+
   // Custo fixo é por loja — soma só das lojas que entram no filtro atual
-  // (uma loja específica, ou o total de "todas"/"minhas lojas").
+  // (uma loja específica, ou o total de "todas"/"minhas lojas"). Conta tanto
+  // quem tem Mercado Livre quanto quem tem só Shopee conectado — sem isso,
+  // uma loja só-Shopee contribuiria com margem mas nunca com custo fixo.
   const custoFixoMensal = lojas
     .filter(
       (l) =>
-        l.ml_user_id !== null &&
+        (l.ml_user_id !== null || idsComShopee.has(l.id)) &&
         (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
         (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
     )
     .reduce((soma, l) => soma + l.custo_fixo_mensal, 0);
 
-  const margemContribuicao = vendas.reduce((soma, v) => soma + (v.margemContribuicao ?? 0), 0);
-  const margemAposAds = margemContribuicao - gastoAdsTotal;
+  const margemPorLojaMl = new Map<number, number>();
+  for (const v of vendas) {
+    margemPorLojaMl.set(v.lojaId, (margemPorLojaMl.get(v.lojaId) ?? 0) + (v.margemContribuicao ?? 0));
+  }
+  const margemPorLojaShopee = new Map<number, number>();
+  for (const v of vendasShopee.vendas) {
+    margemPorLojaShopee.set(v.lojaId, (margemPorLojaShopee.get(v.lojaId) ?? 0) + (v.margemContribuicao ?? 0));
+  }
+  const nomePorLoja = new Map(lojas.map((l) => [l.id, l.nome]));
+
+  const detalhamento: DetalheEquilibrio[] = [];
+  for (const [lojaId, valor] of margemPorLojaMl) {
+    if (valor !== 0) detalhamento.push({ label: nomePorLoja.get(lojaId) ?? `Loja ${lojaId}`, valor });
+  }
+  for (const [lojaId, valor] of margemPorLojaShopee) {
+    if (valor !== 0) detalhamento.push({ label: `${nomePorLoja.get(lojaId) ?? `Loja ${lojaId}`} (Shopee)`, valor });
+  }
+  const gastoAdsTotalCombinado = gastoAdsTotal + vendasShopee.gastoAdsTotal;
+  if (gastoAdsTotalCombinado !== 0) {
+    detalhamento.push({ label: "Gastos com Ads", valor: -gastoAdsTotalCombinado });
+  }
+  detalhamento.sort((a, b) => b.valor - a.valor);
+
+  const margemContribuicao =
+    vendas.reduce((soma, v) => soma + (v.margemContribuicao ?? 0), 0) +
+    vendasShopee.vendas.reduce((soma, v) => soma + (v.margemContribuicao ?? 0), 0);
+  const margemAposAds = margemContribuicao - gastoAdsTotalCombinado;
   const projecaoFechamento =
     mes.diasDecorridos > 0 ? (margemAposAds / mes.diasDecorridos) * mes.diasNoMes : margemAposAds;
 
@@ -343,5 +403,6 @@ export async function calcularPontoEquilibrio(
     diasNoMes: mes.diasNoMes,
     projecaoFechamento,
     percentualAtingido: custoFixoMensal > 0 ? (margemAposAds / custoFixoMensal) * 100 : null,
+    detalhamento,
   };
 }

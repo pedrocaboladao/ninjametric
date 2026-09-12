@@ -264,13 +264,21 @@ function PontoEquilibrioCard({ dados, erro }: { dados: PontoEquilibrio | null; e
   const diaPrevisto = temMeta && mediaDiaria > 0 ? Math.ceil(dados.custoFixoMensal / mediaDiaria) : null;
   const bateEsseMes = diaPrevisto !== null && diaPrevisto <= dados.diasNoMes;
 
+  // Tooltip nativo (mesmo mecanismo já usado nas etapas do termômetro logo
+  // abaixo) — "\n" quebra linha normalmente num title nativo, sem precisar
+  // de nenhum componente de tooltip novo.
+  const detalhamentoTitle =
+    dados.detalhamento.length > 0
+      ? dados.detalhamento.map((d) => `${formatCurrency(d.valor)} - ${d.label}`).join("\n")
+      : undefined;
+
   return (
     <div className="financeiro-equilibrio">
       <div className="financeiro-equilibrio-header">
         <div>
           <span className="financeiro-stat-label">Ponto de equilíbrio — mês atual</span>
           <div className="financeiro-equilibrio-valores">
-            <b>{formatCurrency(dados.margemAposAds)}</b>
+            <b title={detalhamentoTitle}>{formatCurrency(dados.margemAposAds)}</b>
             <span> de </span>
             <span>
               {temMeta ? `${formatCurrency(dados.custoFixoMensal)} (custo fixo somado das lojas do filtro)` : "custo fixo não configurado nessas lojas"}

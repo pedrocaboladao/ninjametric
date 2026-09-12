@@ -99,7 +99,10 @@ interface LojaShopee {
   imposto_percentual: number;
 }
 
-async function listarLojasComShopee(): Promise<LojaShopee[]> {
+// Exportada também pro Ponto de Equilíbrio (financeiroService.ts), que
+// precisa saber quais lojas têm Shopee pra incluir no custo fixo mesmo uma
+// loja que não tenha Mercado Livre conectado.
+export async function listarLojasComShopee(): Promise<LojaShopee[]> {
   const { rows } = await pool.query<LojaShopee>(
     `SELECT l.id, l.nome, l.imposto_percentual
      FROM lojas l

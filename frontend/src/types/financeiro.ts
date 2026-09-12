@@ -31,6 +31,11 @@ export interface ResultadoFinanceiro {
   gastoAdsTotal: number;
 }
 
+export interface DetalheEquilibrio {
+  label: string;
+  valor: number;
+}
+
 export interface PontoEquilibrio {
   margemAposAds: number;
   custoFixoMensal: number;
@@ -38,4 +43,5 @@ export interface PontoEquilibrio {
   diasNoMes: number;
   projecaoFechamento: number;
   percentualAtingido: number | null;
+  detalhamento: DetalheEquilibrio[];
 }
