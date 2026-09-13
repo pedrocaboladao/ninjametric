@@ -2,6 +2,7 @@ import { Router } from "express";
 import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
+import { extrairItemIdDaUrl, getItemFullComToken, resolverItemIdPorUserProduct } from "../services/mercadoLivreItems";
 
 export const clonarAnuncioRouter = Router();
 
@@ -18,6 +19,56 @@ clonarAnuncioRouter.get("/lojas", async (req, res) => {
   } catch (err) {
     console.error("Erro ao listar lojas para clonagem:", err);
     res.status(500).json({ error: "Falha ao listar lojas." });
+  }
+});
+
+// Diagnóstico temporário — pra investigar por que anúncio de catálogo dá
+// "não pertence a nenhuma das suas lojas" mesmo quando a loja dona tem
+// clonagem normal funcionando. encontrarLojaDonaEItem (privada, não
+// exportada) engole qualquer erro por loja silenciosamente — aqui testamos
+// TODAS as lojas com token e devolvemos o erro real de cada uma, sem
+// esconder nada. Remover depois.
+clonarAnuncioRouter.get("/item-diag", async (req, res) => {
+  const url = typeof req.query.url === "string" ? req.query.url : "";
+  if (!url) {
+    res.status(400).json({ error: "Informe ?url=<link ou MLB do anúncio>" });
+    return;
+  }
+  try {
+    const identificador = await extrairItemIdDaUrl(url);
+    const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+    const resultados = await Promise.all(
+      lojas.map(async (loja) => {
+        try {
+          let itemId = identificador.id;
+          if (identificador.tipo === "user_product") {
+            const resolvido = await resolverItemIdPorUserProduct(loja.id, loja.ml_user_id as number, identificador.id);
+            if (!resolvido) return { lojaId: loja.id, lojaNome: loja.nome, ok: false, erro: "user_product não resolveu pra essa loja" };
+            itemId = resolvido;
+          }
+          const item = await getItemFullComToken(loja.id, itemId);
+          return {
+            lojaId: loja.id,
+            lojaNome: loja.nome,
+            ok: true,
+            titulo: item.title,
+            catalogListing: item.catalog_listing ?? null,
+            catalogProductId: item.catalog_product_id ?? null,
+          };
+        } catch (err: any) {
+          return {
+            lojaId: loja.id,
+            lojaNome: loja.nome,
+            ok: false,
+            status: err?.response?.status ?? null,
+            erro: err?.response?.data?.message ?? err?.message ?? String(err),
+          };
+        }
+      })
+    );
+    res.json({ identificador, resultados });
+  } catch (err) {
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });
   }
 });
 
