@@ -1851,6 +1851,10 @@ CREATE TABLE IF NOT EXISTS discrepancias (
 CREATE INDEX IF NOT EXISTS idx_discrepancias_loja ON discrepancias (loja_id);
 CREATE INDEX IF NOT EXISTS idx_discrepancias_usuario ON discrepancias (usuario_id);
 
+-- Resposta livre de quem representa a loja apontada — sem dono, qualquer
+-- usuário pode escrever/editar (mesmo espírito aberto do módulo inteiro).
+ALTER TABLE discrepancias ADD COLUMN IF NOT EXISTS resposta TEXT;
+
 -- Diferente de todo outro módulo, "Discrepâncias" nasce liberado pra geral —
 -- concede a permissão pra todo usuário já existente de uma vez (idempotente
 -- via ON CONFLICT). Usuário novo daqui pra frente passa pelo checkbox normal

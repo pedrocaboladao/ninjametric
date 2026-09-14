@@ -10,6 +10,12 @@ export interface Discrepancia {
   titulo: string | null;
   preco: number | null;
   criadoEm: string;
+  resposta: string | null;
+}
+
+export interface MargemUltimaVenda {
+  margemPercentual: number | null;
+  dataVenda: string;
 }
 
 export interface RankingUsuarioDiscrepancias {

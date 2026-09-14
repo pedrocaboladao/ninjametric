@@ -4,11 +4,85 @@ import {
   criarDiscrepancia,
   excluirDiscrepancia,
   fetchRankingDiscrepancias,
+  fetchMargemUltimaVenda,
+  salvarRespostaDiscrepancia,
 } from "../api/discrepancias";
 import type { Discrepancia, RankingDiscrepancias, RankingUsuarioDiscrepancias } from "../types/discrepancias";
 import type { Usuario } from "../types/usuarios";
-import { corDaLoja } from "../utils/format";
+import { corDaLoja, formatDataHora } from "../utils/format";
 import { IconTrash, IconExternalLink, IconCrown, IconWreath } from "./icons";
+
+function CaixaMargem({ lojaId, mlb }: { lojaId: number | null; mlb: string }) {
+  const [margem, setMargem] = useState<{ margemPercentual: number | null; dataVenda: string } | null | undefined>(
+    undefined
+  );
+  const [erro, setErro] = useState(false);
+
+  useEffect(() => {
+    if (lojaId === null) return;
+    fetchMargemUltimaVenda(lojaId, mlb)
+      .then(setMargem)
+      .catch(() => setErro(true));
+  }, [lojaId, mlb]);
+
+  return (
+    <div className="financeiro-stat-card">
+      <span className="financeiro-stat-label">Margem da última venda</span>
+      {lojaId === null ? (
+        <span className="financeiro-stat-sub">Loja não identificada</span>
+      ) : erro ? (
+        <span className="financeiro-stat-sub">Erro ao buscar</span>
+      ) : margem === undefined ? (
+        <span className="financeiro-stat-sub">Carregando...</span>
+      ) : margem === null ? (
+        <span className="financeiro-stat-sub">Sem venda registrada nos últimos 90 dias</span>
+      ) : margem.margemPercentual === null ? (
+        <span className="financeiro-stat-sub">Vendido em {formatDataHora(margem.dataVenda)} — sem custo cadastrado</span>
+      ) : (
+        <>
+          <span className="financeiro-stat-valor">{margem.margemPercentual.toFixed(1)}%</span>
+          <span className="financeiro-stat-sub">última venda em {formatDataHora(margem.dataVenda)}</span>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CaixaResposta({ discrepancia, onSalvo }: { discrepancia: Discrepancia; onSalvo: (resposta: string) => void }) {
+  const [texto, setTexto] = useState(discrepancia.resposta ?? "");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      await salvarRespostaDiscrepancia(discrepancia.id, texto.trim());
+      onSalvo(texto.trim());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao salvar.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="financeiro-stat-card">
+      <span className="financeiro-stat-label">Resposta da loja</span>
+      <textarea
+        className="pergunta-textarea"
+        placeholder="Escreva uma justificativa..."
+        rows={2}
+        value={texto}
+        onChange={(e) => setTexto(e.target.value)}
+      />
+      {erro && <span className="financeiro-stat-sub">{erro}</span>}
+      <button type="button" className="btn-responder" disabled={salvando} onClick={salvar}>
+        {salvando ? "Salvando..." : "Salvar"}
+      </button>
+    </div>
+  );
+}
 
 interface Props {
   usuario: Usuario;
@@ -90,6 +164,15 @@ function ListaDiscrepancias({ usuario }: Props) {
           </p>
           <div className="pergunta-meta">
             MLB: {d.mlb} {d.sku && <>· SKU: {d.sku}</>}
+          </div>
+          <div className="financeiro-cards-secundarios">
+            <CaixaMargem lojaId={d.lojaId} mlb={d.mlb} />
+            <CaixaResposta
+              discrepancia={d}
+              onSalvo={(resposta) =>
+                setItens((atual) => atual?.map((it) => (it.id === d.id ? { ...it, resposta } : it)) ?? null)
+              }
+            />
           </div>
           <div className="pergunta-acoes">
             <a className="btn-secundario" href={d.link} target="_blank" rel="noreferrer">

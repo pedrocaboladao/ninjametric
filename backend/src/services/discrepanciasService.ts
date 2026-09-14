@@ -8,6 +8,7 @@ import {
   type MlItemFull,
   type IdentificadorAnuncio,
 } from "./mercadoLivreItems";
+import { listarVendasFinanceiras } from "./financeiroService";
 
 // Mesmo padrão de "tentar o token de cada loja até achar a dona" já usado
 // (duplicado, não exportado) em clonarAnuncioService.ts e
@@ -46,6 +47,7 @@ export interface Discrepancia {
   titulo: string | null;
   preco: number | null;
   criadoEm: string;
+  resposta: string | null;
 }
 
 interface LinhaDiscrepancia {
@@ -60,6 +62,7 @@ interface LinhaDiscrepancia {
   titulo: string | null;
   preco: string | null;
   criado_em: string;
+  resposta: string | null;
 }
 
 function linhaParaDiscrepancia(r: LinhaDiscrepancia): Discrepancia {
@@ -75,12 +78,13 @@ function linhaParaDiscrepancia(r: LinhaDiscrepancia): Discrepancia {
     titulo: r.titulo,
     preco: r.preco !== null ? Number(r.preco) : null,
     criadoEm: r.criado_em,
+    resposta: r.resposta,
   };
 }
 
 const SELECT_BASE = `
   SELECT d.id, d.usuario_id, u.nome AS usuario_nome, d.loja_id, l.nome AS loja_nome,
-         d.link, d.mlb, d.sku, d.titulo, d.preco, d.criado_em
+         d.link, d.mlb, d.sku, d.titulo, d.preco, d.criado_em, d.resposta
   FROM discrepancias d
   LEFT JOIN usuarios u ON u.id = d.usuario_id
   LEFT JOIN lojas l ON l.id = d.loja_id
@@ -114,6 +118,45 @@ export async function excluirDiscrepancia(id: number, usuarioId: number, ehAdmin
   if (rowCount === 0) {
     throw new Error("Discrepância não encontrada ou sem permissão pra excluir essa aqui.");
   }
+}
+
+// Sem restrição de dono — mesmo espírito aberto do resto do módulo. É a
+// loja apontada quem deveria responder, mas não temos como checar "esse
+// usuário representa essa loja" no sistema hoje.
+export async function responderDiscrepancia(id: number, resposta: string): Promise<void> {
+  const { rowCount } = await pool.query("UPDATE discrepancias SET resposta = $1 WHERE id = $2", [resposta, id]);
+  if (rowCount === 0) {
+    throw new Error("Discrepância não encontrada.");
+  }
+}
+
+export interface MargemUltimaVenda {
+  margemPercentual: number | null;
+  dataVenda: string;
+}
+
+const DIAS_JANELA_MARGEM = 90;
+
+// Reaproveita listarVendasFinanceiras (financeiroService.ts) em vez de
+// duplicar a fórmula de margem — mesma fonte usada no Feed de vendas,
+// inclusive o cache de 15min por loja+janela (então várias discrepâncias da
+// mesma loja reaproveitam a mesma busca depois da primeira). Não guarda
+// nada no banco — é buscado ao vivo, igual o resto do Financeiro nunca
+// guarda margem, sempre recalcula.
+export async function buscarMargemUltimaVenda(lojaId: number, mlb: string): Promise<MargemUltimaVenda | null> {
+  const hoje = new Date();
+  const inicio = new Date(hoje.getTime() - DIAS_JANELA_MARGEM * 24 * 60 * 60 * 1000);
+  const dataInicio = inicio.toISOString().slice(0, 10);
+  const dataFim = hoje.toISOString().slice(0, 10);
+
+  const { vendas } = await listarVendasFinanceiras(lojaId, undefined, dataInicio, dataFim);
+  const vendasDoItem = vendas
+    .filter((v) => v.itemId === mlb)
+    .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
+
+  if (vendasDoItem.length === 0) return null;
+  const ultima = vendasDoItem[0];
+  return { margemPercentual: ultima.margemPercentual, dataVenda: ultima.dataCriacao };
 }
 
 export interface RankingUsuarioDiscrepancias {
