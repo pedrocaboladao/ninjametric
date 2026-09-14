@@ -91,10 +91,22 @@ const SELECT_BASE = `
   LEFT JOIN lojas l ON l.id = d.loja_id
 `;
 
+// Anúncio com variações (cor/tamanho) não tem SELLER_SKU no nível do item —
+// cada variação tem o seu. Sem esse fallback, todo anúncio com variação
+// salvava sku=null mesmo tendo preço cadastrado normalmente (achado ao vivo
+// comparando com vendas reais: a margem batia usando o SKU da venda, mas o
+// preço oficial não achava nada porque nunca tinha um SKU pra procurar).
+// Não sabemos qual variação exata o usuário viu como discrepante (o link
+// não carrega isso), então usa a primeira variação como aproximação — não é
+// perfeito, mas é muito melhor que sku=null pra toda a família de cores.
+function extrairSkuComFallback(item: MlItemFull): string | null {
+  return extrairSkuDoItem(item) ?? (item.variations?.[0] ? extrairSkuDoItem(item.variations[0]) ?? null : null);
+}
+
 export async function registrarDiscrepancia(usuarioId: number, link: string): Promise<Discrepancia> {
   const identificador = await extrairItemIdDaUrl(link);
   const { lojaId, item } = await encontrarLojaDoAnuncio(identificador);
-  const sku = extrairSkuDoItem(item) ?? null;
+  const sku = extrairSkuComFallback(item);
 
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO discrepancias (usuario_id, loja_id, link, mlb, sku, titulo, preco)
@@ -105,6 +117,32 @@ export async function registrarDiscrepancia(usuarioId: number, link: string): Pr
 
   const { rows: linhas } = await pool.query<LinhaDiscrepancia>(`${SELECT_BASE} WHERE d.id = $1`, [rows[0].id]);
   return linhaParaDiscrepancia(linhas[0]);
+}
+
+// Correção pontual pras linhas já cadastradas antes do fallback de variação
+// existir (ver extrairSkuComFallback) — já sabemos a loja de cada uma, não
+// precisa procurar em todas. Rodar uma vez e remover depois.
+export async function recalcularSkusFaltantes(): Promise<{ corrigidas: number; falhas: number }> {
+  const { rows } = await pool.query<{ id: number; loja_id: number; mlb: string }>(
+    "SELECT id, loja_id, mlb FROM discrepancias WHERE sku IS NULL AND loja_id IS NOT NULL"
+  );
+
+  let corrigidas = 0;
+  let falhas = 0;
+  for (const r of rows) {
+    try {
+      const item = await getItemFullComToken(r.loja_id, r.mlb);
+      const sku = extrairSkuComFallback(item);
+      if (sku !== null) {
+        await pool.query("UPDATE discrepancias SET sku = $1 WHERE id = $2", [sku, r.id]);
+        corrigidas++;
+      }
+    } catch (err) {
+      console.error(`recalcularSkusFaltantes: falha na discrepância ${r.id}:`, err);
+      falhas++;
+    }
+  }
+  return { corrigidas, falhas };
 }
 
 export async function listarDiscrepancias(): Promise<Discrepancia[]> {

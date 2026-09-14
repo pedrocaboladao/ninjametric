@@ -7,6 +7,7 @@ import {
   responderDiscrepancia,
   buscarUltimasVendas,
   buscarPrecoOficial,
+  recalcularSkusFaltantes,
 } from "../services/discrepanciasService";
 
 export const discrepanciasRouter = Router();
@@ -81,6 +82,16 @@ discrepanciasRouter.patch("/:id/resposta", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao salvar a resposta.");
+  }
+});
+
+// Temporária — corrige de uma vez as linhas cadastradas antes do fallback
+// de SKU por variação existir. Rodar uma vez e remover depois.
+discrepanciasRouter.post("/recalcular-skus", async (_req, res) => {
+  try {
+    res.json(await recalcularSkusFaltantes());
+  } catch (err) {
+    erro(res, err, "Falha ao recalcular SKUs.");
   }
 });
 
