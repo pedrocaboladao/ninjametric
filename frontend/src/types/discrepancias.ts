@@ -27,6 +27,7 @@ export interface PrecoOficial {
 
 export interface UltimasVendasResposta {
   vendas: VendaRecente[];
+  totalUltimos30Dias: number;
   precoOficial: PrecoOficial | null;
 }
 

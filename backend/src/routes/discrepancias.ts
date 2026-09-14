@@ -60,11 +60,11 @@ discrepanciasRouter.get("/ultimas-vendas", async (req, res) => {
     return;
   }
   try {
-    const [vendas, precoOficial] = await Promise.all([
+    const [resultadoVendas, precoOficial] = await Promise.all([
       buscarUltimasVendas(lojaId, mlb),
       buscarPrecoOficial(sku),
     ]);
-    res.json({ vendas, precoOficial });
+    res.json({ ...resultadoVendas, precoOficial });
   } catch (err) {
     erro(res, err, "Falha ao buscar as últimas vendas.");
   }

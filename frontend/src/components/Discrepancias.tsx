@@ -67,10 +67,23 @@ function Termometro({ vendas, precoOficial }: { vendas: VendaRecente[] | undefin
   );
 }
 
-function CaixaVendas({ vendas, carregando }: { vendas: VendaRecente[] | undefined; carregando: boolean }) {
+function CaixaVendas({
+  vendas,
+  totalUltimos30Dias,
+  carregando,
+}: {
+  vendas: VendaRecente[] | undefined;
+  totalUltimos30Dias: number | undefined;
+  carregando: boolean;
+}) {
   return (
     <div className="financeiro-stat-card">
-      <span className="financeiro-stat-label">Últimas vendas</span>
+      <span className="financeiro-stat-label">
+        Últimas vendas
+        {totalUltimos30Dias !== undefined && (
+          <span className="financeiro-td-mudo"> · {totalUltimos30Dias} nos últimos 30 dias</span>
+        )}
+      </span>
       {carregando ? (
         <span className="financeiro-stat-sub">Carregando...</span>
       ) : !vendas || vendas.length === 0 ? (
@@ -135,6 +148,7 @@ function DetalhesDiscrepancia({
 }) {
   const [vendas, setVendas] = useState<VendaRecente[] | undefined>(undefined);
   const [precoOficial, setPrecoOficial] = useState<PrecoOficial | null>(null);
+  const [totalUltimos30Dias, setTotalUltimos30Dias] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (discrepancia.lojaId === null) return;
@@ -142,6 +156,7 @@ function DetalhesDiscrepancia({
       .then((r) => {
         setVendas(r.vendas);
         setPrecoOficial(r.precoOficial);
+        setTotalUltimos30Dias(r.totalUltimos30Dias);
       })
       .catch(() => setVendas([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -151,7 +166,7 @@ function DetalhesDiscrepancia({
     <>
       <Termometro vendas={vendas} precoOficial={precoOficial} />
       <div className="financeiro-cards-secundarios">
-        <CaixaVendas vendas={vendas} carregando={vendas === undefined} />
+        <CaixaVendas vendas={vendas} totalUltimos30Dias={totalUltimos30Dias} carregando={vendas === undefined} />
         <CaixaResposta discrepancia={discrepancia} onSalvo={onSalvo} />
       </div>
     </>

@@ -176,26 +176,40 @@ export interface VendaRecente {
 }
 
 const DIAS_JANELA_MARGEM = 90;
+const DIAS_JANELA_CONTAGEM = 30;
 const MAX_VENDAS_RECENTES = 3;
+
+export interface ResultadoUltimasVendas {
+  vendas: VendaRecente[];
+  totalUltimos30Dias: number;
+}
 
 // Reaproveita listarVendasFinanceiras (financeiroService.ts) em vez de
 // duplicar a fórmula de margem — mesma fonte usada no Feed de vendas,
 // inclusive o cache de 15min por loja+janela (então várias discrepâncias da
 // mesma loja reaproveitam a mesma busca depois da primeira). Não guarda
 // nada no banco — é buscado ao vivo, igual o resto do Financeiro nunca
-// guarda margem, sempre recalcula.
-export async function buscarUltimasVendas(lojaId: number, mlb: string): Promise<VendaRecente[]> {
+// guarda margem, sempre recalcula. Janela de 90 dias cobre o "últimas
+// vendas" (item de giro mais lento); a contagem de 30 dias é só um corte
+// dentro desse mesmo resultado, sem precisar de uma busca à parte.
+export async function buscarUltimasVendas(lojaId: number, mlb: string): Promise<ResultadoUltimasVendas> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - DIAS_JANELA_MARGEM * 24 * 60 * 60 * 1000);
+  const corte30Dias = new Date(hoje.getTime() - DIAS_JANELA_CONTAGEM * 24 * 60 * 60 * 1000);
   const dataInicio = inicio.toISOString().slice(0, 10);
   const dataFim = hoje.toISOString().slice(0, 10);
 
   const { vendas } = await listarVendasFinanceiras(lojaId, undefined, dataInicio, dataFim);
-  return vendas
+  const vendasDoItem = vendas
     .filter((v) => v.itemId === mlb)
-    .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime())
-    .slice(0, MAX_VENDAS_RECENTES)
-    .map((v) => ({ margemPercentual: v.margemPercentual, dataVenda: v.dataCriacao, valorUnitario: v.valorUnitario }));
+    .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
+
+  return {
+    vendas: vendasDoItem
+      .slice(0, MAX_VENDAS_RECENTES)
+      .map((v) => ({ margemPercentual: v.margemPercentual, dataVenda: v.dataCriacao, valorUnitario: v.valorUnitario })),
+    totalUltimos30Dias: vendasDoItem.filter((v) => new Date(v.dataCriacao).getTime() >= corte30Dias.getTime()).length,
+  };
 }
 
 export interface PrecoOficial {
