@@ -172,6 +172,7 @@ export async function responderDiscrepancia(id: number, resposta: string): Promi
 export interface VendaRecente {
   margemPercentual: number | null;
   dataVenda: string;
+  valorUnitario: number;
 }
 
 const DIAS_JANELA_MARGEM = 90;
@@ -194,7 +195,7 @@ export async function buscarUltimasVendas(lojaId: number, mlb: string): Promise<
     .filter((v) => v.itemId === mlb)
     .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime())
     .slice(0, MAX_VENDAS_RECENTES)
-    .map((v) => ({ margemPercentual: v.margemPercentual, dataVenda: v.dataCriacao }));
+    .map((v) => ({ margemPercentual: v.margemPercentual, dataVenda: v.dataCriacao, valorUnitario: v.valorUnitario }));
 }
 
 export interface PrecoOficial {

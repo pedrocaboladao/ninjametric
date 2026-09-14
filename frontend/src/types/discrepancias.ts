@@ -16,6 +16,7 @@ export interface Discrepancia {
 export interface VendaRecente {
   margemPercentual: number | null;
   dataVenda: string;
+  valorUnitario: number;
 }
 
 export interface PrecoOficial {

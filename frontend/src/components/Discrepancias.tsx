@@ -28,15 +28,24 @@ function classificarDiscrepancia(desvioPercentual: number): { label: string; cor
   return { label: "Alta discrepância", cor: "var(--critical-text)", classe: "financeiro-margem-negativa" };
 }
 
-function Termometro({ precoAnuncio, precoOficial }: { precoAnuncio: number | null; precoOficial: PrecoOficial | null }) {
+// Compara o preço REAL pago pelo cliente na venda mais recente (já com
+// qualquer desconto/campanha ativa) contra o preço oficial — não o preço de
+// tabela do anúncio (`item.price`), que nunca reflete promoção ativa (achado
+// real: o campo `price` da API do ML é sempre o valor cheio, mesmo com
+// campanha rodando; o preço com desconto só aparece na venda de verdade).
+function Termometro({ vendas, precoOficial }: { vendas: VendaRecente[] | undefined; precoOficial: PrecoOficial | null }) {
   if (!precoOficial) {
     return <span className="financeiro-stat-sub">SKU sem preço oficial cadastrado</span>;
   }
-  if (precoAnuncio === null || precoOficial.classico <= 0) {
-    return <span className="financeiro-stat-sub">Sem preço do anúncio pra comparar</span>;
+  if (vendas === undefined) {
+    return <span className="financeiro-stat-sub">Carregando...</span>;
+  }
+  const precoReal = vendas[0]?.valorUnitario ?? null;
+  if (precoReal === null || precoOficial.classico <= 0) {
+    return <span className="financeiro-stat-sub">Sem venda recente pra comparar o preço real pago</span>;
   }
 
-  const desvio = ((precoAnuncio - precoOficial.classico) / precoOficial.classico) * 100;
+  const desvio = ((precoReal - precoOficial.classico) / precoOficial.classico) * 100;
   const { label, cor, classe } = classificarDiscrepancia(desvio);
   const larguraBarra = Math.min(Math.abs(desvio), 50) * 2; // 50%+ de desvio já enche a barra
 
@@ -44,7 +53,7 @@ function Termometro({ precoAnuncio, precoOficial }: { precoAnuncio: number | nul
     <div className="discrepancia-termometro">
       <div className="discrepancia-termometro-topo">
         <span>
-          Preço oficial (SKU master): <b>{formatCurrency(precoOficial.classico)}</b>
+          Pago na última venda: <b>{formatCurrency(precoReal)}</b> · Preço oficial: <b>{formatCurrency(precoOficial.classico)}</b>
         </span>
         <span className={classe}>
           {desvio > 0 ? "+" : ""}
@@ -140,7 +149,7 @@ function DetalhesDiscrepancia({
 
   return (
     <>
-      <Termometro precoAnuncio={discrepancia.preco} precoOficial={precoOficial} />
+      <Termometro vendas={vendas} precoOficial={precoOficial} />
       <div className="financeiro-cards-secundarios">
         <CaixaVendas vendas={vendas} carregando={vendas === undefined} />
         <CaixaResposta discrepancia={discrepancia} onSalvo={onSalvo} />
