@@ -130,12 +130,13 @@ export async function responderDiscrepancia(id: number, resposta: string): Promi
   }
 }
 
-export interface MargemUltimaVenda {
+export interface VendaRecente {
   margemPercentual: number | null;
   dataVenda: string;
 }
 
 const DIAS_JANELA_MARGEM = 90;
+const MAX_VENDAS_RECENTES = 3;
 
 // Reaproveita listarVendasFinanceiras (financeiroService.ts) em vez de
 // duplicar a fórmula de margem — mesma fonte usada no Feed de vendas,
@@ -143,20 +144,18 @@ const DIAS_JANELA_MARGEM = 90;
 // mesma loja reaproveitam a mesma busca depois da primeira). Não guarda
 // nada no banco — é buscado ao vivo, igual o resto do Financeiro nunca
 // guarda margem, sempre recalcula.
-export async function buscarMargemUltimaVenda(lojaId: number, mlb: string): Promise<MargemUltimaVenda | null> {
+export async function buscarUltimasVendas(lojaId: number, mlb: string): Promise<VendaRecente[]> {
   const hoje = new Date();
   const inicio = new Date(hoje.getTime() - DIAS_JANELA_MARGEM * 24 * 60 * 60 * 1000);
   const dataInicio = inicio.toISOString().slice(0, 10);
   const dataFim = hoje.toISOString().slice(0, 10);
 
   const { vendas } = await listarVendasFinanceiras(lojaId, undefined, dataInicio, dataFim);
-  const vendasDoItem = vendas
+  return vendas
     .filter((v) => v.itemId === mlb)
-    .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
-
-  if (vendasDoItem.length === 0) return null;
-  const ultima = vendasDoItem[0];
-  return { margemPercentual: ultima.margemPercentual, dataVenda: ultima.dataCriacao };
+    .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime())
+    .slice(0, MAX_VENDAS_RECENTES)
+    .map((v) => ({ margemPercentual: v.margemPercentual, dataVenda: v.dataCriacao }));
 }
 
 export interface RankingUsuarioDiscrepancias {

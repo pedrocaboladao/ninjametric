@@ -5,7 +5,7 @@ import {
   excluirDiscrepancia,
   buscarRankingDiscrepancias,
   responderDiscrepancia,
-  buscarMargemUltimaVenda,
+  buscarUltimasVendas,
 } from "../services/discrepanciasService";
 
 export const discrepanciasRouter = Router();
@@ -46,7 +46,7 @@ discrepanciasRouter.post("/", async (req, res) => {
   }
 });
 
-discrepanciasRouter.get("/margem-ultima-venda", async (req, res) => {
+discrepanciasRouter.get("/ultimas-vendas", async (req, res) => {
   const lojaId = Number(req.query.lojaId);
   const mlb = typeof req.query.mlb === "string" ? req.query.mlb : "";
   if (!Number.isInteger(lojaId) || !mlb) {
@@ -54,9 +54,9 @@ discrepanciasRouter.get("/margem-ultima-venda", async (req, res) => {
     return;
   }
   try {
-    res.json(await buscarMargemUltimaVenda(lojaId, mlb));
+    res.json({ vendas: await buscarUltimasVendas(lojaId, mlb) });
   } catch (err) {
-    erro(res, err, "Falha ao buscar a margem da última venda.");
+    erro(res, err, "Falha ao buscar as últimas vendas.");
   }
 });
 

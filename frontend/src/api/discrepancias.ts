@@ -1,4 +1,4 @@
-import type { Discrepancia, RankingDiscrepancias, MargemUltimaVenda } from "../types/discrepancias";
+import type { Discrepancia, RankingDiscrepancias, VendaRecente } from "../types/discrepancias";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -37,10 +37,11 @@ export async function fetchRankingDiscrepancias(): Promise<RankingDiscrepancias>
   return tratarResposta<RankingDiscrepancias>(res);
 }
 
-export async function fetchMargemUltimaVenda(lojaId: number, mlb: string): Promise<MargemUltimaVenda | null> {
+export async function fetchUltimasVendas(lojaId: number, mlb: string): Promise<VendaRecente[]> {
   const params = new URLSearchParams({ lojaId: String(lojaId), mlb });
-  const res = await fetch(`${API_BASE}/api/discrepancias/margem-ultima-venda?${params}`, { credentials: "include" });
-  return tratarResposta<MargemUltimaVenda | null>(res);
+  const res = await fetch(`${API_BASE}/api/discrepancias/ultimas-vendas?${params}`, { credentials: "include" });
+  const data = await tratarResposta<{ vendas: VendaRecente[] }>(res);
+  return data.vendas;
 }
 
 export async function salvarRespostaDiscrepancia(id: number, resposta: string): Promise<void> {

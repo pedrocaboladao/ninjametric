@@ -4,45 +4,43 @@ import {
   criarDiscrepancia,
   excluirDiscrepancia,
   fetchRankingDiscrepancias,
-  fetchMargemUltimaVenda,
+  fetchUltimasVendas,
   salvarRespostaDiscrepancia,
 } from "../api/discrepancias";
-import type { Discrepancia, RankingDiscrepancias, RankingUsuarioDiscrepancias } from "../types/discrepancias";
+import type { Discrepancia, RankingDiscrepancias, RankingUsuarioDiscrepancias, VendaRecente } from "../types/discrepancias";
 import type { Usuario } from "../types/usuarios";
 import { corDaLoja, formatDataHora } from "../utils/format";
 import { IconTrash, IconExternalLink, IconCrown, IconWreath } from "./icons";
 
 function CaixaMargem({ lojaId, mlb }: { lojaId: number | null; mlb: string }) {
-  const [margem, setMargem] = useState<{ margemPercentual: number | null; dataVenda: string } | null | undefined>(
-    undefined
-  );
+  const [vendas, setVendas] = useState<VendaRecente[] | undefined>(undefined);
   const [erro, setErro] = useState(false);
 
   useEffect(() => {
     if (lojaId === null) return;
-    fetchMargemUltimaVenda(lojaId, mlb)
-      .then(setMargem)
+    fetchUltimasVendas(lojaId, mlb)
+      .then(setVendas)
       .catch(() => setErro(true));
   }, [lojaId, mlb]);
 
   return (
     <div className="financeiro-stat-card">
-      <span className="financeiro-stat-label">Margem da última venda</span>
+      <span className="financeiro-stat-label">Últimas vendas</span>
       {lojaId === null ? (
         <span className="financeiro-stat-sub">Loja não identificada</span>
       ) : erro ? (
         <span className="financeiro-stat-sub">Erro ao buscar</span>
-      ) : margem === undefined ? (
+      ) : vendas === undefined ? (
         <span className="financeiro-stat-sub">Carregando...</span>
-      ) : margem === null ? (
+      ) : vendas.length === 0 ? (
         <span className="financeiro-stat-sub">Sem venda registrada nos últimos 90 dias</span>
-      ) : margem.margemPercentual === null ? (
-        <span className="financeiro-stat-sub">Vendido em {formatDataHora(margem.dataVenda)} — sem custo cadastrado</span>
       ) : (
-        <>
-          <span className="financeiro-stat-valor">{margem.margemPercentual.toFixed(1)}%</span>
-          <span className="financeiro-stat-sub">última venda em {formatDataHora(margem.dataVenda)}</span>
-        </>
+        vendas.map((v, i) => (
+          <div key={i} className="financeiro-stat-sub">
+            {formatDataHora(v.dataVenda)} —{" "}
+            {v.margemPercentual !== null ? <b>{v.margemPercentual.toFixed(1)}% de margem</b> : "sem custo cadastrado"}
+          </div>
+        ))
       )}
     </div>
   );

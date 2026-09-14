@@ -13,7 +13,7 @@ export interface Discrepancia {
   resposta: string | null;
 }
 
-export interface MargemUltimaVenda {
+export interface VendaRecente {
   margemPercentual: number | null;
   dataVenda: string;
 }
