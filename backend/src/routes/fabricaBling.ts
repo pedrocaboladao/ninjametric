@@ -42,6 +42,7 @@ import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVenda
 import {
   conferirContasPagar,
   listarContasBling,
+  baixarContaPagar,
   procurarContatos,
   espiarContas,
   contasDoFornecedor,
@@ -256,6 +257,19 @@ fabricaBlingRouter.post("/contas/criar", async (req, res) => {
 
 // Lista crua das contas a pagar do Bling num periodo. Sem pareamento: serve
 // pra perguntar "essa conta existe la?" sem depender de quem casou com quem.
+// Da baixa TOTAL numa conta a pagar do Bling. So total — ver o comentario do
+// servico: o endpoint irmao, do lado de receber, ignora valor parcial e quita
+// o titulo inteiro.
+fabricaBlingRouter.post("/contas/:id/baixar", async (req, res) => {
+  const id = Number(req.params.id);
+  const data = String((req.body ?? {}).data ?? "");
+  try {
+    res.json({ ok: true, id, ...(await baixarContaPagar(id, data)) });
+  } catch (err) {
+    erro(res, err, "Falha ao dar baixa na conta.");
+  }
+});
+
 fabricaBlingRouter.get("/contas/listar", async (req, res) => {
   const de = String(req.query.de ?? "");
   const ate = String(req.query.ate ?? "");

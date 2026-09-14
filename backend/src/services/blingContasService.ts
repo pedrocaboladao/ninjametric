@@ -768,6 +768,8 @@ interface ContaCompleta {
   vencimento?: string;
   valor?: number;
   saldo?: number;
+  /** 1 = em aberto, 2 = baixada. E a situacao que prova se a baixa gravou. */
+  situacao?: number | string;
   dataEmissao?: string;
   competencia?: string;
   numeroDocumento?: string;
@@ -1216,6 +1218,54 @@ export async function atualizarContaReceber(
 // vezes na mesma situacao manda zero e nao faz nada. Amarrar no pagamento
 // exigiria guardar o que ja foi baixado de cada um, e uma tabela a mais que
 // pode discordar do ERP.
+// Da baixa TOTAL numa conta a pagar.
+//
+// So total, de proposito. Em 04/09/2026 o mesmo endpoint do lado de receber
+// ignorou o valor enviado e quitou o titulo inteiro — sete titulos,
+// R$ 1.597.464,97, e um recebimento de R$ 0,00 em cada. Ate haver prova de que
+// `/contas/pagar/{id}/baixar` respeita valor parcial, esta funcao recusa
+// qualquer valor diferente do saldo: se o Bling vai quitar tudo de qualquer
+// jeito, e melhor que quitar tudo seja o que voce pediu.
+//
+// Baixa parcial existe na tela do Bling ("Baixa parcial do pagamento"), entao
+// e pela tela que se faz enquanto isso.
+export async function baixarContaPagar(
+  blingId: number,
+  data: string
+): Promise<{ valor: number; situacaoAntes: number; situacaoDepois: number }> {
+  if (!Number.isInteger(blingId) || blingId <= 0) throw new Error("Id da conta inválido.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) throw new Error("Data de baixa inválida.");
+
+  const { data: antes } = await chamar<{ data: ContaCompleta }>(`/contas/pagar/${blingId}`);
+  if (!antes) throw new Error("conta não encontrada no Bling");
+  const situacaoAntes = Number(antes.situacao ?? 0);
+  if (situacaoAntes === 2) throw new Error(`a conta ${blingId} já está baixada`);
+
+  const valor = dinheiro(antes.saldo ?? antes.valor);
+  if (!Number.isFinite(valor) || valor <= 0)
+    throw new Error(`conta ${blingId} sem saldo a baixar (${antes.saldo ?? antes.valor})`);
+
+  // Mesmos nomes de campo do lado de receber: `data`, nao `dataPagamento` —
+  // este ultimo devolve 400 com `element: dataPopup`. `valor` e `valorPago`
+  // juntos porque o Bling ignora em silencio o campo que nao conhece, e mandar
+  // os dois cobre os dois nomes sem custo.
+  await escrever(
+    `/contas/pagar/${blingId}/baixar`,
+    { data, valor, valorPago: valor, juros: 0, desconto: 0, acrescimo: 0, tarifa: 0 },
+    "post"
+  );
+
+  // O 200 do Bling nunca provou que gravou. Aqui o que prova e a situacao virar
+  // 2 (baixada); sem isso, uma baixa que nao aconteceu passaria por feita.
+  const { data: depois } = await chamar<{ data: ContaCompleta }>(`/contas/pagar/${blingId}`);
+  const situacaoDepois = Number(depois?.situacao ?? 0);
+  if (situacaoDepois !== 2)
+    throw new Error(
+      `o Bling aceitou a baixa mas a conta ${blingId} continua em aberto (situacao ${situacaoDepois})`
+    );
+  return { valor, situacaoAntes, situacaoDepois };
+}
+
 export async function baixarContaReceber(
   blingId: number,
   valor: number,
