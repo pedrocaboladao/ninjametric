@@ -86,8 +86,10 @@ discrepanciasRouter.patch("/:id/resposta", async (req, res) => {
 });
 
 // Temporária — corrige de uma vez as linhas cadastradas antes do fallback
-// de SKU por variação existir. Rodar uma vez e remover depois.
-discrepanciasRouter.post("/recalcular-skus", async (_req, res) => {
+// de SKU por variação existir. GET de propósito (mesmo escrevendo no banco):
+// só pra dar pra disparar colando o link no navegador, sem precisar de
+// ferramenta nenhuma. Rodar uma vez e remover depois.
+discrepanciasRouter.get("/recalcular-skus", async (_req, res) => {
   try {
     res.json(await recalcularSkusFaltantes());
   } catch (err) {
