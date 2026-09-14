@@ -8,7 +8,8 @@ import {
   type MlItemFull,
   type IdentificadorAnuncio,
 } from "./mercadoLivreItems";
-import { listarVendasFinanceiras } from "./financeiroService";
+import { listarVendasFinanceiras, normalizarSku } from "./financeiroService";
+import { listarProdutos } from "./produtosService";
 
 // Mesmo padrão de "tentar o token de cada loja até achar a dona" já usado
 // (duplicado, não exportado) em clonarAnuncioService.ts e
@@ -156,6 +157,23 @@ export async function buscarUltimasVendas(lojaId: number, mlb: string): Promise<
     .sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime())
     .slice(0, MAX_VENDAS_RECENTES)
     .map((v) => ({ margemPercentual: v.margemPercentual, dataVenda: v.dataCriacao }));
+}
+
+export interface PrecoOficial {
+  classico: number;
+  premium: number;
+  shopee: number;
+}
+
+// Preço "combinado" oficial vem da mesma planilha de produtos usada no
+// Financeiro (custo) — mesmo SKU master, mesma normalização (acento/
+// maiúsculas) já usada lá, pra bater com o SKU real do anúncio.
+export async function buscarPrecoOficial(sku: string | null): Promise<PrecoOficial | null> {
+  if (!sku) return null;
+  const produtos = await listarProdutos();
+  const produto = produtos.find((p) => normalizarSku(p.sku) === normalizarSku(sku));
+  if (!produto) return null;
+  return { classico: produto.precoClassico, premium: produto.precoPremium, shopee: produto.precoShopee };
 }
 
 export interface RankingUsuarioDiscrepancias {

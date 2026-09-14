@@ -7,32 +7,64 @@ import {
   fetchUltimasVendas,
   salvarRespostaDiscrepancia,
 } from "../api/discrepancias";
-import type { Discrepancia, RankingDiscrepancias, RankingUsuarioDiscrepancias, VendaRecente } from "../types/discrepancias";
+import type {
+  Discrepancia,
+  RankingDiscrepancias,
+  RankingUsuarioDiscrepancias,
+  VendaRecente,
+  PrecoOficial,
+} from "../types/discrepancias";
 import type { Usuario } from "../types/usuarios";
-import { corDaLoja, formatDataHora } from "../utils/format";
+import { corDaLoja, formatDataHora, formatCurrency } from "../utils/format";
 import { IconTrash, IconExternalLink, IconCrown, IconWreath } from "./icons";
 
-function CaixaMargem({ lojaId, mlb }: { lojaId: number | null; mlb: string }) {
-  const [vendas, setVendas] = useState<VendaRecente[] | undefined>(undefined);
-  const [erro, setErro] = useState(false);
+// Limiares do termômetro — julgamento própio, ajustável: abaixo de 5% de
+// desvio do preço oficial (SKU master) conta como discrepância baixa, até
+// 15% como moderada, acima disso como alta.
+function classificarDiscrepancia(desvioPercentual: number): { label: string; cor: string; classe: string } {
+  const abs = Math.abs(desvioPercentual);
+  if (abs < 5) return { label: "Baixa discrepância", cor: "var(--good-text)", classe: "financeiro-margem-positiva" };
+  if (abs < 15) return { label: "Discrepância moderada", cor: "#fbbf24", classe: "financeiro-margem-alerta" };
+  return { label: "Alta discrepância", cor: "var(--critical-text)", classe: "financeiro-margem-negativa" };
+}
 
-  useEffect(() => {
-    if (lojaId === null) return;
-    fetchUltimasVendas(lojaId, mlb)
-      .then(setVendas)
-      .catch(() => setErro(true));
-  }, [lojaId, mlb]);
+function Termometro({ precoAnuncio, precoOficial }: { precoAnuncio: number | null; precoOficial: PrecoOficial | null }) {
+  if (!precoOficial) {
+    return <span className="financeiro-stat-sub">SKU sem preço oficial cadastrado</span>;
+  }
+  if (precoAnuncio === null || precoOficial.classico <= 0) {
+    return <span className="financeiro-stat-sub">Sem preço do anúncio pra comparar</span>;
+  }
 
+  const desvio = ((precoAnuncio - precoOficial.classico) / precoOficial.classico) * 100;
+  const { label, cor, classe } = classificarDiscrepancia(desvio);
+  const larguraBarra = Math.min(Math.abs(desvio), 50) * 2; // 50%+ de desvio já enche a barra
+
+  return (
+    <div className="discrepancia-termometro">
+      <div className="discrepancia-termometro-topo">
+        <span>
+          Preço oficial (SKU master): <b>{formatCurrency(precoOficial.classico)}</b>
+        </span>
+        <span className={classe}>
+          {desvio > 0 ? "+" : ""}
+          {desvio.toFixed(1)}% · {label}
+        </span>
+      </div>
+      <div className="financeiro-equilibrio-barra">
+        <div className="financeiro-equilibrio-barra-preenchida" style={{ width: `${larguraBarra}%`, background: cor }} />
+      </div>
+    </div>
+  );
+}
+
+function CaixaVendas({ vendas, carregando }: { vendas: VendaRecente[] | undefined; carregando: boolean }) {
   return (
     <div className="financeiro-stat-card">
       <span className="financeiro-stat-label">Últimas vendas</span>
-      {lojaId === null ? (
-        <span className="financeiro-stat-sub">Loja não identificada</span>
-      ) : erro ? (
-        <span className="financeiro-stat-sub">Erro ao buscar</span>
-      ) : vendas === undefined ? (
+      {carregando ? (
         <span className="financeiro-stat-sub">Carregando...</span>
-      ) : vendas.length === 0 ? (
+      ) : !vendas || vendas.length === 0 ? (
         <span className="financeiro-stat-sub">Sem venda registrada nos últimos 90 dias</span>
       ) : (
         vendas.map((v, i) => (
@@ -79,6 +111,41 @@ function CaixaResposta({ discrepancia, onSalvo }: { discrepancia: Discrepancia; 
         {salvando ? "Salvando..." : "Salvar"}
       </button>
     </div>
+  );
+}
+
+// Uma busca só por card (vendas + preço oficial vêm juntos do mesmo
+// endpoint) — evita duas chamadas separadas pra informação que aparece
+// junta na tela.
+function DetalhesDiscrepancia({
+  discrepancia,
+  onSalvo,
+}: {
+  discrepancia: Discrepancia;
+  onSalvo: (resposta: string) => void;
+}) {
+  const [vendas, setVendas] = useState<VendaRecente[] | undefined>(undefined);
+  const [precoOficial, setPrecoOficial] = useState<PrecoOficial | null>(null);
+
+  useEffect(() => {
+    if (discrepancia.lojaId === null) return;
+    fetchUltimasVendas(discrepancia.lojaId, discrepancia.mlb, discrepancia.sku)
+      .then((r) => {
+        setVendas(r.vendas);
+        setPrecoOficial(r.precoOficial);
+      })
+      .catch(() => setVendas([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [discrepancia.lojaId, discrepancia.mlb, discrepancia.sku]);
+
+  return (
+    <>
+      <Termometro precoAnuncio={discrepancia.preco} precoOficial={precoOficial} />
+      <div className="financeiro-cards-secundarios">
+        <CaixaVendas vendas={vendas} carregando={vendas === undefined} />
+        <CaixaResposta discrepancia={discrepancia} onSalvo={onSalvo} />
+      </div>
+    </>
   );
 }
 
@@ -163,15 +230,12 @@ function ListaDiscrepancias({ usuario }: Props) {
           <div className="pergunta-meta">
             MLB: {d.mlb} {d.sku && <>· SKU: {d.sku}</>}
           </div>
-          <div className="financeiro-cards-secundarios">
-            <CaixaMargem lojaId={d.lojaId} mlb={d.mlb} />
-            <CaixaResposta
-              discrepancia={d}
-              onSalvo={(resposta) =>
-                setItens((atual) => atual?.map((it) => (it.id === d.id ? { ...it, resposta } : it)) ?? null)
-              }
-            />
-          </div>
+          <DetalhesDiscrepancia
+            discrepancia={d}
+            onSalvo={(resposta) =>
+              setItens((atual) => atual?.map((it) => (it.id === d.id ? { ...it, resposta } : it)) ?? null)
+            }
+          />
           <div className="pergunta-acoes">
             <a className="btn-secundario" href={d.link} target="_blank" rel="noreferrer">
               <IconExternalLink /> Ver anúncio

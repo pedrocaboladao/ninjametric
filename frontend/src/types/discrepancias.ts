@@ -18,6 +18,17 @@ export interface VendaRecente {
   dataVenda: string;
 }
 
+export interface PrecoOficial {
+  classico: number;
+  premium: number;
+  shopee: number;
+}
+
+export interface UltimasVendasResposta {
+  vendas: VendaRecente[];
+  precoOficial: PrecoOficial | null;
+}
+
 export interface RankingUsuarioDiscrepancias {
   usuarioId: number;
   nome: string;

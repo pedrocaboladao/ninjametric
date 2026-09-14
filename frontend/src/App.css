@@ -4315,6 +4315,22 @@
   padding-top: 22px;
 }
 
+.discrepancia-termometro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.discrepancia-termometro-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
 .financeiro-equilibrio-barra {
   height: 10px;
   border-radius: 999px;

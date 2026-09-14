@@ -6,6 +6,7 @@ import {
   buscarRankingDiscrepancias,
   responderDiscrepancia,
   buscarUltimasVendas,
+  buscarPrecoOficial,
 } from "../services/discrepanciasService";
 
 export const discrepanciasRouter = Router();
@@ -46,15 +47,23 @@ discrepanciasRouter.post("/", async (req, res) => {
   }
 });
 
+// Também devolve o preço oficial (SKU master, mesma planilha do Financeiro)
+// junto — o frontend já busca isso uma vez por card, não vale fazer duas
+// chamadas separadas pra informação que aparece junto na tela.
 discrepanciasRouter.get("/ultimas-vendas", async (req, res) => {
   const lojaId = Number(req.query.lojaId);
   const mlb = typeof req.query.mlb === "string" ? req.query.mlb : "";
+  const sku = typeof req.query.sku === "string" ? req.query.sku : null;
   if (!Number.isInteger(lojaId) || !mlb) {
     res.status(400).json({ error: "Informe ?lojaId=&mlb=" });
     return;
   }
   try {
-    res.json({ vendas: await buscarUltimasVendas(lojaId, mlb) });
+    const [vendas, precoOficial] = await Promise.all([
+      buscarUltimasVendas(lojaId, mlb),
+      buscarPrecoOficial(sku),
+    ]);
+    res.json({ vendas, precoOficial });
   } catch (err) {
     erro(res, err, "Falha ao buscar as últimas vendas.");
   }
