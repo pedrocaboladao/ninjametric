@@ -85,10 +85,19 @@ export interface Oportunidade {
   elegivel: boolean;
   meliPercentual: number | null;
   sellerPercentual: number | null;
+  minDiscountedPrice: number | null;
+  maxDiscountedPrice: number | null;
+  suggestedDiscountedPrice: number | null;
   status: string;
   erro: string | null;
   descobertoEm: string;
   decididoEm: string | null;
+}
+
+export interface MargemSimulada {
+  margem: number | null;
+  percentualMargem: number | null;
+  taxaMl: number | null;
 }
 
 export interface ComparacaoOportunidade {
@@ -117,5 +126,7 @@ export interface ProgressoBuscaOportunidades {
   totalItens: number;
   candidatasEncontradas: number;
   itensComErro: number;
+  outrosStatusEncontrados: number;
+  outrosStatusAmostra: string | null;
   erro: string | null;
 }

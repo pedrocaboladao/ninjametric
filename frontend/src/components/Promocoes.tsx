@@ -14,6 +14,8 @@ import {
   aprovarOportunidade,
   aprovarVariasOportunidades,
   rejeitarOportunidade,
+  sairDaPromocao,
+  fetchSimularMargem,
   limparOportunidades,
   compararComVendaReal,
 } from "../api/promocoes";
@@ -569,6 +571,29 @@ function LinhaOportunidade({
   const [comparando, setComparando] = useState(false);
   const o = oportunidade;
 
+  // Faixa de preço (min/max) só existe em tipos sem oferta fixa — SMART
+  // (dealPrice já é a proposta fechada de um offer_id específico) continua
+  // com preço só-leitura, ver comentário em buscarOportunidadesNaLoja.
+  const temFaixa = o.minDiscountedPrice !== null || o.maxDiscountedPrice !== null;
+  const podeEditar = temFaixa && (o.status === "pendente" || o.status === "erro");
+  const [precoTexto, setPrecoTexto] = useState(() => String(o.precoEscolhido).replace(".", ","));
+  const [margemSimulada, setMargemSimulada] = useState<{ margem: number | null; percentualMargem: number | null } | null>(null);
+  const [simulando, setSimulando] = useState(false);
+  const precoNumerico = Number(precoTexto.replace(",", "."));
+  const margemExibida = margemSimulada ?? { margem: o.margem, percentualMargem: o.percentualMargem };
+
+  async function simular() {
+    if (!podeEditar || !Number.isFinite(precoNumerico) || precoNumerico <= 0) return;
+    setSimulando(true);
+    try {
+      setMargemSimulada(await fetchSimularMargem(o.id, precoNumerico));
+    } catch {
+      setMargemSimulada(null);
+    } finally {
+      setSimulando(false);
+    }
+  }
+
   async function comparar() {
     setComparando(true);
     setErro(null);
@@ -585,7 +610,7 @@ function LinhaOportunidade({
     setEnviando(true);
     setErro(null);
     try {
-      await aprovarOportunidade(o.id);
+      await aprovarOportunidade(o.id, podeEditar ? precoNumerico : undefined);
       setConfirmando(false);
       onDecidida();
     } catch (err) {
@@ -603,6 +628,18 @@ function LinhaOportunidade({
       onDecidida();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao rejeitar.");
+      setEnviando(false);
+    }
+  }
+
+  async function sair() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await sairDaPromocao(o.id);
+      onDecidida();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao sair da promoção.");
       setEnviando(false);
     }
   }
@@ -630,21 +667,42 @@ function LinhaOportunidade({
         )}
         <span className="financeiro-td-mudo">{o.lojaNome}</span>
         <span className="financeiro-td-mudo">{o.nome ?? o.tipo}</span>
-        <span className="financeiro-td-mudo">
-          {formatCurrency(o.precoOriginal)} → {formatCurrency(o.precoEscolhido)}
-        </span>
+        {podeEditar ? (
+          <span className="financeiro-td-mudo">
+            {formatCurrency(o.precoOriginal)} →{" "}
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              value={precoTexto}
+              onChange={(e) => setPrecoTexto(e.target.value)}
+              onBlur={simular}
+              disabled={enviando}
+            />
+            {o.minDiscountedPrice !== null && o.maxDiscountedPrice !== null && (
+              <>
+                {" "}
+                (mín {formatCurrency(o.minDiscountedPrice)} · máx {formatCurrency(o.maxDiscountedPrice)})
+              </>
+            )}
+          </span>
+        ) : (
+          <span className="financeiro-td-mudo">
+            {formatCurrency(o.precoOriginal)} → {formatCurrency(o.precoEscolhido)}
+          </span>
+        )}
         {o.sellerPercentual !== null && (
           <span className="financeiro-td-mudo">
             ML banca {o.meliPercentual}% · você banca {o.sellerPercentual}%
           </span>
         )}
         <span
-          className={o.elegivel ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}
+          className={margemExibida.margem !== null && margemExibida.margem > 0 ? "financeiro-margem-positiva" : "financeiro-margem-negativa"}
           title={o.freteEstimado !== null ? `Já descontando frete grátis estimado de ${formatCurrency(o.freteEstimado)}` : undefined}
         >
-          {o.margem === null
-            ? "Sem dados de custo/taxa pra calcular"
-            : `Margem: ${formatCurrency(o.margem)} (${o.percentualMargem?.toFixed(1)}%)`}
+          {simulando
+            ? "Calculando..."
+            : margemExibida.margem === null
+              ? "Sem dados de custo/taxa pra calcular"
+              : `Margem: ${formatCurrency(margemExibida.margem)} (${margemExibida.percentualMargem?.toFixed(1)}%)`}
         </span>
         {(o.status === "pendente" || o.status === "erro") && !confirmando && (
           <>
@@ -655,7 +713,7 @@ function LinhaOportunidade({
               title={semIdentificador ? "Essa modalidade não tem identificador pra confirmar via API — participe direto no Mercado Livre." : undefined}
               onClick={() => setConfirmando(true)}
             >
-              {o.status === "erro" ? "Tentar de novo" : "Aprovar"}
+              {o.status === "erro" ? "Tentar de novo" : "Entrar"}
             </button>
             <button type="button" className="btn-excluir" disabled={enviando} onClick={rejeitar}>
               Rejeitar
@@ -663,11 +721,17 @@ function LinhaOportunidade({
           </>
         )}
         {o.status === "aprovada" && <span className="financeiro-td-mudo">Aprovada</span>}
+        {o.status === "participando" && <span className="financeiro-margem-positiva">Participando</span>}
         {o.status === "rejeitada" && <span className="financeiro-td-mudo">Rejeitada</span>}
         {o.status === "erro" && !confirmando && <span className="financeiro-margem-negativa">Erro: {o.erro}</span>}
         {o.status === "aprovada" && (
           <button type="button" className="btn-excluir" disabled={comparando} onClick={comparar}>
             {comparando ? "Comparando..." : "Comparar com venda real"}
+          </button>
+        )}
+        {o.status === "participando" && (
+          <button type="button" className="btn-excluir" disabled={enviando || semIdentificador} onClick={sair}>
+            {enviando ? "Saindo..." : "Sair da promoção"}
           </button>
         )}
       </div>
@@ -729,11 +793,16 @@ function LinhaOportunidade({
         <div className="promocoes-confirmacao">
           <p>
             Confirma entrar na promoção <b>{o.nome ?? o.tipo}</b> desse item? O cliente vai ver o preço{" "}
-            <b>{formatCurrency(o.precoEscolhido)}</b> (era {formatCurrency(o.precoOriginal)}), mas o Mercado Livre banca{" "}
-            <b>{o.meliPercentual}%</b> desse desconto — sua margem real (já descontando frete grátis estimado de{" "}
-            {formatCurrency(o.freteEstimado ?? 0)}) fica em{" "}
+            <b>{formatCurrency(podeEditar ? precoNumerico : o.precoEscolhido)}</b> (era {formatCurrency(o.precoOriginal)})
+            {o.sellerPercentual !== null && (
+              <>
+                , mas o Mercado Livre banca <b>{o.meliPercentual}%</b> desse desconto
+              </>
+            )}{" "}
+            — sua margem estimada (já descontando frete grátis estimado de {formatCurrency(o.freteEstimado ?? 0)}) fica
+            em{" "}
             <b>
-              {formatCurrency(o.margem ?? 0)} ({o.percentualMargem?.toFixed(1)}%)
+              {formatCurrency(margemExibida.margem ?? 0)} ({margemExibida.percentualMargem?.toFixed(1)}%)
             </b>
             . O frete é estimado antes da venda — tende a sair um pouco melhor na prática, não pior. Isso muda o
             preço/participação de verdade no Mercado Livre agora.
@@ -939,16 +1008,56 @@ function AprovarSelecionadosBarra({
   );
 }
 
+type FiltroOportunidades = "todos" | "candidatos" | "participantes";
+
+// Cards agrupados por promoção (nome/tipo), com contagem de candidatos e
+// participantes — mesmo agrupamento que a varredura já monta linha a linha,
+// só resumido aqui na tela, sem endpoint novo (não existe endpoint do
+// Mercado Livre pra listar promoções por conta, só por item).
+function CardsPromocoes({ dados }: { dados: Oportunidade[] }) {
+  const grupos = new Map<string, { nome: string; tipo: string; candidatos: number; participantes: number }>();
+  for (const o of dados) {
+    if (o.status !== "pendente" && o.status !== "erro" && o.status !== "participando") continue;
+    const chave = o.promotionId ?? `${o.tipo}-${o.nome ?? ""}`;
+    const g = grupos.get(chave) ?? { nome: o.nome ?? o.tipo, tipo: o.tipo, candidatos: 0, participantes: 0 };
+    if (o.status === "participando") g.participantes++;
+    else g.candidatos++;
+    grupos.set(chave, g);
+  }
+  const lista = Array.from(grupos.values());
+  if (lista.length === 0) return null;
+
+  return (
+    <div className="financeiro-cards-secundarios">
+      {lista.map((g, i) => (
+        <div key={i} className="financeiro-stat-card">
+          <span className="financeiro-stat-label">{g.nome}</span>
+          <span className="financeiro-stat-sub">{g.tipo}</span>
+          <span className="financeiro-stat-sub">
+            {g.candidatos} candidato{g.candidatos !== 1 ? "s" : ""} · {g.participantes} participante
+            {g.participantes !== 1 ? "s" : ""}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "minhas" }) {
   const buscar = useCallback(() => fetchOportunidades(lojaFiltro), [lojaFiltro]);
   const { dados, erro, atualizarAgora } = useBuscaComCancelamento<Oportunidade[]>(buscar, true);
   const [selecionados, setSelecionados] = useState<Set<number>>(new Set());
+  const [filtro, setFiltro] = useState<FiltroOportunidades>("todos");
 
-  const acionaveis = dados?.filter((o) => o.status === "pendente" || o.status === "erro") ?? [];
+  const candidatas = dados?.filter((o) => o.status === "pendente" || o.status === "erro") ?? [];
+  const participantes = dados?.filter((o) => o.status === "participando") ?? [];
   const decididas = dados?.filter((o) => o.status === "aprovada" || o.status === "rejeitada") ?? [];
 
+  const mostrarCandidatas = filtro !== "participantes";
+  const mostrarParticipantes = filtro !== "candidatos";
+
   const grupos = new Map<string, Oportunidade[]>();
-  for (const o of acionaveis) {
+  for (const o of candidatas) {
     const chave = o.sku ?? SEM_SKU;
     const lista = grupos.get(chave) ?? [];
     lista.push(o);
@@ -984,53 +1093,94 @@ function OportunidadesSecao({ lojaFiltro }: { lojaFiltro: number | "todas" | "mi
     <div className="promocoes-oportunidades-secao">
       <div className="financeiro-topo">
         <div>
-          <span className="painel-eyebrow">Semi-automático</span>
-          <h2>Oportunidades com ajuda do Mercado Livre</h2>
+          <span className="painel-eyebrow">Promoções da Conta</span>
+          <h2>Todas as promoções do Mercado Livre pra essas lojas</h2>
           <p className="painel-sub">
-            Só "Impulsione suas vendas"/"Aumente suas vendas" (tipo SMART) — o único tipo de promoção onde o próprio
-            Mercado Livre banca parte do desconto de verdade (confirmado ao vivo, com dado real). Outras propostas do
-            ML (ofertas relâmpago, descontos por conta própria) não têm ajuda nenhuma, então ficam de fora daqui — são
-            desconto seu mesmo, sem diferença de fazer manual. A margem mostrada já desconta só a parte que sai do seu
-            bolso e o frete grátis estimado. Agrupado por SKU — dá pra selecionar e aprovar várias variações de uma
-            vez.
+            Varredura automática 1x por dia de madrugada (não existe endpoint do Mercado Livre pra listar isso por
+            conta, só anúncio por anúncio — por isso demora e roda fora do horário de uso; o botão abaixo força uma
+            atualização na hora). Cobre qualquer tipo de promoção (Smart, Tradicional, Lightning Deal, etc.), exceto
+            campanhas que você mesmo cria (essas ficam em "Campanhas do vendedor", acima). Você sempre escolhe o
+            preço, vê a margem (custo + taxa real do ML + frete grátis estimado + imposto) e decide entrar ou sair —
+            nada muda sozinho.
           </p>
         </div>
       </div>
+
+      {dados !== null && dados.length > 0 && <CardsPromocoes dados={dados} />}
 
       <div className="promocoes-acoes-topo">
         <BuscaOportunidades lojaFiltro={lojaFiltro} onEncontradas={atualizarAgora} />
         {dados !== null && dados.length > 0 && <LimparOportunidades lojaFiltro={lojaFiltro} onLimpo={atualizarAgora} />}
       </div>
 
+      {dados !== null && dados.length > 0 && (
+        <div className="agente-tabs agente-tabs-secundaria">
+          <button
+            type="button"
+            className={`agente-tab ${filtro === "todos" ? "agente-tab-ativa" : ""}`}
+            onClick={() => setFiltro("todos")}
+          >
+            Todos
+          </button>
+          <button
+            type="button"
+            className={`agente-tab ${filtro === "candidatos" ? "agente-tab-ativa" : ""}`}
+            onClick={() => setFiltro("candidatos")}
+          >
+            Candidatos ({candidatas.length})
+          </button>
+          <button
+            type="button"
+            className={`agente-tab ${filtro === "participantes" ? "agente-tab-ativa" : ""}`}
+            onClick={() => setFiltro("participantes")}
+          >
+            Participantes ({participantes.length})
+          </button>
+        </div>
+      )}
+
       <AprovarSelecionadosBarra selecionados={selecionados} onDecidido={atualizarELimparSelecao} />
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && dados === null && <div className="state-message">Carregando...</div>}
       {dados?.length === 0 && (
-        <div className="state-message">Nenhuma oportunidade encontrada ainda — clique em "Buscar oportunidades".</div>
+        <div className="state-message">Nenhuma promoção encontrada ainda — clique em "Buscar oportunidades".</div>
       )}
 
-      {Array.from(grupos.entries()).map(([sku, itens]) => (
-        <GrupoSku
-          key={sku}
-          sku={sku}
-          itens={itens}
-          selecionados={selecionados}
-          onToggle={toggle}
-          onToggleGrupo={toggleGrupo}
-          onDecidida={atualizarELimparSelecao}
-        />
-      ))}
-      {decididas.map((o) => (
-        <LinhaOportunidade
-          key={o.id}
-          oportunidade={o}
-          onDecidida={atualizarAgora}
-          selecionavel={false}
-          selecionado={false}
-          onToggleSelecao={() => {}}
-        />
-      ))}
+      {mostrarCandidatas &&
+        Array.from(grupos.entries()).map(([sku, itens]) => (
+          <GrupoSku
+            key={sku}
+            sku={sku}
+            itens={itens}
+            selecionados={selecionados}
+            onToggle={toggle}
+            onToggleGrupo={toggleGrupo}
+            onDecidida={atualizarELimparSelecao}
+          />
+        ))}
+      {mostrarParticipantes &&
+        participantes.map((o) => (
+          <LinhaOportunidade
+            key={o.id}
+            oportunidade={o}
+            onDecidida={atualizarAgora}
+            selecionavel={false}
+            selecionado={false}
+            onToggleSelecao={() => {}}
+          />
+        ))}
+      {filtro === "todos" &&
+        decididas.map((o) => (
+          <LinhaOportunidade
+            key={o.id}
+            oportunidade={o}
+            onDecidida={atualizarAgora}
+            selecionavel={false}
+            selecionado={false}
+            onToggleSelecao={() => {}}
+          />
+        ))}
     </div>
   );
 }

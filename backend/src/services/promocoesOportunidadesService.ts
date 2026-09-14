@@ -8,6 +8,7 @@ import {
   getTaxaMlParaPreco,
   getFreteEstimadoPreVenda,
   adicionarItemCampanha,
+  removerItemCampanha,
   type MlPromocaoDoItem,
 } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
@@ -36,6 +37,9 @@ export interface Oportunidade {
   elegivel: boolean;
   meliPercentual: number | null;
   sellerPercentual: number | null;
+  minDiscountedPrice: number | null;
+  maxDiscountedPrice: number | null;
+  suggestedDiscountedPrice: number | null;
   status: string;
   erro: string | null;
   descobertoEm: string;
@@ -49,6 +53,13 @@ export interface ProgressoBuscaOportunidades {
   totalItens: number;
   candidatasEncontradas: number;
   itensComErro: number;
+  // Diagnóstico: status/tipo de promoção vistos que não são "candidate" nem
+  // "started" — inclui o já suspeitado status "programado" (item que já
+  // entrou numa promoção, mas só assume quando a promoção melhor rodando
+  // nesse item hoje terminar, ver comentário em promocoesService.ts) cujo
+  // nome exato o Mercado Livre usa ainda não foi confirmado ao vivo.
+  outrosStatusEncontrados: number;
+  outrosStatusAmostra: string | null;
   erro: string | null;
 }
 
@@ -59,6 +70,8 @@ let progresso: ProgressoBuscaOportunidades = {
   totalItens: 0,
   candidatasEncontradas: 0,
   itensComErro: 0,
+  outrosStatusEncontrados: 0,
+  outrosStatusAmostra: null,
   erro: null,
 };
 
@@ -96,17 +109,34 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
   const itemIds = await listarItensAtivos(loja.id, loja.ml_user_id as number);
   progresso.totalItens += itemIds.length;
 
-  // Só tipo SMART entra aqui — é o único que comprovadamente tem ajuda real
-  // do Mercado Livre (ver comentário na criação da tabela em schema.sql).
-  // sellerPercentage !== null é a prova de que esse campo veio na resposta
-  // (sem ele não dá pra saber se tem ajuda, então não vira oportunidade).
-  const candidatas: { itemId: string; promo: MlPromocaoDoItem }[] = [];
+  // Cobre qualquer tipo de promoção do Mercado Livre, EXCETO SELLER_CAMPAIGN
+  // (campanha própria do vendedor — fluxo dedicado em "Campanhas",
+  // promocoesService.ts, não entra aqui pra não duplicar). Já cobriu só
+  // SMART com sellerPercentage confirmado (única automação autorizada na
+  // época); ampliado pra "Promoções da Conta" porque a tela deixou de
+  // decidir sozinha — o usuário sempre escolhe o preço e confirma
+  // entrar/sair manualmente, então a falta de meli/seller percentual em
+  // outros tipos deixou de ser motivo pra excluir a linha.
+  //
+  // status "candidate" (ainda não aceita) e "started" (já rodando —
+  // aparece aqui como "participando", pra dar a opção de sair) — qualquer
+  // outro status vira só um contador de diagnóstico (ver
+  // outrosStatusEncontrados), sem tentar adivinhar o nome certo de um
+  // status "programado" ainda não confirmado ao vivo.
+  const candidatas: { itemId: string; promo: MlPromocaoDoItem; origemStatus: "candidate" | "started" }[] = [];
   await comConcorrenciaLimitada(itemIds, CONCORRENCIA, async (itemId) => {
     try {
       const promos = await consultarPromocoesDoItem(loja.id, itemId);
       for (const p of promos) {
-        if (p.status === "candidate" && p.type === "SMART" && p.sellerPercentage !== null) {
-          candidatas.push({ itemId, promo: p });
+        if (p.type === "SELLER_CAMPAIGN") continue;
+        const temPrecoUtilizavel =
+          p.dealPrice !== null || p.minDiscountedPrice !== null || p.maxDiscountedPrice !== null || p.suggestedDiscountedPrice !== null;
+        if (!temPrecoUtilizavel) continue;
+        if (p.status === "candidate" || p.status === "started") {
+          candidatas.push({ itemId, promo: p, origemStatus: p.status });
+        } else {
+          progresso.outrosStatusEncontrados++;
+          progresso.outrosStatusAmostra = `${p.type}/${p.status}`;
         }
       }
     } catch {
@@ -123,19 +153,29 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
   const custoPorSku = new Map(produtos.map((p) => [normalizarSku(p.sku), p.custo]));
   const infoItens = await getItemsBasicInfo(loja.id, Array.from(new Set(candidatas.map((c) => c.itemId))));
 
-  await comConcorrenciaLimitada(candidatas, CONCORRENCIA, async ({ itemId, promo }) => {
+  await comConcorrenciaLimitada(candidatas, CONCORRENCIA, async ({ itemId, promo, origemStatus }) => {
     const info = infoItens.get(itemId);
     if (!info || !info.category_id || !info.listing_type_id) return;
 
     const skuNorm = info.seller_custom_field ? normalizarSku(info.seller_custom_field) : null;
     const custoUnitario = skuNorm ? (custoPorSku.get(skuNorm) ?? null) : null;
     const precoOriginal = promo.originalPrice ?? info.price;
-    const sellerPercentage = promo.sellerPercentage as number; // garantido pelo filtro acima
+    const sellerPercentage = promo.sellerPercentage;
     const meliPercentage = promo.meliPercentage ?? 0;
-    // dealPrice é o preço final que o cliente vê — o que de fato é usado na
-    // hora de aprovar (não é uma faixa pra escolher, é a proposta fixa
-    // daquele offer_id específico).
-    const precoEscolhido = promo.dealPrice ?? arredondarCentavos(precoOriginal * (1 - sellerPercentage / 100));
+
+    // Preço a gravar/usar no cálculo: prioriza um valor já fechado
+    // (dealPrice — proposta SMART ou item já participante) sobre uma faixa
+    // (candidatos de tipos sem oferta fixa, ex. Tradicional/Lightning
+    // Deal) — nesse caso usa o sugerido pelo ML, com o teto da faixa como
+    // último recurso (menor desconto possível = margem mais conservadora
+    // pra exibir antes do usuário editar o preço na tela).
+    const precoEscolhido =
+      promo.dealPrice ??
+      promo.suggestedDiscountedPrice ??
+      (sellerPercentage !== null ? arredondarCentavos(precoOriginal * (1 - sellerPercentage / 100)) : null) ??
+      promo.maxDiscountedPrice ??
+      promo.minDiscountedPrice;
+    if (precoEscolhido === null || precoEscolhido === undefined) return;
 
     // Validado contra o "Você recebe" real da tela de promoções do ML
     // (bateu na casa dos centavos): a taxa do ML é calculada sobre o preço
@@ -157,11 +197,20 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
     const margem = margemSemFrete === null ? null : arredondarCentavos(margemSemFrete - (freteEstimado ?? 0));
     const elegivel = margem !== null && margem > 0;
 
+    // Candidato só atualiza uma linha ainda decidível (preserva a decisão
+    // do usuário se já aprovou/rejeitou); participante (já rodando de
+    // verdade no ML) sempre atualiza — o Mercado Livre é a fonte da
+    // verdade de quem está participando, inclusive fazendo uma linha
+    // 'aprovada' aqui virar 'participando' assim que a varredura do dia
+    // seguinte confirma que entrou de fato.
+    const statusLocal = origemStatus === "started" ? "participando" : "pendente";
+    const whereClause = statusLocal === "pendente" ? "WHERE promocoes_oportunidades.status IN ('pendente', 'erro')" : "";
+
     try {
       await pool.query(
         `INSERT INTO promocoes_oportunidades
-           (loja_id, item_id, titulo, permalink, sku, promotion_id, offer_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, frete_estimado, margem, elegivel, meli_percentual, seller_percentual, status, descoberto_em)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, 'pendente', now())
+           (loja_id, item_id, titulo, permalink, sku, promotion_id, offer_id, tipo, nome, preco_original, preco_escolhido, custo_unitario, taxa_ml, frete_estimado, margem, elegivel, meli_percentual, seller_percentual, category_id, listing_type_id, min_discounted_price, max_discounted_price, suggested_discounted_price, status, descoberto_em)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, now())
          ON CONFLICT (loja_id, item_id, tipo, promotion_id) DO UPDATE SET
            titulo = EXCLUDED.titulo,
            permalink = EXCLUDED.permalink,
@@ -177,13 +226,18 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
            elegivel = EXCLUDED.elegivel,
            meli_percentual = EXCLUDED.meli_percentual,
            seller_percentual = EXCLUDED.seller_percentual,
-           status = 'pendente',
+           category_id = EXCLUDED.category_id,
+           listing_type_id = EXCLUDED.listing_type_id,
+           min_discounted_price = EXCLUDED.min_discounted_price,
+           max_discounted_price = EXCLUDED.max_discounted_price,
+           suggested_discounted_price = EXCLUDED.suggested_discounted_price,
+           status = EXCLUDED.status,
            erro = NULL,
            descoberto_em = now()
-         -- inclui 'erro' de propósito: uma nova varredura tem que poder
-         -- reviver/corrigir uma linha que falhou antes (ex.: esse mesmo caso
-         -- do offer_id que faltava), não só as pendentes.
-         WHERE promocoes_oportunidades.status IN ('pendente', 'erro')`,
+         -- inclui 'erro' de propósito (só no ramo "pendente"): uma nova
+         -- varredura tem que poder reviver/corrigir uma linha que falhou
+         -- antes, não só as pendentes.
+         ${whereClause}`,
         [
           loja.id,
           itemId,
@@ -203,6 +257,12 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
           elegivel,
           meliPercentage,
           sellerPercentage,
+          info.category_id,
+          info.listing_type_id,
+          promo.minDiscountedPrice,
+          promo.maxDiscountedPrice,
+          promo.suggestedDiscountedPrice,
+          statusLocal,
         ]
       );
     } catch (err) {
@@ -226,6 +286,8 @@ export async function iniciarBuscaOportunidades(lojaIdFiltro?: number, lojasPerm
     totalItens: 0,
     candidatasEncontradas: 0,
     itensComErro: 0,
+    outrosStatusEncontrados: 0,
+    outrosStatusAmostra: null,
     erro: null,
   };
 
@@ -271,6 +333,11 @@ interface OportunidadeRow {
   elegivel: boolean;
   meli_percentual: string | null;
   seller_percentual: string | null;
+  category_id: string | null;
+  listing_type_id: string | null;
+  min_discounted_price: string | null;
+  max_discounted_price: string | null;
+  suggested_discounted_price: string | null;
   status: string;
   erro: string | null;
   descoberto_em: string;
@@ -304,6 +371,9 @@ function mapearOportunidade(r: OportunidadeRow): Oportunidade {
     elegivel: r.elegivel,
     meliPercentual: r.meli_percentual === null ? null : Number(r.meli_percentual),
     sellerPercentual: r.seller_percentual === null ? null : Number(r.seller_percentual),
+    minDiscountedPrice: r.min_discounted_price === null ? null : Number(r.min_discounted_price),
+    maxDiscountedPrice: r.max_discounted_price === null ? null : Number(r.max_discounted_price),
+    suggestedDiscountedPrice: r.suggested_discounted_price === null ? null : Number(r.suggested_discounted_price),
     status: r.status,
     erro: r.erro,
     descobertoEm: r.descoberto_em,
@@ -344,9 +414,57 @@ async function buscarOportunidade(id: number): Promise<OportunidadeRow | null> {
   return rows[0] ?? null;
 }
 
+export interface MargemSimulada {
+  margem: number | null;
+  percentualMargem: number | null;
+  taxaMl: number | null;
+}
+
+// Simula a margem pra um preço HIPOTÉTICO digitado na tela (ainda não
+// gravado, ainda não confirmado no Mercado Livre) — usada enquanto o
+// usuário edita o preço promocional de tipos com faixa (min/max), pra ele
+// ver o efeito antes de decidir. category_id/listing_type_id/custo/frete já
+// vieram salvos na varredura (buscarOportunidadesNaLoja); só a taxa do ML
+// precisa ser ao vivo, porque depende do preço exato.
+export async function simularMargem(
+  id: number,
+  precoHipotetico: number,
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<MargemSimulada> {
+  const row = await buscarOportunidade(id);
+  if (!row) throw new Error("Oportunidade não encontrada.");
+  if (lojaIdFiltro !== undefined && row.loja_id !== lojaIdFiltro) throw new Error("Você não tem acesso a essa loja.");
+  if (lojasPermitidas !== undefined && !lojasPermitidas.includes(row.loja_id)) {
+    throw new Error("Você não tem acesso a essa loja.");
+  }
+  if (!row.category_id || !row.listing_type_id) {
+    return { margem: null, percentualMargem: null, taxaMl: null };
+  }
+
+  const lojas = await listLojas();
+  const loja = lojas.find((l) => l.id === row.loja_id);
+  const custoUnitario = row.custo_unitario === null ? null : Number(row.custo_unitario);
+  const freteEstimado = row.frete_estimado === null ? 0 : Number(row.frete_estimado);
+
+  const taxaMl = await getTaxaMlParaPreco(row.loja_id, row.category_id, row.listing_type_id, precoHipotetico);
+  const margemSemFrete = calcularMargem(precoHipotetico, custoUnitario, taxaMl, loja?.imposto_percentual ?? 0);
+  const margem = margemSemFrete === null ? null : arredondarCentavos(margemSemFrete - freteEstimado);
+  const percentualMargem = margem === null || precoHipotetico <= 0 ? null : (margem / precoHipotetico) * 100;
+  return { margem, percentualMargem, taxaMl };
+}
+
 // Ação real no Mercado Livre — muda preço/participação de um anúncio ativo.
 // Só chamada quando o dono clica em "Aprovar" na tela, nunca automaticamente.
-export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<void> {
+// precoEscolhidoOverride: preço que o usuário editou na tela (só se aplica a
+// tipos com faixa min/max — SMART usa sempre o preço fixo da proposta, ver
+// comentário em buscarOportunidadesNaLoja).
+export async function aprovarOportunidade(
+  id: number,
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[],
+  precoEscolhidoOverride?: number
+): Promise<void> {
   const row = await buscarOportunidade(id);
   if (!row) throw new Error("Oportunidade não encontrada.");
   if (lojaIdFiltro !== undefined && row.loja_id !== lojaIdFiltro) throw new Error("Você não tem acesso a essa loja.");
@@ -379,16 +497,28 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
     throw new Error(mensagem);
   }
 
+  let precoFinal = Number(row.preco_escolhido);
+  let margemFinal = row.margem === null ? null : Number(row.margem);
+
+  if (precoEscolhidoOverride !== undefined) {
+    const min = row.min_discounted_price === null ? null : Number(row.min_discounted_price);
+    const max = row.max_discounted_price === null ? null : Number(row.max_discounted_price);
+    if (min !== null && precoEscolhidoOverride < min) {
+      throw new Error(`Preço abaixo do mínimo permitido pelo Mercado Livre (R$ ${min.toFixed(2)}).`);
+    }
+    if (max !== null && precoEscolhidoOverride > max) {
+      throw new Error(`Preço acima do máximo permitido pelo Mercado Livre (R$ ${max.toFixed(2)}).`);
+    }
+    precoFinal = precoEscolhidoOverride;
+    margemFinal = (await simularMargem(id, precoFinal, lojaIdFiltro, lojasPermitidas)).margem;
+  }
+
   try {
-    await adicionarItemCampanha(
-      row.loja_id,
-      row.item_id,
-      promotionId,
-      row.tipo,
-      Number(row.preco_escolhido),
-      candidataAtual.refId
+    await adicionarItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo, precoFinal, candidataAtual.refId);
+    await pool.query(
+      `UPDATE promocoes_oportunidades SET status = 'aprovada', erro = NULL, decidido_em = now(), preco_escolhido = $2, margem = $3 WHERE id = $1`,
+      [id, precoFinal, margemFinal]
     );
-    await pool.query(`UPDATE promocoes_oportunidades SET status = 'aprovada', erro = NULL, decidido_em = now() WHERE id = $1`, [id]);
   } catch (err) {
     // Mesmo padrão de erro de criarCampanhaVendedor (promocoesService.ts) —
     // a mensagem genérica do axios ("Request failed with status code 400")
@@ -407,6 +537,33 @@ export async function aprovarOportunidade(id: number, lojaIdFiltro?: number, loj
     ]);
     throw new Error(mensagem);
   }
+}
+
+// Sai de uma promoção que o anúncio já está participando. Usa
+// removerItemCampanha (mercadoLivreApi.ts), cujo formato NÃO foi confirmado
+// contra a documentação oficial do Mercado Livre (bloqueada por proteção
+// anti-bot na pesquisa) — o erro do ML, se o formato estiver errado, sobe
+// direto pra tela sem ser engolido. Apaga a linha ao sucesso em vez de
+// marcar um status terminal: a varredura do dia seguinte recria um
+// registro fresco (candidato ou participante de outra promoção) se ainda
+// fizer sentido, sem precisar destravar um status especial no upsert.
+export async function sairDaPromocao(id: number, lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<void> {
+  const row = await buscarOportunidade(id);
+  if (!row) throw new Error("Oportunidade não encontrada.");
+  if (lojaIdFiltro !== undefined && row.loja_id !== lojaIdFiltro) throw new Error("Você não tem acesso a essa loja.");
+  if (lojasPermitidas !== undefined && !lojasPermitidas.includes(row.loja_id)) {
+    throw new Error("Você não tem acesso a essa loja.");
+  }
+  if (row.status !== "participando") {
+    throw new Error("Esse anúncio não está marcado como participante de uma promoção rastreada aqui.");
+  }
+  const promotionId = row.promotion_id;
+  if (!promotionId) {
+    throw new Error("Essa modalidade de promoção não tem um identificador pra sair via API — saia direto no Mercado Livre.");
+  }
+
+  await removerItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo);
+  await pool.query("DELETE FROM promocoes_oportunidades WHERE id = $1", [id]);
 }
 
 export interface ResultadoAprovacaoLote {

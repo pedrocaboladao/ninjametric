@@ -467,14 +467,17 @@ CREATE TABLE IF NOT EXISTS promocoes_itens (
 );
 CREATE INDEX IF NOT EXISTS idx_promocoes_itens_campanha ON promocoes_itens (campanha_id);
 
--- Oportunidades de promoções sugeridas pelo próprio Mercado Livre. Só tipo
--- SMART ("Impulsione suas vendas"/"Aumente suas vendas") entra aqui —
--- testado ao vivo em várias lojas do grupo: é o único tipo que revela
--- meli_percentual/seller_percentual (quanto o ML banca vs. quanto sai do
--- seu bolso), mesmo antes de aceitar ("candidate"). DEAL, PRICE_DISCOUNT e
--- SELLER_CAMPAIGN nunca trazem esses campos — ou seja, não têm ajuda real
--- do ML, só desconto seu mesmo, e o dono pediu pra não automatizar essas
--- (ver promocoesOportunidadesService).
+-- Oportunidades de promoções do Mercado Livre ("Promoções da Conta").
+-- Cobria só tipo SMART no início (único que revela meli_percentual/
+-- seller_percentual, quanto o ML banca vs. quanto sai do bolso do
+-- vendedor) — decisão do próprio dono, que na época não queria automatizar
+-- os demais tipos sem essa transparência. Ampliado depois pra cobrir
+-- qualquer tipo (exceto SELLER_CAMPAIGN, que tem fluxo próprio em
+-- "Campanhas") porque a tela deixou de ser automática: o usuário sempre
+-- escolhe o preço e decide entrar/sair manualmente (ver
+-- promocoesOportunidadesService). meli_percentual/seller_percentual
+-- continuam null pra tipos que não revelam isso — só não são mais motivo
+-- pra excluir a linha.
 CREATE TABLE IF NOT EXISTS promocoes_oportunidades (
   id SERIAL PRIMARY KEY,
   loja_id INTEGER NOT NULL REFERENCES lojas(id),
@@ -516,6 +519,19 @@ ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS frete_estimado NUME
 ALTER TABLE promocoes_oportunidades DROP CONSTRAINT IF EXISTS promocoes_oportunidades_loja_id_item_id_tipo_key;
 ALTER TABLE promocoes_oportunidades DROP CONSTRAINT IF EXISTS promocoes_oportunidades_unica;
 ALTER TABLE promocoes_oportunidades ADD CONSTRAINT promocoes_oportunidades_unica UNIQUE (loja_id, item_id, tipo, promotion_id);
+
+-- "Promoções da Conta": varredura deixou de filtrar só tipo SMART com
+-- meli/seller percentual (única automação que o dono tinha autorizado
+-- antes) — agora cobre qualquer tipo (exceto SELLER_CAMPAIGN, que já tem
+-- fluxo próprio em "Campanhas") e também itens JÁ participantes (status
+-- 'participando'), não só candidatos. category_id/listing_type_id guardados
+-- na varredura pra recalcular margem (getTaxaMlParaPreco) sem rebuscar o
+-- anúncio inteiro a cada preço digitado pelo usuário.
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS category_id TEXT;
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS listing_type_id TEXT;
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS min_discounted_price NUMERIC(12, 2);
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS max_discounted_price NUMERIC(12, 2);
+ALTER TABLE promocoes_oportunidades ADD COLUMN IF NOT EXISTS suggested_discounted_price NUMERIC(12, 2);
 
 -- Agente Analista de Ads: feed persistente das mesmas regras de "Insights"
 -- que já existem na tela de Gestão de Ads (Ads.tsx), só que salvas aqui pra

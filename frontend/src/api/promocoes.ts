@@ -8,6 +8,7 @@ import type {
   ProgressoBuscaOportunidades,
   ComparacaoOportunidade,
   ResultadoAprovacaoLote,
+  MargemSimulada,
 } from "../types/promocoes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -108,8 +109,24 @@ export async function fetchOportunidades(lojaFiltro: number | "todas" | "minhas"
   return data.oportunidades;
 }
 
-export async function aprovarOportunidade(id: number): Promise<void> {
+export async function aprovarOportunidade(id: number, preco?: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/${id}/aprovar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ preco }),
+  });
+  await tratarResposta(res);
+}
+
+export async function fetchSimularMargem(id: number, preco: number): Promise<MargemSimulada> {
+  const params = new URLSearchParams({ preco: String(preco) });
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/${id}/simular?${params}`, { credentials: "include" });
+  return tratarResposta<MargemSimulada>(res);
+}
+
+export async function sairDaPromocao(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/promocoes/oportunidades/${id}/sair`, {
     method: "POST",
     credentials: "include",
   });

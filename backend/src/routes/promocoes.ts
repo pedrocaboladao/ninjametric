@@ -19,6 +19,8 @@ import {
   rejeitarOportunidade,
   limparOportunidades,
   compararComVendaReal,
+  simularMargem,
+  sairDaPromocao,
 } from "../services/promocoesOportunidadesService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
@@ -279,13 +281,54 @@ promocoesRouter.post("/oportunidades/:id/aprovar", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
+  const { preco } = req.body ?? {};
+  const precoNum = preco === undefined ? undefined : Number(preco);
+  if (precoNum !== undefined && !Number.isFinite(precoNum)) {
+    res.status(400).json({ error: "Preço inválido." });
+    return;
+  }
   const filtro = resolverLojaFiltro(req, res);
   if (!filtro) return;
   try {
-    await aprovarOportunidade(id, filtro.lojaId, filtro.lojasPermitidas);
+    await aprovarOportunidade(id, filtro.lojaId, filtro.lojasPermitidas, precoNum);
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao aprovar oportunidade.");
+  }
+});
+
+// Simulação sem gravar nada nem chamar o Mercado Livre pra escrever — só
+// consulta a taxa do ML pro preço digitado (getTaxaMlParaPreco), usada
+// enquanto o usuário edita o preço promocional na tela.
+promocoesRouter.get("/oportunidades/:id/simular", async (req, res) => {
+  const id = Number(req.params.id);
+  const preco = Number(req.query.preco);
+  if (!Number.isInteger(id) || !Number.isFinite(preco)) {
+    res.status(400).json({ error: "Informe um preço válido." });
+    return;
+  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    res.json(await simularMargem(id, preco, filtro.lojaId, filtro.lojasPermitidas));
+  } catch (err) {
+    erro(res, err, "Falha ao simular margem.");
+  }
+});
+
+promocoesRouter.post("/oportunidades/:id/sair", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+  try {
+    await sairDaPromocao(id, filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao sair da promoção.");
   }
 });
 

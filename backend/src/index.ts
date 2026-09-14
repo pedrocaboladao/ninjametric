@@ -47,6 +47,8 @@ import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requir
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
 import { iniciarSincronizacaoPromocoes } from "./services/promocoesService";
+import { iniciarBuscaOportunidades } from "./services/promocoesOportunidadesService";
+import { agendarPorHorario } from "./services/dateUtils";
 import { iniciarSincronizacaoVendas } from "./services/fabricaSincAutomaticaService";
 import { iniciarAutoRespostaChatShopee } from "./services/shopeeChatAutoService";
 import { iniciarVerificacaoAgenteAds } from "./services/agenteAdsService";
@@ -167,6 +169,13 @@ iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
 iniciarSincronizacaoPromocoes();
 iniciarSincronizacaoVendas();
+// Varredura diária de "Promoções da Conta" às 3h (horário de menor uso do
+// painel) — reaproveita agendarPorHorario (dateUtils.ts), que já existia
+// sem nenhum chamador até agora. O botão manual "Buscar oportunidades"
+// continua disponível pra forçar uma atualização fora desse horário.
+agendarPorHorario([3], () =>
+  iniciarBuscaOportunidades().catch((err) => console.error("Erro na varredura diária de Promoções da Conta:", err))
+);
 iniciarVerificacaoAgenteAds();
 iniciarGrowthHacker();
 iniciarSnapshotEstoque();
