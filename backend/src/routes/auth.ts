@@ -7,15 +7,6 @@ import { pool } from "../db/pool";
 
 export const authRouter = Router();
 
-// Temporária — descobrir o id de lojas recém-cadastradas (seed.ts) sem
-// precisar logar no painel só pra ler a tela de Gerenciar Impostos. Fica
-// em /auth de propósito (único router público, sem requireAuth) — só
-// devolve id+nome, nada sensível. Remover depois de usar.
-authRouter.get("/diag-lojas", async (_req, res) => {
-  const { rows } = await pool.query<{ id: number; nome: string }>("SELECT id, nome FROM lojas ORDER BY id");
-  res.json(rows);
-});
-
 // Inicia a autorização OAuth2 para uma loja específica.
 // Uso: GET /auth/:lojaId/authorize
 authRouter.get("/:lojaId/authorize", (req, res) => {
