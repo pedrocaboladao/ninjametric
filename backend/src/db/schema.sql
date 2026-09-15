@@ -1878,3 +1878,21 @@ ALTER TABLE discrepancias ADD COLUMN IF NOT EXISTS resposta TEXT;
 INSERT INTO usuarios_permissoes (usuario_id, modulo)
 SELECT id, 'discrepancias' FROM usuarios
 ON CONFLICT DO NOTHING;
+
+-- Histórico de MLBs já corrigidos: toda exclusão em "discrepancias" grava
+-- uma cópia aqui antes de apagar (ver excluirDiscrepancia,
+-- discrepanciasService.ts) — na prática, quem exclui já resolveu o preço na
+-- loja, não fica reabrindo o caso depois. Existe só pra consulta ("esse MLB
+-- já foi corrigido?"), sem nenhuma ação disponível em cima dela.
+CREATE TABLE IF NOT EXISTS discrepancias_corrigidas (
+  id SERIAL PRIMARY KEY,
+  mlb TEXT NOT NULL,
+  sku TEXT,
+  titulo TEXT,
+  link TEXT NOT NULL,
+  loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL,
+  preco NUMERIC(12, 2),
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  corrigido_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_discrepancias_corrigidas_mlb ON discrepancias_corrigidas (mlb);

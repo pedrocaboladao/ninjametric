@@ -6,6 +6,7 @@ import {
   fetchRankingDiscrepancias,
   fetchUltimasVendas,
   salvarRespostaDiscrepancia,
+  fetchDiscrepanciasCorrigidas,
 } from "../api/discrepancias";
 import type {
   Discrepancia,
@@ -13,6 +14,7 @@ import type {
   RankingUsuarioDiscrepancias,
   VendaRecente,
   PrecoOficial,
+  DiscrepanciaCorrigida,
 } from "../types/discrepancias";
 import type { Usuario } from "../types/usuarios";
 import { corDaLoja, formatDataHora, formatCurrency } from "../utils/format";
@@ -337,8 +339,49 @@ function RankingDiscrepanciasView() {
   );
 }
 
+function CorrigidasView() {
+  const [corrigidas, setCorrigidas] = useState<DiscrepanciaCorrigida[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchDiscrepanciasCorrigidas()
+      .then(setCorrigidas)
+      .catch((err) => setErro(err instanceof Error ? err.message : "Erro ao carregar o histórico."));
+  }, []);
+
+  if (erro) return <div className="state-message state-error">{erro}</div>;
+  if (!corrigidas) return <div className="state-message">Carregando...</div>;
+  if (corrigidas.length === 0) {
+    return <div className="state-message">Nenhum MLB corrigido ainda — exclua uma discrepância na aba Lista assim que corrigir o preço.</div>;
+  }
+
+  return (
+    <>
+      <span className="painel-eyebrow func-secao-titulo">MLBs já corrigidos ({corrigidas.length})</span>
+      {corrigidas.map((c) => (
+        <div key={c.id} className="pergunta-item">
+          <a href={c.link} target="_blank" rel="noreferrer" className="financeiro-td-titulo">
+            {c.mlb}
+            <IconExternalLink />
+          </a>
+          <span className="financeiro-td-mudo">{c.titulo ?? "—"}</span>
+          {c.lojaNome && (
+            <span className="financeiro-td-mudo" style={{ color: c.lojaId !== null ? corDaLoja(c.lojaId) : undefined }}>
+              {c.lojaNome}
+            </span>
+          )}
+          {c.preco !== null && <span className="financeiro-td-mudo">{formatCurrency(c.preco)}</span>}
+          <span className="financeiro-td-mudo">
+            Corrigido por {c.usuarioNome ?? "—"} em {formatDataHora(c.corrigidoEm)}
+          </span>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export function Discrepancias({ usuario }: Props) {
-  const [aba, setAba] = useState<"lista" | "ranking">("lista");
+  const [aba, setAba] = useState<"lista" | "ranking" | "corrigidas">("lista");
 
   return (
     <div className="financeiro-page">
@@ -367,10 +410,18 @@ export function Discrepancias({ usuario }: Props) {
         >
           Ranking
         </button>
+        <button
+          type="button"
+          className={`agente-tab ${aba === "corrigidas" ? "agente-tab-ativa" : ""}`}
+          onClick={() => setAba("corrigidas")}
+        >
+          Corrigidos
+        </button>
       </div>
 
       {aba === "lista" && <ListaDiscrepancias usuario={usuario} />}
       {aba === "ranking" && <RankingDiscrepanciasView />}
+      {aba === "corrigidas" && <CorrigidasView />}
     </div>
   );
 }

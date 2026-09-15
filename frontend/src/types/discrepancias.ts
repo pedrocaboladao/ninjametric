@@ -47,3 +47,16 @@ export interface RankingDiscrepancias {
   usuarios: RankingUsuarioDiscrepancias[];
   lojaMaisDiscrepante: LojaMaisDiscrepante | null;
 }
+
+export interface DiscrepanciaCorrigida {
+  id: number;
+  mlb: string;
+  sku: string | null;
+  titulo: string | null;
+  link: string;
+  lojaId: number | null;
+  lojaNome: string | null;
+  preco: number | null;
+  usuarioNome: string | null;
+  corrigidoEm: string;
+}

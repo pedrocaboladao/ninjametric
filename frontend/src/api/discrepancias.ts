@@ -1,4 +1,4 @@
-import type { Discrepancia, RankingDiscrepancias, UltimasVendasResposta } from "../types/discrepancias";
+import type { Discrepancia, RankingDiscrepancias, UltimasVendasResposta, DiscrepanciaCorrigida } from "../types/discrepancias";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -42,6 +42,12 @@ export async function fetchUltimasVendas(lojaId: number, mlb: string, sku: strin
   if (sku) params.set("sku", sku);
   const res = await fetch(`${API_BASE}/api/discrepancias/ultimas-vendas?${params}`, { credentials: "include" });
   return tratarResposta<UltimasVendasResposta>(res);
+}
+
+export async function fetchDiscrepanciasCorrigidas(): Promise<DiscrepanciaCorrigida[]> {
+  const res = await fetch(`${API_BASE}/api/discrepancias/corrigidas`, { credentials: "include" });
+  const data = await tratarResposta<{ corrigidas: DiscrepanciaCorrigida[] }>(res);
+  return data.corrigidas;
 }
 
 export async function salvarRespostaDiscrepancia(id: number, resposta: string): Promise<void> {

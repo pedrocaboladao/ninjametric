@@ -150,13 +150,91 @@ export async function listarDiscrepancias(): Promise<Discrepancia[]> {
   return rows.map(linhaParaDiscrepancia);
 }
 
+// Toda exclusão vira "corrigido" — na prática é assim que o módulo é usado:
+// quem exclui já resolveu o preço na loja, não fica reabrindo o caso depois
+// (confirmado com o dono). Grava uma cópia em discrepancias_corrigidas ANTES
+// de apagar, numa transação — se um dia precisar separar "corrigido de
+// verdade" de "cadastro errado/duplicado", é aqui que entra essa distinção.
 export async function excluirDiscrepancia(id: number, usuarioId: number, ehAdmin: boolean): Promise<void> {
   const condicao = ehAdmin ? "id = $1" : "id = $1 AND usuario_id = $2";
   const params = ehAdmin ? [id] : [id, usuarioId];
-  const { rowCount } = await pool.query(`DELETE FROM discrepancias WHERE ${condicao}`, params);
-  if (rowCount === 0) {
-    throw new Error("Discrepância não encontrada ou sem permissão pra excluir essa aqui.");
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<{
+      mlb: string;
+      sku: string | null;
+      titulo: string | null;
+      link: string;
+      loja_id: number | null;
+      preco: string | null;
+    }>(`SELECT mlb, sku, titulo, link, loja_id, preco FROM discrepancias WHERE ${condicao}`, params);
+    if (rows.length === 0) {
+      throw new Error("Discrepância não encontrada ou sem permissão pra excluir essa aqui.");
+    }
+    const d = rows[0];
+    await client.query(
+      `INSERT INTO discrepancias_corrigidas (mlb, sku, titulo, link, loja_id, preco, usuario_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [d.mlb, d.sku, d.titulo, d.link, d.loja_id, d.preco, usuarioId]
+    );
+    await client.query(`DELETE FROM discrepancias WHERE ${condicao}`, params);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
   }
+}
+
+export interface DiscrepanciaCorrigida {
+  id: number;
+  mlb: string;
+  sku: string | null;
+  titulo: string | null;
+  link: string;
+  lojaId: number | null;
+  lojaNome: string | null;
+  preco: number | null;
+  usuarioNome: string | null;
+  corrigidoEm: string;
+}
+
+interface LinhaDiscrepanciaCorrigida {
+  id: number;
+  mlb: string;
+  sku: string | null;
+  titulo: string | null;
+  link: string;
+  loja_id: number | null;
+  loja_nome: string | null;
+  preco: string | null;
+  usuario_nome: string | null;
+  corrigido_em: string;
+}
+
+export async function listarDiscrepanciasCorrigidas(): Promise<DiscrepanciaCorrigida[]> {
+  const { rows } = await pool.query<LinhaDiscrepanciaCorrigida>(
+    `SELECT c.id, c.mlb, c.sku, c.titulo, c.link, c.loja_id, l.nome AS loja_nome, c.preco, u.nome AS usuario_nome, c.corrigido_em
+     FROM discrepancias_corrigidas c
+     LEFT JOIN lojas l ON l.id = c.loja_id
+     LEFT JOIN usuarios u ON u.id = c.usuario_id
+     ORDER BY c.corrigido_em DESC`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    mlb: r.mlb,
+    sku: r.sku,
+    titulo: r.titulo,
+    link: r.link,
+    lojaId: r.loja_id,
+    lojaNome: r.loja_nome,
+    preco: r.preco !== null ? Number(r.preco) : null,
+    usuarioNome: r.usuario_nome,
+    corrigidoEm: r.corrigido_em,
+  }));
 }
 
 // Sem restrição de dono — mesmo espírito aberto do resto do módulo. É a

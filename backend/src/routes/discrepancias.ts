@@ -8,6 +8,7 @@ import {
   buscarUltimasVendas,
   buscarPrecoOficial,
   recalcularSkusFaltantes,
+  listarDiscrepanciasCorrigidas,
 } from "../services/discrepanciasService";
 
 export const discrepanciasRouter = Router();
@@ -31,6 +32,14 @@ discrepanciasRouter.get("/ranking", async (_req, res) => {
     res.json(await buscarRankingDiscrepancias());
   } catch (err) {
     erro(res, err, "Falha ao carregar o ranking.");
+  }
+});
+
+discrepanciasRouter.get("/corrigidas", async (_req, res) => {
+  try {
+    res.json({ corrigidas: await listarDiscrepanciasCorrigidas() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o histórico de corrigidos.");
   }
 });
 
