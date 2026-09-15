@@ -168,21 +168,33 @@ export async function adicionarItemCampanha(
   );
 }
 
-// Sai de uma promoção (inverso de adicionarItemCampanha). Endpoint NÃO
-// confirmado contra a doc oficial — o site de documentação do Mercado Livre
-// bloqueou acesso automatizado (proteção anti-bot) na pesquisa que embasou
-// essa função. Formato implementado por simetria com adicionarItemCampanha
-// (mesmo path, method invertido, identificação da promoção como query param
-// já que DELETE não tem corpo garantido em todo cliente HTTP). Repassa a
-// mensagem crua do Mercado Livre no erro — se o formato estiver errado, o
-// primeiro clique real de "Sair" em produção mostra o que o ML realmente
-// espera, em vez de um "Request failed" genérico.
-export async function removerItemCampanha(lojaId: number, itemId: string, promotionId: string, promotionType: string): Promise<void> {
+// Sai de uma promoção (inverso de adicionarItemCampanha). Formato CONFIRMADO
+// contra a doc oficial (via navegador — o fetch direto continua bloqueado
+// por proteção anti-bot) na página "Campanha co-participação para PIX":
+// DELETE /seller-promotions/items/{itemId}?promotion_type=X&promotion_id=Y
+// &offer_id=Z&app_version=v2. offer_id vem obrigatório nesse exemplo (tipo
+// BANK/PIX) — mandamos só quando vier preenchido (mesmo espírito de
+// adicionarItemCampanha), já que tipos sem oferta fechada (LIGHTNING, DEAL,
+// PRICE_DISCOUNT) não têm refId nenhum pra mandar. Repassa a mensagem crua
+// do Mercado Livre no erro — se algum tipo precisar de algo a mais que isso,
+// a mensagem real do ML aparece na tela em vez de um "Request failed" genérico.
+export async function removerItemCampanha(
+  lojaId: number,
+  itemId: string,
+  promotionId: string,
+  promotionType: string,
+  offerId?: string | null
+): Promise<void> {
   const accessToken = await getValidAccessToken(lojaId);
   try {
     await axios.delete(`${ML_API_BASE}/seller-promotions/items/${itemId}`, {
       headers: { Authorization: `Bearer ${accessToken}` },
-      params: { app_version: "v2", promotion_id: promotionId, promotion_type: promotionType },
+      params: {
+        app_version: "v2",
+        promotion_id: promotionId,
+        promotion_type: promotionType,
+        ...(offerId ? { offer_id: offerId } : {}),
+      },
     });
   } catch (err) {
     if (axios.isAxiosError(err)) {

@@ -129,8 +129,18 @@ async function buscarOportunidadesNaLoja(loja: Loja): Promise<void> {
       const promos = await consultarPromocoesDoItem(loja.id, itemId);
       for (const p of promos) {
         if (p.type === "SELLER_CAMPAIGN") continue;
+        // BANK/PIX (campanha de co-participação, ver mercadoLivreApi.ts) não
+        // tem nenhum campo de preço na resposta — só meli_percentage/
+        // seller_percentage (confirmado na doc oficial). Sem esse OR, essas
+        // linhas nunca passavam daqui: dealPrice/min/max/suggested vêm todos
+        // null, e o preço só é calculável a partir do sellerPercentage (ver
+        // precoEscolhido logo abaixo).
         const temPrecoUtilizavel =
-          p.dealPrice !== null || p.minDiscountedPrice !== null || p.maxDiscountedPrice !== null || p.suggestedDiscountedPrice !== null;
+          p.dealPrice !== null ||
+          p.minDiscountedPrice !== null ||
+          p.maxDiscountedPrice !== null ||
+          p.suggestedDiscountedPrice !== null ||
+          p.sellerPercentage !== null;
         if (!temPrecoUtilizavel) continue;
         if (p.status === "candidate" || p.status === "started") {
           candidatas.push({ itemId, promo: p, origemStatus: p.status });
@@ -540,13 +550,13 @@ export async function aprovarOportunidade(
 }
 
 // Sai de uma promoção que o anúncio já está participando. Usa
-// removerItemCampanha (mercadoLivreApi.ts), cujo formato NÃO foi confirmado
-// contra a documentação oficial do Mercado Livre (bloqueada por proteção
-// anti-bot na pesquisa) — o erro do ML, se o formato estiver errado, sobe
-// direto pra tela sem ser engolido. Apaga a linha ao sucesso em vez de
-// marcar um status terminal: a varredura do dia seguinte recria um
-// registro fresco (candidato ou participante de outra promoção) se ainda
-// fizer sentido, sem precisar destravar um status especial no upsert.
+// removerItemCampanha (mercadoLivreApi.ts) — formato confirmado contra a doc
+// oficial da campanha de PIX (offer_id salvo em registrarOportunidade/
+// buscarOportunidadesNaLoja, mesmo campo já usado pra aprovar). Apaga a
+// linha ao sucesso em vez de marcar um status terminal: a varredura do dia
+// seguinte recria um registro fresco (candidato ou participante de outra
+// promoção) se ainda fizer sentido, sem precisar destravar um status
+// especial no upsert.
 export async function sairDaPromocao(id: number, lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<void> {
   const row = await buscarOportunidade(id);
   if (!row) throw new Error("Oportunidade não encontrada.");
@@ -562,7 +572,7 @@ export async function sairDaPromocao(id: number, lojaIdFiltro?: number, lojasPer
     throw new Error("Essa modalidade de promoção não tem um identificador pra sair via API — saia direto no Mercado Livre.");
   }
 
-  await removerItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo);
+  await removerItemCampanha(row.loja_id, row.item_id, promotionId, row.tipo, row.offer_id);
   await pool.query("DELETE FROM promocoes_oportunidades WHERE id = $1", [id]);
 }
 
