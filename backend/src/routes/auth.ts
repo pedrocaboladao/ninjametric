@@ -39,15 +39,6 @@ authRouter.get("/shopee/:lojaId/authorize", (req, res) => {
   res.redirect(urlAutorizacaoShopee(lojaId));
 });
 
-// Temporária — descobrir o id de lojas recém-cadastradas (seed.ts) sem
-// precisar logar no painel. Fica em /auth de propósito (único router
-// público, sem requireAuth) — só devolve id+nome, nada sensível. Remover
-// depois de usar.
-authRouter.get("/diag-lojas", async (_req, res) => {
-  const { rows } = await pool.query<{ id: number; nome: string }>("SELECT id, nome FROM lojas ORDER BY id");
-  res.json(rows);
-});
-
 // Callback do Mercado Livre após o usuário autorizar o app.
 authRouter.get("/callback", async (req, res) => {
   const { code, state } = req.query;
