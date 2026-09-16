@@ -28,6 +28,7 @@ const LOJAS = [
   "Truck 2",
   "Truck 3",
   "Truck 4",
+  "Modal Tech",
 ];
 
 async function seed() {

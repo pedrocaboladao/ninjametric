@@ -4,6 +4,7 @@ import { buildAuthorizationUrl, exchangeCodeForToken } from "../services/mercado
 import { saveTokens } from "../services/tokenStore";
 import { generatePkcePair, guardarCodeVerifier, consumirCodeVerifier } from "../services/pkce";
 import { pool } from "../db/pool";
+import { configurado as shopeeConfigurado, urlDeAutorizacao as urlAutorizacaoShopee } from "../services/shopeeAuth";
 
 export const authRouter = Router();
 
@@ -16,6 +17,35 @@ authRouter.get("/:lojaId/authorize", (req, res) => {
   guardarCodeVerifier(state, codeVerifier);
   const url = buildAuthorizationUrl(state, codeChallenge);
   res.redirect(url);
+});
+
+// Equivalente ao de cima, pra Shopee — não tinha link compartilhável até
+// agora: a rota /api/shopee/:lojaId/autorizar (routes/shopee.ts) devolve
+// JSON e exige sessão de admin (pensada pra um botão dentro do painel, que
+// nunca chegou a ser construído). Fica aqui, pública, no mesmo espírito do
+// /:lojaId/authorize acima — a assinatura HMAC é calculada na hora do
+// clique (urlDeAutorizacao usa o timestamp atual), então o link não expira
+// por ficar parado.
+authRouter.get("/shopee/:lojaId/authorize", (req, res) => {
+  const lojaId = Number(req.params.lojaId);
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).send("Id de loja inválido.");
+    return;
+  }
+  if (!shopeeConfigurado()) {
+    res.status(400).send("SHOPEE_PARTNER_ID / SHOPEE_PARTNER_KEY não configurados no servidor.");
+    return;
+  }
+  res.redirect(urlAutorizacaoShopee(lojaId));
+});
+
+// Temporária — descobrir o id de lojas recém-cadastradas (seed.ts) sem
+// precisar logar no painel. Fica em /auth de propósito (único router
+// público, sem requireAuth) — só devolve id+nome, nada sensível. Remover
+// depois de usar.
+authRouter.get("/diag-lojas", async (_req, res) => {
+  const { rows } = await pool.query<{ id: number; nome: string }>("SELECT id, nome FROM lojas ORDER BY id");
+  res.json(rows);
 });
 
 // Callback do Mercado Livre após o usuário autorizar o app.
