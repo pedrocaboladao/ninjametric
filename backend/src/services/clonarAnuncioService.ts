@@ -917,8 +917,21 @@ async function publicarFamiliaDeItens(
   }
 
   if (falhas.length > 0) {
+    // Antes só contava quantos falharam, sem dizer por quê — o motivo real
+    // (achado ao vivo: `falhas[i].erro`) ficava descartado, e quem clonava
+    // via um "8 de 9 não foram criados" sem nenhuma pista do que corrigir.
+    // Agrupa mensagens repetidas (comum: o mesmo erro em todas as cores que
+    // falharam) em vez de listar a mesma linha várias vezes.
+    const contagemPorMensagem = new Map<string, number>();
+    for (const f of falhas) {
+      const mensagem = f.erro instanceof Error ? f.erro.message : "erro desconhecido";
+      contagemPorMensagem.set(mensagem, (contagemPorMensagem.get(mensagem) ?? 0) + 1);
+    }
+    const detalhes = Array.from(contagemPorMensagem.entries())
+      .map(([mensagem, qtd]) => (qtd > 1 ? `${qtd}x: ${mensagem}` : mensagem))
+      .join(" | ");
     avisos.push(
-      `${falhas.length} de ${fontes.length} anúncios da família não foram criados (os outros ${sucessos.length} foram publicados normalmente).`
+      `${falhas.length} de ${fontes.length} anúncios da família não foram criados (os outros ${sucessos.length} foram publicados normalmente). Motivo: ${detalhes}`
     );
   }
 
