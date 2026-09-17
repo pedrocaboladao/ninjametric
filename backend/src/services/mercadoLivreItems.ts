@@ -70,13 +70,20 @@ export function requerModeloUserProduct(err: unknown): boolean {
 }
 
 // Algumas categorias recusam reaproveitar o GTIN do anúncio original (código
-// já usado em outra categoria/anúncio) — mas outras categorias EXIGEM o
+// já usado em outra categoria/anúncio, ou um GTIN inventado/errado que já
+// estava cadastrado no anúncio de origem) — mas outras categorias EXIGEM o
 // GTIN, então não dá pra simplesmente nunca enviar. A estratégia é: tentar
 // com o GTIN normal e, só se vier esse erro específico, tentar de novo sem
-// o atributo.
+// o atributo. O Mercado Livre usa DOIS codes diferentes pra isso — achado ao
+// vivo (família de 9 anúncios: 8 falharam com "product_identifier.
+// invalid_format", cause_id 7711, código não reconhecido aqui — só o outro
+// tratava esse caso, então a família inteira falhava em vez de cair no
+// fallback de tentar sem o GTIN).
+const CODES_GTIN_INVALIDO = new Set(["item.attribute.invalid_product_identifier", "item.attribute.product_identifier.invalid_format"]);
+
 export function requerRemoverGtin(err: unknown): boolean {
   if (!(err instanceof ErroMercadoLivre)) return false;
-  return err.causas.some((c) => c.code === "item.attribute.invalid_product_identifier");
+  return err.causas.some((c) => (c.code && CODES_GTIN_INVALIDO.has(c.code)) || c.cause_id === 7711);
 }
 
 // Anúncios antigos podem não ter atributos que categorias exigem hoje em dia
