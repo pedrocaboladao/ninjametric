@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { listarVendasFinanceiras, calcularPontoEquilibrio } from "../services/financeiroService";
+import { listarVendasFinanceiras, calcularPontoEquilibrio, gerarRelatorioPontoEquilibrio } from "../services/financeiroService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 
 export const financeiroRouter = Router();
@@ -71,5 +71,20 @@ financeiroRouter.get("/ponto-equilibrio", async (req, res) => {
   } catch (err) {
     console.error("Erro ao calcular ponto de equilíbrio:", err);
     res.status(500).json({ error: "Falha ao calcular ponto de equilíbrio." });
+  }
+});
+
+// Mesmo ponto de equilíbrio, mas 1 linha por loja em vez do combinado —
+// pra ver de relance quem já bateu a meta do mês e quem não.
+financeiroRouter.get("/ponto-equilibrio/relatorio", async (req, res) => {
+  const filtro = resolverLojaFiltro(req, res);
+  if (!filtro) return;
+
+  try {
+    const resultado = await gerarRelatorioPontoEquilibrio(filtro.lojaId, filtro.lojasPermitidas);
+    res.json({ lojas: resultado });
+  } catch (err) {
+    console.error("Erro ao gerar relatório de ponto de equilíbrio:", err);
+    res.status(500).json({ error: "Falha ao gerar relatório de ponto de equilíbrio." });
   }
 });

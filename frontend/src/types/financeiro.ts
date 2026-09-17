@@ -45,3 +45,12 @@ export interface PontoEquilibrio {
   percentualAtingido: number | null;
   detalhamento: DetalheEquilibrio[];
 }
+
+export interface LinhaRelatorioEquilibrio {
+  lojaId: number;
+  lojaNome: string;
+  margemAposAds: number;
+  custoFixoMensal: number;
+  projecaoFechamento: number;
+  percentualAtingido: number | null;
+}

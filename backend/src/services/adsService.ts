@@ -341,19 +341,20 @@ export async function capturarGastoAdsDoDia(): Promise<void> {
 // busca ao vivo (o Mercado Livre "esquece" campanha excluída ao consultar
 // ao vivo) — reaproveita listarCampanhasAds (mesma busca+cache da tela de
 // Gestão de Ads) em vez de duplicar a chamada à API.
-export async function obterGastoAdsHistorico(
+async function calcularGastoAdsPorLoja(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
   dataFim?: string
-): Promise<number> {
+): Promise<Map<number, number>> {
   const lojas = (await listLojas()).filter(
     (l) =>
       l.ml_user_id !== null &&
       (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
       (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
   );
-  if (lojas.length === 0) return 0;
+  const porLoja = new Map<number, number>();
+  if (lojas.length === 0) return porLoja;
 
   const hoje = janelaHoje().agora.slice(0, 10);
   const seteDiasAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -361,7 +362,9 @@ export async function obterGastoAdsHistorico(
   const dataFimReal = dataFim ?? hoje;
 
   const campanhasAoVivo = await listarCampanhasAds(lojaIdFiltro, lojasPermitidas, dataInicioReal, dataFimReal);
-  let total = campanhasAoVivo.reduce((soma, c) => soma + c.custo, 0);
+  for (const c of campanhasAoVivo) {
+    porLoja.set(c.lojaId, (porLoja.get(c.lojaId) ?? 0) + c.custo);
+  }
 
   const idsAoVivoPorLoja = new Map<number, Set<number>>();
   for (const c of campanhasAoVivo) {
@@ -379,11 +382,35 @@ export async function obterGastoAdsHistorico(
   for (const r of rows) {
     const idsDaLoja = idsAoVivoPorLoja.get(r.loja_id) ?? new Set<number>();
     if (!idsDaLoja.has(Number(r.campanha_id))) {
-      total += Number(r.soma);
+      porLoja.set(r.loja_id, (porLoja.get(r.loja_id) ?? 0) + Number(r.soma));
     }
   }
 
+  return porLoja;
+}
+
+export async function obterGastoAdsHistorico(
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[],
+  dataInicio?: string,
+  dataFim?: string
+): Promise<number> {
+  const porLoja = await calcularGastoAdsPorLoja(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim);
+  let total = 0;
+  for (const v of porLoja.values()) total += v;
   return total;
+}
+
+// Mesmo cálculo de obterGastoAdsHistorico, sem somar no fim — usado pelo
+// relatório de Ponto de Equilíbrio por loja (financeiroService.ts), que
+// precisa do gasto individual de cada uma, não só o total combinado.
+export async function obterGastoAdsHistoricoPorLoja(
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[],
+  dataInicio?: string,
+  dataFim?: string
+): Promise<Map<number, number>> {
+  return calcularGastoAdsPorLoja(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim);
 }
 
 const HORARIOS_SNAPSHOT_ADS = [0, 4, 8, 12, 16, 20];

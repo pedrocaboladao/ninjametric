@@ -31,22 +31,23 @@ async function listarLojaIdsComShopeeAds(lojaIdFiltro?: number, lojasPermitidas?
 }
 
 // Gasto de Ads da Shopee não é por venda (vem por dia, no nível da loja
-// inteira) — igual ao padrão do Financeiro do Mercado Livre (gastoAdsTotal),
-// entra só no total da janela, não em cada linha da tabela. Lojas sem conta
-// Shopee conectada simplesmente não entram na soma, sem erro.
-export async function obterGastoAdsShopee(
+// inteira) — igual ao padrão do Financeiro do Mercado Livre (gastoAdsTotal).
+// Lojas sem conta Shopee conectada simplesmente não entram no resultado,
+// sem erro.
+export async function obterGastoAdsShopeePorLoja(
   lojaIdFiltro: number | undefined,
   lojasPermitidas: number[] | undefined,
   dataInicioISO: string,
   dataFimISO: string
-): Promise<number> {
+): Promise<Map<number, number>> {
   const lojaIds = await listarLojaIdsComShopeeAds(lojaIdFiltro, lojasPermitidas);
-  if (lojaIds.length === 0) return 0;
+  const porLoja = new Map<number, number>();
+  if (lojaIds.length === 0) return porLoja;
 
   const startDate = paraDDMMYYYY(dataInicioISO);
   const endDate = paraDDMMYYYY(dataFimISO);
 
-  const totaisPorLoja = await Promise.all(
+  await Promise.all(
     lojaIds.map(async (lojaId) => {
       try {
         const data = await chamarApiAssinada<RespostaAdsDiario>(
@@ -56,15 +57,28 @@ export async function obterGastoAdsShopee(
         );
         if (data.error) {
           console.error(`[shopee-ads] loja ${lojaId}: ${data.error} ${data.message ?? ""}`);
-          return 0;
+          return;
         }
-        return (data.response ?? []).reduce((soma, dia) => soma + (dia.expense ?? 0), 0);
+        porLoja.set(lojaId, (data.response ?? []).reduce((soma, dia) => soma + (dia.expense ?? 0), 0));
       } catch (err) {
         console.error(`[shopee-ads] loja ${lojaId}:`, err);
-        return 0;
       }
     })
   );
 
-  return totaisPorLoja.reduce((soma, v) => soma + v, 0);
+  return porLoja;
+}
+
+// Entra só no total da janela do Financeiro (não em cada linha da tabela) —
+// mantida por compatibilidade com quem só precisa do agregado.
+export async function obterGastoAdsShopee(
+  lojaIdFiltro: number | undefined,
+  lojasPermitidas: number[] | undefined,
+  dataInicioISO: string,
+  dataFimISO: string
+): Promise<number> {
+  const porLoja = await obterGastoAdsShopeePorLoja(lojaIdFiltro, lojasPermitidas, dataInicioISO, dataFimISO);
+  let total = 0;
+  for (const v of porLoja.values()) total += v;
+  return total;
 }

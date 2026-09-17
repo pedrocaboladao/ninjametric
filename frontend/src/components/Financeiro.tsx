@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { fetchVendasFinanceiras, fetchPontoEquilibrio } from "../api/financeiro";
+import { fetchVendasFinanceiras, fetchPontoEquilibrio, fetchRelatorioPontoEquilibrio } from "../api/financeiro";
 import {
   fetchLojas,
   fetchLojasTodas,
@@ -8,7 +8,7 @@ import {
   type Loja,
   type LojaTodas,
 } from "../api/lojas";
-import type { VendaFinanceira, ResultadoFinanceiro, PontoEquilibrio } from "../types/financeiro";
+import type { VendaFinanceira, ResultadoFinanceiro, PontoEquilibrio, LinhaRelatorioEquilibrio } from "../types/financeiro";
 import type { Usuario } from "../types/usuarios";
 import { formatCurrency, formatDataHora } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -332,6 +332,79 @@ function PontoEquilibrioCard({ dados, erro }: { dados: PontoEquilibrio | null; e
   );
 }
 
+// Mesmo ponto de equilíbrio do card acima, só que 1 linha por loja em vez
+// do combinado — pra ver de relance quem já bateu a meta do mês. Busca só
+// quando aberto (o card sozinho já cobre o caso comum de "como estamos no
+// total"), evitando o custo de vendas+ads de todas as lojas sem necessidade.
+function RelatorioEquilibrioTabela({
+  lojaFiltro,
+  onFechar,
+}: {
+  lojaFiltro: number | "todas" | "minhas";
+  onFechar: () => void;
+}) {
+  const [linhas, setLinhas] = useState<LinhaRelatorioEquilibrio[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLinhas(null);
+    setErro(null);
+    fetchRelatorioPontoEquilibrio(lojaFiltro)
+      .then(setLinhas)
+      .catch((err) => setErro(err instanceof Error ? err.message : "Falha ao gerar relatório."));
+  }, [lojaFiltro]);
+
+  return (
+    <div className="financeiro-impostos">
+      <div className="financeiro-impostos-header">
+        <span>Ponto de equilíbrio por loja — mês atual</span>
+        <button type="button" className="btn-excluir" onClick={onFechar}>
+          Fechar
+        </button>
+      </div>
+      {erro && <div className="state-message state-error">{erro}</div>}
+      {!erro && linhas === null && <div className="state-message">Gerando relatório...</div>}
+      {linhas !== null && linhas.length === 0 && (
+        <div className="state-message">Nenhuma loja com Mercado Livre ou Shopee conectado nesse filtro.</div>
+      )}
+      {linhas !== null && linhas.length > 0 && (
+        <table className="financeiro-tabela">
+          <thead>
+            <tr>
+              <th>Loja</th>
+              <th>Margem após Ads</th>
+              <th>Custo fixo</th>
+              <th>% da meta</th>
+              <th>Projeção do mês</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l) => (
+              <tr key={l.lojaId}>
+                <td>{l.lojaNome}</td>
+                <td>{formatCurrency(l.margemAposAds)}</td>
+                <td>{l.custoFixoMensal > 0 ? formatCurrency(l.custoFixoMensal) : "sem custo cadastrado"}</td>
+                <td
+                  className={
+                    l.percentualAtingido === null
+                      ? undefined
+                      : l.percentualAtingido >= 100
+                        ? "financeiro-margem-positiva"
+                        : "financeiro-margem-negativa"
+                  }
+                >
+                  {l.percentualAtingido !== null ? `${l.percentualAtingido.toFixed(0)}%` : "sem meta"}
+                </td>
+                <td>{formatCurrency(l.projecaoFechamento)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 interface FatiaDonut {
   label: string;
   valor: number;
@@ -443,6 +516,7 @@ export function Financeiro({ usuario }: Props) {
   const [dataFim, setDataFim] = useState(() => hojeISO());
   const [gerenciandoImpostos, setGerenciandoImpostos] = useState(false);
   const [gerenciandoCustoFixo, setGerenciandoCustoFixo] = useState(false);
+  const [vendoRelatorioEquilibrio, setVendoRelatorioEquilibrio] = useState(false);
   const [ordenacao, setOrdenacao] = useState<{ chave: ChaveOrdenacao; direcao: 1 | -1 }>({
     chave: "dataCriacao",
     direcao: -1,
@@ -640,11 +714,21 @@ export function Financeiro({ usuario }: Props) {
               {gerenciandoCustoFixo ? "Fechar" : "Custo fixo por loja"}
             </button>
           )}
+          <button
+            type="button"
+            className="painel-estudo-gerenciar-btn"
+            onClick={() => setVendoRelatorioEquilibrio((v) => !v)}
+          >
+            {vendoRelatorioEquilibrio ? "Fechar" : "Relatório de equilíbrio por loja"}
+          </button>
         </div>
       </div>
 
       {gerenciandoImpostos && usuario.admin && <GerenciarImpostos onFechar={() => setGerenciandoImpostos(false)} />}
       {gerenciandoCustoFixo && usuario.admin && <GerenciarCustoFixo onFechar={() => setGerenciandoCustoFixo(false)} />}
+      {vendoRelatorioEquilibrio && (
+        <RelatorioEquilibrioTabela lojaFiltro={lojaFiltro} onFechar={() => setVendoRelatorioEquilibrio(false)} />
+      )}
 
       <PontoEquilibrioCard dados={pontoEquilibrio} erro={erroPontoEquilibrio} />
 

@@ -2,8 +2,9 @@ import { listLojas } from "./tokenStore";
 import { searchOrders, getCustoFreteDoEnvio, getItemsBasicInfo, MlOrder } from "./mercadoLivreApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre, janelaMesAtual } from "./dateUtils";
-import { obterGastoAdsHistorico } from "./adsService";
+import { obterGastoAdsHistorico, obterGastoAdsHistoricoPorLoja } from "./adsService";
 import { listarVendasFinanceirasShopee, listarLojasComShopee } from "./financeiroShopeeService";
+import { obterGastoAdsShopeePorLoja } from "./shopeeAdsService";
 
 const STATUS_VALIDOS = new Set(["paid", "confirmed"]);
 const STATUS_CANCELADO = "cancelled";
@@ -405,4 +406,76 @@ export async function calcularPontoEquilibrio(
     percentualAtingido: custoFixoMensal > 0 ? (margemAposAds / custoFixoMensal) * 100 : null,
     detalhamento,
   };
+}
+
+export interface LinhaRelatorioEquilibrio {
+  lojaId: number;
+  lojaNome: string;
+  margemAposAds: number;
+  custoFixoMensal: number;
+  projecaoFechamento: number;
+  percentualAtingido: number | null;
+}
+
+// Ponto de equilíbrio de CADA loja, não o combinado — reaproveita a mesma
+// busca em lote de calcularPontoEquilibrio (vendas ML + Shopee de todas as
+// lojas permitidas de uma vez, não 1 chamada por loja) e só monta o
+// detalhamento por loja em cima do que já vem separado (margemPorLoja*, e
+// agora também o gasto de ads por loja via as versões *PorLoja de
+// adsService/shopeeAdsService). Mesmo mês corrente que o card único.
+export async function gerarRelatorioPontoEquilibrio(
+  lojaIdFiltro?: number,
+  lojasPermitidas?: number[]
+): Promise<LinhaRelatorioEquilibrio[]> {
+  const mes = janelaMesAtual();
+  const dataInicio = mes.inicioDia.slice(0, 10);
+  const dataFim = mes.agora.slice(0, 10);
+
+  const vendasShopeePromise = listarVendasFinanceirasShopee(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim).catch((err) => {
+    console.error("Relatório de ponto de equilíbrio: falha ao buscar dados da Shopee, seguindo só com Mercado Livre:", err);
+    return { vendas: [], resumoPedidos: { totalPedidos: 0, pedidosAprovados: 0, pedidosCancelados: 0, valorCancelado: 0 }, gastoAdsTotal: 0 };
+  });
+
+  const [{ vendas }, vendasShopee, lojas, lojasComShopee, gastoAdsMlPorLoja, gastoAdsShopeePorLoja] = await Promise.all([
+    listarVendasFinanceiras(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
+    vendasShopeePromise,
+    listLojas(),
+    listarLojasComShopee(),
+    obterGastoAdsHistoricoPorLoja(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
+    obterGastoAdsShopeePorLoja(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim),
+  ]);
+  const idsComShopee = new Set(lojasComShopee.map((l) => l.id));
+
+  const margemPorLojaMl = new Map<number, number>();
+  for (const v of vendas) {
+    margemPorLojaMl.set(v.lojaId, (margemPorLojaMl.get(v.lojaId) ?? 0) + (v.margemContribuicao ?? 0));
+  }
+  const margemPorLojaShopee = new Map<number, number>();
+  for (const v of vendasShopee.vendas) {
+    margemPorLojaShopee.set(v.lojaId, (margemPorLojaShopee.get(v.lojaId) ?? 0) + (v.margemContribuicao ?? 0));
+  }
+
+  const lojasNoRelatorio = lojas.filter(
+    (l) =>
+      (l.ml_user_id !== null || idsComShopee.has(l.id)) &&
+      (lojaIdFiltro === undefined || l.id === lojaIdFiltro) &&
+      (lojasPermitidas === undefined || lojasPermitidas.includes(l.id))
+  );
+
+  return lojasNoRelatorio
+    .map((l) => {
+      const margemContribuicao = (margemPorLojaMl.get(l.id) ?? 0) + (margemPorLojaShopee.get(l.id) ?? 0);
+      const gastoAds = (gastoAdsMlPorLoja.get(l.id) ?? 0) + (gastoAdsShopeePorLoja.get(l.id) ?? 0);
+      const margemAposAds = margemContribuicao - gastoAds;
+      const custoFixoMensal = l.custo_fixo_mensal;
+      return {
+        lojaId: l.id,
+        lojaNome: l.nome,
+        margemAposAds,
+        custoFixoMensal,
+        projecaoFechamento: mes.diasDecorridos > 0 ? (margemAposAds / mes.diasDecorridos) * mes.diasNoMes : margemAposAds,
+        percentualAtingido: custoFixoMensal > 0 ? (margemAposAds / custoFixoMensal) * 100 : null,
+      };
+    })
+    .sort((a, b) => (b.percentualAtingido ?? -Infinity) - (a.percentualAtingido ?? -Infinity));
 }
