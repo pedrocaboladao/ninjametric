@@ -1,12 +1,53 @@
 import { useEffect, useRef, useState } from "react";
 import type { Loja, PreviewAnuncio, ResultadoClone } from "../types/clonarAnuncio";
 import { TIPOS_ANUNCIO } from "../types/clonarAnuncio";
-import { fetchLojas, buscarPreview, publicarClone } from "../api/clonarAnuncio";
+import { fetchLojas, buscarPreview, publicarClone, baixarVideoAnuncio } from "../api/clonarAnuncio";
 import { formatCurrency } from "../utils/format";
 
 const CONDICAO_LABEL: Record<string, string> = { new: "Novo", used: "Usado" };
 const PASSOS = ["Link", "Títulos", "Confirmação"];
 const LIMITE_TITULO = 60;
+
+function BaixarVideoBox() {
+  const [urlVideo, setUrlVideo] = useState("");
+  const [baixando, setBaixando] = useState(false);
+  const [erroVideo, setErroVideo] = useState<string | null>(null);
+
+  async function baixar() {
+    if (!urlVideo.trim()) return;
+    setBaixando(true);
+    setErroVideo(null);
+    try {
+      await baixarVideoAnuncio(urlVideo.trim());
+    } catch (err) {
+      setErroVideo(err instanceof Error ? err.message : "Falha ao baixar o vídeo.");
+    } finally {
+      setBaixando(false);
+    }
+  }
+
+  return (
+    <div className="painel clonar-video-box">
+      <div className="clonar-campo">
+        <label>Baixar vídeo de um anúncio</label>
+        <div className="clonar-video-linha">
+          <input
+            type="text"
+            className="clonar-input"
+            placeholder="Cole o link do anúncio (precisa ter vídeo cadastrado)"
+            value={urlVideo}
+            onChange={(e) => setUrlVideo(e.target.value)}
+            disabled={baixando}
+          />
+          <button type="button" className="btn-responder" onClick={baixar} disabled={baixando || !urlVideo.trim()}>
+            {baixando ? "Baixando..." : "Baixar vídeo"}
+          </button>
+        </div>
+        {erroVideo && <div className="clonar-erro">{erroVideo}</div>}
+      </div>
+    </div>
+  );
+}
 
 export function ClonarAnuncio() {
   const [step, setStep] = useState(1);
@@ -210,6 +251,8 @@ export function ClonarAnuncio() {
       </div>
 
       {erro && <div className="clonar-erro">{erro}</div>}
+
+      <BaixarVideoBox />
 
       {step === 1 && (
         <div className="painel">

@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { montarPreview, publicarClone } from "../services/clonarAnuncioService";
+import ytdl from "@distube/ytdl-core";
+import { montarPreview, publicarClone, resolverVideoDoAnuncio } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
 import { extrairItemIdDaUrl, getItemFullComToken, resolverItemIdPorUserProduct } from "../services/mercadoLivreItems";
@@ -69,6 +70,45 @@ clonarAnuncioRouter.get("/item-diag", async (req, res) => {
     res.json({ identificador, resultados });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });
+  }
+});
+
+// Baixa o vídeo do YouTube anexado a um anúncio (campo video_id) — só
+// funciona pra anúncio de uma loja que o usuário tem acesso pra clonagem,
+// mesma regra do resto do módulo. O YouTube não tem endpoint oficial de
+// download; @distube/ytdl-core replica o jeito que o player carrega o vídeo
+// (mesma técnica usada por qualquer downloader — pode quebrar se o YouTube
+// mudar algo do lado deles, sem aviso prévio).
+clonarAnuncioRouter.get("/video", async (req, res) => {
+  const url = typeof req.query.url === "string" ? req.query.url : "";
+  if (!url.trim()) {
+    res.status(400).json({ error: "Informe ?url=<link do anúncio>." });
+    return;
+  }
+  const usuario = req.usuario!;
+
+  try {
+    const video = await resolverVideoDoAnuncio(url.trim(), lojasEfetivasParaClonagem(usuario));
+    const youtubeUrl = `https://www.youtube.com/watch?v=${video.videoId}`;
+    const info = await ytdl.getInfo(youtubeUrl);
+    const formato = ytdl.chooseFormat(info.formats, { quality: "highest", filter: "audioandvideo" });
+    if (!formato) {
+      res.status(500).json({ error: "Não achou um formato de vídeo+áudio combinado pra baixar." });
+      return;
+    }
+
+    const nomeArquivo = `${video.mlb}-${video.titulo}`
+      .replace(/[^\w\s-]/g, "")
+      .trim()
+      .slice(0, 80);
+    res.setHeader("Content-Type", formato.mimeType?.split(";")[0] ?? "video/mp4");
+    res.setHeader("Content-Disposition", `attachment; filename="${nomeArquivo || video.mlb}.mp4"`);
+
+    ytdl.downloadFromInfo(info, { format: formato }).pipe(res);
+  } catch (err) {
+    console.error("Erro ao baixar vídeo do anúncio:", err);
+    const mensagem = err instanceof Error ? err.message : "Falha ao baixar o vídeo.";
+    if (!res.headersSent) res.status(400).json({ error: mensagem });
   }
 });
 

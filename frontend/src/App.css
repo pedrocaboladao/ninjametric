@@ -1387,6 +1387,25 @@
   gap: 14px;
 }
 
+.clonar-video-box {
+  margin-bottom: 18px;
+}
+
+.clonar-video-linha {
+  display: flex;
+  gap: 10px;
+}
+
+.clonar-video-linha .clonar-input {
+  flex: 1;
+}
+
+@media (max-width: 720px) {
+  .clonar-video-linha {
+    flex-direction: column;
+  }
+}
+
 .clonar-input {
   background: var(--bg-panel-alt);
   border: 1px solid var(--border);

@@ -80,6 +80,24 @@ async function buscarItensDaFamilia(lojaId: number, mlUserId: number, item: MlIt
   return validos.length > 0 ? validos : [item];
 }
 
+export interface VideoDoAnuncio {
+  videoId: string;
+  titulo: string;
+  mlb: string;
+}
+
+// Só devolve a identificação do vídeo (mesma regra de acesso do resto do
+// clonador: só funciona pra anúncio de uma loja que o usuário tem acesso) —
+// quem baixa de fato é a rota (routes/clonarAnuncio.ts), com o ytdl.
+export async function resolverVideoDoAnuncio(link: string, lojasPermitidas?: number[]): Promise<VideoDoAnuncio> {
+  const identificador = await extrairItemIdDaUrl(link);
+  const { item } = await encontrarLojaDonaEItem(identificador, lojasPermitidas);
+  if (!item.video_id) {
+    throw new Error("Esse anúncio não tem vídeo cadastrado.");
+  }
+  return { videoId: item.video_id, titulo: item.title, mlb: item.id };
+}
+
 // Atributos que já confirmamos com o dono das lojas — não são um "chute",
 // é o valor real desses produtos (impermeabilizantes/tintas à base de água,
 // não inflamáveis). Se algum dia um anúncio realmente inflamável cair aqui,

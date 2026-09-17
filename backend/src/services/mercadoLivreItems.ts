@@ -201,6 +201,8 @@ export interface MlItemFull {
   pictures: MlPicture[];
   attributes: MlAttribute[];
   variations: MlVariation[];
+  // Id do vídeo do YouTube anexado ao anúncio (null quando não tem vídeo).
+  video_id?: string | null;
   // SKU do item — código que o resto do sistema usa como referência real de
   // produto (Financeiro/Produtos/Precificação). Separado dos atributos
   // (existe também um atributo SELLER_SKU em algumas categorias, mas esse
