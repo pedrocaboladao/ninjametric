@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Loja, PreviewAnuncio, ResultadoClone } from "../types/clonarAnuncio";
 import { TIPOS_ANUNCIO } from "../types/clonarAnuncio";
-import { fetchLojas, buscarPreview, publicarClone, baixarVideoAnuncio } from "../api/clonarAnuncio";
+import { fetchLojas, buscarPreview, publicarClone, baixarVideoAnuncio, baixarVideoHls } from "../api/clonarAnuncio";
 import { formatCurrency } from "../utils/format";
 
 const CONDICAO_LABEL: Record<string, string> = { new: "Novo", used: "Usado" };
@@ -12,6 +12,10 @@ function BaixarVideoBox() {
   const [urlVideo, setUrlVideo] = useState("");
   const [baixando, setBaixando] = useState(false);
   const [erroVideo, setErroVideo] = useState<string | null>(null);
+
+  const [urlM3u8, setUrlM3u8] = useState("");
+  const [baixandoM3u8, setBaixandoM3u8] = useState(false);
+  const [erroM3u8, setErroM3u8] = useState<string | null>(null);
 
   async function baixar() {
     if (!urlVideo.trim()) return;
@@ -26,6 +30,19 @@ function BaixarVideoBox() {
     }
   }
 
+  async function baixarM3u8() {
+    if (!urlM3u8.trim()) return;
+    setBaixandoM3u8(true);
+    setErroM3u8(null);
+    try {
+      await baixarVideoHls(urlM3u8.trim());
+    } catch (err) {
+      setErroM3u8(err instanceof Error ? err.message : "Falha ao baixar o vídeo.");
+    } finally {
+      setBaixandoM3u8(false);
+    }
+  }
+
   return (
     <div className="painel clonar-video-box">
       <div className="clonar-campo">
@@ -34,7 +51,7 @@ function BaixarVideoBox() {
           <input
             type="text"
             className="clonar-input"
-            placeholder="Cole o link do anúncio (precisa ter vídeo cadastrado)"
+            placeholder="Cole o link do anúncio (só funciona pra anúncios antigos, com vídeo do YouTube)"
             value={urlVideo}
             onChange={(e) => setUrlVideo(e.target.value)}
             disabled={baixando}
@@ -44,6 +61,36 @@ function BaixarVideoBox() {
           </button>
         </div>
         {erroVideo && <div className="clonar-erro">{erroVideo}</div>}
+      </div>
+
+      <div className="clonar-campo">
+        <label>
+          Baixar vídeo "Clips" (anúncios novos) — cole a URL <code>.m3u8</code>
+        </label>
+        <p className="painel-sub" style={{ marginTop: 0, marginBottom: 8 }}>
+          O Mercado Livre trocou o vídeo do YouTube pelo sistema próprio "Clips" em 2024 — não tem como achar essa URL
+          sozinho. No anúncio, abra o DevTools do navegador (F12) → aba Rede → filtro "Media", toque o vídeo, e copia a
+          URL que terminar em <code>.m3u8</code>.
+        </p>
+        <div className="clonar-video-linha">
+          <input
+            type="text"
+            className="clonar-input"
+            placeholder="https://http2.mlstatic.com/.../algumacoisa.m3u8"
+            value={urlM3u8}
+            onChange={(e) => setUrlM3u8(e.target.value)}
+            disabled={baixandoM3u8}
+          />
+          <button
+            type="button"
+            className="btn-responder"
+            onClick={baixarM3u8}
+            disabled={baixandoM3u8 || !urlM3u8.trim()}
+          >
+            {baixandoM3u8 ? "Processando..." : "Baixar vídeo"}
+          </button>
+        </div>
+        {erroM3u8 && <div className="clonar-erro">{erroM3u8}</div>}
       </div>
     </div>
   );

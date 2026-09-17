@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { spawn } from "child_process";
 import ytdl from "@distube/ytdl-core";
 import { montarPreview, publicarClone, resolverVideoDoAnuncio } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
@@ -110,6 +111,67 @@ clonarAnuncioRouter.get("/video", async (req, res) => {
     const mensagem = err instanceof Error ? err.message : "Falha ao baixar o vídeo.";
     if (!res.headersSent) res.status(400).json({ error: mensagem });
   }
+});
+
+// Domínios de CDN estática do Mercado Livre — únicos aceitos aqui. Sem essa
+// checagem, a rota vira um proxy pra baixar QUALQUER url que alguém mandar
+// (SSRF), já que ela só repassa o que o ffmpeg buscar.
+const DOMINIOS_HLS_PERMITIDOS = [".mlstatic.com"];
+
+function dominioPermitido(url: string): boolean {
+  try {
+    const { hostname, protocol } = new URL(url);
+    return protocol === "https:" && DOMINIOS_HLS_PERMITIDOS.some((d) => hostname.endsWith(d));
+  } catch {
+    return false;
+  }
+}
+
+// Baixa o vídeo "Clips" do Mercado Livre (substituiu o YouTube em set/2024,
+// ver comentário em resolverVideoDoAnuncio) a partir da URL do manifesto
+// .m3u8 — não existe API acessível pra descobrir essa URL sozinha pra loja
+// local (só existe uma API de Clips documentada, e é exclusiva do programa
+// Global Selling — devolveu 403 pro nosso app comum). O usuário pega a URL
+// no DevTools do navegador (aba Rede, filtro Media) e cola aqui; o ffmpeg
+// remuxa (sem recodificar, -c copy) pra um mp4 de verdade.
+clonarAnuncioRouter.get("/video-hls", (req, res) => {
+  const url = typeof req.query.url === "string" ? req.query.url : "";
+  if (!dominioPermitido(url)) {
+    res.status(400).json({ error: "Informe uma URL .m3u8 válida do domínio mlstatic.com." });
+    return;
+  }
+
+  res.setHeader("Content-Type", "video/mp4");
+  res.setHeader("Content-Disposition", 'attachment; filename="video.mp4"');
+
+  const ffmpeg = spawn("ffmpeg", [
+    "-i", url,
+    "-c", "copy",
+    "-bsf:a", "aac_adtstoasc",
+    "-movflags", "frag_keyframe+empty_moov",
+    "-f", "mp4",
+    "pipe:1",
+  ]);
+
+  let stderr = "";
+  ffmpeg.stderr.on("data", (chunk) => {
+    stderr += chunk.toString();
+  });
+  ffmpeg.stdout.pipe(res);
+  ffmpeg.on("error", (err) => {
+    console.error("Erro ao rodar ffmpeg:", err);
+    if (!res.headersSent) res.status(500).json({ error: "ffmpeg não encontrado no servidor." });
+  });
+  ffmpeg.on("close", (code) => {
+    if (code !== 0) {
+      console.error(`ffmpeg saiu com código ${code}:`, stderr.slice(-2000));
+      if (!res.headersSent) {
+        res.status(400).json({ error: "Falha ao processar o vídeo — confira se a URL ainda é válida (elas expiram)." });
+      } else {
+        res.end();
+      }
+    }
+  });
 });
 
 clonarAnuncioRouter.post("/preview", async (req, res) => {

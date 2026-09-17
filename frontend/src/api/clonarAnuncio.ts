@@ -67,3 +67,21 @@ export async function baixarVideoAnuncio(url: string): Promise<void> {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
 }
+
+// Baixa o vídeo "Clips" do Mercado Livre (substituiu o YouTube em set/2024)
+// a partir da URL do manifesto .m3u8 — pega essa URL no DevTools do
+// navegador (aba Rede, filtro Media) já que não tem API acessível pra
+// descobrir sozinho pra loja local. Mesmo padrão de download por blob.
+export async function baixarVideoHls(urlM3u8: string): Promise<void> {
+  const params = new URLSearchParams({ url: urlM3u8 });
+  const res = await fetch(`${API_BASE}/api/clonar-anuncio/video-hls?${params}`, { credentials: "include" });
+  if (!res.ok) return tratarErro(res);
+  const blobUrl = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = blobUrl;
+  a.download = "video.mp4";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(blobUrl), 10_000);
+}
