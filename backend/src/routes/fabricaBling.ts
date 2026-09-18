@@ -188,6 +188,14 @@ fabricaBlingRouter.put("/contatos/:id", async (req, res) => {
       documento: texto(b.documento),
       telefone: texto(b.telefone),
       email: texto(b.email),
+      ie: texto(b.ie),
+      logradouro: texto(b.logradouro),
+      numero: texto(b.numero),
+      complemento: texto(b.complemento),
+      bairro: texto(b.bairro),
+      cep: texto(b.cep),
+      cidade: texto(b.cidade),
+      uf: texto(b.uf),
     });
     res.json({ ok: true, id });
   } catch (err) {
