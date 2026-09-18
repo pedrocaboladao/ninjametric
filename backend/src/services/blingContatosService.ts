@@ -746,6 +746,15 @@ export interface CamposContato {
   documento?: string;
   telefone?: string;
   email?: string;
+  /** Inscricao estadual. So entra em pessoa juridica — PF nao tem IE. */
+  ie?: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cep?: string;
+  cidade?: string;
+  uf?: string;
 }
 
 export async function atualizarContatoBling(id: number, campos: CamposContato): Promise<void> {
@@ -755,7 +764,23 @@ export async function atualizarContatoBling(id: number, campos: CamposContato): 
   const doc = digitos(campos.documento);
   const telefone = campos.telefone?.trim();
   const email = campos.email?.trim();
-  if (!nome && !doc && !telefone && !email) throw new Error("Informe algum campo pra mudar.");
+  const ie = campos.ie?.trim();
+
+  // Endereco vai campo a campo, com o nome que o Bling usa em `endereco.geral`.
+  // Quem manda so o bairro nao pode perder a rua que ja estava la.
+  const endereco: Array<[string, string | undefined]> = [
+    ["endereco", campos.logradouro?.trim()],
+    ["numero", campos.numero?.trim()],
+    ["complemento", campos.complemento?.trim()],
+    ["bairro", campos.bairro?.trim()],
+    ["cep", campos.cep ? digitos(campos.cep) : undefined],
+    ["municipio", campos.cidade?.trim()],
+    ["uf", campos.uf?.trim().toUpperCase()],
+  ];
+  const mudaEndereco = endereco.filter(([, v]) => v);
+
+  if (!nome && !doc && !telefone && !email && !ie && !mudaEndereco.length)
+    throw new Error("Informe algum campo pra mudar.");
   if (campos.documento && doc.length !== 11 && doc.length !== 14)
     throw new Error(`documento inválido: ${campos.documento}`);
 
@@ -763,6 +788,17 @@ export async function atualizarContatoBling(id: number, campos: CamposContato): 
   // apagaria documento, endereco e telefone.
   const r = await chamar<{ data: ContatoBling }>("get", `/contatos/${id}`);
   const atual = r.data;
+
+  // Pessoa fisica nao tem inscricao estadual: mandar IE em contato tipo "F" e
+  // pedir erro de validacao no Bling.
+  const pessoaFisica = String(atual.tipo ?? "").toUpperCase() === "F";
+  if (ie && pessoaFisica)
+    throw new Error(`o contato ${id} é pessoa física e não tem inscrição estadual`);
+
+  const geralAtual = (atual.endereco?.geral ?? {}) as Record<string, unknown>;
+  const geral: Record<string, unknown> = { ...geralAtual };
+  for (const [chave, valor] of mudaEndereco) geral[chave] = valor;
+
   const corpo: Record<string, unknown> = {
     ...atual,
     ...(nome ? { nome } : {}),
@@ -772,6 +808,11 @@ export async function atualizarContatoBling(id: number, campos: CamposContato): 
     ...(doc ? { numeroDocumento: doc } : {}),
     ...(telefone ? { telefone } : {}),
     ...(email ? { email } : {}),
+    // `indicadorIe` 1 e contribuinte; sem esse campo o Bling ignora a IE.
+    ...(ie ? { ie, indicadorIe: 1 } : {}),
+    ...(mudaEndereco.length
+      ? { endereco: { ...(atual.endereco ?? {}), geral } }
+      : {}),
   };
   delete corpo.id;
   await chamar("put", `/contatos/${id}`, undefined, corpo);
@@ -783,6 +824,17 @@ export async function atualizarContatoBling(id: number, campos: CamposContato): 
     throw new Error(`o Bling aceitou o PUT mas o nome do contato ${id} não gravou`);
   if (doc && digitos(depois?.numeroDocumento) !== doc)
     throw new Error(`o Bling aceitou o PUT mas o documento do contato ${id} não gravou`);
+  if (ie && String(depois?.ie ?? "").trim() !== ie)
+    throw new Error(`o Bling aceitou o PUT mas a inscrição estadual do contato ${id} não gravou`);
+  const geralDepois = (depois?.endereco?.geral ?? {}) as Record<string, unknown>;
+  for (const [chave, valor] of mudaEndereco) {
+    const gravado = String(geralDepois[chave] ?? "").trim();
+    // CEP o Bling devolve so com digitos; comparar com o que se mandou.
+    if (gravado !== String(valor))
+      throw new Error(
+        `o Bling aceitou o PUT mas ${chave} do contato ${id} não gravou: ${gravado || "vazio"}`
+      );
+  }
 }
 
 export async function renomearContatoBling(id: number, nome: string): Promise<void> {
