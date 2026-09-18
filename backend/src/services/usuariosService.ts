@@ -243,3 +243,32 @@ export async function excluirUsuario(id: number): Promise<void> {
   }
   await pool.query("DELETE FROM usuarios WHERE id = $1", [id]);
 }
+
+// "Online" pro chat (Mensagens): último request autenticado dentro dessa
+// janela conta como online. 2 minutos cobre a tela com o polling mais
+// espaçado do painel (Perguntas, a cada 2min) — assim funciona mesmo pra
+// quem está numa tela sem relação nenhuma com chat.
+export const ONLINE_THRESHOLD_MS = 2 * 60 * 1000;
+
+export function estaOnline(ultimaAtividade: string | Date | null): boolean {
+  if (!ultimaAtividade) return false;
+  return Date.now() - new Date(ultimaAtividade).getTime() < ONLINE_THRESHOLD_MS;
+}
+
+// Marca "visto por último" a cada request autenticado (ver requireAuth) —
+// throttle em memória (não em banco) pra não escrever no banco a cada
+// requisição: cada usuário faz várias chamadas por minuto (polling de
+// perguntas, mensagens, etc.), e só precisamos de uma granularidade de
+// segundos, não de milissegundos, pra saber "esse aqui está online agora".
+const ultimoToqueEmMemoria = new Map<number, number>();
+const TOQUE_MINIMO_MS = 20 * 1000;
+
+export function tocarUltimaAtividade(usuarioId: number): void {
+  const agora = Date.now();
+  const ultimo = ultimoToqueEmMemoria.get(usuarioId) ?? 0;
+  if (agora - ultimo < TOQUE_MINIMO_MS) return;
+  ultimoToqueEmMemoria.set(usuarioId, agora);
+  pool.query("UPDATE usuarios SET ultima_atividade = now() WHERE id = $1", [usuarioId]).catch((err) => {
+    console.error("Falha ao atualizar última atividade do usuário:", err);
+  });
+}

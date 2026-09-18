@@ -181,6 +181,13 @@ ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS todas_lojas BOOLEAN NOT NULL DEFAU
 -- lista de "lojas com acesso" (usada pelo Dashboard/Perguntas/Tarefas).
 ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS clonar_todas_lojas BOOLEAN NOT NULL DEFAULT false;
 
+-- "Online" no chat (Mensagens) é derivado disso: usuário com atividade
+-- recente o suficiente (ver ONLINE_THRESHOLD_MS em usuariosService.ts)
+-- conta como online. Atualizado a cada request autenticado (requireAuth),
+-- não só nas telas de Mensagens — assim funciona mesmo pra quem está numa
+-- tela sem nenhuma relação com chat.
+ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS ultima_atividade TIMESTAMPTZ;
+
 CREATE TABLE IF NOT EXISTS usuarios_permissoes (
   usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
   modulo TEXT NOT NULL,

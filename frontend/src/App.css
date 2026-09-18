@@ -6622,6 +6622,12 @@ button.contas-cartao:hover {
   font-family: var(--sans);
 }
 
+.mensagens-usuario-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .mensagens-usuario-item:hover,
 .mensagens-conversa-item:hover {
   border-color: var(--accent);
@@ -6637,6 +6643,27 @@ button.contas-cartao:hover {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+}
+
+.mensagens-conversa-nome {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.mensagens-status-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.mensagens-status-dot-online {
+  background: #22c55e;
+  opacity: 1;
 }
 
 .mensagens-conversa-preview {

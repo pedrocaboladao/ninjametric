@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { COOKIE_NAME, obterUsuarioAutenticado } from "../services/authService";
-import type { UsuarioComPermissoes } from "../services/usuariosService";
+import { tocarUltimaAtividade, type UsuarioComPermissoes } from "../services/usuariosService";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -19,6 +19,7 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
     return;
   }
   req.usuario = usuario;
+  tocarUltimaAtividade(usuario.id);
   next();
 }
 

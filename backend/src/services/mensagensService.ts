@@ -1,8 +1,10 @@
 import { pool } from "../db/pool";
+import { estaOnline } from "./usuariosService";
 
 export interface UsuarioBasico {
   id: number;
   nome: string;
+  online: boolean;
 }
 
 export interface Conversa {
@@ -26,11 +28,11 @@ export interface Mensagem {
 // nem permissão específica (mesmo espírito aberto de Discrepâncias): é uma
 // lista de pessoas pra começar uma conversa, não um dado sensível.
 export async function listarUsuariosParaConversa(usuarioAtualId: number): Promise<UsuarioBasico[]> {
-  const { rows } = await pool.query<UsuarioBasico>(
-    "SELECT id, nome FROM usuarios WHERE id != $1 ORDER BY nome",
+  const { rows } = await pool.query<{ id: number; nome: string; ultima_atividade: string | null }>(
+    "SELECT id, nome, ultima_atividade FROM usuarios WHERE id != $1 ORDER BY nome",
     [usuarioAtualId]
   );
-  return rows;
+  return rows.map((r) => ({ id: r.id, nome: r.nome, online: estaOnline(r.ultima_atividade) }));
 }
 
 // Uma "conversa" é derivada, não uma tabela própria — agrupa mensagens pelo
@@ -41,6 +43,7 @@ export async function listarConversas(usuarioId: number): Promise<Conversa[]> {
   const { rows } = await pool.query<{
     outro_id: number;
     outro_nome: string;
+    outro_ultima_atividade: string | null;
     texto: string;
     criado_em: string;
     remetente_id: number;
@@ -64,8 +67,8 @@ export async function listarConversas(usuarioId: number): Promise<Conversa[]> {
        WHERE destinatario_id = $1 AND lida = false
        GROUP BY remetente_id
      )
-     SELECT u.id AS outro_id, u.nome AS outro_nome, ult.texto, ult.criado_em,
-            ult.remetente_id, COALESCE(nl.qtd, 0) AS nao_lidas
+     SELECT u.id AS outro_id, u.nome AS outro_nome, u.ultima_atividade AS outro_ultima_atividade,
+            ult.texto, ult.criado_em, ult.remetente_id, COALESCE(nl.qtd, 0) AS nao_lidas
      FROM ultima_por_conversa ult
      JOIN usuarios u ON u.id = ult.outro_id
      LEFT JOIN nao_lidas_por_conversa nl ON nl.outro_id = ult.outro_id
@@ -74,7 +77,7 @@ export async function listarConversas(usuarioId: number): Promise<Conversa[]> {
   );
 
   return rows.map((r) => ({
-    usuario: { id: r.outro_id, nome: r.outro_nome },
+    usuario: { id: r.outro_id, nome: r.outro_nome, online: estaOnline(r.outro_ultima_atividade) },
     ultimaMensagem: r.texto,
     ultimaMensagemEm: r.criado_em,
     enviadaPorMim: r.remetente_id === usuarioId,

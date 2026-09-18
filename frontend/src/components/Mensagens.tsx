@@ -20,6 +20,10 @@ interface Props {
   onMensagemLida: () => void;
 }
 
+function StatusOnline({ online }: { online: boolean }) {
+  return <span className={`mensagens-status-dot ${online ? "mensagens-status-dot-online" : ""}`} title={online ? "Online" : "Offline"} />;
+}
+
 function NovaConversa({ onEscolher }: { onEscolher: (usuario: UsuarioBasico) => void }) {
   const [usuarios, setUsuarios] = useState<UsuarioBasico[] | null>(null);
   const [busca, setBusca] = useState("");
@@ -48,6 +52,7 @@ function NovaConversa({ onEscolher }: { onEscolher: (usuario: UsuarioBasico) => 
       <div className="mensagens-lista-usuarios">
         {filtrados.map((u) => (
           <button key={u.id} type="button" className="mensagens-usuario-item" onClick={() => onEscolher(u)}>
+            <StatusOnline online={u.online} />
             {u.nome}
           </button>
         ))}
@@ -119,6 +124,7 @@ function Thread({
         <button type="button" className="mensagens-voltar" onClick={onFechar}>
           ← Conversas
         </button>
+        <StatusOnline online={outroUsuario.online} />
         <span className="financeiro-td-titulo">{outroUsuario.nome}</span>
       </div>
 
@@ -232,7 +238,10 @@ export function Mensagens({ usuario, onMensagemLida }: Props) {
                 onClick={() => abrirConversa(c.usuario)}
               >
                 <div className="mensagens-conversa-linha1">
-                  <span className="financeiro-td-titulo">{c.usuario.nome}</span>
+                  <span className="mensagens-conversa-nome">
+                    <StatusOnline online={c.usuario.online} />
+                    <span className="financeiro-td-titulo">{c.usuario.nome}</span>
+                  </span>
                   {c.naoLidas > 0 && <span className="sidebar-badge">{c.naoLidas}</span>}
                 </div>
                 <div className="financeiro-td-mudo mensagens-conversa-preview">

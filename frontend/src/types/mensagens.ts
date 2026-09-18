@@ -1,6 +1,7 @@
 export interface UsuarioBasico {
   id: number;
   nome: string;
+  online: boolean;
 }
 
 export interface Conversa {
