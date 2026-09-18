@@ -6666,6 +6666,11 @@ button.contas-cartao:hover {
   opacity: 1;
 }
 
+.mensagens-icone-azul {
+  display: inline-flex;
+  color: var(--accent);
+}
+
 .mensagens-conversa-preview {
   margin-top: 4px;
   overflow: hidden;

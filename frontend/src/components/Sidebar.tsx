@@ -373,7 +373,9 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
               className={`sidebar-item ${view === "mensagens" ? "sidebar-item-ativo" : ""}`}
               onClick={() => trocarView("mensagens")}
             >
-              <IconMessage size={16} />
+              <span className="mensagens-icone-azul">
+                <IconMessage size={16} />
+              </span>
               <span>Mensagens</span>
               {mensagensNaoLidas > 0 && <span className="sidebar-badge">{mensagensNaoLidas}</span>}
             </button>
