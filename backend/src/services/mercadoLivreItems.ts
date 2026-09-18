@@ -1,5 +1,5 @@
 import axios from "axios";
-import { getValidAccessToken } from "./tokenStore";
+import { getValidAccessToken, listLojas } from "./tokenStore";
 
 const ML_API_BASE = "https://api.mercadolibre.com";
 
@@ -84,6 +84,34 @@ const CODES_GTIN_INVALIDO = new Set(["item.attribute.invalid_product_identifier"
 export function requerRemoverGtin(err: unknown): boolean {
   if (!(err instanceof ErroMercadoLivre)) return false;
   return err.causas.some((c) => (c.code && CODES_GTIN_INVALIDO.has(c.code)) || c.cause_id === 7711);
+}
+
+// Contas cadastradas como "Marca" (loja oficial) no Mercado Livre passam a
+// exigir official_store_id em QUALQUER anúncio novo — achado real: a CASG,
+// clonando um anúncio dela pra ela mesma, recebeu esse erro mesmo sem nunca
+// ter mandado esse campo (não é algo específico de cruzar lojas diferentes).
+export function officialStoreIdInvalido(err: unknown): boolean {
+  if (!(err instanceof ErroMercadoLivre)) return false;
+  return err.causas.some((c) => c.code === "item.official_store_id.invalid");
+}
+
+// O valor é fixo por CONTA (não por anúncio) — não existe endpoint dedicado
+// pra consultar isso direto, então descobre pegando de qualquer anúncio
+// ativo já existente da loja de destino.
+export async function obterOfficialStoreIdDaLoja(lojaId: number): Promise<string | number | null> {
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja?.ml_user_id) return null;
+
+  const accessToken = await getValidAccessToken(lojaId);
+  const { data } = await axios.get<{ results: string[] }>(`${ML_API_BASE}/users/${loja.ml_user_id}/items/search`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { status: "active", limit: 1 },
+  });
+  const itemId = data.results[0];
+  if (!itemId) return null;
+
+  const item = await getItemFullComToken(lojaId, itemId);
+  return item.official_store_id ?? null;
 }
 
 // Anúncios antigos podem não ter atributos que categorias exigem hoje em dia
@@ -203,6 +231,10 @@ export interface MlItemFull {
   variations: MlVariation[];
   // Id do vídeo do YouTube anexado ao anúncio (null quando não tem vídeo).
   video_id?: string | null;
+  // Presente quando a conta é cadastrada como "Marca" (loja oficial) no
+  // Mercado Livre — nesse caso, TODO anúncio novo exige esse valor (ver
+  // officialStoreIdInvalido/obterOfficialStoreIdDaLoja).
+  official_store_id?: string | number | null;
   // SKU do item — código que o resto do sistema usa como referência real de
   // produto (Financeiro/Produtos/Precificação). Separado dos atributos
   // (existe também um atributo SELLER_SKU em algumas categorias, mas esse
@@ -387,6 +419,8 @@ export interface NovoItemPayload {
   attributes: MlAttribute[];
   seller_custom_field?: string | null;
   family_name?: string;
+  // Só enviado quando a loja de destino exige (ver officialStoreIdInvalido).
+  official_store_id?: string | number | null;
   variations?: Array<{
     attribute_combinations: MlAttribute[];
     price: number;

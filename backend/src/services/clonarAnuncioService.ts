@@ -9,6 +9,8 @@ import {
   atualizarFotosDasVariacoes,
   requerModeloUserProduct,
   requerRemoverGtin,
+  officialStoreIdInvalido,
+  obterOfficialStoreIdDaLoja,
   atributoObrigatorioFaltando,
   atributosObrigatoriosFaltando,
   atributoRejeitado,
@@ -132,6 +134,12 @@ const ATRIBUTOS_CUBAGEM = ["SELLER_PACKAGE_WEIGHT", "SELLER_PACKAGE_HEIGHT", "SE
 function sanearAtributos(atributos: MlAttribute[]): MlAttribute[] {
   const limpos: MlAttribute[] = [];
   for (const a of atributos) {
+    // Achado real (CASG): a leitura do anúncio às vezes traz um atributo com
+    // id nulo/vazio (ex.: atributo "fantasma" da categoria, sem id de
+    // verdade) — reenviar isso vira "Attribute id cannot be null or empty
+    // for attribute with name: unnamed" (cause_id 148/149) e derruba a
+    // criação inteira. Sem id não tem como reenviar de forma válida mesmo.
+    if (!a.id) continue;
     const limpo: MlAttribute = { id: a.id };
     if (a.value_id !== undefined && a.value_id !== null) limpo.value_id = a.value_id;
     if (a.value_name !== undefined && a.value_name !== null) limpo.value_name = a.value_name;
@@ -307,6 +315,19 @@ async function corrigirPayload(
 
     if (requerRemoverGtin(err)) {
       payload = { ...payload, attributes: payload.attributes.filter((a) => a.id !== "GTIN") };
+      ajustou = true;
+    }
+
+    if (officialStoreIdInvalido(err) && !payload.official_store_id) {
+      const officialStoreId = await obterOfficialStoreIdDaLoja(lojaId);
+      if (!officialStoreId) {
+        throw new Error(
+          "A loja de destino é cadastrada como conta tipo \"Marca\" no Mercado Livre, que exige um " +
+            "official_store_id em todo anúncio novo — mas não achei nenhum anúncio ativo dela pra descobrir " +
+            "esse valor automaticamente. Publique manualmente um anúncio nessa loja e tente clonar de novo."
+        );
+      }
+      payload = { ...payload, official_store_id: officialStoreId };
       ajustou = true;
     }
 
