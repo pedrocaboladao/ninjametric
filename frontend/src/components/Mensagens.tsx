@@ -213,7 +213,7 @@ export function Mensagens({ usuario, onMensagemLida }: Props) {
     <div className="financeiro-page mensagens-page">
       <div className="financeiro-topo">
         <div>
-          <h1>Mensagens</h1>
+          <h1>Chat</h1>
           <p className="painel-sub">Converse direto com qualquer pessoa que usa o painel.</p>
         </div>
       </div>

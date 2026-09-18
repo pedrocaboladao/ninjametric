@@ -376,7 +376,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
               <span className="mensagens-icone-azul">
                 <IconMessage size={16} />
               </span>
-              <span>Mensagens</span>
+              <span>Chat</span>
               {mensagensNaoLidas > 0 && <span className="sidebar-badge">{mensagensNaoLidas}</span>}
             </button>
             <div className="sidebar-divider" />
