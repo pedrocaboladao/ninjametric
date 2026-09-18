@@ -191,6 +191,15 @@ export function Mensagens({ usuario, onMensagemLida }: Props) {
     setAbrindoNova(false);
   }
 
+  // Sem useCallback aqui, essa função nasceria de novo a cada render da tela
+  // — o Thread usa ela como dependência do próprio useCallback/useEffect de
+  // buscar a conversa, então uma referência nova a cada vez reiniciava esse
+  // efeito em loop (a tela "piscava" entre carregando e carregado sem parar).
+  const handleMensagemLida = useCallback(() => {
+    carregar();
+    onMensagemLida();
+  }, [carregar, onMensagemLida]);
+
   return (
     <div className="financeiro-page mensagens-page">
       <div className="financeiro-topo">
@@ -240,10 +249,7 @@ export function Mensagens({ usuario, onMensagemLida }: Props) {
               outroUsuario={conversaAberta}
               meuUsuarioId={usuario.id}
               onFechar={() => setConversaAberta(null)}
-              onMensagemLida={() => {
-                carregar();
-                onMensagemLida();
-              }}
+              onMensagemLida={handleMensagemLida}
             />
           ) : (
             <div className="state-message mensagens-sem-selecao">Selecione uma conversa pra começar.</div>
