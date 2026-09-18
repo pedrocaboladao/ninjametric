@@ -74,6 +74,24 @@ clonarAnuncioRouter.get("/item-diag", async (req, res) => {
   }
 });
 
+// Diagnóstico temporário — dump do item completo (já sabendo a loja dona,
+// achada via /item-diag) pra investigar erro real de validação na criação
+// do clone (atributo com id nulo, official_store_id, etc.). Remover depois.
+clonarAnuncioRouter.get("/item-raw", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const itemId = typeof req.query.itemId === "string" ? req.query.itemId : "";
+  if (!Number.isInteger(lojaId) || !itemId) {
+    res.status(400).json({ error: "Informe ?lojaId=&itemId=" });
+    return;
+  }
+  try {
+    const item = await getItemFullComToken(lojaId, itemId);
+    res.json(item);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.response?.data?.message ?? err?.message ?? "Falha ao buscar o item." });
+  }
+});
+
 // Baixa o vídeo do YouTube anexado a um anúncio (campo video_id) — só
 // funciona pra anúncio de uma loja que o usuário tem acesso pra clonagem,
 // mesma regra do resto do módulo. O YouTube não tem endpoint oficial de
