@@ -278,6 +278,15 @@ export function IconMegaphone({ size = 18 }: IconProps) {
   );
 }
 
+export function IconMessage({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M4 5h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9l-5 4v-4H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z" />
+      <path d="M7 9.5h10M7 13h6" />
+    </svg>
+  );
+}
+
 export function IconWrench({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

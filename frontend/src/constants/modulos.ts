@@ -29,6 +29,7 @@ export const MODULOS: Modulo[] = [
   { chave: "tarefas", label: "Tarefas" },
   { chave: "funcionarios", label: "Funcionários" },
   { chave: "discrepancias", label: "Discrepâncias" },
+  { chave: "mensagens", label: "Mensagens" },
 ];
 
 export function temPermissao(usuario: { admin: boolean; permissoes: string[] } | null, modulo: string): boolean {

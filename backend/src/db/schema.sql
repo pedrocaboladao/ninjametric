@@ -1896,3 +1896,26 @@ CREATE TABLE IF NOT EXISTS discrepancias_corrigidas (
   corrigido_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_discrepancias_corrigidas_mlb ON discrepancias_corrigidas (mlb);
+
+-- Chat interno 1 a 1 entre usuários do painel. Sem conceito de grupo/canal
+-- de propósito (escopo combinado com o dono: só DM pra começar).
+CREATE TABLE IF NOT EXISTS mensagens (
+  id SERIAL PRIMARY KEY,
+  remetente_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  destinatario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  texto TEXT NOT NULL,
+  lida BOOLEAN NOT NULL DEFAULT false,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_mensagens_remetente ON mensagens (remetente_id, criado_em);
+CREATE INDEX IF NOT EXISTS idx_mensagens_destinatario ON mensagens (destinatario_id, criado_em);
+-- Contagem de não lidas é sempre "minhas, não lidas" — índice parcial cobre
+-- exatamente essa consulta sem escanear mensagem já lida ou enviada por mim.
+CREATE INDEX IF NOT EXISTS idx_mensagens_nao_lidas ON mensagens (destinatario_id) WHERE lida = false;
+
+-- Mesmo espírito de Discrepâncias: mensagem só é útil se TODO mundo consegue
+-- ver (senão dá pra mandar pra alguém que nunca vai enxergar a conversa) —
+-- libera pra geral de uma vez, sem depender do checkbox manual por usuário.
+INSERT INTO usuarios_permissoes (usuario_id, modulo)
+SELECT id, 'mensagens' FROM usuarios
+ON CONFLICT DO NOTHING;

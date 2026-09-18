@@ -30,8 +30,10 @@ import { AgenciaAgentesIA, ModoTVEscritorio } from "./components/AgenciaAgentesI
 import { IconExpand } from "./components/icons";
 import { MarketIntelligence } from "./components/MarketIntelligence";
 import { Discrepancias } from "./components/Discrepancias";
+import { Mensagens } from "./components/Mensagens";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
+import { useMensagensNaoLidas } from "./hooks/useMensagensNaoLidas";
 import { checarSessao, logout } from "./api/session";
 import { temPermissao } from "./constants/modulos";
 import type { Usuario } from "./types/usuarios";
@@ -67,6 +69,7 @@ const VIEWS_VALIDAS: View[] = [
   "agentes",
   "market_intelligence",
   "discrepancias",
+  "mensagens",
 ];
 
 // Quase toda view tem o mesmo nome da permissao que a protege, e o resto do
@@ -126,6 +129,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "tarefas")) return "tarefas";
   if (temPermissao(usuario, "funcionarios")) return "funcionarios";
   if (temPermissao(usuario, "discrepancias")) return "discrepancias";
+  if (temPermissao(usuario, "mensagens")) return "mensagens";
   if (usuario.admin) return "usuarios";
   return "dashboard";
 }
@@ -144,6 +148,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
   const { view: viewNaUrl } = useParams<{ view: string }>();
   const navigate = useNavigate();
   const perguntas = usePerguntas(temPermissao(usuario, "perguntas"));
+  const mensagensNaoLidas = useMensagensNaoLidas(temPermissao(usuario, "mensagens"));
 
   // Se o link não é uma view conhecida (digitada errada, ou salva de uma
   // versão antiga do sistema), cai na view inicial em vez de tela em branco.
@@ -181,6 +186,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         view={view}
         onChangeView={(v) => navigate(`/${v}`)}
         perguntasPendentes={perguntas.perguntas?.length ?? 0}
+        mensagensNaoLidas={mensagensNaoLidas.total}
         usuario={usuario}
         onSair={handleSair}
       />
@@ -222,6 +228,9 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "tarefas" && temPermissao(usuario, "tarefas") && <Tarefas />}
         {view === "funcionarios" && temPermissao(usuario, "funcionarios") && <Funcionarios />}
         {view === "discrepancias" && temPermissao(usuario, "discrepancias") && <Discrepancias usuario={usuario} />}
+        {view === "mensagens" && temPermissao(usuario, "mensagens") && (
+          <Mensagens usuario={usuario} onMensagemLida={mensagensNaoLidas.atualizar} />
+        )}
         {view === "usuarios" && usuario.admin && <Usuarios />}
         {view === "agentes" && usuario.admin && <AgenciaAgentesIA />}
         {view === "market_intelligence" && usuario.admin && <MarketIntelligence />}

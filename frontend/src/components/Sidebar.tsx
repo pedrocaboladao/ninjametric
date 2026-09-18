@@ -24,6 +24,7 @@ import {
   IconSearch,
   IconMenu,
   IconX,
+  IconMessage,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -56,19 +57,21 @@ export type View =
   | "pesquisa"
   | "agentes"
   | "market_intelligence"
-  | "discrepancias";
+  | "discrepancias"
+  | "mensagens";
 
 interface Props {
   view: View;
   onChangeView: (view: View) => void;
   perguntasPendentes: number;
+  mensagensNaoLidas: number;
   usuario: Usuario;
   onSair: () => void;
 }
 
 const INERTES = [{ label: "Criação", Icon: IconWand }];
 
-export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSair }: Props) {
+export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLidas, usuario, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
   const [equipeAberta, setEquipeAberta] = useState(true);
   const [fabricaAberta, setFabricaAberta] = useState(true);
@@ -115,6 +118,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
   const podePromocoes = temPermissao(usuario, "promocoes");
   const podePesquisa = temPermissao(usuario, "pesquisa");
   const podeDiscrepancias = temPermissao(usuario, "discrepancias");
+  const podeMensagens = temPermissao(usuario, "mensagens");
   const mostrarLojas = podeDashboard || podePerguntas || podeClonar || podeProdutos || podeCorrecoes || podeEan;
   // Fabrica Distribuidora: operacao propria, separada das 20 lojas.
   // Esta lista cresce a cada modulo novo da fabrica (produtos, pedidos, financeiro...).
@@ -358,6 +362,20 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, usuario, onSai
             >
               <IconMegaphone size={16} />
               <span>Discrepâncias</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeMensagens && (
+          <>
+            <button
+              className={`sidebar-item ${view === "mensagens" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("mensagens")}
+            >
+              <IconMessage size={16} />
+              <span>Mensagens</span>
+              {mensagensNaoLidas > 0 && <span className="sidebar-badge">{mensagensNaoLidas}</span>}
             </button>
             <div className="sidebar-divider" />
           </>
