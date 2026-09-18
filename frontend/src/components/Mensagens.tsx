@@ -104,7 +104,11 @@ function Thread({
   }, [mensagens?.length]);
 
   async function enviar() {
-    if (!texto.trim()) return;
+    // enviando também guarda contra clique duplo (o texto some do input
+    // assim que a mensagem é aceita, mas a resposta do servidor pode
+    // demorar um pouquinho) — sem isso, apertar Enter rápido demais dava
+    // pra mandar a mesma mensagem duas vezes.
+    if (!texto.trim() || enviando) return;
     setEnviando(true);
     setErro(null);
     try {
@@ -158,7 +162,6 @@ function Thread({
               enviar();
             }
           }}
-          disabled={enviando}
         />
         <button type="button" className="btn-responder" onClick={enviar} disabled={enviando || !texto.trim()}>
           Enviar

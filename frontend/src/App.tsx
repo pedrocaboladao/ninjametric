@@ -150,6 +150,20 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
   const perguntas = usePerguntas(temPermissao(usuario, "perguntas"));
   const mensagensNaoLidas = useMensagensNaoLidas(temPermissao(usuario, "mensagens"));
 
+  // Pede permissão de notificação do navegador 1x (se nunca respondeu) pra
+  // avisar de mensagem nova mesmo com o painel numa aba/tela diferente —
+  // sem isso, o hook nunca teria como mostrar a notificação (Notification.
+  // permission fica em "default" pra sempre até alguém pedir).
+  useEffect(() => {
+    if (
+      temPermissao(usuario, "mensagens") &&
+      typeof Notification !== "undefined" &&
+      Notification.permission === "default"
+    ) {
+      Notification.requestPermission();
+    }
+  }, [usuario]);
+
   // Se o link não é uma view conhecida (digitada errada, ou salva de uma
   // versão antiga do sistema), cai na view inicial em vez de tela em branco.
   const viewValidaNaUrl = VIEWS_VALIDAS.includes(viewNaUrl as View);
