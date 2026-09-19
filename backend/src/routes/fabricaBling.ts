@@ -657,7 +657,7 @@ fabricaBlingRouter.post("/produtos/padronizar", async (req, res) => {
   const b = req.body ?? {};
   const pares = Array.isArray(b.pares) ? b.pares : [];
   if (!pares.length) {
-    return res.status(400).json({ error: "Mande os pares { de, para }." });
+    return res.status(400).json({ error: "Mande os pares { de, para } ou { id, para }." });
   }
   if (pares.length > 500) {
     return res.status(400).json({ error: "No máximo 500 códigos por vez." });

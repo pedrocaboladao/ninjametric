@@ -500,7 +500,11 @@ export function inativarProdutos(
 }
 
 export interface ParPadronizacao {
-  de: string;
+  /** Codigo atual no Bling. Deixe vazio quando o produto esta **sem codigo** e
+   *  use `id` — sem codigo nao ha por onde procurar. */
+  de?: string;
+  /** Id do produto no Bling. Caminho pra quem nasceu sem codigo nenhum. */
+  id?: number;
   para: string;
 }
 
@@ -536,9 +540,10 @@ export async function padronizarCodigos(
 
   const linhas: LinhaPadronizacao[] = [];
   for (const par of pares) {
-    const de = String(par.de ?? "").trim();
+    const id = Number(par.id ?? 0);
+    const de = String(par.de ?? "").trim() || (id ? `id ${id}` : "");
     const para = String(par.para ?? "").trim();
-    if (!de || !para) continue;
+    if ((!de && !id) || !para) continue;
 
     if (!doSite.has(normalizarSku(para))) {
       linhas.push({
@@ -553,7 +558,10 @@ export async function padronizarCodigos(
 
     let origem: ProdutoBling | null;
     try {
-      origem = await acharPorCodigo(de);
+      // Produto sem codigo so se acha pelo id: `acharPorCodigo("")` nao existe.
+      origem = id
+        ? (await chamar<{ data: ProdutoBling }>("get", `/produtos/${id}`)).data
+        : await acharPorCodigo(de);
     } catch (err) {
       linhas.push({
         de,
@@ -614,6 +622,21 @@ export async function padronizarCodigos(
         ...inteiro.data,
         codigo: para,
       });
+
+      // Rele: o 200 do Bling nunca provou que gravou. Um codigo que nao entrou
+      // deixaria a venda sumindo do site do mesmo jeito, e calado.
+      const depois = (await chamar<{ data: ProdutoBling }>("get", `/produtos/${origem.id}`)).data;
+      if (normalizarSku(depois?.codigo ?? "") !== normalizarSku(para)) {
+        linhas.push({
+          de,
+          para,
+          produtoId: origem.id,
+          nome: origem.nome ?? null,
+          situacao: "erro",
+          detalhe: `o Bling aceitou o PUT mas o codigo ficou "${depois?.codigo ?? ""}"`,
+        });
+        continue;
+      }
       linhas.push({
         de,
         para,
