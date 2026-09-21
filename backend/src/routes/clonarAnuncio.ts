@@ -5,7 +5,9 @@ import { montarPreview, publicarClone, resolverVideoDoAnuncio } from "../service
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
 import { extrairItemIdDaUrl, getItemFullComToken, resolverItemIdPorUserProduct } from "../services/mercadoLivreItems";
+import axios from "axios";
 import { consultarPromocoesDoItem } from "../services/mercadoLivreApi";
+import { getValidAccessToken } from "../services/tokenStore";
 
 export const clonarAnuncioRouter = Router();
 
@@ -91,11 +93,33 @@ clonarAnuncioRouter.get("/promo-diag", async (req, res) => {
       getItemFullComToken(lojaId, itemId),
       consultarPromocoesDoItem(lojaId, itemId),
     ]);
+
+    // Campanha de desconto Pix (type=BANK, sub_type=COFINANCED) é cofinanciada
+    // Mercado Livre + vendedor (meli_percentage/seller_percentage), igual ao
+    // SMART — mas não aparece na consulta genérica acima, que não pede
+    // promotion_type. Doc oficial só mostra consultar POR campanha (exige
+    // promotion_id já conhecido) e alterar/remover item passando
+    // promotion_type=BANK na própria rota de item — por simetria, tentando
+    // aqui o GET desse mesmo endpoint de item com promotion_type=BANK, sem
+    // confirmação prévia (não documentado assim explicitamente).
+    let promocaoPix: unknown = null;
+    try {
+      const accessToken = await getValidAccessToken(lojaId);
+      const { data } = await axios.get(`https://api.mercadolibre.com/seller-promotions/items/${itemId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+        params: { promotion_type: "BANK", app_version: "v2" },
+      });
+      promocaoPix = data;
+    } catch (err: any) {
+      promocaoPix = { erro: err?.response?.data ?? err?.message ?? "falhou" };
+    }
+
     res.json({
       preco: item.price,
       officialStoreId: item.official_store_id ?? null,
       titulo: item.title,
       promocoes,
+      promocaoPix,
     });
   } catch (err: any) {
     res.status(400).json({ error: err?.response?.data?.message ?? err?.message ?? "Falha ao buscar o diagnóstico." });
