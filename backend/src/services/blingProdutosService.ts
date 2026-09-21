@@ -577,7 +577,9 @@ export async function padronizarCodigos(
       linhas.push({ de, para, produtoId: null, nome: null, situacao: "não achei no Bling" });
       continue;
     }
-    if (normalizarSku(origem.codigo ?? "") === normalizarSku(para)) {
+    // comparação exata: normalizada, "BRILHATELHA 3.6L AZUL" e "CAMURÇA" passavam
+    // por certos e a grafia torta nunca era trocada no Bling
+    if ((origem.codigo ?? "").trim() === para) {
       linhas.push({
         de,
         para,
