@@ -304,10 +304,14 @@ export async function registrarPagamento(
   // provisorios de pagamentos anteriores que este PIX confirmou
   confirmados: number;
 }> {
-  // saldo antes do pagamento: é o que diz se este PIX quitou a conta ou só
-  // abateu parte dela, e só quitando 100% a loja ganha os 3,5%
-  const antes = (await listarContaCorrente()).find((c) => c.clienteId === clienteId);
-  const saldoAntes = antes?.saldo ?? 0;
+  // saldo antes do pagamento, do GRUPO que paga junto — não só da loja. A
+  // Truck 3 não tem dívida própria (soma na Truck 4), e olhando só ela o PIX
+  // dela saía sem os 3,5%: em setembro/2026 foram R$ 2.076,52 lançados à mão.
+  const contasAntes = await listarContaCorrente();
+  const grupo = contasAntes.find((c) => c.clienteId === clienteId)?.paganteId ?? clienteId;
+  const saldoAntes = contasAntes
+    .filter((c) => c.paganteId === grupo)
+    .reduce((s, c) => s + c.saldo, 0);
 
   const cliente = await pool.connect();
   let id: number;
