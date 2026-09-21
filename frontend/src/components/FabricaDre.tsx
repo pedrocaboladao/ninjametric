@@ -222,13 +222,19 @@ export function FabricaDre() {
             </tr>
             {dre.custoRevenda > 0 && (
               <tr>
-                <td className="financeiro-td-mudo">(−) Mercadoria comprada pra revenda</td>
+                {/* Informativo: o que se comprou de revenda no mês. Não entra na
+                    conta — o custo da mercadoria vendida já está no CPV, item a
+                    item. Com "(−)" e percentual, parecia descontado duas vezes. */}
+                <td className="financeiro-td-mudo">
+                  Compras de revenda no mês{" "}
+                  <span style={{ fontSize: "0.85em" }}>
+                    · informativo, o custo já está no CPV
+                  </span>
+                </td>
                 <td className="financeiro-th-numero financeiro-td-mudo">
                   {formatCurrency(dre.custoRevenda)}
                 </td>
-                <td className="financeiro-th-numero financeiro-td-mudo">
-                  {dre.receita > 0 ? pct(dre.custoRevenda / dre.receita) : "—"}
-                </td>
+                <td className="financeiro-th-numero financeiro-td-mudo">—</td>
               </tr>
             )}
             <tr>
