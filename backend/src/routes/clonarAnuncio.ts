@@ -5,6 +5,7 @@ import { montarPreview, publicarClone, resolverVideoDoAnuncio } from "../service
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
 import { extrairItemIdDaUrl, getItemFullComToken, resolverItemIdPorUserProduct } from "../services/mercadoLivreItems";
+import { consultarPromocoesDoItem } from "../services/mercadoLivreApi";
 
 export const clonarAnuncioRouter = Router();
 
@@ -71,6 +72,33 @@ clonarAnuncioRouter.get("/item-diag", async (req, res) => {
     res.json({ identificador, resultados });
   } catch (err) {
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });
+  }
+});
+
+// Diagnóstico temporário — dump do item + promoções configuradas nele, pra
+// entender de onde vem o desconto Pix mostrado na página pública (preço
+// promocional base + % de Pix específico, cada um configurado separado).
+// Remover depois.
+clonarAnuncioRouter.get("/promo-diag", async (req, res) => {
+  const lojaId = Number(req.query.lojaId);
+  const itemId = typeof req.query.itemId === "string" ? req.query.itemId : "";
+  if (!Number.isInteger(lojaId) || !itemId) {
+    res.status(400).json({ error: "Informe ?lojaId=&itemId=" });
+    return;
+  }
+  try {
+    const [item, promocoes] = await Promise.all([
+      getItemFullComToken(lojaId, itemId),
+      consultarPromocoesDoItem(lojaId, itemId),
+    ]);
+    res.json({
+      preco: item.price,
+      officialStoreId: item.official_store_id ?? null,
+      titulo: item.title,
+      promocoes,
+    });
+  } catch (err: any) {
+    res.status(400).json({ error: err?.response?.data?.message ?? err?.message ?? "Falha ao buscar o diagnóstico." });
   }
 });
 
