@@ -170,21 +170,39 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
   const numero = (v: unknown) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : undefined);
   const itens = bruto
     .map(
-      (i: { blingId?: unknown; categoriaId?: unknown; contatoId?: unknown; valor?: unknown }) => ({
+      (i: {
+        blingId?: unknown;
+        categoriaId?: unknown;
+        contatoId?: unknown;
+        valor?: unknown;
+        competencia?: unknown;
+      }) => ({
         blingId: Number(i?.blingId),
         categoriaId: numero(i?.categoriaId),
         contatoId: numero(i?.contatoId),
         valor: numero(i?.valor),
+        competencia: /^\d{4}-\d{2}-\d{2}$/.test(String(i?.competencia ?? ""))
+          ? String(i?.competencia)
+          : undefined,
       })
     )
     // Basta um campo pra mexer. Exigir `categoriaId` sempre obrigava a
     // reenviar a categoria que ja estava certa so pra corrigir um valor — e
     // reenviar categoria e justamente onde se erra por descuido.
     .filter(
-      (i: { blingId: number; categoriaId?: number; contatoId?: number; valor?: number }) =>
+      (i: {
+        blingId: number;
+        categoriaId?: number;
+        contatoId?: number;
+        valor?: number;
+        competencia?: string;
+      }) =>
         Number.isInteger(i.blingId) &&
         i.blingId > 0 &&
-        (i.categoriaId !== undefined || i.contatoId !== undefined || i.valor !== undefined)
+        (i.categoriaId !== undefined ||
+          i.contatoId !== undefined ||
+          i.valor !== undefined ||
+          i.competencia !== undefined)
     );
   if (!itens.length)
     return res

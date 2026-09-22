@@ -67,6 +67,9 @@ interface ContaBling {
   // Vem so o id. O nome nunca vem, nem na listagem nem no detalhe — quem quiser
   // saber de quem e a conta tem que ir buscar o contato.
   contato?: { id?: number; nome?: string };
+  // Mes a que a conta se refere. E por ele que o DRE do Bling agrupa — nao pelo
+  // vencimento, como o do site. A luz que vence 10/09 vem com competencia 31/08.
+  competencia?: string;
   // idem, e na Fabrica vem sempre {id: 0}: o ERP nao classifica conta a pagar.
   // Quem classifica e o site, e por isso o DRE sai de la e nao daqui.
   categoria?: { id?: number; descricao?: string };
@@ -197,6 +200,7 @@ async function baixarDoBling(de: string, ate: string): Promise<ContaBling[]> {
         numeroDocumento: det.numeroDocumento ?? c.numeroDocumento,
         contato: { id: idContato, nome: nome || undefined },
         categoria: det.categoria ?? c.categoria,
+        competencia: det.competencia ?? c.competencia,
       });
     } catch {
       // detalhe que nao veio nao some da conferencia: entra com o que a
@@ -249,6 +253,8 @@ export async function listarContasBling(de: string, ate: string): Promise<
     historico: string;
     numeroDocumento: string;
     situacao: number | null;
+    competencia: string | null;
+    categoriaId: number | null;
   }>
 > {
   const contas = await baixarDoBling(de, ate);
@@ -261,6 +267,8 @@ export async function listarContasBling(de: string, ate: string): Promise<
     historico: (c.historico ?? "").trim(),
     numeroDocumento: (c.numeroDocumento ?? "").trim(),
     situacao: c.situacao === undefined ? null : Number(c.situacao),
+    competencia: c.competencia ? dia(c.competencia) : null,
+    categoriaId: Number(c.categoria?.id ?? 0) || null,
   }));
 }
 
@@ -829,6 +837,9 @@ export interface Classificacao {
   // "ADIANTAMENTO SALARIAL" e o do quarto o nome da pessoa, e a conferencia
   // marcava divergencia de nome todo mes por causa disso.
   contatoId?: number;
+  // Mes de competencia (aaaa-mm-dd). O DRE do Bling agrupa por ele; o do site,
+  // pelo vencimento. Alinhar os dois e gravar a competencia no mes do vencimento.
+  competencia?: string;
 }
 
 export interface ResultadoClassificacao {
@@ -873,7 +884,8 @@ export async function classificarContasBling(
       if (atual.portador?.id) corpo.portador = { id: atual.portador.id };
       if (atual.saldo !== undefined) corpo.saldo = atual.saldo;
       if (atual.dataEmissao) corpo.dataEmissao = atual.dataEmissao;
-      if (atual.competencia) corpo.competencia = atual.competencia;
+      const competencia = it.competencia ?? atual.competencia;
+      if (competencia) corpo.competencia = competencia;
       if (atual.numeroDocumento) corpo.numeroDocumento = atual.numeroDocumento;
       if (atual.historico) corpo.historico = atual.historico;
 
@@ -885,6 +897,11 @@ export async function classificarContasBling(
       );
       if (Number(depois?.categoria?.id ?? 0) !== categoriaId) {
         throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
+      }
+      if (it.competencia && String(depois?.competencia ?? "").slice(0, 10) !== it.competencia) {
+        throw new Error(
+          `o Bling aceitou o PUT mas a competencia ficou ${depois?.competencia ?? "vazia"}`
+        );
       }
       // O saldo acompanha o valor numa conta em aberto; numa ja baixada, nao.
       // Por isso a conferencia e no valor, que e o campo que se mandou.
