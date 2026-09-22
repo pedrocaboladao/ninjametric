@@ -176,6 +176,8 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
         contatoId?: unknown;
         valor?: unknown;
         competencia?: unknown;
+        vencimento?: unknown;
+        numeroDocumento?: unknown;
       }) => ({
         blingId: Number(i?.blingId),
         categoriaId: numero(i?.categoriaId),
@@ -184,6 +186,13 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
         competencia: /^\d{4}-\d{2}-\d{2}$/.test(String(i?.competencia ?? ""))
           ? String(i?.competencia)
           : undefined,
+        vencimento: /^\d{4}-\d{2}-\d{2}$/.test(String(i?.vencimento ?? ""))
+          ? String(i?.vencimento)
+          : undefined,
+        numeroDocumento:
+          typeof i?.numeroDocumento === "string" && i.numeroDocumento.trim()
+            ? i.numeroDocumento.trim()
+            : undefined,
       })
     )
     // Basta um campo pra mexer. Exigir `categoriaId` sempre obrigava a
@@ -196,13 +205,17 @@ fabricaBlingRouter.post("/contas/classificar", async (req, res) => {
         contatoId?: number;
         valor?: number;
         competencia?: string;
+        vencimento?: string;
+        numeroDocumento?: string;
       }) =>
         Number.isInteger(i.blingId) &&
         i.blingId > 0 &&
         (i.categoriaId !== undefined ||
           i.contatoId !== undefined ||
           i.valor !== undefined ||
-          i.competencia !== undefined)
+          i.competencia !== undefined ||
+          i.vencimento !== undefined ||
+          i.numeroDocumento !== undefined)
     );
   if (!itens.length)
     return res
