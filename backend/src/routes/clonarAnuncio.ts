@@ -4,7 +4,12 @@ import ytdl from "@distube/ytdl-core";
 import { montarPreview, publicarClone, resolverVideoDoAnuncio } from "../services/clonarAnuncioService";
 import { temAcessoLojaParaClonagem, lojasEfetivasParaClonagem } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
-import { extrairItemIdDaUrl, getItemFullComToken, resolverItemIdPorUserProduct } from "../services/mercadoLivreItems";
+import {
+  extrairItemIdDaUrl,
+  getItemFullComToken,
+  resolverItemIdPorUserProduct,
+  listarFamiliaUserProducts,
+} from "../services/mercadoLivreItems";
 import axios from "axios";
 import { consultarPromocoesDoItem } from "../services/mercadoLivreApi";
 import { getValidAccessToken } from "../services/tokenStore";
@@ -82,17 +87,71 @@ clonarAnuncioRouter.get("/item-diag", async (req, res) => {
 // promocional base + % de Pix específico, cada um configurado separado).
 // Remover depois.
 clonarAnuncioRouter.get("/promo-diag", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
+  let lojaId = Number(req.query.lojaId);
   const itemId = typeof req.query.itemId === "string" ? req.query.itemId : "";
-  if (!Number.isInteger(lojaId) || !itemId) {
-    res.status(400).json({ error: "Informe ?lojaId=&itemId=" });
+  if (!itemId) {
+    res.status(400).json({ error: "Informe ?itemId= (lojaId é opcional — sem ele, tenta achar a loja dona)" });
     return;
   }
   try {
+    const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+
+    if (!Number.isInteger(lojaId)) {
+      let achou = false;
+      for (const loja of lojas) {
+        try {
+          await getItemFullComToken(loja.id, itemId);
+          lojaId = loja.id;
+          achou = true;
+          break;
+        } catch {
+          // não é dessa loja, tenta a próxima
+        }
+      }
+      if (!achou) {
+        res.status(400).json({ error: "Esse item não pertence a nenhuma loja com token cadastrado." });
+        return;
+      }
+    }
+
     const [item, promocoes] = await Promise.all([
       getItemFullComToken(lojaId, itemId),
       consultarPromocoesDoItem(lojaId, itemId),
     ]);
+
+    // Se o item faz parte de uma família (User Product — cada "cor" é um
+    // anúncio/item separado), compara a promoção com as cores irmãs pra
+    // entender por que só uma delas mostra o desconto.
+    let familia: unknown = null;
+    if (item.family_id) {
+      try {
+        const loja = lojas.find((l) => l.id === lojaId)!;
+        const userProductIds = await listarFamiliaUserProducts(lojaId, item.site_id, item.family_id);
+        familia = await Promise.all(
+          userProductIds.map(async (upId) => {
+            const irmaoItemId = await resolverItemIdPorUserProduct(lojaId, loja.ml_user_id as number, upId);
+            if (!irmaoItemId) return { userProductId: upId, erro: "não resolveu item_id" };
+            try {
+              const [irmaoItem, irmaoPromocoes] = await Promise.all([
+                getItemFullComToken(lojaId, irmaoItemId),
+                consultarPromocoesDoItem(lojaId, irmaoItemId),
+              ]);
+              return {
+                userProductId: upId,
+                itemId: irmaoItemId,
+                titulo: irmaoItem.title,
+                preco: irmaoItem.price,
+                promocoesAtivas: irmaoPromocoes.filter((p) => p.status === "started"),
+              };
+            } catch (err: any) {
+              return { userProductId: upId, itemId: irmaoItemId, erro: err?.message ?? "falhou" };
+            }
+          })
+        );
+      } catch (err: any) {
+        familia = { erro: err?.message ?? "falhou ao buscar família" };
+      }
+    }
 
     // Campanha de desconto Pix (type=BANK, sub_type=COFINANCED) é cofinanciada
     // Mercado Livre + vendedor (meli_percentage/seller_percentage), igual ao
@@ -115,11 +174,13 @@ clonarAnuncioRouter.get("/promo-diag", async (req, res) => {
     }
 
     res.json({
+      lojaId,
       preco: item.price,
       officialStoreId: item.official_store_id ?? null,
       titulo: item.title,
       promocoes,
       promocaoPix,
+      familia,
     });
   } catch (err: any) {
     res.status(400).json({ error: err?.response?.data?.message ?? err?.message ?? "Falha ao buscar o diagnóstico." });
