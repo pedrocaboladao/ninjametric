@@ -96,6 +96,9 @@ export interface ContaConferida {
   blingContraparte?: string;
   // como os dois foram casados: por documento, ou por valor e data proximos
   parEncontradoPor?: "documento" | "valor";
+  // id da categoria no Bling — o nome sozinho nao diz em que linha do DRE de
+  // la a conta cai; o grupo do DRE e do plano de contas, achado pelo id
+  blingCategoriaId?: number;
 }
 
 export interface ConferenciaContas {
@@ -107,6 +110,19 @@ export interface ConferenciaContas {
   soNoBling: ContaConferida[];
   soNoSite: ContaConferida[];
   divergentes: ContaConferida[];
+  // Toda conta casada, com a categoria dos dois lados. A conferencia devolvia
+  // so o que sobrava, e pra alinhar o DRE do Bling com o do site e preciso ver
+  // tambem o que "confere" no valor mas esta classificado diferente.
+  pares: ParConferido[];
+}
+
+export interface ParConferido {
+  siteId: number;
+  siteCategoria: string | null;
+  blingId: number;
+  blingCategoriaId: number | null;
+  valor: number;
+  vencimento: string;
 }
 
 // Todas as contas do período, com o detalhe de cada uma.
@@ -293,6 +309,7 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
 
   const soNoBling: ContaConferida[] = [];
   const divergentes: ContaConferida[] = [];
+  const pares: ParConferido[] = [];
   const vistos = new Set<number>();
   let conferem = 0;
 
@@ -330,12 +347,21 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       blingValor: valor,
       blingVencimento: venc,
       blingContraparte: nome,
+      blingCategoriaId: Number(b.categoria?.id ?? 0) || undefined,
     };
     if (!achado) {
       soNoBling.push(linha);
       continue;
     }
     vistos.add(achado.id);
+    pares.push({
+      siteId: achado.id,
+      siteCategoria: achado.categoria,
+      blingId: b.id,
+      blingCategoriaId: linha.blingCategoriaId ?? null,
+      valor,
+      vencimento: venc,
+    });
     const problemas: string[] = [];
     if (dinheiro(achado.valor) !== valor)
       problemas.push(`valor: Bling ${valor} × site ${dinheiro(achado.valor)}`);
@@ -404,6 +430,14 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
       if (soNoBling.filter((outro) => combina(par, outro)).length !== 1) continue;
 
       usados.add(par.id);
+      pares.push({
+        siteId: par.id,
+        siteCategoria: par.categoria,
+        blingId: b.blingId ?? 0,
+        blingCategoriaId: b.blingCategoriaId ?? null,
+        valor: b.valor,
+        vencimento: b.vencimento,
+      });
       const problemas: string[] = [];
       if (dinheiro(par.valor) !== b.valor)
         problemas.push(`valor: Bling ${b.valor} × site ${dinheiro(par.valor)}`);
@@ -515,6 +549,7 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     soNoBling,
     soNoSite,
     divergentes,
+    pares,
   };
 }
 
