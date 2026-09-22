@@ -40,6 +40,10 @@ import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
 import {
+  listarCaixasBling,
+  recategorizarCaixas,
+} from "../services/blingContasService";
+import {
   conferirContasPagar,
   listarContasBling,
   baixarContaPagar,
@@ -119,6 +123,43 @@ fabricaBlingRouter.get("/contas/categorias", async (_req, res) => {
   } catch (err) {
     console.error("[bling-categorias]", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
+  }
+});
+
+// Lancamentos de caixa do periodo, crus. E deles que sai o DRE do Bling.
+fabricaBlingRouter.get("/caixas/listar", async (req, res) => {
+  const d = (v: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v ?? "")) ? String(v) : "");
+  const de = d(req.query.de);
+  const ate = d(req.query.ate);
+  if (!de || !ate) return res.status(400).json({ error: "Informe de e ate (aaaa-mm-dd)." });
+  try {
+    res.json({ lancamentos: await listarCaixasBling(de, ate) });
+  } catch (err) {
+    console.error("[bling-caixas-listar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
+  }
+});
+
+// Troca a categoria de lancamentos de caixa. Lista explicita, como nas contas.
+fabricaBlingRouter.post("/caixas/classificar", async (req, res) => {
+  const bruto = Array.isArray((req.body ?? {}).itens) ? (req.body ?? {}).itens : [];
+  const itens = bruto
+    .map((i: { id?: unknown; categoriaId?: unknown }) => ({
+      id: Number(i?.id),
+      categoriaId: Number(i?.categoriaId),
+    }))
+    .filter(
+      (i: { id: number; categoriaId: number }) =>
+        Number.isInteger(i.id) && i.id > 0 && Number.isInteger(i.categoriaId) && i.categoriaId > 0
+    );
+  if (!itens.length) return res.status(400).json({ error: "Informe itens com id e categoriaId." });
+  if (itens.length > 200) return res.status(400).json({ error: "No maximo 200 por vez." });
+  try {
+    const r = await recategorizarCaixas(itens);
+    res.json({ total: r.length, ok: r.filter((x) => x.ok).length, falhas: r.filter((x) => !x.ok) });
+  } catch (err) {
+    console.error("[bling-caixas-classificar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao classificar." });
   }
 });
 

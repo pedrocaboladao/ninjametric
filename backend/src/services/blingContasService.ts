@@ -1348,3 +1348,65 @@ export async function baixarContaReceber(
   }
   return { saldoAntes, saldoDepois };
 }
+
+// ---------------------------------------------------------------------------
+// Caixas e bancos
+//
+// O DRE do Bling nao le a conta a pagar: le o lancamento que a baixa cria no
+// caixa, e esse lancamento guarda a categoria que a conta tinha NO DIA da baixa.
+// Em setembro/2026 quase cem contas foram baixadas sem categoria; classificar a
+// conta depois nao muda o lancamento, e o DRE de la seguia sem aluguel, luz e
+// metade da folha. Aqui se le e se corrige a categoria do lancamento.
+
+export interface LancamentoCaixa {
+  id: number;
+  data?: string;
+  valor?: number;
+  historico?: string;
+  categoria?: { id?: number };
+  contaFinanceira?: { id?: number };
+  [campo: string]: unknown;
+}
+
+export async function listarCaixasBling(de: string, ate: string): Promise<LancamentoCaixa[]> {
+  const todos: LancamentoCaixa[] = [];
+  for (let pagina = 1; pagina <= 50; pagina++) {
+    const r = await chamar<{ data?: LancamentoCaixa[] }>("/caixas", {
+      pagina,
+      limite: POR_PAGINA,
+      dataInicial: de,
+      dataFinal: ate,
+    });
+    const lote = r.data ?? [];
+    todos.push(...lote);
+    if (lote.length < POR_PAGINA) break;
+  }
+  return todos;
+}
+
+export async function recategorizarCaixas(
+  itens: Array<{ id: number; categoriaId: number }>
+): Promise<ResultadoClassificacao[]> {
+  const saida: ResultadoClassificacao[] = [];
+  for (const it of itens) {
+    try {
+      const { data: atual } = await chamar<{ data: LancamentoCaixa }>(`/caixas/${it.id}`);
+      if (!atual) throw new Error("lancamento nao encontrado no Bling");
+      const { id: _id, ...resto } = atual;
+      await escrever(`/caixas/${it.id}`, { ...resto, categoria: { id: it.categoriaId } });
+      // o PUT do Bling responde 200 e ignora o que nao entende: so vale o que
+      // a releitura mostra
+      const { data: depois } = await chamar<{ data: LancamentoCaixa }>(`/caixas/${it.id}`);
+      if (Number(depois?.categoria?.id ?? 0) !== it.categoriaId)
+        throw new Error("o Bling aceitou o PUT mas a categoria nao gravou");
+      saida.push({ blingId: it.id, ok: true });
+    } catch (err) {
+      saida.push({
+        blingId: it.id,
+        ok: false,
+        erro: err instanceof Error ? err.message : "falha",
+      });
+    }
+  }
+  return saida;
+}
