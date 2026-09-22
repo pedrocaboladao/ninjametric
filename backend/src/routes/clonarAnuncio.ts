@@ -161,17 +161,31 @@ clonarAnuncioRouter.get("/promo-diag", async (req, res) => {
     // promotion_type=BANK na própria rota de item — por simetria, tentando
     // aqui o GET desse mesmo endpoint de item com promotion_type=BANK, sem
     // confirmação prévia (não documentado assim explicitamente).
-    let promocaoPix: unknown = null;
-    try {
-      const accessToken = await getValidAccessToken(lojaId);
-      const { data } = await axios.get(`https://api.mercadolibre.com/seller-promotions/items/${itemId}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-        params: { promotion_type: "BANK", app_version: "v2" },
-      });
-      promocaoPix = data;
-    } catch (err: any) {
-      promocaoPix = { erro: err?.response?.data ?? err?.message ?? "falhou" };
+    const accessToken = await getValidAccessToken(lojaId);
+    async function tentar(nome: string, url: string, params: Record<string, string>) {
+      try {
+        const { data } = await axios.get(url, { headers: { Authorization: `Bearer ${accessToken}` }, params });
+        return { nome, ok: true, data };
+      } catch (err: any) {
+        return { nome, ok: false, status: err?.response?.status ?? null, erro: err?.response?.data ?? err?.message ?? "falhou" };
+      }
     }
+
+    // Nenhuma dessas é confirmada pela doc oficial pra esse formato exato —
+    // são tentativas, pra ver qual (se alguma) devolve a campanha Pix
+    // (type=BANK, sub_type=COFINANCED) desse item específico.
+    const tentativasPix = await Promise.all([
+      tentar("items-promotion-type-bank", `https://api.mercadolibre.com/seller-promotions/items/${itemId}`, {
+        promotion_type: "BANK",
+        app_version: "v2",
+      }),
+      tentar("promotions-list-bank-item", `https://api.mercadolibre.com/seller-promotions/promotions`, {
+        promotion_type: "BANK",
+        item_id: itemId,
+        app_version: "v2",
+      }),
+      tentar("item-prices", `https://api.mercadolibre.com/items/${itemId}/prices`, {}),
+    ]);
 
     res.json({
       lojaId,
@@ -179,7 +193,7 @@ clonarAnuncioRouter.get("/promo-diag", async (req, res) => {
       officialStoreId: item.official_store_id ?? null,
       titulo: item.title,
       promocoes,
-      promocaoPix,
+      tentativasPix,
       familia,
     });
   } catch (err: any) {
