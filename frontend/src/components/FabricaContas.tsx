@@ -138,6 +138,15 @@ const CATEGORIAS = [
   // o primeiro ninguém via os R$ 217,78 que atrasar custou em agosto/setembro.
   "TARIFAS BANCÁRIAS",
   "JUROS E MULTAS POR ATRASO",
+  // Taxa administrativa e seguro prestamista embutidos na parcela de um
+  // financiamento. Terceiro preço do dinheiro, ao lado dos outros dois: ter
+  // conta, ter atrasado, ter financiado.
+  //
+  // A parcela da Jumpy é R$ 8.430,72 sem juro nenhum, mas só R$ 8.115,56 é
+  // principal. Os R$ 315,16 de diferença ficavam dentro de EMPRÉSTIMO, que o
+  // DRE não olha — R$ 3.781,93 de despesa real que não apareceria em mês
+  // nenhum dos doze.
+  "SEGURO E TAXAS DE FINANCIAMENTO",
   // Serviço de consultoria pago a sócio. Fica fora de PRÓ-LABORE até o contador
   // dizer se é pró-labore (com encargos) ou retirada — misturar agora esconderia
   // a pergunta.
