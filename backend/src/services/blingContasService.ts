@@ -840,6 +840,11 @@ export interface Classificacao {
   // Mes de competencia (aaaa-mm-dd). O DRE do Bling agrupa por ele; o do site,
   // pelo vencimento. Alinhar os dois e gravar a competencia no mes do vencimento.
   competencia?: string;
+  // Data de vencimento (aaaa-mm-dd) e numero do documento. Entram aqui porque
+  // cheque trocado muda as duas coisas: em 22/09/2026 tres cheques da Palma Sul
+  // viraram quatro, com valores e datas diferentes.
+  vencimento?: string;
+  numeroDocumento?: string;
 }
 
 export interface ResultadoClassificacao {
@@ -874,7 +879,7 @@ export async function classificarContasBling(
       if (!Number.isFinite(valor) || valor <= 0) throw new Error(`valor invalido: ${it.valor}`);
 
       const corpo: Record<string, unknown> = {
-        vencimento: atual.vencimento,
+        vencimento: it.vencimento ?? atual.vencimento,
         valor,
         categoria: { id: categoriaId },
       };
@@ -886,7 +891,8 @@ export async function classificarContasBling(
       if (atual.dataEmissao) corpo.dataEmissao = atual.dataEmissao;
       const competencia = it.competencia ?? atual.competencia;
       if (competencia) corpo.competencia = competencia;
-      if (atual.numeroDocumento) corpo.numeroDocumento = atual.numeroDocumento;
+      const numeroDocumento = it.numeroDocumento ?? atual.numeroDocumento;
+      if (numeroDocumento) corpo.numeroDocumento = numeroDocumento;
       if (atual.historico) corpo.historico = atual.historico;
 
       await escrever(`/contas/pagar/${it.blingId}`, corpo);
@@ -898,6 +904,13 @@ export async function classificarContasBling(
       if (Number(depois?.categoria?.id ?? 0) !== categoriaId) {
         throw new Error("o Bling aceitou o PUT mas a categoria não gravou");
       }
+      if (it.vencimento && String(depois?.vencimento ?? "").slice(0, 10) !== it.vencimento)
+        throw new Error(`o Bling aceitou o PUT mas o vencimento ficou ${depois?.vencimento}`);
+      if (
+        it.numeroDocumento &&
+        String(depois?.numeroDocumento ?? "").trim() !== it.numeroDocumento
+      )
+        throw new Error("o Bling aceitou o PUT mas o numero do documento nao gravou");
       if (it.competencia && String(depois?.competencia ?? "").slice(0, 10) !== it.competencia) {
         throw new Error(
           `o Bling aceitou o PUT mas a competencia ficou ${depois?.competencia ?? "vazia"}`
