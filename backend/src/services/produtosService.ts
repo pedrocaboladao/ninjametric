@@ -101,8 +101,8 @@ function parseProdutos(csv: string): Produto[] {
 const CACHE_TTL_MS = 60 * 60 * 1000;
 let cache: { data: Produto[]; expiraEm: number } | null = null;
 
-export async function listarProdutos(): Promise<Produto[]> {
-  if (cache && cache.expiraEm > Date.now()) return cache.data;
+export async function listarProdutos(forcarAtualizacao = false): Promise<Produto[]> {
+  if (!forcarAtualizacao && cache && cache.expiraEm > Date.now()) return cache.data;
 
   const { data: csv } = await axios.get<string>(CSV_URL);
   const produtos = parseProdutos(csv);

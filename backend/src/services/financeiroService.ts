@@ -155,7 +155,7 @@ export async function listarVendasFinanceiras(
   const janela = dataInicio && dataFim ? janelaEntre(dataInicio, dataFim) : janelaUltimosDias(DIAS_JANELA);
 
   const [produtos, ordersPorLoja, gastoAdsTotal] = await Promise.all([
-    listarProdutos(),
+    listarProdutos(forcarAtualizacao),
     Promise.all(
       lojas.map(async (loja) => ({
         lojaId: loja.id,
