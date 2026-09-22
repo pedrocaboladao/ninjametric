@@ -104,6 +104,44 @@ const CATEGORIAS = [
   "ADIANTAMENTO",
   "EMPRÉSTIMO",
   "OUTROS",
+
+  // Plano de contas aberto em 22/09/2026, sobre agosto e setembro.
+  //
+  // ADMINISTRATIVO, SERVIÇOS, MANUTENÇÃO e OUTROS eram quatro caixas grandes
+  // onde cabia tudo: EPI e churrasco na mesma linha, contador e advogado de
+  // marcas na mesma linha, conserto de caminhão e porta da expedição na mesma
+  // linha. O DRE mostrava "SERVIÇOS R$ 24.812,19" e ninguém sabia responder do
+  // que era — nem se tinha subido ou caído.
+  //
+  // As quatro continuam na lista de propósito: contas de outubro em diante
+  // ainda estão nelas, e tirar daqui faria o select abrir vazio na edição e
+  // apagar a categoria no salvar.
+  "DIÁRIAS E BÔNUS FORA DA FOLHA",
+  "RESCISÕES",
+  "SEGURANÇA DO TRABALHO",
+  "MATERIAL DE EXPEDIÇÃO",
+  "CONFRATERNIZAÇÃO E PATROCÍNIO",
+  "CONTABILIDADE",
+  "JURÍDICO E MARCAS",
+  "SEGURANÇA E MONITORAMENTO",
+  "SERVIÇOS OPERACIONAIS",
+  "MÃO DE OBRA TERCEIRIZADA",
+  "RATEIO MARINGÁ FULL",
+  "MANUTENÇÃO PREDIAL",
+  "MANUTENÇÃO DE VEÍCULOS",
+  "MANUTENÇÃO DE MÁQUINAS",
+  "COMBUSTÍVEL",
+  "LIMPEZA",
+  "SISTEMAS E ASSINATURAS",
+  // Custo do dinheiro separado em dois: tarifa é o preço de ter conta, juro de
+  // atraso é o preço de ter atrasado. Só o segundo dá pra evitar, e junto com
+  // o primeiro ninguém via os R$ 217,78 que atrasar custou em agosto/setembro.
+  "TARIFAS BANCÁRIAS",
+  "JUROS E MULTAS POR ATRASO",
+  // Serviço de consultoria pago a sócio. Fica fora de PRÓ-LABORE até o contador
+  // dizer se é pró-labore (com encargos) ou retirada — misturar agora esconderia
+  // a pergunta.
+  "CONSULTORIA DE SÓCIO",
 ];
 
 // O que a planilha do financeiro usa. Texto livre no banco: forma nova nao
