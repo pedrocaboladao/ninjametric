@@ -199,6 +199,7 @@ const VAZIO = {
   dataPagamento: "",
   custoFixo: true,
   provisao: false,
+  competencia: "",
   observacao: "",
   formaPagamento: "",
   documento: "",
@@ -565,6 +566,8 @@ export function FabricaContas() {
       dataPagamento: c.dataPagamento ?? "",
       custoFixo: c.custoFixo,
       provisao: c.provisao,
+      // só mostra quando difere: campo repetindo o vencimento é ruído
+      competencia: c.competencia === c.vencimento ? "" : c.competencia,
       observacao: c.observacao ?? "",
       formaPagamento: c.formaPagamento ?? "",
       documento: c.documento ?? "",
@@ -595,6 +598,8 @@ export function FabricaContas() {
       dataPagamento: form.dataPagamento || null,
       custoFixo: form.custoFixo,
       provisao: form.provisao,
+      // vazio o backend entende como "igual ao vencimento"
+      competencia: form.competencia,
       observacao: form.observacao.trim() || null,
       formaPagamento: form.formaPagamento || null,
       documento: form.documento.trim() || null,
@@ -1096,6 +1101,17 @@ export function FabricaContas() {
               type="date"
               value={form.vencimento}
               onChange={(e) => setForm((f) => ({ ...f, vencimento: e.target.value }))}
+            />
+            {/* Só preencha quando a despesa for de outro mês: a luz que vence
+                dia 10 é o consumo do mês anterior, o salário pago no dia 4 é o
+                mês trabalhado antes. Vazio = igual ao vencimento. */}
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="date"
+              title="Competência — o mês que causou a despesa. Vazio = igual ao vencimento."
+              placeholder="Competência"
+              value={form.competencia}
+              onChange={(e) => setForm((f) => ({ ...f, competencia: e.target.value }))}
             />
             <select
               className="clonar-input fabricacao-input-pequeno"

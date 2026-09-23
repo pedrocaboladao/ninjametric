@@ -10,8 +10,14 @@ import { totaisDoPeriodo } from "./fabricaDevolucoesService";
 // do DRE dela.
 //
 // Competência, não caixa: o pedido entra na data do pedido (não na data em que
-// a loja pagou), e a conta entra no vencimento (não no pagamento). Um mês em
-// que a loja atrasou o PIX não pode parecer um mês ruim de venda.
+// a loja pagou), e a conta entra na COMPETÊNCIA — o mês que causou a despesa,
+// não o mês em que ela vence nem aquele em que foi paga. Um mês em que a loja
+// atrasou o PIX não pode parecer um mês ruim de venda, e a luz de agosto não
+// pode virar despesa de setembro só porque o boleto vence dia 10.
+//
+// `competencia` nasce igual ao vencimento; o que diverge se corrige conta a
+// conta. A partir de janeiro/2027 a fábrica vai para o lucro real, onde isso
+// deixa de ser boa prática e vira obrigação.
 
 export interface LinhaCategoria {
   categoria: string;
@@ -273,7 +279,8 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
       `SELECT COALESCE(categoria, 'SEM CATEGORIA') AS categoria, custo_fixo, SUM(valor) AS total
        FROM fabrica_contas
        WHERE tipo = 'pagar' AND status <> 'cancelado'
-         AND vencimento >= $1::date AND vencimento <= $2::date
+         AND COALESCE(competencia, vencimento) >= $1::date
+         AND COALESCE(competencia, vencimento) <= $2::date
        GROUP BY categoria, custo_fixo`,
       [de, ate]
     ),
@@ -284,12 +291,13 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
       [de, ate]
     ),
     // faturamento digitado a mao, pela mesma regra de competencia das
-    // despesas: entra no mes do vencimento, nao no mes em que a loja pagou
+    // despesas: entra no mes que gerou a venda, nao no mes em que a loja pagou
     pool.query<{ total: string }>(
       `SELECT COALESCE(SUM(valor), 0) AS total
        FROM fabrica_contas
        WHERE tipo = 'receber' AND status <> 'cancelado'
-         AND vencimento >= $1::date AND vencimento <= $2::date`,
+         AND COALESCE(competencia, vencimento) >= $1::date
+         AND COALESCE(competencia, vencimento) <= $2::date`,
       [de, ate]
     ),
     // Consumo próprio: o ajuste marcado como uso da fábrica, pelo custo gravado

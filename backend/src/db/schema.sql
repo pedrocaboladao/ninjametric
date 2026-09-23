@@ -1390,6 +1390,22 @@ CREATE INDEX IF NOT EXISTS idx_fabrica_contas_documento
 -- fica sabendo — lá só entra o que é título de verdade.
 ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS provisao BOOLEAN NOT NULL DEFAULT FALSE;
 
+-- Competência: o mês que CAUSOU a despesa, que nem sempre é o mês em que ela
+-- vence. A luz que vence 10/09 é o consumo de agosto; o salário pago no dia 4
+-- é o mês trabalhado antes; a compra a 30 dias acontece na data da nota.
+--
+-- O DRE passa a agrupar por aqui. O caixa (a pagar, atrasado, conciliação)
+-- continua no vencimento — são perguntas diferentes: "quanto este mês custou"
+-- e "quanto eu tenho que pagar este mês".
+--
+-- Nasce igual ao vencimento, inclusive no que já estava lançado: assim a
+-- virada não muda nenhum número sozinha. O que diverge se corrige conta a
+-- conta, que é exatamente o que foi feito no Bling em 22/09/2026.
+ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS competencia DATE;
+UPDATE fabrica_contas SET competencia = vencimento WHERE competencia IS NULL;
+CREATE INDEX IF NOT EXISTS idx_fabrica_contas_competencia
+  ON fabrica_contas (competencia DESC);
+
 -- Bens da Fábrica: maquinário, veículos, o que a empresa comprou e continua
 -- tendo. Comprar não é gastar — o dinheiro virou um bem que segue valendo.
 -- O que empobrece é o desgaste, e ele acontece um pouco por mês.

@@ -30,6 +30,8 @@ export interface Conta {
   documento: string | null;
   // despesa de competencia que nao e conta a pagar: ver schema.sql
   provisao: boolean;
+  // mes que causou a despesa. O DRE agrupa por ele; o caixa, pelo vencimento.
+  competencia: string;
   // derivados
   atrasada: boolean;
   diasParaVencer: number;
@@ -49,6 +51,8 @@ export interface ContaEntrada {
   formaPagamento: string | null;
   documento: string | null;
   provisao: boolean;
+  // vazio = o vencimento, que e o caso da esmagadora maioria
+  competencia: string | null;
 }
 
 // "hoje" pelo fuso de São Paulo, não pelo UTC. O resto do repo usa
@@ -79,6 +83,7 @@ interface Linha {
   forma_pagamento: string | null;
   documento: string | null;
   provisao: boolean;
+  competencia: string | null;
 }
 
 function montar(r: Linha): Conta {
@@ -100,6 +105,7 @@ function montar(r: Linha): Conta {
     formaPagamento: r.forma_pagamento,
     documento: r.documento,
     provisao: r.provisao,
+    competencia: dataIsoOuNulo(r.competencia) ?? vencimento,
     // conta paga ou cancelada não atrasa, por mais antiga que seja
     atrasada: status === "pendente" && diasParaVencer < 0,
     diasParaVencer,
@@ -109,7 +115,7 @@ function montar(r: Linha): Conta {
 const SELECT_BASE = `
   SELECT c.id, c.tipo, c.descricao, c.categoria, c.contraparte, c.valor, c.vencimento,
          c.status, c.data_pagamento, c.custo_fixo, c.observacao,
-         c.forma_pagamento, c.documento, c.provisao
+         c.forma_pagamento, c.documento, c.provisao, c.competencia
   FROM fabrica_contas c
 `;
 
@@ -165,6 +171,9 @@ function valores(e: ContaEntrada) {
     e.formaPagamento,
     e.documento,
     e.provisao,
+    // sem competencia informada, o vencimento responde: e o que acontece em
+    // quase toda conta, e evita obrigar quem lanca a pensar nisso toda vez
+    e.competencia || e.vencimento,
   ];
 }
 
@@ -191,12 +200,16 @@ export async function criarConta(e: ContaEntrada, repetirMeses = 0): Promise<{ i
       vencimento: venc,
       status: i === 0 ? e.status : "pendente",
       dataPagamento: i === 0 ? e.dataPagamento : null,
+      // a competencia informada vale so pra primeira: as repeticoes seguem o
+      // proprio vencimento, senao doze meses cairiam todos no mesmo mes do DRE
+      competencia: i === 0 ? e.competencia : null,
     };
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO fabrica_contas
          (tipo, descricao, categoria, contraparte, valor, vencimento, status,
-          data_pagamento, custo_fixo, observacao, forma_pagamento, documento, provisao)
-       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11,$12,$13) RETURNING id`,
+          data_pagamento, custo_fixo, observacao, forma_pagamento, documento, provisao,
+          competencia)
+       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11,$12,$13,$14::date) RETURNING id`,
       valores(parcela)
     );
     ids.push(rows[0].id);
@@ -209,7 +222,8 @@ export async function atualizarConta(id: number, e: ContaEntrada): Promise<void>
     `UPDATE fabrica_contas
      SET tipo = $2, descricao = $3, categoria = $4, contraparte = $5, valor = $6,
          vencimento = $7::date, status = $8, data_pagamento = $9::date, custo_fixo = $10,
-         observacao = $11, forma_pagamento = $12, documento = $13, provisao = $14
+         observacao = $11, forma_pagamento = $12, documento = $13, provisao = $14,
+         competencia = $15::date
      WHERE id = $1`,
     [id, ...valores(e)]
   );
