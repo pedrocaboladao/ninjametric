@@ -61,6 +61,8 @@ function lerEntrada(req: Request): ContaEntrada | string {
     observacao: texto(b.observacao),
     formaPagamento: texto(b.formaPagamento),
     documento: texto(b.documento),
+    // provisao so quando pedida: o padrao e conta de verdade
+    provisao: b.provisao === true,
   };
 }
 

@@ -1378,6 +1378,18 @@ ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS documento TEXT;
 CREATE INDEX IF NOT EXISTS idx_fabrica_contas_documento
   ON fabrica_contas (documento) WHERE documento IS NOT NULL;
 
+-- Provisão: despesa que o mês já causou e que ninguém vai pagar como boleto.
+-- 13º e férias nascem um pouco a cada mês e saem de uma vez lá na frente; sem
+-- isso o resultado de janeiro a novembro sai melhor do que foi e dezembro leva
+-- o golpe inteiro.
+--
+-- Precisa de flag própria porque provisão é despesa SEM ser conta a pagar. Se
+-- entrasse como pendente comum, inflaria o "a pagar" e depois o "atrasado"
+-- para sempre; se entrasse como paga, apareceria na conciliação como dinheiro
+-- que saiu do banco e nunca saiu. O DRE conta, o caixa ignora, e o Bling nem
+-- fica sabendo — lá só entra o que é título de verdade.
+ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS provisao BOOLEAN NOT NULL DEFAULT FALSE;
+
 -- Bens da Fábrica: maquinário, veículos, o que a empresa comprou e continua
 -- tendo. Comprar não é gastar — o dinheiro virou um bem que segue valendo.
 -- O que empobrece é o desgaste, e ele acontece um pouco por mês.
