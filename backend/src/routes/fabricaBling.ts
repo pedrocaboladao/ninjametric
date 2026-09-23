@@ -37,6 +37,7 @@ import {
   definirSituacaoProdutos,
   lerCustos,
   gravarCusto,
+  produtoCru,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -984,6 +985,16 @@ fabricaBlingRouter.post("/produtos/custo", (req, res) => {
     }
   })();
   res.status(202).json({ estado: "rodando", total: pares.length, simulacao });
+});
+
+// Diagnostico: o produto inteiro do ERP. Serve pra descobrir onde o Bling
+// guarda cada campo — foi assim que se viu que o custo nao esta onde parecia.
+fabricaBlingRouter.get("/produtos/cru/:sku", async (req, res) => {
+  try {
+    res.json(await produtoCru(String(req.params.sku)));
+  } catch (err) {
+    erro(res, err, "Falha ao ler o produto no ERP.");
+  }
 });
 
 fabricaBlingRouter.get("/produtos/custo-job", (_req, res) => {
