@@ -35,6 +35,7 @@ import {
   gravarGtin,
   gravarPreco,
   definirSituacaoProdutos,
+  lerCustos,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -781,6 +782,23 @@ fabricaBlingRouter.post("/produtos/catalogo", (req, res) => {
     }
   })();
   res.status(202).json({ estado: "rodando" });
+});
+
+// Le o custo de alguns SKUs no ERP. E do `precoCusto` do cadastro que o Bling
+// tira o CMV do DRE — o item do pedido so leva o preco de venda. Sem custo no
+// produto, o DRE de la mostra venda sem custo.
+fabricaBlingRouter.get("/produtos/custo", async (req, res) => {
+  const skus = String(req.query.skus ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 40);
+  if (!skus.length) return res.status(400).json({ error: "Informe skus separados por vírgula." });
+  try {
+    res.json({ produtos: await lerCustos(skus) });
+  } catch (err) {
+    erro(res, err, "Falha ao ler o custo no ERP.");
+  }
 });
 
 fabricaBlingRouter.get("/produtos/catalogo", (_req, res) => {

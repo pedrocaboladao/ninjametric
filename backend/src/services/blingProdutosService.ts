@@ -159,6 +159,14 @@ export interface ProdutoDoBling {
   codigo: string;
   nome: string;
   preco: number | null;
+  // O custo do cadastro. E DELE que o Bling tira o CMV do DRE: o item do pedido
+  // so carrega o preco de venda. Produto sem custo = venda sem custo, e o DRE
+  // de la mostra margem cheia.
+  //
+  // A listagem do Bling as vezes nao traz o campo; quando nao traz vem `null`,
+  // que nao e o mesmo que zero. Pra ter certeza, `lerCustos` le o produto
+  // inteiro de alguns SKUs.
+  precoCusto: number | null;
   situacao: string;
   tipo: string;
   formato: string;
@@ -203,6 +211,7 @@ export async function listarProdutos(
         codigo: String(p.codigo ?? "").trim(),
         nome: String(p.nome ?? "").trim(),
         preco: typeof p.preco === "number" ? p.preco : Number(p.preco ?? 0) || null,
+        precoCusto: custoDoProduto(p),
         situacao: String(p.situacao ?? ""),
         tipo: String(p.tipo ?? ""),
         formato: String(p.formato ?? ""),
@@ -212,6 +221,50 @@ export async function listarProdutos(
     // pagina incompleta e a ultima: o Bling nao devolve total de registros
     if (lote.length < POR_PAGINA) break;
   }
+  }
+  return saida;
+}
+
+// O Bling guarda o custo em lugares diferentes conforme a rota: `precoCusto` na
+// raiz em algumas, dentro de `fornecedor` em outras. Ler so um dos dois faz
+// produto com custo parecer zerado.
+function custoDoProduto(p: Record<string, unknown>): number | null {
+  const direto = p.precoCusto;
+  if (direto !== undefined && direto !== null && direto !== "") {
+    const n = Number(direto);
+    if (Number.isFinite(n)) return n;
+  }
+  const forn = p.fornecedor as { precoCusto?: unknown } | undefined;
+  if (forn && forn.precoCusto !== undefined && forn.precoCusto !== null) {
+    const n = Number(forn.precoCusto);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+/** Le o produto INTEIRO de cada SKU — a listagem pode nao trazer o custo. */
+export async function lerCustos(
+  skus: string[]
+): Promise<Array<{ sku: string; id?: number; preco?: number | null; custo?: number | null; erro?: string }>> {
+  const saida: Array<{ sku: string; id?: number; preco?: number | null; custo?: number | null; erro?: string }> = [];
+  for (const sku of skus) {
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        saida.push({ sku, erro: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const d = inteiro.data as Record<string, unknown>;
+      saida.push({
+        sku,
+        id: achado.id,
+        preco: Number(d.preco ?? 0) || null,
+        custo: custoDoProduto(d),
+      });
+    } catch (err) {
+      saida.push({ sku, erro: err instanceof Error ? err.message : "falhou" });
+    }
   }
   return saida;
 }
