@@ -784,9 +784,14 @@ export async function gravarCusto(
         linhas.push({ sku, custo, situacao: "gravado", produtoId: achado.id, antes });
         continue;
       }
+      // O custo NAO fica na raiz do produto: mora em `fornecedor.precoCusto`,
+      // ao lado do `precoCompra` e do contato do fornecedor. Mandar
+      // `precoCusto` solto na raiz faz o Bling responder 200 e nao gravar nada
+      // — testado no MANTA-5M, que continuou 3,50 depois do PUT.
+      const atual = inteiro.data as { fornecedor?: Record<string, unknown> };
       await chamar("put", `/produtos/${achado.id}`, undefined, {
         ...inteiro.data,
-        precoCusto: custo,
+        fornecedor: { ...(atual.fornecedor ?? {}), precoCusto: custo },
       });
       const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
       const agora = custoDoProduto(depois.data as Record<string, unknown>);
