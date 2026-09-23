@@ -784,14 +784,30 @@ export async function gravarCusto(
         linhas.push({ sku, custo, situacao: "gravado", produtoId: achado.id, antes });
         continue;
       }
-      // O custo NAO fica na raiz do produto: mora em `fornecedor.precoCusto`,
-      // ao lado do `precoCompra` e do contato do fornecedor. Mandar
-      // `precoCusto` solto na raiz faz o Bling responder 200 e nao gravar nada
-      // — testado no MANTA-5M, que continuou 3,50 depois do PUT.
+      // O custo nao se grava pelo produto. Nem na raiz nem dentro de
+      // `fornecedor`: o Bling responde 200 e deixa como estava (testado duas
+      // vezes no MANTA-5M). Ele pertence a relacao produto<->fornecedor, que
+      // tem endpoint proprio — e o `fornecedor.id` do produto e o id DESSA
+      // relacao, nao do contato.
       const atual = inteiro.data as { fornecedor?: Record<string, unknown> };
-      await chamar("put", `/produtos/${achado.id}`, undefined, {
-        ...inteiro.data,
-        fornecedor: { ...(atual.fornecedor ?? {}), precoCusto: custo },
+      const rel = atual.fornecedor ?? {};
+      const relId = Number((rel as { id?: unknown }).id ?? 0);
+      if (!relId) {
+        linhas.push({
+          sku, custo, situacao: "não gravou", produtoId: achado.id, antes,
+          erro: "o produto não tem relação de fornecedor onde guardar o custo",
+        });
+        if (aoAndar) aoAndar(i + 1, pares.length);
+        continue;
+      }
+      const contato = (rel as { contato?: { id?: unknown } }).contato;
+      await chamar("put", `/produtos/fornecedores/${relId}`, undefined, {
+        produto: { id: achado.id },
+        contato: { id: Number(contato?.id ?? 0) },
+        codigo: String((rel as { codigo?: unknown }).codigo ?? ""),
+        precoCusto: custo,
+        precoCompra: Number((rel as { precoCompra?: unknown }).precoCompra ?? 0),
+        padrao: true,
       });
       const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
       const agora = custoDoProduto(depois.data as Record<string, unknown>);
