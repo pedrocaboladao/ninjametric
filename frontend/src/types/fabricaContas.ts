@@ -28,6 +28,10 @@ export interface Conta {
   // (13º, férias). Entra no DRE e fica fora do "a pagar", do "atrasado" e da
   // conferência com o Bling — lá só existe título de verdade.
   provisao: boolean;
+  // mês que causou a despesa. O DRE agrupa por ela; o "a pagar" e a
+  // conciliação bancária continuam no vencimento. Vem sempre preenchida:
+  // quando ninguém informou, é igual ao vencimento.
+  competencia: string;
   atrasada: boolean;
   diasParaVencer: number;
 }

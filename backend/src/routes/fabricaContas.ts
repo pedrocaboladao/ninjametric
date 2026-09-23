@@ -63,6 +63,11 @@ function lerEntrada(req: Request): ContaEntrada | string {
     documento: texto(b.documento),
     // provisao so quando pedida: o padrao e conta de verdade
     provisao: b.provisao === true,
+    // sem competencia, o vencimento responde (o service resolve)
+    competencia:
+      typeof b.competencia === "string" && /^\d{4}-\d{2}-\d{2}$/.test(b.competencia)
+        ? b.competencia
+        : null,
   };
 }
 
