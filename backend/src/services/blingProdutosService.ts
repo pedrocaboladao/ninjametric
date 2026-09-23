@@ -734,6 +734,14 @@ export interface LinhaPreco {
   erro?: string;
 }
 
+/** O produto inteiro, como o Bling devolve. So pra diagnostico. */
+export async function produtoCru(sku: string): Promise<unknown> {
+  const achado = await acharPorCodigo(sku);
+  if (!achado) return { erro: "não achei no ERP", sku };
+  const inteiro = await chamar<{ data: unknown }>("get", `/produtos/${achado.id}`);
+  return inteiro.data;
+}
+
 export interface LinhaCusto {
   sku: string;
   custo: number;
