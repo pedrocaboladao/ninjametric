@@ -36,6 +36,7 @@ import {
   gravarPreco,
   definirSituacaoProdutos,
   lerCustos,
+  gravarCusto,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
@@ -937,6 +938,56 @@ fabricaBlingRouter.post("/produtos/preco", (req, res) => {
 
 fabricaBlingRouter.get("/produtos/preco", (_req, res) => {
   res.json(precoJob ?? { estado: "nenhuma" });
+});
+
+// Grava o custo no cadastro do ERP — a fonte do CMV do DRE de la. Custa quatro
+// chamadas por SKU (procurar, ler, gravar, reler), entao roda solto como o preco.
+let custoJob: { estado: string; feitos: number; total: number; erro: string | null; resultado: unknown } | null =
+  null;
+
+fabricaBlingRouter.post("/produtos/custo", (req, res) => {
+  if (custoJob && custoJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma gravação de custo rodando.", ...custoJob });
+  }
+  const b = req.body ?? {};
+  const pares = Array.isArray(b.pares)
+    ? b.pares
+        .map((p: { sku?: unknown; custo?: unknown }) => ({
+          sku: String(p.sku ?? "").trim(),
+          custo: Number(p.custo),
+        }))
+        // custo zero nao se grava: zero e exatamente o que ja esta la, e
+        // mandar zero gastaria quatro chamadas pra nao mudar nada
+        .filter((p: { sku: string; custo: number }) => p.sku && Number.isFinite(p.custo) && p.custo > 0)
+    : [];
+  if (!pares.length) {
+    return res.status(400).json({ error: "Mande os pares { sku, custo }." });
+  }
+  const simulacao = b.simular !== false;
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: pares.length,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  custoJob = job;
+  void (async () => {
+    try {
+      const r = await gravarCusto(pares, simulacao, (f, t) => {
+        job.feitos = f;
+        job.total = t;
+      });
+      custoJob = { estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
+        erro: null, resultado: r };
+    } catch (err) {
+      console.error("[fabrica-bling] custo", err);
+      custoJob = { estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", total: pares.length, simulacao });
+});
+
+fabricaBlingRouter.get("/produtos/custo-job", (_req, res) => {
+  res.json(custoJob ?? { estado: "nenhuma" });
 });
 
 fabricaBlingRouter.post("/produtos/gtin", (req, res) => {

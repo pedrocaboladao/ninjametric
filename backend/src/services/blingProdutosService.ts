@@ -734,6 +734,73 @@ export interface LinhaPreco {
   erro?: string;
 }
 
+export interface LinhaCusto {
+  sku: string;
+  custo: number;
+  situacao: "gravado" | "já era esse" | "não achei no ERP" | "não gravou" | "erro";
+  produtoId?: number;
+  antes?: number | null;
+  erro?: string;
+}
+
+/**
+ * Grava o custo no cadastro do ERP. E dele que o Bling tira o CMV do DRE: o
+ * item do pedido so carrega o preco de venda.
+ *
+ * Rele o produto depois de gravar e compara. O PUT do Bling responde 200 e
+ * ignora campo que ele nao espera — sem a releitura, uma gravacao que nao
+ * aconteceu se reporta como sucesso, e o CMV continuaria zerado com todo mundo
+ * achando que foi preenchido.
+ */
+export async function gravarCusto(
+  pares: Array<{ sku: string; custo: number }>,
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaCusto[] }> {
+  const linhas: LinhaCusto[] = [];
+  for (let i = 0; i < pares.length; i++) {
+    const { sku, custo } = pares[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, custo, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const antes = custoDoProduto(inteiro.data as Record<string, unknown>);
+      if (antes !== null && Math.abs(antes - custo) < 0.005) {
+        linhas.push({ sku, custo, situacao: "já era esse", produtoId: achado.id, antes });
+        continue;
+      }
+      if (simulacao) {
+        linhas.push({ sku, custo, situacao: "gravado", produtoId: achado.id, antes });
+        continue;
+      }
+      await chamar("put", `/produtos/${achado.id}`, undefined, {
+        ...inteiro.data,
+        precoCusto: custo,
+      });
+      const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const agora = custoDoProduto(depois.data as Record<string, unknown>);
+      if (agora === null || Math.abs(agora - custo) >= 0.005) {
+        linhas.push({
+          sku, custo, situacao: "não gravou", produtoId: achado.id, antes,
+          erro: `o Bling aceitou o PUT mas o custo ficou ${agora ?? "vazio"}`,
+        });
+      } else {
+        linhas.push({ sku, custo, situacao: "gravado", produtoId: achado.id, antes });
+      }
+    } catch (err) {
+      linhas.push({
+        sku, custo, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao gravar o custo",
+      });
+    }
+    if (aoAndar) aoAndar(i + 1, pares.length);
+  }
+  return { simulacao, linhas };
+}
+
 export async function gravarPreco(
   pares: Array<{ sku: string; preco: number }>,
   simulacao: boolean,
