@@ -278,7 +278,10 @@ export async function conferirContasPagar(de: string, ate: string): Promise<Conf
     pool.query<LinhaSite>(
       `SELECT id, documento, descricao, contraparte, categoria, valor, vencimento::text AS vencimento
          FROM fabrica_contas
-        WHERE tipo = 'pagar' AND vencimento BETWEEN $1::date AND $2::date`,
+        WHERE tipo = 'pagar' AND vencimento BETWEEN $1::date AND $2::date
+          -- provisao nao existe no Bling de proposito: la so entra titulo de
+          -- verdade. Sem este filtro ela apareceria como "so no site" todo mes.
+          AND NOT provisao`,
       [de, ate]
     ),
     // o plano de contas do Bling, pra traduzir o id que vem na conta.

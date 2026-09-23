@@ -24,6 +24,10 @@ export interface Conta {
   // bancária casa o movimento do extrato pelo nº do documento.
   formaPagamento: string | null;
   documento: string | null;
+  // Provisão: despesa que o mês já causou e que ninguém vai pagar como boleto
+  // (13º, férias). Entra no DRE e fica fora do "a pagar", do "atrasado" e da
+  // conferência com o Bling — lá só existe título de verdade.
+  provisao: boolean;
   atrasada: boolean;
   diasParaVencer: number;
 }

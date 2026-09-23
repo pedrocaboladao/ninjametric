@@ -151,6 +151,11 @@ const CATEGORIAS = [
   // dizer se é pró-labore (com encargos) ou retirada — misturar agora esconderia
   // a pergunta.
   "CONSULTORIA DE SÓCIO",
+  // 13o e ferias nascem um pouco a cada mes e saem de uma vez la na frente.
+  // Sem provisionar, onze meses saem melhores do que foram e dezembro leva o
+  // golpe inteiro. Marque a conta como "provisao": ela pesa no DRE e fica fora
+  // do a pagar, do atrasado e da conferencia com o Bling.
+  "PROVISÃO 13º E FÉRIAS",
 ];
 
 // O que a planilha do financeiro usa. Texto livre no banco: forma nova nao
@@ -193,6 +198,7 @@ const VAZIO = {
   status: "pendente" as StatusConta,
   dataPagamento: "",
   custoFixo: true,
+  provisao: false,
   observacao: "",
   formaPagamento: "",
   documento: "",
@@ -558,6 +564,7 @@ export function FabricaContas() {
       status: c.status,
       dataPagamento: c.dataPagamento ?? "",
       custoFixo: c.custoFixo,
+      provisao: c.provisao,
       observacao: c.observacao ?? "",
       formaPagamento: c.formaPagamento ?? "",
       documento: c.documento ?? "",
@@ -587,6 +594,7 @@ export function FabricaContas() {
       status: form.status,
       dataPagamento: form.dataPagamento || null,
       custoFixo: form.custoFixo,
+      provisao: form.provisao,
       observacao: form.observacao.trim() || null,
       formaPagamento: form.formaPagamento || null,
       documento: form.documento.trim() || null,
@@ -1108,6 +1116,14 @@ export function FabricaContas() {
                 onChange={(e) => setForm((f) => ({ ...f, custoFixo: e.target.checked }))}
               />{" "}
               custo fixo (aluguel, salário) — desmarque o que varia com a produção
+            </label>
+            <label className="financeiro-td-mudo">
+              <input
+                type="checkbox"
+                checked={form.provisao}
+                onChange={(e) => setForm((f) => ({ ...f, provisao: e.target.checked }))}
+              />{" "}
+              provisão (13º, férias) — pesa no DRE, não entra no a pagar nem no Bling
             </label>
             <select
               className="clonar-input fabricacao-input-pequeno"

@@ -28,6 +28,8 @@ export interface Conta {
   observacao: string | null;
   formaPagamento: string | null;
   documento: string | null;
+  // despesa de competencia que nao e conta a pagar: ver schema.sql
+  provisao: boolean;
   // derivados
   atrasada: boolean;
   diasParaVencer: number;
@@ -46,6 +48,7 @@ export interface ContaEntrada {
   observacao: string | null;
   formaPagamento: string | null;
   documento: string | null;
+  provisao: boolean;
 }
 
 // "hoje" pelo fuso de São Paulo, não pelo UTC. O resto do repo usa
@@ -75,6 +78,7 @@ interface Linha {
   observacao: string | null;
   forma_pagamento: string | null;
   documento: string | null;
+  provisao: boolean;
 }
 
 function montar(r: Linha): Conta {
@@ -95,6 +99,7 @@ function montar(r: Linha): Conta {
     observacao: r.observacao,
     formaPagamento: r.forma_pagamento,
     documento: r.documento,
+    provisao: r.provisao,
     // conta paga ou cancelada não atrasa, por mais antiga que seja
     atrasada: status === "pendente" && diasParaVencer < 0,
     diasParaVencer,
@@ -104,7 +109,7 @@ function montar(r: Linha): Conta {
 const SELECT_BASE = `
   SELECT c.id, c.tipo, c.descricao, c.categoria, c.contraparte, c.valor, c.vencimento,
          c.status, c.data_pagamento, c.custo_fixo, c.observacao,
-         c.forma_pagamento, c.documento
+         c.forma_pagamento, c.documento, c.provisao
   FROM fabrica_contas c
 `;
 
@@ -159,6 +164,7 @@ function valores(e: ContaEntrada) {
     e.observacao,
     e.formaPagamento,
     e.documento,
+    e.provisao,
   ];
 }
 
@@ -189,8 +195,8 @@ export async function criarConta(e: ContaEntrada, repetirMeses = 0): Promise<{ i
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO fabrica_contas
          (tipo, descricao, categoria, contraparte, valor, vencimento, status,
-          data_pagamento, custo_fixo, observacao, forma_pagamento, documento)
-       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11,$12) RETURNING id`,
+          data_pagamento, custo_fixo, observacao, forma_pagamento, documento, provisao)
+       VALUES ($1,$2,$3,$4,$5,$6::date,$7,$8::date,$9,$10,$11,$12,$13) RETURNING id`,
       valores(parcela)
     );
     ids.push(rows[0].id);
@@ -203,7 +209,7 @@ export async function atualizarConta(id: number, e: ContaEntrada): Promise<void>
     `UPDATE fabrica_contas
      SET tipo = $2, descricao = $3, categoria = $4, contraparte = $5, valor = $6,
          vencimento = $7::date, status = $8, data_pagamento = $9::date, custo_fixo = $10,
-         observacao = $11, forma_pagamento = $12, documento = $13
+         observacao = $11, forma_pagamento = $12, documento = $13, provisao = $14
      WHERE id = $1`,
     [id, ...valores(e)]
   );
@@ -258,9 +264,14 @@ export async function resumoContas(de?: string, ate?: string): Promise<ResumoCon
     if (c.status === "cancelado") continue;
     const pendente = c.status === "pendente";
     if (c.tipo === "pagar") {
-      if (pendente) resumo.aPagar += c.valor;
-      else resumo.pago += c.valor;
-      if (c.atrasada) resumo.atrasado += c.valor;
+      // Provisao pesa no resultado do mes e nao no caixa: ninguem vai pagar
+      // um boleto de 13o. Somar em `aPagar` inflaria a divida, e depois do
+      // vencimento ela viraria "atrasada" pra sempre.
+      if (!c.provisao) {
+        if (pendente) resumo.aPagar += c.valor;
+        else resumo.pago += c.valor;
+        if (c.atrasada) resumo.atrasado += c.valor;
+      }
       // fixo x variável conta o gasto do período todo, pago ou não: o DRE
       // olha competência, não caixa
       if (c.custoFixo) resumo.custoFixo += c.valor;
