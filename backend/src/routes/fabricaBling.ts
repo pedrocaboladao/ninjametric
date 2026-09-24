@@ -37,6 +37,7 @@ import {
   definirSituacaoProdutos,
   lerCustos,
   gravarCusto,
+  criarCustoPelaRelacao,
   produtoCru,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
@@ -989,6 +990,26 @@ fabricaBlingRouter.post("/produtos/custo", (req, res) => {
 
 // Diagnostico: o produto inteiro do ERP. Serve pra descobrir onde o Bling
 // guarda cada campo — foi assim que se viu que o custo nao esta onde parecia.
+// Cria a relacao produto<->fornecedor ja com o custo, um SKU por vez.
+//
+// Existe porque `produtos/custo` so atualiza relacao que ja existe, e os
+// produtos fabricados nao tem nenhuma. Um por vez de proposito: e teste de
+// mecanismo, nao carga — a carga so depois de provar que o CMV do DRE le
+// este campo, o que exige nota fiscal emitida.
+fabricaBlingRouter.post("/produtos/custo-relacao", async (req, res) => {
+  const b = req.body ?? {};
+  const sku = typeof b.sku === "string" ? b.sku.trim() : "";
+  const custo = Number(b.custo);
+  if (!sku) return res.status(400).json({ error: "Informe o sku." });
+  if (!Number.isFinite(custo) || custo <= 0) return res.status(400).json({ error: "Custo inválido." });
+  const contatoId = Number.isInteger(Number(b.contatoId)) ? Number(b.contatoId) : undefined;
+  try {
+    res.json(await criarCustoPelaRelacao(sku, custo, b.simular !== false, contatoId));
+  } catch (err) {
+    erro(res, err, "Falha ao criar a relação de custo.");
+  }
+});
+
 fabricaBlingRouter.get("/produtos/cru/:sku", async (req, res) => {
   try {
     res.json(await produtoCru(String(req.params.sku)));
