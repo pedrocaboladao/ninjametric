@@ -202,7 +202,26 @@ fabricaPedidosRouter.get("/fechamentos", async (_req, res) => {
 // venda duas vezes.
 //
 // Nasce em simulacao: so grava com `simular: false`.
-fabricaPedidosRouter.post("/titulos/receita", async (req, res) => {
+// Job de modulo: o lote leva minutos por causa do limite do contas a receber,
+// e o navegador solta a conexao antes do fim. Quando isso aconteceu em
+// 23/09/2026, os 23 titulos nasceram e os ids se perderam — sem eles nao dava
+// pra dar baixa, e a cobranca ficou dobrada ate serem excluidos a mao.
+let receitaJob: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown;
+} | null = null;
+
+fabricaPedidosRouter.get("/titulos/receita-job", (_req, res) => {
+  res.json(receitaJob ?? { estado: "nenhuma" });
+});
+
+fabricaPedidosRouter.post("/titulos/receita", (req, res) => {
+  if (receitaJob && receitaJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem um lançamento de receita rodando.", ...receitaJob });
+  }
   const b = req.body ?? {};
   const de = String(b.de ?? "");
   const ate = String(b.ate ?? "");
@@ -214,89 +233,113 @@ fabricaPedidosRouter.post("/titulos/receita", async (req, res) => {
     return res.status(400).json({ error: "Informe a categoria de receita do Bling." });
   }
   const simular = b.simular !== false;
-  try {
-    const vendas = await vendasPorClienteNoPeriodo(de, ate);
-    // O contas a receber do Bling tem limite proprio, alem do teto de 3/s da
-    // API: criar varias em sequencia devolve 400 com `time_limit`. Na primeira
-    // tentativa de setembro, 23 dos 25 cairam nisso. Entao insiste, igual ao
-    // espelho do fechamento.
-    const respirar = (ms: number) => new Promise((r) => setTimeout(r, ms));
-    const limitou = (e: unknown) => {
-      const t = e instanceof Error ? e.message : String(e);
-      return t.includes("time_limit") || t.includes("Aguarde alguns instantes");
-    };
-    // Repetivel de proposito: quem ja tem titulo do periodo e pulado. Sem isto,
-    // rodar de novo pra pegar os que falharam duplicaria os que passaram.
-    const marca = `RECEITA ${de} a ${ate}`;
-    const jaTem = new Set<number>();
-    for (const c of await listarReceberBling(de, ate)) {
-      if (String(c.historico ?? "").startsWith(marca)) jaTem.add(Number(c.contato?.id ?? 0));
-    }
-    const comId = await comContato(
-      vendas.map((v) => ({
-        clienteId: v.clienteId,
-        clienteNome: v.clienteNome,
-        previsto: v.total,
-        emAberto: 0,
-      }))
-    );
-    const linhas: Array<{
-      loja: string;
-      valor: number;
-      ok: boolean;
-      id?: number;
-      erro?: string;
-    }> = [];
-    for (const v of comId) {
-      const valor = Number(v.previsto.toFixed(2));
-      if (!v.contatoId) {
-        linhas.push({ loja: v.clienteNome, valor, ok: false, erro: "sem contato no Bling" });
-        continue;
-      }
-      if (jaTem.has(v.contatoId)) {
-        linhas.push({ loja: v.clienteNome, valor, ok: true, erro: "já existia" });
-        continue;
-      }
-      if (simular) {
-        linhas.push({ loja: v.clienteNome, valor, ok: true });
-        continue;
-      }
-      let feito = false;
-      let ultimo: unknown;
-      for (const espera of [0, 15000, 30000, 60000]) {
-        if (espera) await respirar(espera);
-        try {
-          const r = await criarContaReceber({
-            contatoId: v.contatoId,
-            valor,
-            vencimento: ate,
-            historico: `${marca} - ${v.clienteNome}`,
-            categoriaId,
-          });
-          linhas.push({ loja: v.clienteNome, valor, ok: true, id: r.id });
-          feito = true;
-          break;
-        } catch (err) {
-          ultimo = err;
-          if (!limitou(err)) break;
+  // Baixar junto e o que mantem a cobranca limpa: o titulo cumpre o papel no
+  // DRE e some do "a receber". A baixa pela API registra recebimento de R$ 0,00
+  // e nao movimenta caixa — pela tela ela lancaria dinheiro que nao entrou.
+  const baixar = b.baixar === true;
+
+  const job = {
+    estado: "rodando" as const, feitos: 0, total: 0,
+    erro: null as string | null, resultado: null as unknown,
+  };
+  receitaJob = job;
+
+  void (async () => {
+    try {
+      const vendas = await vendasPorClienteNoPeriodo(de, ate);
+      const comId = await comContato(
+        vendas.map((v) => ({
+          clienteId: v.clienteId,
+          clienteNome: v.clienteNome,
+          previsto: v.total,
+          emAberto: 0,
+        }))
+      );
+      job.total = comId.length;
+
+      const respirar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      const limitou = (e: unknown) => {
+        const t = e instanceof Error ? e.message : String(e);
+        return t.includes("time_limit") || t.includes("Aguarde alguns instantes");
+      };
+      const marca = `RECEITA ${de} a ${ate}`;
+      const linhas: Array<{
+        loja: string; valor: number; ok: boolean;
+        id?: number; baixado?: boolean; erro?: string;
+      }> = [];
+
+      for (const v of comId) {
+        const valor = Number(v.previsto.toFixed(2));
+        job.feitos = linhas.length;
+        if (!v.contatoId) {
+          linhas.push({ loja: v.clienteNome, valor, ok: false, erro: "sem contato no Bling" });
+          continue;
         }
-      }
-      if (!feito) {
+        if (simular) {
+          linhas.push({ loja: v.clienteNome, valor, ok: true });
+          continue;
+        }
+        let criado: { id: number } | null = null;
+        let ultimo: unknown;
+        for (const espera of [0, 15000, 30000, 60000]) {
+          if (espera) await respirar(espera);
+          try {
+            criado = await criarContaReceber({
+              contatoId: v.contatoId,
+              valor,
+              vencimento: ate,
+              historico: `${marca} - ${v.clienteNome}`,
+              categoriaId,
+            });
+            break;
+          } catch (err) {
+            ultimo = err;
+            if (!limitou(err)) break;
+          }
+        }
+        if (!criado) {
+          linhas.push({
+            loja: v.clienteNome, valor, ok: false,
+            erro: ultimo instanceof Error ? ultimo.message : "falhou",
+          });
+          continue;
+        }
+        let baixado = false;
+        let erroBaixa: string | undefined;
+        if (baixar) {
+          try {
+            await baixarContaReceber(criado.id, valor, ate);
+            baixado = true;
+          } catch (err) {
+            erroBaixa = err instanceof Error ? err.message : "falha na baixa";
+          }
+        }
         linhas.push({
-          loja: v.clienteNome, valor, ok: false,
-          erro: ultimo instanceof Error ? ultimo.message : "falhou",
+          loja: v.clienteNome, valor, ok: true, id: criado.id,
+          baixado, erro: erroBaixa,
         });
       }
+
+      receitaJob = {
+        estado: "pronto", feitos: linhas.length, total: linhas.length, erro: null,
+        resultado: {
+          de, ate, simular, baixar, categoriaId,
+          criados: linhas.filter((l) => l.ok).length,
+          baixados: linhas.filter((l) => l.baixado).length,
+          total: linhas.filter((l) => l.ok).reduce((s, l) => s + l.valor, 0),
+          linhas,
+        },
+      };
+    } catch (err) {
+      console.error("[fabrica-pedidos] receita", err);
+      receitaJob = {
+        estado: "erro", feitos: job.feitos, total: job.total,
+        erro: err instanceof Error ? err.message : "falha", resultado: null,
+      };
     }
-    res.json({
-      de, ate, simular, categoriaId,
-      total: linhas.reduce((s, l) => s + (l.ok ? l.valor : 0), 0),
-      lojas: linhas.length,
-      linhas,
-    });
-  } catch (err) {
-    erro(res, err, "Falha ao lançar a receita no Bling.");
-  }
+  })();
+
+  res.status(202).json({ estado: "rodando", simular, baixar });
 });
 
 // Sem gravar: mostra como o ciclo ficaria, pra conferir antes de congelar.
