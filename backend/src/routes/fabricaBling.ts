@@ -39,6 +39,8 @@ import {
   gravarCusto,
   criarCustoPelaRelacao,
   lancarEstoque,
+  pedidoPorNumero,
+  estoqueDoPedido,
   listarDepositos,
   saldoDoProduto,
   produtoCru,
@@ -1011,6 +1013,24 @@ fabricaBlingRouter.post("/produtos/custo-relacao", async (req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao criar a relação de custo.");
   }
+});
+
+fabricaBlingRouter.get("/pedidos/por-numero/:numero", async (req, res) => {
+  const n = Number(req.params.numero);
+  if (!Number.isInteger(n) || n <= 0) return res.status(400).json({ error: "Número inválido." });
+  try { res.json(await pedidoPorNumero(n)); }
+  catch (err) { erro(res, err, "Falha ao achar o pedido."); }
+});
+
+// Lanca ou estorna a saida de estoque de um pedido. E dessa saida que sai o CMV.
+fabricaBlingRouter.post("/pedidos/:id/estoque", async (req, res) => {
+  const id = Number(req.params.id);
+  const acao = (req.body ?? {}).acao === "estornar" ? "estornar" : "lancar";
+  const dep = Number((req.body ?? {}).depositoId);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Id inválido." });
+  try {
+    res.json(await estoqueDoPedido(id, acao, Number.isInteger(dep) && dep > 0 ? dep : undefined));
+  } catch (err) { erro(res, err, "Falha ao mexer no estoque do pedido."); }
 });
 
 fabricaBlingRouter.get("/estoque/depositos", async (_req, res) => {
