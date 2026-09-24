@@ -6,6 +6,7 @@ import { idadeDoSaldo } from "../services/fabricaIdadeService";
 import {
   conferirContasReceber,
   criarContaReceber,
+  listarReceberBling,
   atualizarContaReceber,
   baixarContaReceber,
 } from "../services/blingContasService";
@@ -215,6 +216,22 @@ fabricaPedidosRouter.post("/titulos/receita", async (req, res) => {
   const simular = b.simular !== false;
   try {
     const vendas = await vendasPorClienteNoPeriodo(de, ate);
+    // O contas a receber do Bling tem limite proprio, alem do teto de 3/s da
+    // API: criar varias em sequencia devolve 400 com `time_limit`. Na primeira
+    // tentativa de setembro, 23 dos 25 cairam nisso. Entao insiste, igual ao
+    // espelho do fechamento.
+    const respirar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const limitou = (e: unknown) => {
+      const t = e instanceof Error ? e.message : String(e);
+      return t.includes("time_limit") || t.includes("Aguarde alguns instantes");
+    };
+    // Repetivel de proposito: quem ja tem titulo do periodo e pulado. Sem isto,
+    // rodar de novo pra pegar os que falharam duplicaria os que passaram.
+    const marca = `RECEITA ${de} a ${ate}`;
+    const jaTem = new Set<number>();
+    for (const c of await listarReceberBling(de, ate)) {
+      if (String(c.historico ?? "").startsWith(marca)) jaTem.add(Number(c.contato?.id ?? 0));
+    }
     const comId = await comContato(
       vendas.map((v) => ({
         clienteId: v.clienteId,
@@ -236,23 +253,38 @@ fabricaPedidosRouter.post("/titulos/receita", async (req, res) => {
         linhas.push({ loja: v.clienteNome, valor, ok: false, erro: "sem contato no Bling" });
         continue;
       }
+      if (jaTem.has(v.contatoId)) {
+        linhas.push({ loja: v.clienteNome, valor, ok: true, erro: "já existia" });
+        continue;
+      }
       if (simular) {
         linhas.push({ loja: v.clienteNome, valor, ok: true });
         continue;
       }
-      try {
-        const r = await criarContaReceber({
-          contatoId: v.contatoId,
-          valor,
-          vencimento: ate,
-          historico: `RECEITA ${de} a ${ate} - ${v.clienteNome}`,
-          categoriaId,
-        });
-        linhas.push({ loja: v.clienteNome, valor, ok: true, id: r.id });
-      } catch (err) {
+      let feito = false;
+      let ultimo: unknown;
+      for (const espera of [0, 15000, 30000, 60000]) {
+        if (espera) await respirar(espera);
+        try {
+          const r = await criarContaReceber({
+            contatoId: v.contatoId,
+            valor,
+            vencimento: ate,
+            historico: `${marca} - ${v.clienteNome}`,
+            categoriaId,
+          });
+          linhas.push({ loja: v.clienteNome, valor, ok: true, id: r.id });
+          feito = true;
+          break;
+        } catch (err) {
+          ultimo = err;
+          if (!limitou(err)) break;
+        }
+      }
+      if (!feito) {
         linhas.push({
           loja: v.clienteNome, valor, ok: false,
-          erro: err instanceof Error ? err.message : "falhou",
+          erro: ultimo instanceof Error ? ultimo.message : "falhou",
         });
       }
     }
