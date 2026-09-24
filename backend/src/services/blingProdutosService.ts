@@ -1028,3 +1028,34 @@ export async function lancarEstoque(entrada: {
   const r = await chamar<{ data?: { id?: number } }>("post", "/estoques", undefined, corpo);
   return { ok: true, produtoId: achado.id, estoqueId: r?.data?.id ?? null, corpo };
 }
+
+/** Acha o pedido de venda pelo numero que aparece na tela. */
+export async function pedidoPorNumero(numero: number): Promise<unknown> {
+  const r = await chamar<{ data?: Array<Record<string, unknown>> }>("get", "/pedidos/vendas", {
+    numero,
+    limite: 20,
+  });
+  return r?.data ?? [];
+}
+
+/**
+ * Lanca ou estorna o estoque de um pedido de venda.
+ *
+ * E a saida de estoque que forma o CMV do DRE — e o par `estornar` desfaz. Bem
+ * melhor do que mexer na situacao do pedido: nao muda o fluxo de quem opera o
+ * Bling e volta atras sem deixar rastro no historico do pedido.
+ */
+export async function estoqueDoPedido(
+  idPedido: number,
+  acao: "lancar" | "estornar",
+  depositoId?: number
+): Promise<unknown> {
+  const caminho =
+    acao === "estornar"
+      ? `/pedidos/vendas/${idPedido}/estornar-estoque`
+      : depositoId
+        ? `/pedidos/vendas/${idPedido}/lancar-estoque/${depositoId}`
+        : `/pedidos/vendas/${idPedido}/lancar-estoque`;
+  const r = await chamar<unknown>("post", caminho, undefined, {});
+  return { ok: true, acao, idPedido, caminho, resposta: r };
+}
