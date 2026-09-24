@@ -342,6 +342,89 @@ fabricaPedidosRouter.post("/titulos/receita", (req, res) => {
   res.status(202).json({ estado: "rodando", simular, baixar });
 });
 
+// Lanca a receita de UMA loja, no mesmo formato do lote.
+//
+// Existe porque o lote nao sabe pular quem ja tem titulo: `listarReceberBling`
+// nao alcanca os titulos recem-criados (a paginacao esbarra no contas a receber
+// da Fabrica Loja), entao rodar `titulos/receita` de novo num mes ja lancado
+// duplicaria as outras 22 lojas. Foi assim que Lux Collor e Carlos Vinicius
+// nasceram em duplicata em 23/09/2026.
+//
+// O caso que pede isto e a loja que ficou de fora por nao ter contato no ERP e
+// so depois ganhou o documento — Maiky Mendes e Ricardo Gomes Tavares, cujo CPF
+// entrou no site em 23/09/2026. Sem esta rota, a unica saida seria criar pela
+// tela do Bling, e a baixa pela tela lanca dinheiro que nao entrou no banco.
+//
+// O valor nao se digita: sai de `vendasPorClienteNoPeriodo`, a mesma fonte da
+// receita do DRE do site. Numero batido a mao aqui viraria divergencia silenciosa.
+fabricaPedidosRouter.post("/titulos/receita-uma", async (req, res) => {
+  const b = req.body ?? {};
+  const de = String(b.de ?? "");
+  const ate = String(b.ate ?? "");
+  const clienteId = Number(b.clienteId);
+  const categoriaId = Number(b.categoriaId);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  if (!Number.isInteger(clienteId) || clienteId <= 0) {
+    return res.status(400).json({ error: "Informe a loja." });
+  }
+  if (!Number.isInteger(categoriaId) || categoriaId <= 0) {
+    return res.status(400).json({ error: "Informe a categoria de receita do Bling." });
+  }
+  const simular = b.simular !== false;
+  const baixar = b.baixar === true;
+
+  try {
+    const vendas = await vendasPorClienteNoPeriodo(de, ate);
+    const venda = vendas.find((v) => v.clienteId === clienteId);
+    if (!venda) {
+      return res.status(404).json({ error: "Esta loja não tem venda no período." });
+    }
+    const [linha] = await comContato([
+      {
+        clienteId: venda.clienteId,
+        clienteNome: venda.clienteNome,
+        previsto: venda.total,
+        emAberto: 0,
+      },
+    ]);
+    const valor = Number(venda.total.toFixed(2));
+    if (!linha.contatoId) {
+      return res.status(400).json({
+        error: `${venda.clienteNome} não tem contato no Bling — falta o documento.`,
+      });
+    }
+    if (simular) {
+      return res.json({ simulado: true, loja: venda.clienteNome, valor, contatoId: linha.contatoId });
+    }
+
+    const criado = await criarContaReceber({
+      contatoId: linha.contatoId,
+      valor,
+      vencimento: ate,
+      historico: `RECEITA ${de} a ${ate} - ${venda.clienteNome}`,
+      categoriaId,
+    });
+    // A baixa e obrigatoria, nao opcional: sem ela o "a receber" do Bling soma a
+    // cobranca com a receita e a tela de cobranca mostra o dobro. Pela API ela
+    // registra R$ 0,00 e nao movimenta caixa — conferido em 23/09/2026.
+    let baixado = false;
+    let erroBaixa: string | undefined;
+    if (baixar) {
+      try {
+        await baixarContaReceber(criado.id, valor, ate);
+        baixado = true;
+      } catch (err) {
+        erroBaixa = err instanceof Error ? err.message : "falha na baixa";
+      }
+    }
+    res.json({ loja: venda.clienteNome, valor, id: criado.id, baixado, erro: erroBaixa });
+  } catch (err) {
+    erro(res, err, "Falha ao lançar a receita da loja.");
+  }
+});
+
 // Sem gravar: mostra como o ciclo ficaria, pra conferir antes de congelar.
 fabricaPedidosRouter.get("/fechamentos/previa", async (req, res) => {
   const de = String(req.query.de ?? "");
