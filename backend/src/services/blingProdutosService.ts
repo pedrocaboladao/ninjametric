@@ -969,3 +969,62 @@ export async function criarCustoPelaRelacao(
     custoDepois: agora, formato: usou, tentativas, situacao: "criada",
   };
 }
+
+/** Um deposito do Bling, pra saber onde lancar o estoque. */
+export async function listarDepositos(): Promise<unknown> {
+  const r = await chamar<{ data?: unknown }>("get", "/depositos", { pagina: 1, limite: 100 });
+  return r?.data ?? r;
+}
+
+/** Saldo do produto no Bling, pra conferir antes e depois de lancar. */
+export async function saldoDoProduto(sku: string): Promise<unknown> {
+  const achado = await acharPorCodigo(sku);
+  if (!achado) return { erro: "não achei no ERP", sku };
+  const r = await chamar<{ data?: unknown }>("get", "/estoques/saldos", {
+    "idsProdutos[]": achado.id,
+  });
+  return { produtoId: achado.id, saldos: r?.data ?? r };
+}
+
+/**
+ * Lanca uma movimentacao de estoque no Bling.
+ *
+ * E daqui que sai o CMV do DRE, nao do custo no cadastro do produto — a
+ * documentacao do relatorio e explicita:
+ *
+ *   CMV = (soma das saidas de estoque) x (preco da ultima compra)
+ *
+ * e "preco da ultima compra" e o Preco ou Custo da ultima movimentacao do tipo
+ * **Entrada ou Balanco** com valor maior que zero, existente no periodo. Por
+ * isso `operacao` aceita B (balanco), E (entrada) e S (saida): quem semeia o
+ * custo e B ou E.
+ *
+ * Passei o dia atras do `precoCusto` da relacao produto<->fornecedor (PR #217)
+ * achando que era dali que vinha o CMV. Nao e. Aquele campo alimenta outros
+ * relatorios; este e o que conta.
+ */
+export async function lancarEstoque(entrada: {
+  sku: string;
+  operacao: "B" | "E" | "S";
+  quantidade: number;
+  preco?: number;
+  custo?: number;
+  depositoId?: number;
+  observacoes?: string;
+  simulacao: boolean;
+}): Promise<unknown> {
+  const achado = await acharPorCodigo(entrada.sku);
+  if (!achado) return { erro: "não achei no ERP", sku: entrada.sku };
+  const corpo: Record<string, unknown> = {
+    produto: { id: achado.id },
+    operacao: entrada.operacao,
+    quantidade: entrada.quantidade,
+  };
+  if (entrada.depositoId) corpo.deposito = { id: entrada.depositoId };
+  if (entrada.preco !== undefined) corpo.preco = entrada.preco;
+  if (entrada.custo !== undefined) corpo.custo = entrada.custo;
+  if (entrada.observacoes) corpo.observacoes = entrada.observacoes;
+  if (entrada.simulacao) return { simulado: true, produtoId: achado.id, corpo };
+  const r = await chamar<{ data?: { id?: number } }>("post", "/estoques", undefined, corpo);
+  return { ok: true, produtoId: achado.id, estoqueId: r?.data?.id ?? null, corpo };
+}
