@@ -868,3 +868,104 @@ export async function gravarPreco(
   }
   return { simulacao, linhas };
 }
+
+export interface LinhaRelacao {
+  sku: string;
+  custo: number;
+  produtoId?: number;
+  relIdAntes?: number;
+  relIdDepois?: number;
+  custoDepois?: number | null;
+  /** qual formato de corpo o Bling aceitou — o que nao aceita volta em `tentativas` */
+  formato?: string;
+  tentativas?: string[];
+  situacao: "criada" | "ja existia" | "não achei no ERP" | "recusou" | "aceitou mas nao gravou";
+  erro?: string;
+}
+
+/**
+ * Cria a relacao produto<->fornecedor ja com o custo.
+ *
+ * `gravarCusto` so sabe ATUALIZAR uma relacao existente, e os produtos que a
+ * fabrica fabrica nao tem nenhuma: o `fornecedor` deles vem `{id: 0, contato:
+ * {id: 0}}`, que e objeto vazio, nao relacao. Sem ela nao ha onde guardar
+ * custo, e foi por isso que a carga de 23/09/2026 gravou quase nada.
+ *
+ * O contato e opcional na pratica — MANTA-100M tem relacao com `contato.id: 0`
+ * e nome "Nao definido". Como a documentacao pede `fornecedor.id`, tentamos os
+ * formatos em ordem e devolvemos qual passou, em vez de adivinhar.
+ *
+ * Rele o produto no fim: POST que responde 201 e grava outra coisa e pior do
+ * que erro, porque ninguem vai olhar.
+ */
+export async function criarCustoPelaRelacao(
+  sku: string,
+  custo: number,
+  simulacao: boolean,
+  contatoId?: number
+): Promise<LinhaRelacao> {
+  const achado = await acharPorCodigo(sku);
+  if (!achado) return { sku, custo, situacao: "não achei no ERP" };
+
+  const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+  const rel = (inteiro.data as { fornecedor?: Record<string, unknown> }).fornecedor ?? {};
+  const relIdAntes = Number((rel as { id?: unknown }).id ?? 0);
+  if (relIdAntes > 0) {
+    return {
+      sku, custo, produtoId: achado.id, relIdAntes,
+      situacao: "ja existia",
+      erro: "já tem relação — use gravarCusto, que faz PUT",
+    };
+  }
+  if (simulacao) {
+    return { sku, custo, produtoId: achado.id, relIdAntes, situacao: "criada", formato: "(simulado)" };
+  }
+
+  // Do mais especifico pro mais frouxo: se o Bling aceitar sem fornecedor,
+  // melhor — nao inventa vinculo comercial que nao existe.
+  const formatos: Array<{ nome: string; corpo: Record<string, unknown> }> = [];
+  const base = { produto: { id: achado.id }, precoCusto: custo, precoCompra: 0, padrao: true };
+  if (contatoId && contatoId > 0) {
+    formatos.push({ nome: "com contato", corpo: { ...base, fornecedor: { id: contatoId } } });
+  }
+  formatos.push({ nome: "sem fornecedor", corpo: { ...base } });
+  formatos.push({ nome: "fornecedor zero", corpo: { ...base, fornecedor: { id: 0 } } });
+  formatos.push({ nome: "com descricao", corpo: { ...base, descricao: sku, codigo: sku } });
+
+  const tentativas: string[] = [];
+  let criado: number | null = null;
+  let usou = "";
+  for (const f of formatos) {
+    try {
+      const r = await chamar<{ data?: { id?: number } }>(
+        "post", "/produtos/fornecedores", undefined, f.corpo
+      );
+      criado = Number(r?.data?.id ?? 0) || null;
+      usou = f.nome;
+      break;
+    } catch (err) {
+      const t = err instanceof Error ? err.message : String(err);
+      tentativas.push(`${f.nome}: ${t.slice(0, 160)}`);
+    }
+  }
+  if (!criado) {
+    return { sku, custo, produtoId: achado.id, relIdAntes, situacao: "recusou", tentativas };
+  }
+
+  const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+  const agora = custoDoProduto(depois.data as Record<string, unknown>);
+  const relDepois = Number(
+    ((depois.data as { fornecedor?: { id?: unknown } }).fornecedor ?? {}).id ?? 0
+  );
+  if (agora === null || Math.abs(agora - custo) >= 0.005) {
+    return {
+      sku, custo, produtoId: achado.id, relIdAntes, relIdDepois: relDepois,
+      custoDepois: agora, formato: usou, tentativas,
+      situacao: "aceitou mas nao gravou",
+    };
+  }
+  return {
+    sku, custo, produtoId: achado.id, relIdAntes, relIdDepois: relDepois,
+    custoDepois: agora, formato: usou, tentativas, situacao: "criada",
+  };
+}
