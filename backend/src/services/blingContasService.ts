@@ -1207,6 +1207,8 @@ export interface NovoTituloReceber {
   vencimento: string;
   historico?: string;
   numeroDocumento?: string;
+  /** Sem ela o titulo nao aparece no DRE do Bling — conta sem categoria some. */
+  categoriaId?: number;
 }
 
 export async function criarContaReceber(t: NovoTituloReceber): Promise<{ id: number }> {
@@ -1224,6 +1226,7 @@ export async function criarContaReceber(t: NovoTituloReceber): Promise<{ id: num
   };
   if (t.historico) corpo.historico = t.historico;
   if (t.numeroDocumento) corpo.numeroDocumento = t.numeroDocumento;
+  if (t.categoriaId) corpo.categoria = { id: t.categoriaId };
 
   const criada = await escrever<{ data?: { id?: number } }>("/contas/receber", corpo, "post");
   const id = Number(criada?.data?.id ?? 0);
@@ -1234,6 +1237,11 @@ export async function criarContaReceber(t: NovoTituloReceber): Promise<{ id: num
   const { data: depois } = await chamar<{ data: ContaBling }>(`/contas/receber/${id}`);
   if (Math.abs(Number(depois?.valor ?? 0) - t.valor) > 0.02)
     throw new Error(`título ${id} criado com valor ${depois?.valor}, não ${t.valor}`);
+  // Categoria tambem se confere: sem ela o titulo nao entra no DRE, e um POST
+  // que ignora o campo em silencio deixaria a receita zerada com todo mundo
+  // achando que foi lancada.
+  if (t.categoriaId && Number(depois?.categoria?.id ?? 0) !== t.categoriaId)
+    throw new Error(`título ${id} criado sem a categoria ${t.categoriaId}`);
   return { id };
 }
 
