@@ -1011,6 +1011,11 @@ export async function criarContaBling(nova: NovaContaBling): Promise<{ id: numbe
 // unidade — previsto na planilha, previsto no site e titulo no Bling. Se as
 // tres nao baterem, alguem lancou venda ou pagamento num lugar so.
 
+/** Titulos a receber do periodo, com historico e contato resolvidos. */
+export async function listarReceberBling(de: string, ate: string): Promise<ContaBling[]> {
+  return baixarReceberDoBling(de, ate);
+}
+
 async function baixarReceberDoBling(de: string, ate: string): Promise<ContaBling[]> {
   // Mesmas duas armadilhas de /contas/pagar: o filtro de data e ignorado (por
   // isso o recorte e local) e a listagem vem sem `historico`, `numeroDocumento`
