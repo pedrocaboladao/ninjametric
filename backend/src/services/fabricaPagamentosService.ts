@@ -835,3 +835,34 @@ export async function alocarPorAntiguidade(paganteId: number): Promise<Alocacao>
     itens: fila,
   };
 }
+
+// Quanto cada loja comprou num período — a VENDA do mês, não o saldo a cobrar.
+//
+// O fechamento congela o saldo acumulado, que é o que a cobrança precisa. Mas o
+// DRE precisa da venda: o saldo de setembro carrega compra de agosto, e usá-lo
+// como receita contaria a mesma venda duas vezes.
+//
+// Sai do item do pedido, a mesma fonte da receita do DRE, pra que os dois
+// números sejam o mesmo número por construção.
+export async function vendasPorClienteNoPeriodo(
+  de: string,
+  ate: string
+): Promise<Array<{ clienteId: number; clienteNome: string; total: number }>> {
+  const { rows } = await pool.query<{ cliente_id: number; nome: string; total: string }>(
+    `SELECT p.cliente_id, c.nome, SUM(i.quantidade * i.preco_unitario) AS total
+       FROM fabrica_pedido_itens i
+       JOIN fabrica_pedidos p ON p.id = i.pedido_id
+       JOIN fabrica_clientes c ON c.id = p.cliente_id
+      WHERE p.status <> 'CANCELADO'
+        AND p.data >= $1::date AND p.data <= $2::date
+      GROUP BY p.cliente_id, c.nome
+      HAVING SUM(i.quantidade * i.preco_unitario) > 0
+      ORDER BY 3 DESC`,
+    [de, ate]
+  );
+  return rows.map((r) => ({
+    clienteId: r.cliente_id,
+    clienteNome: r.nome,
+    total: Number(r.total),
+  }));
+}

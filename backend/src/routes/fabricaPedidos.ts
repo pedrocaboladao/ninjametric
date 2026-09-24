@@ -56,6 +56,7 @@ import {
   excluirPagamento,
   marcarAntecipacao,
   alocarPorAntiguidade,
+  vendasPorClienteNoPeriodo,
 } from "../services/fabricaPagamentosService";
 import {
   listarDevolucoes,
@@ -186,6 +187,83 @@ fabricaPedidosRouter.get("/fechamentos", async (_req, res) => {
     res.json({ fechamentos: historico, proximo: periodo });
   } catch (err) {
     erro(res, err, "Falha ao carregar os fechamentos.");
+  }
+});
+
+// Lanca a VENDA do mes como titulo a receber no Bling, um por loja.
+//
+// E o unico jeito honesto de a receita aparecer no DRE do Bling: ele nao olha
+// pedido — nem em aberto nem atendido, testado em 23/09/2026 — e so conta
+// receita de nota fiscal ou de titulo a receber com categoria de grupo Receita.
+//
+// O titulo do fechamento NAO serve pra isso: ele e o saldo a cobrar, que
+// carrega compra de meses anteriores. Usa-lo como receita contaria a mesma
+// venda duas vezes.
+//
+// Nasce em simulacao: so grava com `simular: false`.
+fabricaPedidosRouter.post("/titulos/receita", async (req, res) => {
+  const b = req.body ?? {};
+  const de = String(b.de ?? "");
+  const ate = String(b.ate ?? "");
+  const categoriaId = Number(b.categoriaId);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  if (!Number.isInteger(categoriaId) || categoriaId <= 0) {
+    return res.status(400).json({ error: "Informe a categoria de receita do Bling." });
+  }
+  const simular = b.simular !== false;
+  try {
+    const vendas = await vendasPorClienteNoPeriodo(de, ate);
+    const comId = await comContato(
+      vendas.map((v) => ({
+        clienteId: v.clienteId,
+        clienteNome: v.clienteNome,
+        previsto: v.total,
+        emAberto: 0,
+      }))
+    );
+    const linhas: Array<{
+      loja: string;
+      valor: number;
+      ok: boolean;
+      id?: number;
+      erro?: string;
+    }> = [];
+    for (const v of comId) {
+      const valor = Number(v.previsto.toFixed(2));
+      if (!v.contatoId) {
+        linhas.push({ loja: v.clienteNome, valor, ok: false, erro: "sem contato no Bling" });
+        continue;
+      }
+      if (simular) {
+        linhas.push({ loja: v.clienteNome, valor, ok: true });
+        continue;
+      }
+      try {
+        const r = await criarContaReceber({
+          contatoId: v.contatoId,
+          valor,
+          vencimento: ate,
+          historico: `RECEITA ${de} a ${ate} - ${v.clienteNome}`,
+          categoriaId,
+        });
+        linhas.push({ loja: v.clienteNome, valor, ok: true, id: r.id });
+      } catch (err) {
+        linhas.push({
+          loja: v.clienteNome, valor, ok: false,
+          erro: err instanceof Error ? err.message : "falhou",
+        });
+      }
+    }
+    res.json({
+      de, ate, simular, categoriaId,
+      total: linhas.reduce((s, l) => s + (l.ok ? l.valor : 0), 0),
+      lojas: linhas.length,
+      linhas,
+    });
+  } catch (err) {
+    erro(res, err, "Falha ao lançar a receita no Bling.");
   }
 });
 
