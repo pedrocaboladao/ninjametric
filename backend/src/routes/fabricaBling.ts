@@ -38,6 +38,9 @@ import {
   lerCustos,
   gravarCusto,
   criarCustoPelaRelacao,
+  lancarEstoque,
+  listarDepositos,
+  saldoDoProduto,
   produtoCru,
 } from "../services/blingProdutosService";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
@@ -1008,6 +1011,38 @@ fabricaBlingRouter.post("/produtos/custo-relacao", async (req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao criar a relação de custo.");
   }
+});
+
+fabricaBlingRouter.get("/estoque/depositos", async (_req, res) => {
+  try { res.json(await listarDepositos()); }
+  catch (err) { erro(res, err, "Falha ao listar depósitos."); }
+});
+
+fabricaBlingRouter.get("/estoque/saldo/:sku", async (req, res) => {
+  try { res.json(await saldoDoProduto(String(req.params.sku))); }
+  catch (err) { erro(res, err, "Falha ao ler o saldo."); }
+});
+
+// Lanca movimentacao de estoque. E daqui que o DRE tira o CMV — ver o
+// comentario de `lancarEstoque`. Nasce em simulacao.
+fabricaBlingRouter.post("/estoque/lancar", async (req, res) => {
+  const b = req.body ?? {};
+  const sku = typeof b.sku === "string" ? b.sku.trim() : "";
+  const op = b.operacao === "E" || b.operacao === "S" || b.operacao === "B" ? b.operacao : null;
+  const qtd = Number(b.quantidade);
+  if (!sku) return res.status(400).json({ error: "Informe o sku." });
+  if (!op) return res.status(400).json({ error: "operacao deve ser B, E ou S." });
+  if (!Number.isFinite(qtd)) return res.status(400).json({ error: "Quantidade inválida." });
+  try {
+    res.json(await lancarEstoque({
+      sku, operacao: op, quantidade: qtd,
+      preco: Number.isFinite(Number(b.preco)) ? Number(b.preco) : undefined,
+      custo: Number.isFinite(Number(b.custo)) ? Number(b.custo) : undefined,
+      depositoId: Number.isInteger(Number(b.depositoId)) ? Number(b.depositoId) : undefined,
+      observacoes: typeof b.observacoes === "string" ? b.observacoes : undefined,
+      simulacao: b.simular !== false,
+    }));
+  } catch (err) { erro(res, err, "Falha ao lançar estoque."); }
 });
 
 fabricaBlingRouter.get("/produtos/cru/:sku", async (req, res) => {
