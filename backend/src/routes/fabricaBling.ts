@@ -1,3 +1,9 @@
+import {
+  semearCustos,
+  lancarPedidos,
+  estornarPedido,
+  pedidosLancados,
+} from "../services/blingCmvService";
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { pool } from "../db/pool";
@@ -1031,6 +1037,117 @@ fabricaBlingRouter.post("/pedidos/:id/estoque", async (req, res) => {
   try {
     res.json(await estoqueDoPedido(id, acao, Number.isInteger(dep) && dep > 0 ? dep : undefined));
   } catch (err) { erro(res, err, "Falha ao mexer no estoque do pedido."); }
+});
+
+// A carga do CMV: semear custo e lancar o estoque dos pedidos.
+//
+// Job de modulo porque demora — 4.780 produtos no teto de 3 chamadas por
+// segundo do Bling passam de vinte minutos, e o navegador solta a conexao
+// antes. Mesmo desenho do job de receita.
+let cmvJob: {
+  etapa: "semeando" | "lancando";
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown;
+} | null = null;
+
+fabricaBlingRouter.get("/cmv/job", (_req, res) => {
+  res.json(cmvJob ?? { estado: "nenhuma" });
+});
+
+// Um balanco de quantidade zero por produto, so pra carimbar o custo. Produto
+// sem isso entra no CMV ZERADO e nada avisa.
+fabricaBlingRouter.post("/cmv/semear", (req, res) => {
+  if (cmvJob && cmvJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma carga rodando.", ...cmvJob });
+  }
+  const b = req.body ?? {};
+  const bruto = Array.isArray(b.pares) ? b.pares : [];
+  const pares = bruto
+    .map((x: { sku?: unknown; custo?: unknown }) => ({
+      sku: String(x?.sku ?? "").trim(),
+      custo: Number(x?.custo),
+    }))
+    .filter((x: { sku: string; custo: number }) => x.sku && Number.isFinite(x.custo));
+  if (!pares.length) return res.status(400).json({ error: "Informe pares {sku, custo}." });
+  const simular = b.simular !== false;
+
+  const job = {
+    etapa: "semeando" as const, estado: "rodando" as const,
+    feitos: 0, total: pares.length, erro: null as string | null, resultado: null as unknown,
+  };
+  cmvJob = job;
+  void (async () => {
+    try {
+      const r = await semearCustos(pares, simular, (f) => { job.feitos = f; });
+      cmvJob = { ...job, estado: "pronto", resultado: {
+        simulacao: r.simulacao,
+        ok: r.linhas.filter((l) => l.ok).length,
+        falhas: r.linhas.filter((l) => !l.ok).slice(0, 60),
+        totalFalhas: r.linhas.filter((l) => !l.ok).length,
+      } };
+    } catch (err) {
+      cmvJob = { ...job, estado: "erro",
+        erro: err instanceof Error ? err.message : "falha ao semear", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", etapa: "semeando", total: pares.length, simular });
+});
+
+// A saida com origem. Pula o que ja foi lancado — lancar duas vezes DOBRA o CMV.
+fabricaBlingRouter.post("/cmv/pedidos", (req, res) => {
+  if (cmvJob && cmvJob.estado === "rodando") {
+    return res.status(409).json({ error: "Já tem uma carga rodando.", ...cmvJob });
+  }
+  const b = req.body ?? {};
+  const de = String(b.de ?? "");
+  const ate = String(b.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  const simular = b.simular !== false;
+
+  const job = {
+    etapa: "lancando" as const, estado: "rodando" as const,
+    feitos: 0, total: 0, erro: null as string | null, resultado: null as unknown,
+  };
+  cmvJob = job;
+  void (async () => {
+    try {
+      const r = await lancarPedidos(de, ate, simular, (f, t) => { job.feitos = f; job.total = t; });
+      cmvJob = { ...job, estado: "pronto", total: r.total, resultado: {
+        simulacao: r.simulacao,
+        total: r.total,
+        lancados: r.linhas.filter((l) => l.situacao === "lancado").length,
+        jaEstavam: r.linhas.filter((l) => l.situacao === "ja estava").length,
+        erros: r.linhas.filter((l) => l.situacao === "erro").slice(0, 60),
+        totalErros: r.linhas.filter((l) => l.situacao === "erro").length,
+      } };
+    } catch (err) {
+      cmvJob = { ...job, estado: "erro",
+        erro: err instanceof Error ? err.message : "falha ao lançar", resultado: null };
+    }
+  })();
+  res.status(202).json({ estado: "rodando", etapa: "lancando", de, ate, simular });
+});
+
+fabricaBlingRouter.get("/cmv/lancados", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  try { res.json({ pedidos: await pedidosLancados(de, ate) }); }
+  catch (err) { erro(res, err, "Falha ao listar o que foi lançado."); }
+});
+
+fabricaBlingRouter.post("/cmv/estornar/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Id inválido." });
+  try { res.json(await estornarPedido(id)); }
+  catch (err) { erro(res, err, "Falha ao estornar."); }
 });
 
 fabricaBlingRouter.get("/estoque/depositos", async (_req, res) => {
