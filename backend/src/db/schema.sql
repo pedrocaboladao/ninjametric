@@ -1954,3 +1954,23 @@ CREATE INDEX IF NOT EXISTS idx_mensagens_nao_lidas ON mensagens (destinatario_id
 INSERT INTO usuarios_permissoes (usuario_id, modulo)
 SELECT id, 'mensagens' FROM usuarios
 ON CONFLICT DO NOTHING;
+
+-- Pedido do Bling cujo estoque já foi lançado.
+--
+-- É daí que sai o CMV do DRE do Bling: a saída de estoque com origem num
+-- pedido. Lançar duas vezes DOBRA o CMV do mês e nada avisa — o Bling aceita a
+-- segunda saída como se fosse outra venda, e o relatório fica com o custo
+-- inflado sem nenhum erro visível. Esta tabela é o que impede.
+--
+-- `estornado_em` preenchido significa que voltou atrás: o pedido pode ser
+-- lançado de novo.
+CREATE TABLE IF NOT EXISTS fabrica_bling_estoque_pedido (
+  bling_pedido_id BIGINT PRIMARY KEY,
+  numero TEXT,
+  data DATE,
+  itens INTEGER,
+  lancado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  estornado_em TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_fabrica_bling_estoque_pedido_data
+  ON fabrica_bling_estoque_pedido (data DESC);
