@@ -1133,6 +1133,36 @@ fabricaBlingRouter.post("/cmv/pedidos", (req, res) => {
   res.status(202).json({ estado: "rodando", etapa: "lancando", de, ate, simular });
 });
 
+// Os pedidos do Bling no periodo, crus. Serve pra saber DE QUEM sao antes de
+// lancar estoque em cima deles: o site agrupa por cliente e dia, entao 330
+// pedidos no site podem ser mais de mil no Bling, e e preciso ver se todos sao
+// das lojas da fabrica.
+fabricaBlingRouter.get("/pedidos/listar", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe o período como AAAA-MM-DD." });
+  }
+  try {
+    const pedidos = await listarPedidosBling(de, ate);
+    const porCliente = new Map<string, { cliente: string; pedidos: number; total: number }>();
+    for (const p of pedidos) {
+      const k = p.cliente || "(sem nome)";
+      const a = porCliente.get(k) ?? { cliente: k, pedidos: 0, total: 0 };
+      a.pedidos += 1;
+      a.total += Number(p.total || 0);
+      porCliente.set(k, a);
+    }
+    const foraDoPeriodo = pedidos.filter((p) => p.data < de || p.data > ate).length;
+    res.json({
+      de, ate, total: pedidos.length, foraDoPeriodo,
+      clientes: [...porCliente.values()].sort((a, b) => b.pedidos - a.pedidos),
+    });
+  } catch (err) {
+    erro(res, err, "Falha ao listar os pedidos.");
+  }
+});
+
 fabricaBlingRouter.get("/cmv/lancados", async (req, res) => {
   const de = String(req.query.de ?? "");
   const ate = String(req.query.ate ?? "");
