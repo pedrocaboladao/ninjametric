@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SemanaAgenda, TarefaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
+import type { SemanaAgenda, DiaSemanaAgenda, TarefaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
 import {
   fetchSemanaAtual,
   fetchTarefasAgenda,
@@ -33,6 +33,34 @@ function formatDataCurta(data: string): string {
 // aparece nesse selo pequeno.
 function nomeCurtoDaLoja(nome: string): string {
   return nome === "Catedral Impermeabilizantes" ? "Catedral" : nome;
+}
+
+// % de tarefas de HOJE já marcadas como feitas — reseta sozinho todo dia,
+// porque conta só as ocorrências do dia atual (não acumula atraso de dias
+// anteriores, isso é visível em cada card via o selo "Atrasada").
+function TermometroDiario({ dia }: { dia: DiaSemanaAgenda | undefined }) {
+  const total = dia?.ocorrencias.length ?? 0;
+  if (total === 0) {
+    return <p className="agenda-dia-vazio">Nenhuma tarefa prevista pra hoje.</p>;
+  }
+  const feitas = dia!.ocorrencias.filter((o) => o.concluido).length;
+  const percentual = Math.round((feitas / total) * 100);
+  return (
+    <div className="discrepancia-termometro">
+      <div className="discrepancia-termometro-topo">
+        <span>Progresso de hoje</span>
+        <span>
+          <b>{feitas}</b> de <b>{total}</b> tarefas · {percentual}%
+        </span>
+      </div>
+      <div className="financeiro-equilibrio-barra">
+        <div
+          className={`financeiro-equilibrio-barra-preenchida ${percentual === 100 ? "financeiro-equilibrio-barra-ok" : ""}`}
+          style={{ width: `${percentual}%` }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export function Agenda({ onOcorrenciaAlterada }: Props) {
@@ -192,6 +220,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
       {aba === "semana" && (
         <>
           {!semana && !erro && <div className="state-message">Carregando semana...</div>}
+          {semana && <TermometroDiario dia={semana.dias.find((d) => d.data === semana.hoje)} />}
           {semana && (
             <div className="agenda-semana-grade">
               {semana.dias.map((dia, indice) => {
