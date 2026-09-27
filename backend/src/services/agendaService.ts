@@ -10,6 +10,8 @@ export interface TarefaAgenda {
   dataInicio: string;
   atribuidoAUsuarioId: number | null;
   atribuidoANome: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
   criadoPorUsuarioId: number;
   criadoPorNome: string;
   ativo: boolean;
@@ -23,6 +25,8 @@ interface LinhaTarefa {
   data_inicio: string;
   atribuido_a_usuario_id: number | null;
   atribuido_a_nome: string | null;
+  loja_id: number | null;
+  loja_nome: string | null;
   criado_por_usuario_id: number;
   criado_por_nome: string;
   ativo: boolean;
@@ -37,6 +41,8 @@ function mapearTarefa(l: LinhaTarefa): TarefaAgenda {
     dataInicio: l.data_inicio,
     atribuidoAUsuarioId: l.atribuido_a_usuario_id,
     atribuidoANome: l.atribuido_a_nome,
+    lojaId: l.loja_id,
+    lojaNome: l.loja_nome,
     criadoPorUsuarioId: l.criado_por_usuario_id,
     criadoPorNome: l.criado_por_nome,
     ativo: l.ativo,
@@ -48,10 +54,12 @@ const SELECT_TAREFA = `
     t.id, t.titulo, t.descricao, t.intervalo_dias,
     to_char(t.data_inicio, 'YYYY-MM-DD') AS data_inicio,
     t.atribuido_a_usuario_id, atribuido.nome AS atribuido_a_nome,
+    t.loja_id, loja.nome AS loja_nome,
     t.criado_por_usuario_id, criador.nome AS criado_por_nome,
     t.ativo
   FROM agenda_tarefas t
   LEFT JOIN usuarios atribuido ON atribuido.id = t.atribuido_a_usuario_id
+  LEFT JOIN lojas loja ON loja.id = t.loja_id
   JOIN usuarios criador ON criador.id = t.criado_por_usuario_id
 `;
 
@@ -62,11 +70,18 @@ export async function listarTarefas(): Promise<TarefaAgenda[]> {
 
 export async function criarTarefa(
   criadoPorUsuarioId: number,
-  dados: { titulo: string; descricao?: string | null; intervaloDias: number; dataInicio: string; atribuidoAUsuarioId?: number | null }
+  dados: {
+    titulo: string;
+    descricao?: string | null;
+    intervaloDias: number;
+    dataInicio: string;
+    atribuidoAUsuarioId?: number | null;
+    lojaId?: number | null;
+  }
 ): Promise<TarefaAgenda> {
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO agenda_tarefas (titulo, descricao, intervalo_dias, data_inicio, atribuido_a_usuario_id, criado_por_usuario_id)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO agenda_tarefas (titulo, descricao, intervalo_dias, data_inicio, atribuido_a_usuario_id, loja_id, criado_por_usuario_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       dados.titulo,
@@ -74,6 +89,7 @@ export async function criarTarefa(
       dados.intervaloDias,
       dados.dataInicio,
       dados.atribuidoAUsuarioId ?? null,
+      dados.lojaId ?? null,
       criadoPorUsuarioId,
     ]
   );
@@ -89,6 +105,7 @@ export async function atualizarTarefa(
     intervaloDias: number;
     dataInicio: string;
     atribuidoAUsuarioId: number | null;
+    lojaId: number | null;
     ativo: boolean;
   }>
 ): Promise<void> {
@@ -105,6 +122,7 @@ export async function atualizarTarefa(
   if (dados.intervaloDias !== undefined) set("intervalo_dias", dados.intervaloDias);
   if (dados.dataInicio !== undefined) set("data_inicio", dados.dataInicio);
   if (dados.atribuidoAUsuarioId !== undefined) set("atribuido_a_usuario_id", dados.atribuidoAUsuarioId);
+  if (dados.lojaId !== undefined) set("loja_id", dados.lojaId);
   if (dados.ativo !== undefined) set("ativo", dados.ativo);
   if (campos.length === 0) return;
   campos.push("atualizado_em = now()");
@@ -122,6 +140,8 @@ export interface OcorrenciaDia {
   descricao: string | null;
   atribuidoAUsuarioId: number | null;
   atribuidoANome: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
   concluido: boolean;
   atrasado: boolean;
 }
@@ -150,11 +170,15 @@ export async function obterSemanaAtual(): Promise<SemanaAgenda> {
     data_inicio: string;
     atribuido_a_usuario_id: number | null;
     atribuido_a_nome: string | null;
+    loja_id: number | null;
+    loja_nome: string | null;
   }>(
     `SELECT t.id, t.titulo, t.descricao, t.intervalo_dias, to_char(t.data_inicio, 'YYYY-MM-DD') AS data_inicio,
-            t.atribuido_a_usuario_id, u.nome AS atribuido_a_nome
+            t.atribuido_a_usuario_id, u.nome AS atribuido_a_nome,
+            t.loja_id, loja.nome AS loja_nome
      FROM agenda_tarefas t
      LEFT JOIN usuarios u ON u.id = t.atribuido_a_usuario_id
+     LEFT JOIN lojas loja ON loja.id = t.loja_id
      WHERE t.ativo = true`
   );
 
@@ -178,6 +202,8 @@ export async function obterSemanaAtual(): Promise<SemanaAgenda> {
           descricao: t.descricao,
           atribuidoAUsuarioId: t.atribuido_a_usuario_id,
           atribuidoANome: t.atribuido_a_nome,
+          lojaId: t.loja_id,
+          lojaNome: t.loja_nome,
           concluido,
           atrasado: !concluido && data < hoje,
         };
@@ -224,7 +250,27 @@ export async function contarPendentes(usuarioId: number): Promise<number> {
   return total;
 }
 
+// Decisão explícita do dono: a Agenda é só pra ele e pro Brunão, e o campo
+// "responsável" só precisa oferecer o Brunão (não a lista inteira de logins
+// do painel, que inclui gente de outras áreas sem nada a ver com isso).
+// Comparação sem acento/maiúscula pra não depender de exatamente como
+// "Brunão" foi digitado no cadastro do usuário.
 export async function listarUsuariosParaAtribuir(): Promise<{ id: number; nome: string }[]> {
-  const { rows } = await pool.query("SELECT id, nome FROM usuarios ORDER BY nome");
+  const { rows } = await pool.query(
+    `SELECT id, nome FROM usuarios
+     WHERE lower(translate(nome, 'áàãâäéèêëíìîïóòõôöúùûüçÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇ', 'aaaaaeeeeiiiiooooouuuucAAAAAEEEEIIIIOOOOOUUUUC')) LIKE '%brunao%'
+     ORDER BY nome`
+  );
+  return rows;
+}
+
+// As 4 lojas originais do dono (Hangar, Catedral, Inga Collors, Perpétua) —
+// diferente das outras 12+ lojas que o painel também gerencia hoje, que não
+// têm nada a ver com as tarefas físicas do Brunão. Ids fixos porque foram as
+// primeiras inseridas pelo seed e nunca mudam.
+const LOJAS_DO_DONO = [1, 2, 3, 4];
+
+export async function listarLojasParaAgenda(): Promise<{ id: number; nome: string }[]> {
+  const { rows } = await pool.query("SELECT id, nome FROM lojas WHERE id = ANY($1) ORDER BY id", [LOJAS_DO_DONO]);
   return rows;
 }

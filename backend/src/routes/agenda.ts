@@ -9,6 +9,7 @@ import {
   desmarcarOcorrencia,
   contarPendentes,
   listarUsuariosParaAtribuir,
+  listarLojasParaAgenda,
 } from "../services/agendaService";
 
 const REGEX_DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -45,6 +46,14 @@ agendaRouter.get("/usuarios", async (_req, res) => {
   }
 });
 
+agendaRouter.get("/lojas", async (_req, res) => {
+  try {
+    res.json({ lojas: await listarLojasParaAgenda() });
+  } catch (err) {
+    erro(res, err, "Falha ao listar lojas.");
+  }
+});
+
 agendaRouter.get("/pendentes", async (req, res) => {
   try {
     res.json({ total: await contarPendentes(req.usuario!.id) });
@@ -54,7 +63,7 @@ agendaRouter.get("/pendentes", async (req, res) => {
 });
 
 agendaRouter.post("/tarefas", async (req, res) => {
-  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId } = req.body;
+  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, lojaId } = req.body;
   if (typeof titulo !== "string" || !titulo.trim()) {
     res.status(400).json({ error: "Informe o título da tarefa." });
     return;
@@ -71,6 +80,10 @@ agendaRouter.post("/tarefas", async (req, res) => {
     res.status(400).json({ error: "atribuidoAUsuarioId inválido." });
     return;
   }
+  if (lojaId !== undefined && lojaId !== null && !Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "lojaId inválido." });
+    return;
+  }
   try {
     const tarefa = await criarTarefa(req.usuario!.id, {
       titulo: titulo.trim(),
@@ -78,6 +91,7 @@ agendaRouter.post("/tarefas", async (req, res) => {
       intervaloDias,
       dataInicio,
       atribuidoAUsuarioId: atribuidoAUsuarioId ?? null,
+      lojaId: lojaId ?? null,
     });
     res.json(tarefa);
   } catch (err) {
@@ -91,7 +105,7 @@ agendaRouter.patch("/tarefas/:id", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, ativo } = req.body ?? {};
+  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, lojaId, ativo } = req.body ?? {};
   if (titulo !== undefined && (typeof titulo !== "string" || !titulo.trim())) {
     res.status(400).json({ error: "Título inválido." });
     return;
@@ -104,6 +118,10 @@ agendaRouter.patch("/tarefas/:id", async (req, res) => {
     res.status(400).json({ error: "Data de início inválida." });
     return;
   }
+  if (lojaId !== undefined && lojaId !== null && !Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "lojaId inválido." });
+    return;
+  }
   try {
     await atualizarTarefa(id, {
       titulo: titulo !== undefined ? titulo.trim() : undefined,
@@ -111,6 +129,7 @@ agendaRouter.patch("/tarefas/:id", async (req, res) => {
       intervaloDias,
       dataInicio,
       atribuidoAUsuarioId,
+      lojaId,
       ativo,
     });
     res.json({ ok: true });

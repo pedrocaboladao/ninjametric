@@ -1,4 +1,4 @@
-import type { TarefaAgenda, SemanaAgenda, UsuarioParaAtribuir, NovaTarefaAgenda } from "../types/agenda";
+import type { TarefaAgenda, SemanaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -25,6 +25,12 @@ export async function fetchUsuariosParaAtribuir(): Promise<UsuarioParaAtribuir[]
   const res = await fetch(`${API_BASE}/api/agenda/usuarios`, { credentials: "include" });
   const data = await tratarResposta<{ usuarios: UsuarioParaAtribuir[] }>(res);
   return data.usuarios;
+}
+
+export async function fetchLojasParaAgenda(): Promise<LojaParaAgenda[]> {
+  const res = await fetch(`${API_BASE}/api/agenda/lojas`, { credentials: "include" });
+  const data = await tratarResposta<{ lojas: LojaParaAgenda[] }>(res);
+  return data.lojas;
 }
 
 export async function fetchAgendaPendentes(): Promise<number> {

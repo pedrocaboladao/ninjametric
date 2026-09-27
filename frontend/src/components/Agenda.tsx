@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SemanaAgenda, TarefaAgenda, UsuarioParaAtribuir, NovaTarefaAgenda } from "../types/agenda";
+import type { SemanaAgenda, TarefaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
 import {
   fetchSemanaAtual,
   fetchTarefasAgenda,
   fetchUsuariosParaAtribuir,
+  fetchLojasParaAgenda,
   criarTarefaAgenda,
   atualizarTarefaAgenda,
   excluirTarefaAgenda,
@@ -31,6 +32,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   const [semana, setSemana] = useState<SemanaAgenda | null>(null);
   const [tarefas, setTarefas] = useState<TarefaAgenda[] | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioParaAtribuir[]>([]);
+  const [lojas, setLojas] = useState<LojaParaAgenda[]>([]);
   const [erro, setErro] = useState<string | null>(null);
   const [modalAberto, setModalAberto] = useState(false);
   const [tarefaEditando, setTarefaEditando] = useState<TarefaAgenda | null>(null);
@@ -57,6 +59,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
     carregarSemana();
     fetchUsuariosParaAtribuir()
       .then(setUsuarios)
+      .catch(() => {});
+    fetchLojasParaAgenda()
+      .then(setLojas)
       .catch(() => {});
   }, [carregarSemana]);
 
@@ -181,7 +186,10 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                       >
                         <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
                         <span className="financeiro-td-mudo">{oc.atribuidoANome ?? "Qualquer um"}</span>
-                        {oc.atrasado && <span className="sidebar-badge">Atrasada</span>}
+                        <div className="agenda-ocorrencia-tags">
+                          {oc.lojaNome && <span className="agenda-loja-tag">{oc.lojaNome}</span>}
+                          {oc.atrasado && <span className="sidebar-badge">Atrasada</span>}
+                        </div>
                       </button>
                     ))}
                   </div>
@@ -201,6 +209,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                 <th>Intervalo</th>
                 <th>Início</th>
                 <th>Responsável</th>
+                <th>Loja</th>
                 <th>Status</th>
                 <th>Ações</th>
               </tr>
@@ -208,14 +217,14 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
             <tbody>
               {tarefas === null && (
                 <tr>
-                  <td colSpan={6} className="state-message">
+                  <td colSpan={7} className="state-message">
                     Carregando...
                   </td>
                 </tr>
               )}
               {tarefas?.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="state-message">
+                  <td colSpan={7} className="state-message">
                     Nenhuma tarefa cadastrada ainda.
                   </td>
                 </tr>
@@ -229,6 +238,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                   <td>A cada {t.intervaloDias} dia{t.intervaloDias > 1 ? "s" : ""}</td>
                   <td>{formatDataCurta(t.dataInicio)}</td>
                   <td>{t.atribuidoANome ?? "Qualquer um"}</td>
+                  <td>{t.lojaNome ?? "—"}</td>
                   <td>{t.ativo ? "Ativa" : "Pausada"}</td>
                   <td>
                     <div className="tarefa-novo-cartao-acoes">
@@ -254,6 +264,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
         <AgendaTarefaModal
           tarefa={tarefaEditando}
           usuarios={usuarios}
+          lojas={lojas}
           salvando={salvando}
           erro={erroModal}
           onSalvar={salvar}

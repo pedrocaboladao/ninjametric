@@ -6,6 +6,8 @@ export interface TarefaAgenda {
   dataInicio: string;
   atribuidoAUsuarioId: number | null;
   atribuidoANome: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
   criadoPorUsuarioId: number;
   criadoPorNome: string;
   ativo: boolean;
@@ -17,6 +19,8 @@ export interface OcorrenciaDia {
   descricao: string | null;
   atribuidoAUsuarioId: number | null;
   atribuidoANome: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
   concluido: boolean;
   atrasado: boolean;
 }
@@ -38,10 +42,16 @@ export interface UsuarioParaAtribuir {
   nome: string;
 }
 
+export interface LojaParaAgenda {
+  id: number;
+  nome: string;
+}
+
 export interface NovaTarefaAgenda {
   titulo: string;
   descricao?: string | null;
   intervaloDias: number;
   dataInicio: string;
   atribuidoAUsuarioId?: number | null;
+  lojaId?: number | null;
 }

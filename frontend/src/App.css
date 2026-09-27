@@ -6852,3 +6852,17 @@ button.contas-cartao:hover {
 .agenda-ocorrencia-atrasada {
   border-color: #f87171;
 }
+
+.agenda-ocorrencia-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agenda-loja-tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}

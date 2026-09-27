@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { Modal } from "./Modal";
-import type { TarefaAgenda, UsuarioParaAtribuir, NovaTarefaAgenda } from "../types/agenda";
+import type { TarefaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
 
 interface Props {
   tarefa: TarefaAgenda | null;
   usuarios: UsuarioParaAtribuir[];
+  lojas: LojaParaAgenda[];
   salvando: boolean;
   erro: string | null;
   onSalvar: (dados: NovaTarefaAgenda) => void;
@@ -17,14 +18,18 @@ function hojeISO(): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function AgendaTarefaModal({ tarefa, usuarios, salvando, erro, onSalvar, onFechar }: Props) {
+export function AgendaTarefaModal({ tarefa, usuarios, lojas, salvando, erro, onSalvar, onFechar }: Props) {
   const [titulo, setTitulo] = useState(tarefa?.titulo ?? "");
   const [descricao, setDescricao] = useState(tarefa?.descricao ?? "");
   const [intervaloDias, setIntervaloDias] = useState(String(tarefa?.intervaloDias ?? 7));
   const [dataInicio, setDataInicio] = useState(tarefa?.dataInicio ?? hojeISO());
-  const [atribuidoAUsuarioId, setAtribuidoAUsuarioId] = useState(
-    tarefa?.atribuidoAUsuarioId !== null && tarefa?.atribuidoAUsuarioId !== undefined ? String(tarefa.atribuidoAUsuarioId) : ""
-  );
+  // Sem "Qualquer um": a lista já vem restrita só ao Brunão (decisão do
+  // dono), então o valor padrão já cai nele quando só existe uma opção.
+  const [atribuidoAUsuarioId, setAtribuidoAUsuarioId] = useState(() => {
+    if (tarefa?.atribuidoAUsuarioId != null) return String(tarefa.atribuidoAUsuarioId);
+    return usuarios.length === 1 ? String(usuarios[0].id) : "";
+  });
+  const [lojaId, setLojaId] = useState(tarefa?.lojaId != null ? String(tarefa.lojaId) : "");
 
   function submeter(e: React.FormEvent) {
     e.preventDefault();
@@ -36,6 +41,7 @@ export function AgendaTarefaModal({ tarefa, usuarios, salvando, erro, onSalvar, 
       intervaloDias: intervalo,
       dataInicio,
       atribuidoAUsuarioId: atribuidoAUsuarioId ? Number(atribuidoAUsuarioId) : null,
+      lojaId: lojaId ? Number(lojaId) : null,
     });
   }
 
@@ -95,10 +101,20 @@ export function AgendaTarefaModal({ tarefa, usuarios, salvando, erro, onSalvar, 
         <label>
           Responsável
           <select className="clonar-input" value={atribuidoAUsuarioId} onChange={(e) => setAtribuidoAUsuarioId(e.target.value)}>
-            <option value="">Qualquer um</option>
             {usuarios.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.nome}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Loja (opcional)
+          <select className="clonar-input" value={lojaId} onChange={(e) => setLojaId(e.target.value)}>
+            <option value="">Sem loja específica</option>
+            {lojas.map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.nome}
               </option>
             ))}
           </select>

@@ -2006,3 +2006,7 @@ CREATE TABLE IF NOT EXISTS agenda_ocorrencias (
   UNIQUE (tarefa_id, data_ocorrencia)
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_ocorrencias_tarefa_data ON agenda_ocorrencias (tarefa_id, data_ocorrencia);
+
+-- Tag opcional de loja pra organizar as tarefas (ex.: "checar estoque" de uma
+-- loja específica) — NULL = tarefa geral, sem loja específica.
+ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL;
