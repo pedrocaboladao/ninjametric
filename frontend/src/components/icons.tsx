@@ -134,6 +134,15 @@ export function IconClock({ size = 14 }: IconProps) {
   );
 }
 
+export function IconCalendar({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <rect x="3" y="5" width="18" height="16" rx="2" />
+      <path d="M3 10h18M8 3v4M16 3v4" />
+    </svg>
+  );
+}
+
 export function IconRefresh({ size = 14, spinning }: IconProps & { spinning?: boolean }) {
   return (
     <svg

@@ -25,6 +25,7 @@ import {
   IconMenu,
   IconX,
   IconMessage,
+  IconCalendar,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -58,20 +59,22 @@ export type View =
   | "agentes"
   | "market_intelligence"
   | "discrepancias"
-  | "mensagens";
+  | "mensagens"
+  | "agenda";
 
 interface Props {
   view: View;
   onChangeView: (view: View) => void;
   perguntasPendentes: number;
   mensagensNaoLidas: number;
+  agendaPendentes: number;
   usuario: Usuario;
   onSair: () => void;
 }
 
 const INERTES = [{ label: "Criação", Icon: IconWand }];
 
-export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLidas, usuario, onSair }: Props) {
+export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLidas, agendaPendentes, usuario, onSair }: Props) {
   const [lojasAberta, setLojasAberta] = useState(true);
   const [equipeAberta, setEquipeAberta] = useState(true);
   const [fabricaAberta, setFabricaAberta] = useState(true);
@@ -94,6 +97,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
   const podeAds = temPermissao(usuario, "ads");
   const podeAdsShopee = temPermissao(usuario, "ads_shopee");
   const podeTarefas = temPermissao(usuario, "tarefas");
+  const podeAgenda = temPermissao(usuario, "agenda");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const podeCorrecoes = temPermissao(usuario, "correcoes");
   const podeFabricacao = temPermissao(usuario, "fabricacao");
@@ -378,6 +382,20 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
               </span>
               <span>Chat</span>
               {mensagensNaoLidas > 0 && <span className="sidebar-badge">{mensagensNaoLidas}</span>}
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeAgenda && (
+          <>
+            <button
+              className={`sidebar-item ${view === "agenda" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("agenda")}
+            >
+              <IconCalendar size={16} />
+              <span>Agenda</span>
+              {agendaPendentes > 0 && <span className="sidebar-badge">{agendaPendentes}</span>}
             </button>
             <div className="sidebar-divider" />
           </>

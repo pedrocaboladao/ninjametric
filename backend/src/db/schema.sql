@@ -1974,3 +1974,35 @@ CREATE TABLE IF NOT EXISTS fabrica_bling_estoque_pedido (
 );
 CREATE INDEX IF NOT EXISTS idx_fabrica_bling_estoque_pedido_data
   ON fabrica_bling_estoque_pedido (data DESC);
+
+-- Módulo Agenda: tarefas recorrentes de cadência fixa (não desliza com
+-- atraso — ver agendaOcorrencias.ts). Sem dono exclusivo: qualquer usuário
+-- com acesso ao módulo pode criar/editar/excluir qualquer tarefa.
+CREATE TABLE IF NOT EXISTS agenda_tarefas (
+  id SERIAL PRIMARY KEY,
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  intervalo_dias INTEGER NOT NULL CHECK (intervalo_dias > 0),
+  data_inicio DATE NOT NULL,
+  -- NULL = "qualquer um" (não atribuída a uma pessoa específica).
+  atribuido_a_usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_por_usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_tarefas_ativo ON agenda_tarefas (ativo);
+
+-- Log de "feito" por ocorrência específica (data_ocorrencia = uma das datas
+-- geradas pela cadência fixa de uma tarefa, ver agendaOcorrencias.ts). Não
+-- pré-gera linhas futuras — a existência de uma linha aqui é o próprio
+-- "concluído": marcar = upsert, desmarcar = delete.
+CREATE TABLE IF NOT EXISTS agenda_ocorrencias (
+  id SERIAL PRIMARY KEY,
+  tarefa_id INTEGER NOT NULL REFERENCES agenda_tarefas(id) ON DELETE CASCADE,
+  data_ocorrencia DATE NOT NULL,
+  concluido_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  concluido_por_usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  UNIQUE (tarefa_id, data_ocorrencia)
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_ocorrencias_tarefa_data ON agenda_ocorrencias (tarefa_id, data_ocorrencia);

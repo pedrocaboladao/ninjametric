@@ -31,9 +31,11 @@ import { IconExpand } from "./components/icons";
 import { MarketIntelligence } from "./components/MarketIntelligence";
 import { Discrepancias } from "./components/Discrepancias";
 import { Mensagens } from "./components/Mensagens";
+import { Agenda } from "./components/Agenda";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { useMensagensNaoLidas } from "./hooks/useMensagensNaoLidas";
+import { useAgendaPendentes } from "./hooks/useAgendaPendentes";
 import { checarSessao, logout } from "./api/session";
 import { temPermissao } from "./constants/modulos";
 import type { Usuario } from "./types/usuarios";
@@ -70,6 +72,7 @@ const VIEWS_VALIDAS: View[] = [
   "market_intelligence",
   "discrepancias",
   "mensagens",
+  "agenda",
 ];
 
 // Quase toda view tem o mesmo nome da permissao que a protege, e o resto do
@@ -130,6 +133,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "funcionarios")) return "funcionarios";
   if (temPermissao(usuario, "discrepancias")) return "discrepancias";
   if (temPermissao(usuario, "mensagens")) return "mensagens";
+  if (temPermissao(usuario, "agenda")) return "agenda";
   if (usuario.admin) return "usuarios";
   return "dashboard";
 }
@@ -149,6 +153,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
   const navigate = useNavigate();
   const perguntas = usePerguntas(temPermissao(usuario, "perguntas"));
   const mensagensNaoLidas = useMensagensNaoLidas(temPermissao(usuario, "mensagens"));
+  const agendaPendentes = useAgendaPendentes(temPermissao(usuario, "agenda"));
 
   // Pede permissão de notificação do navegador 1x (se nunca respondeu) pra
   // avisar de mensagem nova mesmo com o painel numa aba/tela diferente —
@@ -156,7 +161,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
   // permission fica em "default" pra sempre até alguém pedir).
   useEffect(() => {
     if (
-      temPermissao(usuario, "mensagens") &&
+      (temPermissao(usuario, "mensagens") || temPermissao(usuario, "agenda")) &&
       typeof Notification !== "undefined" &&
       Notification.permission === "default"
     ) {
@@ -201,6 +206,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         onChangeView={(v) => navigate(`/${v}`)}
         perguntasPendentes={perguntas.perguntas?.length ?? 0}
         mensagensNaoLidas={mensagensNaoLidas.total}
+        agendaPendentes={agendaPendentes.total}
         usuario={usuario}
         onSair={handleSair}
       />
@@ -244,6 +250,9 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "discrepancias" && temPermissao(usuario, "discrepancias") && <Discrepancias usuario={usuario} />}
         {view === "mensagens" && temPermissao(usuario, "mensagens") && (
           <Mensagens usuario={usuario} onMensagemLida={mensagensNaoLidas.atualizar} />
+        )}
+        {view === "agenda" && temPermissao(usuario, "agenda") && (
+          <Agenda onOcorrenciaAlterada={agendaPendentes.atualizar} />
         )}
         {view === "usuarios" && usuario.admin && <Usuarios />}
         {view === "agentes" && usuario.admin && <AgenciaAgentesIA />}

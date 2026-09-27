@@ -28,6 +28,7 @@ export const MODULOS_VALIDOS = [
   "fabrica_financeiro",
   "discrepancias",
   "mensagens",
+  "agenda",
 ] as const;
 
 export interface Usuario {
