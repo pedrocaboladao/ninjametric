@@ -125,6 +125,14 @@ export function IconTrash({ size = 16 }: IconProps) {
   );
 }
 
+export function IconCheck({ size = 14 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base}>
+      <path d="M5 13l4 4L19 7" />
+    </svg>
+  );
+}
+
 export function IconClock({ size = 14 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base}>

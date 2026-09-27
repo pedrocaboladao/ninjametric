@@ -6784,7 +6784,23 @@ button.contas-cartao:hover {
 .agenda-page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
+}
+
+.agenda-titulo-icone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+  color: var(--accent);
+  vertical-align: -3px;
+}
+
+.agenda-termometro-card {
+  padding: 16px 18px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
 }
 
 .agenda-semana-grade {
@@ -6806,57 +6822,131 @@ button.contas-cartao:hover {
   padding: 14px;
   background: var(--bg-panel);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  min-height: 140px;
+  border-radius: 16px;
+  min-height: 160px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .agenda-dia-card-hoje {
   border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 4px 10px rgba(0, 0, 0, 0.08);
 }
 
 .agenda-dia-cabecalho {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agenda-dia-nome {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.agenda-dia-numero {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.agenda-dia-numero-hoje {
+  background: var(--accent);
+  color: #fff;
+}
+
+.agenda-dia-corpo {
+  display: flex;
   flex-direction: column;
-  gap: 2px;
-  font-weight: 600;
+  gap: 8px;
+  flex: 1;
 }
 
 .agenda-dia-vazio {
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.8rem;
+  margin: auto 0;
+  text-align: center;
 }
 
 .agenda-ocorrencia {
   display: flex;
-  flex-direction: column;
   align-items: flex-start;
-  gap: 4px;
-  padding: 8px 10px;
-  border-radius: 10px;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 12px;
   border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
   background: var(--bg-app);
   cursor: pointer;
   text-align: left;
   width: 100%;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.agenda-ocorrencia:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+}
+
+.agenda-ocorrencia-check {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  color: #fff;
+}
+
+.agenda-ocorrencia-check-feita {
+  background: var(--good-text);
+  border-color: var(--good-text);
+}
+
+.agenda-ocorrencia-conteudo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
 }
 
 .agenda-ocorrencia-titulo {
   font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.3;
 }
 
 .agenda-ocorrencia-feita {
+  border-left-color: var(--good-text);
+}
+
+.agenda-ocorrencia-feita .agenda-ocorrencia-titulo {
   opacity: 0.55;
   text-decoration: line-through;
 }
 
 .agenda-ocorrencia-atrasada {
-  border-color: #f87171;
+  border-left-color: var(--critical-text);
 }
 
-.agenda-ocorrencia-tags {
+.agenda-ocorrencia-meta {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
 }
 
 .agenda-clonar-select {
@@ -6872,4 +6962,14 @@ button.contas-cartao:hover {
   background: var(--accent-soft);
   color: var(--accent);
   white-space: nowrap;
+}
+
+.agenda-atrasada-tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--critical-bg);
+  color: var(--critical-text);
+  white-space: nowrap;
+  font-weight: 600;
 }

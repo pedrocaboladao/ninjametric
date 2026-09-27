@@ -12,7 +12,7 @@ import {
   desmarcarOcorrencia,
 } from "../api/agenda";
 import { AgendaTarefaModal } from "./AgendaTarefaModal";
-import { IconPlus } from "./icons";
+import { IconPlus, IconCheck, IconCalendar } from "./icons";
 
 interface Props {
   onOcorrenciaAlterada: () => void;
@@ -45,6 +45,10 @@ function TermometroDiario({ dia }: { dia: DiaSemanaAgenda | undefined }) {
   }
   const feitas = dia!.ocorrencias.filter((o) => o.concluido).length;
   const percentual = Math.round((feitas / total) * 100);
+  // Vermelho/azul/verde em vez do padrão vermelho-ou-verde da barra que essa
+  // classe usa em Discrepâncias (lá é "desvio de preço", aqui é "progresso" —
+  // 60% do dia não é um alarme, é só "ainda não terminou").
+  const cor = percentual === 100 ? "var(--good-text)" : percentual >= 50 ? "var(--accent)" : "var(--critical-text)";
   return (
     <div className="discrepancia-termometro">
       <div className="discrepancia-termometro-topo">
@@ -54,10 +58,7 @@ function TermometroDiario({ dia }: { dia: DiaSemanaAgenda | undefined }) {
         </span>
       </div>
       <div className="financeiro-equilibrio-barra">
-        <div
-          className={`financeiro-equilibrio-barra-preenchida ${percentual === 100 ? "financeiro-equilibrio-barra-ok" : ""}`}
-          style={{ width: `${percentual}%` }}
-        />
+        <div className="financeiro-equilibrio-barra-preenchida" style={{ width: `${percentual}%`, background: cor }} />
       </div>
     </div>
   );
@@ -195,7 +196,12 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
     <div className="agenda-page">
       <div className="tarefas-topo">
         <span className="painel-eyebrow">Agenda</span>
-        <h1>Tarefas recorrentes</h1>
+        <h1>
+          <span className="agenda-titulo-icone">
+            <IconCalendar size={24} />
+          </span>
+          Tarefas recorrentes
+        </h1>
         <p className="painel-sub">Atividades essenciais que se repetem de tempos em tempos — a semana atual, sempre em dia.</p>
       </div>
 
@@ -220,35 +226,47 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
       {aba === "semana" && (
         <>
           {!semana && !erro && <div className="state-message">Carregando semana...</div>}
-          {semana && <TermometroDiario dia={semana.dias.find((d) => d.data === semana.hoje)} />}
+          {semana && (
+            <div className="agenda-termometro-card">
+              <TermometroDiario dia={semana.dias.find((d) => d.data === semana.hoje)} />
+            </div>
+          )}
           {semana && (
             <div className="agenda-semana-grade">
               {semana.dias.map((dia, indice) => {
                 const ehHoje = dia.data === semana.hoje;
+                const [, , diaNumero] = dia.data.split("-");
                 return (
                   <div key={dia.data} className={`agenda-dia-card ${ehHoje ? "agenda-dia-card-hoje" : ""}`}>
                     <div className="agenda-dia-cabecalho">
-                      <span>{NOMES_DIA_SEMANA[indice]}</span>
-                      <span className="financeiro-td-mudo">{formatDataCurta(dia.data)}</span>
+                      <span className="agenda-dia-nome">{NOMES_DIA_SEMANA[indice].slice(0, 3)}</span>
+                      <span className={`agenda-dia-numero ${ehHoje ? "agenda-dia-numero-hoje" : ""}`}>{diaNumero}</span>
                     </div>
-                    {dia.ocorrencias.length === 0 && <p className="agenda-dia-vazio">Sem tarefas.</p>}
-                    {dia.ocorrencias.map((oc) => (
-                      <button
-                        key={oc.tarefaId}
-                        type="button"
-                        className={`agenda-ocorrencia ${oc.concluido ? "agenda-ocorrencia-feita" : ""} ${
-                          oc.atrasado ? "agenda-ocorrencia-atrasada" : ""
-                        }`}
-                        onClick={() => alternarOcorrencia(oc.tarefaId, dia.data, oc.concluido)}
-                      >
-                        <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
-                        <span className="financeiro-td-mudo">{oc.atribuidoANome ?? "Qualquer um"}</span>
-                        <div className="agenda-ocorrencia-tags">
-                          {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
-                          {oc.atrasado && <span className="sidebar-badge">Atrasada</span>}
-                        </div>
-                      </button>
-                    ))}
+                    <div className="agenda-dia-corpo">
+                      {dia.ocorrencias.length === 0 && <p className="agenda-dia-vazio">Sem tarefas</p>}
+                      {dia.ocorrencias.map((oc) => (
+                        <button
+                          key={oc.tarefaId}
+                          type="button"
+                          className={`agenda-ocorrencia ${oc.concluido ? "agenda-ocorrencia-feita" : ""} ${
+                            oc.atrasado ? "agenda-ocorrencia-atrasada" : ""
+                          }`}
+                          onClick={() => alternarOcorrencia(oc.tarefaId, dia.data, oc.concluido)}
+                        >
+                          <span className={`agenda-ocorrencia-check ${oc.concluido ? "agenda-ocorrencia-check-feita" : ""}`}>
+                            {oc.concluido && <IconCheck size={11} />}
+                          </span>
+                          <span className="agenda-ocorrencia-conteudo">
+                            <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
+                            <span className="agenda-ocorrencia-meta">
+                              <span>{oc.atribuidoANome ?? "Qualquer um"}</span>
+                              {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
+                              {oc.atrasado && <span className="agenda-atrasada-tag">Atrasada</span>}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 );
               })}
