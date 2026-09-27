@@ -6859,6 +6859,12 @@ button.contas-cartao:hover {
   gap: 6px;
 }
 
+.agenda-clonar-select {
+  width: auto;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
 .agenda-loja-tag {
   font-size: 0.75rem;
   padding: 2px 8px;

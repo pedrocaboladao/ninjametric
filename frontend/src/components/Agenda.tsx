@@ -135,6 +135,26 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
     }
   }
 
+  // Duplica a tarefa (mesmo título/intervalo/início/responsável) só trocando
+  // a loja — pra repetir a mesma rotina em outra loja sem preencher tudo de
+  // novo. Reaproveita o mesmo POST de criar, não precisa de rota nova.
+  async function clonarPara(tarefa: TarefaAgenda, lojaId: number) {
+    try {
+      await criarTarefaAgenda({
+        titulo: tarefa.titulo,
+        descricao: tarefa.descricao,
+        intervaloDias: tarefa.intervaloDias,
+        dataInicio: tarefa.dataInicio,
+        atribuidoAUsuarioId: tarefa.atribuidoAUsuarioId,
+        lojaId,
+      });
+      await Promise.all([carregarSemana(), carregarTarefas()]);
+      onOcorrenciaAlterada();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao clonar tarefa.");
+    }
+  }
+
   return (
     <div className="agenda-page">
       <div className="tarefas-topo">
@@ -251,6 +271,20 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                       <button type="button" className="btn-excluir" onClick={() => excluir(t)}>
                         Excluir
                       </button>
+                      <select
+                        className="clonar-input agenda-clonar-select"
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) clonarPara(t, Number(e.target.value));
+                        }}
+                      >
+                        <option value="">Clonar para...</option>
+                        {lojas.map((l) => (
+                          <option key={l.id} value={l.id}>
+                            {l.nome}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </td>
                 </tr>
