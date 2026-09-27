@@ -6871,4 +6871,5 @@ button.contas-cartao:hover {
   border-radius: 999px;
   background: var(--accent-soft);
   color: var(--accent);
+  white-space: nowrap;
 }

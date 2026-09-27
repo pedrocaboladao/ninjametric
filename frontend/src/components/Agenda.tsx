@@ -27,6 +27,14 @@ function formatDataCurta(data: string): string {
   return `${d}/${m}`;
 }
 
+// Nome de exibição pra tag da semana — só encurta "Catedral Impermeabilizantes"
+// (a única das 4 lojas com nome longo o bastante pra quebrar linha na tag).
+// Não mexe no nome real da loja (usado em todo o resto do painel), só como
+// aparece nesse selo pequeno.
+function nomeCurtoDaLoja(nome: string): string {
+  return nome === "Catedral Impermeabilizantes" ? "Catedral" : nome;
+}
+
 export function Agenda({ onOcorrenciaAlterada }: Props) {
   const [aba, setAba] = useState<"semana" | "gerenciar">("semana");
   const [semana, setSemana] = useState<SemanaAgenda | null>(null);
@@ -207,7 +215,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                         <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
                         <span className="financeiro-td-mudo">{oc.atribuidoANome ?? "Qualquer um"}</span>
                         <div className="agenda-ocorrencia-tags">
-                          {oc.lojaNome && <span className="agenda-loja-tag">{oc.lojaNome}</span>}
+                          {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
                           {oc.atrasado && <span className="sidebar-badge">Atrasada</span>}
                         </div>
                       </button>
