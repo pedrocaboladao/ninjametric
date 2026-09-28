@@ -35,6 +35,23 @@ function nomeCurtoDaLoja(nome: string): string {
   return nome === "Catedral Impermeabilizantes" ? "Catedral" : nome;
 }
 
+// Cor de urgência do aviso de expiração de promoção — sem campanha achada
+// ou bem perto de vencer é o caso mais grave (vermelho), tempo confortável
+// é verde, o meio-termo é laranja. Independe de feita/atrasada normal: o
+// ponto desse tipo de tarefa é mostrar o prazo real, não só "fiz hoje?".
+function corUrgenciaPromocao(diasRestantes: number | null): "verde" | "laranja" | "vermelho" {
+  if (diasRestantes === null || diasRestantes < 3) return "vermelho";
+  if (diasRestantes <= 7) return "laranja";
+  return "verde";
+}
+
+function textoPromocao(nome: string | null, diasRestantes: number | null): string {
+  if (diasRestantes === null) return "Nenhuma campanha própria ativa encontrada";
+  if (diasRestantes < 0) return `${nome ?? "Campanha"} venceu há ${Math.abs(diasRestantes)} dia(s)`;
+  if (diasRestantes === 0) return `${nome ?? "Campanha"} vence hoje`;
+  return `${nome ?? "Campanha"} — faltam ${diasRestantes} dia(s)`;
+}
+
 // % de tarefas de HOJE já marcadas como feitas — reseta sozinho todo dia,
 // porque conta só as ocorrências do dia atual (não acumula atraso de dias
 // anteriores, isso é visível em cada card via o selo "Atrasada").
@@ -184,6 +201,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
         dataInicio: tarefa.dataInicio,
         atribuidoAUsuarioId: tarefa.atribuidoAUsuarioId,
         lojaId,
+        expiraComPromocao: tarefa.expiraComPromocao,
       });
       await Promise.all([carregarSemana(), carregarTarefas()]);
       onOcorrenciaAlterada();
@@ -244,28 +262,36 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                     </div>
                     <div className="agenda-dia-corpo">
                       {dia.ocorrencias.length === 0 && <p className="agenda-dia-vazio">Sem tarefas</p>}
-                      {dia.ocorrencias.map((oc) => (
-                        <button
-                          key={oc.tarefaId}
-                          type="button"
-                          className={`agenda-ocorrencia ${oc.concluido ? "agenda-ocorrencia-feita" : ""} ${
-                            oc.atrasado ? "agenda-ocorrencia-atrasada" : ""
-                          }`}
-                          onClick={() => alternarOcorrencia(oc.tarefaId, dia.data, oc.concluido)}
-                        >
-                          <span className={`agenda-ocorrencia-check ${oc.concluido ? "agenda-ocorrencia-check-feita" : ""}`}>
-                            {oc.concluido && <IconCheck size={11} />}
-                          </span>
-                          <span className="agenda-ocorrencia-conteudo">
-                            <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
-                            <span className="agenda-ocorrencia-meta">
-                              <span>{oc.atribuidoANome ?? "Qualquer um"}</span>
-                              {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
-                              {oc.atrasado && <span className="agenda-atrasada-tag">Atrasada</span>}
+                      {dia.ocorrencias.map((oc) => {
+                        const urgencia = oc.expiraComPromocao ? corUrgenciaPromocao(oc.promocaoDiasRestantes) : null;
+                        return (
+                          <button
+                            key={oc.tarefaId}
+                            type="button"
+                            className={`agenda-ocorrencia ${oc.concluido ? "agenda-ocorrencia-feita" : ""} ${
+                              oc.atrasado ? "agenda-ocorrencia-atrasada" : ""
+                            } ${urgencia ? `agenda-ocorrencia-urgencia-${urgencia}` : ""}`}
+                            onClick={() => alternarOcorrencia(oc.tarefaId, dia.data, oc.concluido)}
+                          >
+                            <span className={`agenda-ocorrencia-check ${oc.concluido ? "agenda-ocorrencia-check-feita" : ""}`}>
+                              {oc.concluido && <IconCheck size={11} />}
                             </span>
-                          </span>
-                        </button>
-                      ))}
+                            <span className="agenda-ocorrencia-conteudo">
+                              <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
+                              <span className="agenda-ocorrencia-meta">
+                                <span>{oc.atribuidoANome ?? "Qualquer um"}</span>
+                                {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
+                                {!oc.expiraComPromocao && oc.atrasado && <span className="agenda-atrasada-tag">Atrasada</span>}
+                              </span>
+                              {oc.expiraComPromocao && (
+                                <span className={`agenda-promocao-aviso agenda-promocao-aviso-${urgencia}`}>
+                                  {textoPromocao(oc.promocaoNome, oc.promocaoDiasRestantes)}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -308,9 +334,10 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                 <tr key={t.id}>
                   <td>
                     <span className="financeiro-td-titulo">{t.titulo}</span>
+                    {t.expiraComPromocao && <span className="agenda-loja-tag">Vinculada à promoção</span>}
                     {t.descricao && <div className="financeiro-td-mudo">{t.descricao}</div>}
                   </td>
-                  <td>A cada {t.intervaloDias} dia{t.intervaloDias > 1 ? "s" : ""}</td>
+                  <td>{t.expiraComPromocao ? "Diária" : `A cada ${t.intervaloDias} dia${t.intervaloDias > 1 ? "s" : ""}`}</td>
                   <td>{formatDataCurta(t.dataInicio)}</td>
                   <td>{t.atribuidoANome ?? "Qualquer um"}</td>
                   <td>{t.lojaNome ?? "—"}</td>

@@ -6973,3 +6973,34 @@ button.contas-cartao:hover {
   white-space: nowrap;
   font-weight: 600;
 }
+
+/* Aviso de expiração de promoção — cor por urgência real (dias até vencer a
+   campanha própria da loja), independe do feita/atrasada normal do card. */
+.agenda-ocorrencia-urgencia-verde {
+  border-left-color: var(--good-text);
+}
+
+.agenda-ocorrencia-urgencia-laranja {
+  border-left-color: #fbbf24;
+}
+
+.agenda-ocorrencia-urgencia-vermelho {
+  border-left-color: var(--critical-text);
+}
+
+.agenda-promocao-aviso {
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.agenda-promocao-aviso-verde {
+  color: var(--good-text);
+}
+
+.agenda-promocao-aviso-laranja {
+  color: #fbbf24;
+}
+
+.agenda-promocao-aviso-vermelho {
+  color: var(--critical-text);
+}

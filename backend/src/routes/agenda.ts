@@ -63,7 +63,7 @@ agendaRouter.get("/pendentes", async (req, res) => {
 });
 
 agendaRouter.post("/tarefas", async (req, res) => {
-  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, lojaId } = req.body;
+  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, lojaId, expiraComPromocao } = req.body;
   if (typeof titulo !== "string" || !titulo.trim()) {
     res.status(400).json({ error: "Informe o título da tarefa." });
     return;
@@ -84,6 +84,10 @@ agendaRouter.post("/tarefas", async (req, res) => {
     res.status(400).json({ error: "lojaId inválido." });
     return;
   }
+  if (expiraComPromocao && !lojaId) {
+    res.status(400).json({ error: "O aviso de expiração de promoção precisa de uma loja escolhida." });
+    return;
+  }
   try {
     const tarefa = await criarTarefa(req.usuario!.id, {
       titulo: titulo.trim(),
@@ -92,6 +96,7 @@ agendaRouter.post("/tarefas", async (req, res) => {
       dataInicio,
       atribuidoAUsuarioId: atribuidoAUsuarioId ?? null,
       lojaId: lojaId ?? null,
+      expiraComPromocao: Boolean(expiraComPromocao),
     });
     res.json(tarefa);
   } catch (err) {
@@ -105,7 +110,7 @@ agendaRouter.patch("/tarefas/:id", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
-  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, lojaId, ativo } = req.body ?? {};
+  const { titulo, descricao, intervaloDias, dataInicio, atribuidoAUsuarioId, lojaId, expiraComPromocao, ativo } = req.body ?? {};
   if (titulo !== undefined && (typeof titulo !== "string" || !titulo.trim())) {
     res.status(400).json({ error: "Título inválido." });
     return;
@@ -122,6 +127,10 @@ agendaRouter.patch("/tarefas/:id", async (req, res) => {
     res.status(400).json({ error: "lojaId inválido." });
     return;
   }
+  if (expiraComPromocao && lojaId === null) {
+    res.status(400).json({ error: "O aviso de expiração de promoção precisa de uma loja escolhida." });
+    return;
+  }
   try {
     await atualizarTarefa(id, {
       titulo: titulo !== undefined ? titulo.trim() : undefined,
@@ -130,6 +139,7 @@ agendaRouter.patch("/tarefas/:id", async (req, res) => {
       dataInicio,
       atribuidoAUsuarioId,
       lojaId,
+      expiraComPromocao,
       ativo,
     });
     res.json({ ok: true });

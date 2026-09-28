@@ -2010,3 +2010,9 @@ CREATE INDEX IF NOT EXISTS idx_agenda_ocorrencias_tarefa_data ON agenda_ocorrenc
 -- Tag opcional de loja pra organizar as tarefas (ex.: "checar estoque" de uma
 -- loja específica) — NULL = tarefa geral, sem loja específica.
 ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL;
+
+-- Quando true, a tarefa é o aviso de "vai vencer a promoção da loja" — em
+-- vez de texto fixo, a Agenda calcula ao vivo (com cache) quantos dias
+-- faltam pra campanha própria da loja vencer, e pinta o card por urgência
+-- (verde/laranja/vermelho) em vez do feita/atrasada normal. Exige loja_id.
+ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS expira_com_promocao BOOLEAN NOT NULL DEFAULT false;
