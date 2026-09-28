@@ -2017,9 +2017,8 @@ ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES l
 -- (verde/laranja/vermelho) em vez do feita/atrasada normal. Exige loja_id.
 ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS expira_com_promocao BOOLEAN NOT NULL DEFAULT false;
 
--- Feed livre da aba "Relatório" — Brunão (ou quem tiver acesso à Agenda)
--- posta um texto curto (link de anúncio, MLB, SKU criado etc.) pra registrar
--- o que foi feito, sem depender de uma tarefa/campo estruturado pra isso.
+-- Feed da aba "Relatório" — Brunão (ou quem tiver acesso à Agenda) registra
+-- um SKU criado + o link do anúncio, opcionalmente marcado com a loja.
 -- Mesma convenção de agenda_tarefas: sem dono exclusivo, qualquer usuário
 -- com acesso ao módulo pode excluir qualquer entrada.
 CREATE TABLE IF NOT EXISTS agenda_relatorios (
@@ -2029,3 +2028,14 @@ CREATE TABLE IF NOT EXISTS agenda_relatorios (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_relatorios_criado_em ON agenda_relatorios (criado_em DESC);
+
+-- Campos estruturados pedidos depois de ver o feed livre em uso: SKU e link
+-- do anúncio viram campos próprios (mais fácil de escanear que texto solto),
+-- e a loja vira uma tag opcional igual à de agenda_tarefas. "texto" continua
+-- existindo pra observação livre opcional (deixa de ser a informação
+-- principal, mas não some — entradas antigas do feed livre continuam
+-- legíveis com sku/link em branco).
+ALTER TABLE agenda_relatorios ALTER COLUMN texto DROP NOT NULL;
+ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS sku TEXT;
+ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS link TEXT;
+ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL;

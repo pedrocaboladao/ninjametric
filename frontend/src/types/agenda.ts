@@ -63,8 +63,19 @@ export interface NovaTarefaAgenda {
 
 export interface RelatorioAgenda {
   id: number;
-  texto: string;
+  sku: string;
+  link: string;
+  texto: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
   usuarioId: number;
   usuarioNome: string;
   criadoEm: string;
+}
+
+export interface NovoRelatorioAgenda {
+  sku: string;
+  link: string;
+  texto?: string | null;
+  lojaId?: number | null;
 }

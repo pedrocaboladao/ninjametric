@@ -189,13 +189,26 @@ agendaRouter.get("/relatorios", async (_req, res) => {
 });
 
 agendaRouter.post("/relatorios", async (req, res) => {
-  const { texto } = req.body ?? {};
-  if (typeof texto !== "string" || !texto.trim()) {
-    res.status(400).json({ error: "Informe o texto do relatório." });
+  const { sku, link, texto, lojaId } = req.body ?? {};
+  if (typeof sku !== "string" || !sku.trim()) {
+    res.status(400).json({ error: "Informe o SKU." });
+    return;
+  }
+  if (typeof link !== "string" || !link.trim()) {
+    res.status(400).json({ error: "Informe o link do anúncio." });
+    return;
+  }
+  if (lojaId !== undefined && lojaId !== null && !Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "lojaId inválido." });
     return;
   }
   try {
-    const relatorio = await criarRelatorio(req.usuario!.id, texto.trim());
+    const relatorio = await criarRelatorio(req.usuario!.id, {
+      sku: sku.trim(),
+      link: link.trim(),
+      texto: typeof texto === "string" && texto.trim() ? texto.trim() : null,
+      lojaId: lojaId ?? null,
+    });
     res.json(relatorio);
   } catch (err) {
     erro(res, err, "Falha ao adicionar ao relatório.");

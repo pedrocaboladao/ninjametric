@@ -338,7 +338,11 @@ export async function listarLojasParaAgenda(): Promise<{ id: number; nome: strin
 
 export interface RelatorioAgenda {
   id: number;
-  texto: string;
+  sku: string;
+  link: string;
+  texto: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
   usuarioId: number;
   usuarioNome: string;
   criadoEm: string;
@@ -346,34 +350,54 @@ export interface RelatorioAgenda {
 
 interface LinhaRelatorio {
   id: number;
-  texto: string;
+  sku: string;
+  link: string;
+  texto: string | null;
+  loja_id: number | null;
+  loja_nome: string | null;
   usuario_id: number;
   usuario_nome: string;
   criado_em: string;
 }
 
 function mapearRelatorio(r: LinhaRelatorio): RelatorioAgenda {
-  return { id: r.id, texto: r.texto, usuarioId: r.usuario_id, usuarioNome: r.usuario_nome, criadoEm: r.criado_em };
+  return {
+    id: r.id,
+    sku: r.sku,
+    link: r.link,
+    texto: r.texto,
+    lojaId: r.loja_id,
+    lojaNome: r.loja_nome,
+    usuarioId: r.usuario_id,
+    usuarioNome: r.usuario_nome,
+    criadoEm: r.criado_em,
+  };
 }
 
 const SELECT_RELATORIO = `
-  SELECT r.id, r.texto, r.usuario_id, u.nome AS usuario_nome, r.criado_em
+  SELECT r.id, r.sku, r.link, r.texto, r.loja_id, loja.nome AS loja_nome, r.usuario_id, u.nome AS usuario_nome, r.criado_em
   FROM agenda_relatorios r
   JOIN usuarios u ON u.id = r.usuario_id
+  LEFT JOIN lojas loja ON loja.id = r.loja_id
 `;
 
-// Feed livre — texto sem estrutura, quem lê é que interpreta ("SKUs
-// criados: <link>", um MLB solto, etc.). Mais recente primeiro, sem
-// paginação por enquanto (log de uso baixo, não é uma tabela de eventos).
+// SKU + link do anúncio criado, com loja como tag opcional. Mais recente
+// primeiro, sem paginação por enquanto (log de uso baixo, não é uma tabela
+// de eventos).
 export async function listarRelatorios(): Promise<RelatorioAgenda[]> {
   const { rows } = await pool.query<LinhaRelatorio>(`${SELECT_RELATORIO} ORDER BY r.criado_em DESC`);
   return rows.map(mapearRelatorio);
 }
 
-export async function criarRelatorio(usuarioId: number, texto: string): Promise<RelatorioAgenda> {
+export async function criarRelatorio(
+  usuarioId: number,
+  dados: { sku: string; link: string; texto?: string | null; lojaId?: number | null }
+): Promise<RelatorioAgenda> {
   const { rows } = await pool.query<{ id: number }>(
-    "INSERT INTO agenda_relatorios (texto, usuario_id) VALUES ($1, $2) RETURNING id",
-    [texto, usuarioId]
+    `INSERT INTO agenda_relatorios (sku, link, texto, loja_id, usuario_id)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING id`,
+    [dados.sku, dados.link, dados.texto ?? null, dados.lojaId ?? null, usuarioId]
   );
   const { rows: criado } = await pool.query<LinhaRelatorio>(`${SELECT_RELATORIO} WHERE r.id = $1`, [rows[0].id]);
   return mapearRelatorio(criado[0]);

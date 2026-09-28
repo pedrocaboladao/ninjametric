@@ -1,4 +1,12 @@
-import type { TarefaAgenda, SemanaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda, RelatorioAgenda } from "../types/agenda";
+import type {
+  TarefaAgenda,
+  SemanaAgenda,
+  UsuarioParaAtribuir,
+  LojaParaAgenda,
+  NovaTarefaAgenda,
+  RelatorioAgenda,
+  NovoRelatorioAgenda,
+} from "../types/agenda";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -86,12 +94,12 @@ export async function fetchRelatoriosAgenda(): Promise<RelatorioAgenda[]> {
   return data.relatorios;
 }
 
-export async function criarRelatorioAgenda(texto: string): Promise<RelatorioAgenda> {
+export async function criarRelatorioAgenda(dados: NovoRelatorioAgenda): Promise<RelatorioAgenda> {
   const res = await fetch(`${API_BASE}/api/agenda/relatorios`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ texto }),
+    body: JSON.stringify(dados),
   });
   return tratarResposta<RelatorioAgenda>(res);
 }

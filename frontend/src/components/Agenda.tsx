@@ -125,7 +125,10 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [erroModal, setErroModal] = useState<string | null>(null);
   const [relatorios, setRelatorios] = useState<RelatorioAgenda[] | null>(null);
-  const [novoRelatorio, setNovoRelatorio] = useState("");
+  const [novoSku, setNovoSku] = useState("");
+  const [novoLink, setNovoLink] = useState("");
+  const [novoTexto, setNovoTexto] = useState("");
+  const [novaLojaId, setNovaLojaId] = useState<number | "">("");
   const [enviandoRelatorio, setEnviandoRelatorio] = useState(false);
 
   const carregarSemana = useCallback(async () => {
@@ -171,11 +174,19 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   }, [aba, relatorios, carregarRelatorios]);
 
   async function enviarRelatorio() {
-    if (!novoRelatorio.trim()) return;
+    if (!novoSku.trim() || !novoLink.trim()) return;
     setEnviandoRelatorio(true);
     try {
-      await criarRelatorioAgenda(novoRelatorio.trim());
-      setNovoRelatorio("");
+      await criarRelatorioAgenda({
+        sku: novoSku.trim(),
+        link: novoLink.trim(),
+        texto: novoTexto.trim() || null,
+        lojaId: novaLojaId === "" ? null : novaLojaId,
+      });
+      setNovoSku("");
+      setNovoLink("");
+      setNovoTexto("");
+      setNovaLojaId("");
       await carregarRelatorios();
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao adicionar ao relatório.");
@@ -453,18 +464,46 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
       {aba === "relatorio" && (
         <div className="agenda-relatorio">
           <div className="agenda-relatorio-form">
+            <div className="agenda-relatorio-form-linha">
+              <input
+                type="text"
+                className="clonar-input"
+                placeholder="SKU"
+                value={novoSku}
+                onChange={(e) => setNovoSku(e.target.value)}
+              />
+              <input
+                type="text"
+                className="clonar-input agenda-relatorio-input-link"
+                placeholder="Link do anúncio"
+                value={novoLink}
+                onChange={(e) => setNovoLink(e.target.value)}
+              />
+              <select
+                className="dashboard-select"
+                value={novaLojaId}
+                onChange={(e) => setNovaLojaId(e.target.value ? Number(e.target.value) : "")}
+              >
+                <option value="">Sem loja</option>
+                {lojas.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {l.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
             <textarea
               className="clonar-input agenda-relatorio-textarea"
-              placeholder='Ex.: "SKUs criados: https://produto.mercadolivre.com.br/MLB-..."'
-              value={novoRelatorio}
-              onChange={(e) => setNovoRelatorio(e.target.value)}
-              rows={3}
+              placeholder="Observação (opcional)"
+              value={novoTexto}
+              onChange={(e) => setNovoTexto(e.target.value)}
+              rows={2}
             />
             <button
               type="button"
               className="btn-responder"
               onClick={enviarRelatorio}
-              disabled={enviandoRelatorio || !novoRelatorio.trim()}
+              disabled={enviandoRelatorio || !novoSku.trim() || !novoLink.trim()}
             >
               {enviandoRelatorio ? "Adicionando..." : "Adicionar ao relatório"}
             </button>
@@ -477,8 +516,10 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
               {relatorios.map((r) => (
                 <div key={r.id} className="agenda-relatorio-item">
                   <div className="agenda-relatorio-item-topo">
-                    <span className="agenda-relatorio-autor">{r.usuarioNome}</span>
+                    <span className="agenda-relatorio-sku">{r.sku}</span>
+                    {r.lojaNome && <span className="agenda-loja-tag">{r.lojaNome}</span>}
                     <span className="agenda-relatorio-data">{formatDataHora(r.criadoEm)}</span>
+                    <span className="agenda-relatorio-autor">{r.usuarioNome}</span>
                     <button
                       type="button"
                       className="agenda-relatorio-excluir"
@@ -488,7 +529,10 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                       ×
                     </button>
                   </div>
-                  <div className="agenda-relatorio-texto">{renderComLinks(r.texto)}</div>
+                  <a href={r.link} target="_blank" rel="noopener noreferrer" className="agenda-relatorio-link">
+                    {r.link}
+                  </a>
+                  {r.texto && <div className="agenda-relatorio-texto">{renderComLinks(r.texto)}</div>}
                 </div>
               ))}
             </div>
