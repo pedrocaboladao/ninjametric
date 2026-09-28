@@ -335,3 +335,50 @@ export async function listarLojasParaAgenda(): Promise<{ id: number; nome: strin
   const { rows } = await pool.query("SELECT id, nome FROM lojas WHERE id = ANY($1) ORDER BY id", [LOJAS_DO_DONO]);
   return rows;
 }
+
+export interface RelatorioAgenda {
+  id: number;
+  texto: string;
+  usuarioId: number;
+  usuarioNome: string;
+  criadoEm: string;
+}
+
+interface LinhaRelatorio {
+  id: number;
+  texto: string;
+  usuario_id: number;
+  usuario_nome: string;
+  criado_em: string;
+}
+
+function mapearRelatorio(r: LinhaRelatorio): RelatorioAgenda {
+  return { id: r.id, texto: r.texto, usuarioId: r.usuario_id, usuarioNome: r.usuario_nome, criadoEm: r.criado_em };
+}
+
+const SELECT_RELATORIO = `
+  SELECT r.id, r.texto, r.usuario_id, u.nome AS usuario_nome, r.criado_em
+  FROM agenda_relatorios r
+  JOIN usuarios u ON u.id = r.usuario_id
+`;
+
+// Feed livre — texto sem estrutura, quem lê é que interpreta ("SKUs
+// criados: <link>", um MLB solto, etc.). Mais recente primeiro, sem
+// paginação por enquanto (log de uso baixo, não é uma tabela de eventos).
+export async function listarRelatorios(): Promise<RelatorioAgenda[]> {
+  const { rows } = await pool.query<LinhaRelatorio>(`${SELECT_RELATORIO} ORDER BY r.criado_em DESC`);
+  return rows.map(mapearRelatorio);
+}
+
+export async function criarRelatorio(usuarioId: number, texto: string): Promise<RelatorioAgenda> {
+  const { rows } = await pool.query<{ id: number }>(
+    "INSERT INTO agenda_relatorios (texto, usuario_id) VALUES ($1, $2) RETURNING id",
+    [texto, usuarioId]
+  );
+  const { rows: criado } = await pool.query<LinhaRelatorio>(`${SELECT_RELATORIO} WHERE r.id = $1`, [rows[0].id]);
+  return mapearRelatorio(criado[0]);
+}
+
+export async function excluirRelatorio(id: number): Promise<void> {
+  await pool.query("DELETE FROM agenda_relatorios WHERE id = $1", [id]);
+}

@@ -10,6 +10,9 @@ import {
   contarPendentes,
   listarUsuariosParaAtribuir,
   listarLojasParaAgenda,
+  listarRelatorios,
+  criarRelatorio,
+  excluirRelatorio,
 } from "../services/agendaService";
 
 const REGEX_DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -174,6 +177,42 @@ agendaRouter.post("/tarefas/:id/ocorrencias/:data", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao marcar ocorrência como feita.");
+  }
+});
+
+agendaRouter.get("/relatorios", async (_req, res) => {
+  try {
+    res.json({ relatorios: await listarRelatorios() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o relatório.");
+  }
+});
+
+agendaRouter.post("/relatorios", async (req, res) => {
+  const { texto } = req.body ?? {};
+  if (typeof texto !== "string" || !texto.trim()) {
+    res.status(400).json({ error: "Informe o texto do relatório." });
+    return;
+  }
+  try {
+    const relatorio = await criarRelatorio(req.usuario!.id, texto.trim());
+    res.json(relatorio);
+  } catch (err) {
+    erro(res, err, "Falha ao adicionar ao relatório.");
+  }
+});
+
+agendaRouter.delete("/relatorios/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirRelatorio(id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir entrada do relatório.");
   }
 });
 

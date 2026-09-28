@@ -1,4 +1,4 @@
-import type { TarefaAgenda, SemanaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
+import type { TarefaAgenda, SemanaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda, RelatorioAgenda } from "../types/agenda";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -77,5 +77,26 @@ export async function desmarcarOcorrencia(tarefaId: number, data: string): Promi
     method: "DELETE",
     credentials: "include",
   });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function fetchRelatoriosAgenda(): Promise<RelatorioAgenda[]> {
+  const res = await fetch(`${API_BASE}/api/agenda/relatorios`, { credentials: "include" });
+  const data = await tratarResposta<{ relatorios: RelatorioAgenda[] }>(res);
+  return data.relatorios;
+}
+
+export async function criarRelatorioAgenda(texto: string): Promise<RelatorioAgenda> {
+  const res = await fetch(`${API_BASE}/api/agenda/relatorios`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ texto }),
+  });
+  return tratarResposta<RelatorioAgenda>(res);
+}
+
+export async function excluirRelatorioAgenda(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/relatorios/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta<{ ok: true }>(res);
 }

@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SemanaAgenda, DiaSemanaAgenda, TarefaAgenda, UsuarioParaAtribuir, LojaParaAgenda, NovaTarefaAgenda } from "../types/agenda";
+import type {
+  SemanaAgenda,
+  DiaSemanaAgenda,
+  TarefaAgenda,
+  UsuarioParaAtribuir,
+  LojaParaAgenda,
+  NovaTarefaAgenda,
+  RelatorioAgenda,
+} from "../types/agenda";
 import {
   fetchSemanaAtual,
   fetchTarefasAgenda,
@@ -10,9 +18,33 @@ import {
   excluirTarefaAgenda,
   marcarOcorrencia,
   desmarcarOcorrencia,
+  fetchRelatoriosAgenda,
+  criarRelatorioAgenda,
+  excluirRelatorioAgenda,
 } from "../api/agenda";
 import { AgendaTarefaModal } from "./AgendaTarefaModal";
 import { IconPlus, IconCheck, IconCalendar } from "./icons";
+import { formatDataHora } from "../utils/format";
+
+const REGEX_URL = /(https?:\/\/[^\s]+)/g;
+
+// Quebra o texto livre em pedaços, virando link clicável qualquer trecho que
+// pareça uma URL (é assim que o link do anúncio colado vira clicável sem
+// precisar de um campo separado pra isso). split() com grupo de captura
+// alterna [texto, url, texto, url, ...] — índice ímpar é sempre a URL
+// capturada, por isso não precisa testar o regex de novo (regex global tem
+// estado em .test/.exec, testar de novo aqui daria match errado a cada chamada).
+function renderComLinks(texto: string) {
+  return texto.split(REGEX_URL).map((parte, i) =>
+    i % 2 === 1 ? (
+      <a key={i} href={parte} target="_blank" rel="noopener noreferrer" className="agenda-relatorio-link">
+        {parte}
+      </a>
+    ) : (
+      <span key={i}>{parte}</span>
+    )
+  );
+}
 
 interface Props {
   onOcorrenciaAlterada: () => void;
@@ -82,7 +114,7 @@ function TermometroDiario({ dia }: { dia: DiaSemanaAgenda | undefined }) {
 }
 
 export function Agenda({ onOcorrenciaAlterada }: Props) {
-  const [aba, setAba] = useState<"semana" | "gerenciar">("semana");
+  const [aba, setAba] = useState<"semana" | "gerenciar" | "relatorio">("semana");
   const [semana, setSemana] = useState<SemanaAgenda | null>(null);
   const [tarefas, setTarefas] = useState<TarefaAgenda[] | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioParaAtribuir[]>([]);
@@ -92,6 +124,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   const [tarefaEditando, setTarefaEditando] = useState<TarefaAgenda | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erroModal, setErroModal] = useState<string | null>(null);
+  const [relatorios, setRelatorios] = useState<RelatorioAgenda[] | null>(null);
+  const [novoRelatorio, setNovoRelatorio] = useState("");
+  const [enviandoRelatorio, setEnviandoRelatorio] = useState(false);
 
   const carregarSemana = useCallback(async () => {
     try {
@@ -109,6 +144,14 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
     }
   }, []);
 
+  const carregarRelatorios = useCallback(async () => {
+    try {
+      setRelatorios(await fetchRelatoriosAgenda());
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao carregar o relatório.");
+    }
+  }, []);
+
   useEffect(() => {
     carregarSemana();
     fetchUsuariosParaAtribuir()
@@ -122,6 +165,34 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   useEffect(() => {
     if (aba === "gerenciar" && tarefas === null) carregarTarefas();
   }, [aba, tarefas, carregarTarefas]);
+
+  useEffect(() => {
+    if (aba === "relatorio" && relatorios === null) carregarRelatorios();
+  }, [aba, relatorios, carregarRelatorios]);
+
+  async function enviarRelatorio() {
+    if (!novoRelatorio.trim()) return;
+    setEnviandoRelatorio(true);
+    try {
+      await criarRelatorioAgenda(novoRelatorio.trim());
+      setNovoRelatorio("");
+      await carregarRelatorios();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao adicionar ao relatório.");
+    } finally {
+      setEnviandoRelatorio(false);
+    }
+  }
+
+  async function excluirEntradaRelatorio(id: number) {
+    if (!window.confirm("Excluir essa entrada do relatório?")) return;
+    try {
+      await excluirRelatorioAgenda(id);
+      await carregarRelatorios();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir entrada do relatório.");
+    }
+  }
 
   async function alternarOcorrencia(tarefaId: number, data: string, concluido: boolean) {
     try {
@@ -230,6 +301,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
           </button>
           <button className={`tarefas-aba ${aba === "gerenciar" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("gerenciar")}>
             Gerenciar tarefas
+          </button>
+          <button className={`tarefas-aba ${aba === "relatorio" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("relatorio")}>
+            Relatório
           </button>
         </div>
         {aba === "gerenciar" && (
@@ -373,6 +447,52 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {aba === "relatorio" && (
+        <div className="agenda-relatorio">
+          <div className="agenda-relatorio-form">
+            <textarea
+              className="clonar-input agenda-relatorio-textarea"
+              placeholder='Ex.: "SKUs criados: https://produto.mercadolivre.com.br/MLB-..."'
+              value={novoRelatorio}
+              onChange={(e) => setNovoRelatorio(e.target.value)}
+              rows={3}
+            />
+            <button
+              type="button"
+              className="btn-responder"
+              onClick={enviarRelatorio}
+              disabled={enviandoRelatorio || !novoRelatorio.trim()}
+            >
+              {enviandoRelatorio ? "Adicionando..." : "Adicionar ao relatório"}
+            </button>
+          </div>
+
+          {relatorios === null && <div className="state-message">Carregando relatório...</div>}
+          {relatorios?.length === 0 && <div className="state-message">Nada registrado ainda.</div>}
+          {relatorios && relatorios.length > 0 && (
+            <div className="agenda-relatorio-lista">
+              {relatorios.map((r) => (
+                <div key={r.id} className="agenda-relatorio-item">
+                  <div className="agenda-relatorio-item-topo">
+                    <span className="agenda-relatorio-autor">{r.usuarioNome}</span>
+                    <span className="agenda-relatorio-data">{formatDataHora(r.criadoEm)}</span>
+                    <button
+                      type="button"
+                      className="agenda-relatorio-excluir"
+                      onClick={() => excluirEntradaRelatorio(r.id)}
+                      title="Excluir"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  <div className="agenda-relatorio-texto">{renderComLinks(r.texto)}</div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

@@ -7004,3 +7004,78 @@ button.contas-cartao:hover {
 .agenda-promocao-aviso-vermelho {
   color: var(--critical-text);
 }
+
+.agenda-relatorio {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.agenda-relatorio-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-end;
+}
+
+.agenda-relatorio-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.agenda-relatorio-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agenda-relatorio-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--surface);
+}
+
+.agenda-relatorio-item-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.agenda-relatorio-autor {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.agenda-relatorio-data {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  flex: 1;
+}
+
+.agenda-relatorio-excluir {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.agenda-relatorio-excluir:hover {
+  color: var(--critical-text);
+}
+
+.agenda-relatorio-texto {
+  font-size: 13.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.agenda-relatorio-link {
+  color: var(--accent);
+  text-decoration: underline;
+}

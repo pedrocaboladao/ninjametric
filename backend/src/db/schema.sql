@@ -2016,3 +2016,16 @@ ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES l
 -- faltam pra campanha própria da loja vencer, e pinta o card por urgência
 -- (verde/laranja/vermelho) em vez do feita/atrasada normal. Exige loja_id.
 ALTER TABLE agenda_tarefas ADD COLUMN IF NOT EXISTS expira_com_promocao BOOLEAN NOT NULL DEFAULT false;
+
+-- Feed livre da aba "Relatório" — Brunão (ou quem tiver acesso à Agenda)
+-- posta um texto curto (link de anúncio, MLB, SKU criado etc.) pra registrar
+-- o que foi feito, sem depender de uma tarefa/campo estruturado pra isso.
+-- Mesma convenção de agenda_tarefas: sem dono exclusivo, qualquer usuário
+-- com acesso ao módulo pode excluir qualquer entrada.
+CREATE TABLE IF NOT EXISTS agenda_relatorios (
+  id SERIAL PRIMARY KEY,
+  texto TEXT NOT NULL,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_relatorios_criado_em ON agenda_relatorios (criado_em DESC);

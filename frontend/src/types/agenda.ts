@@ -60,3 +60,11 @@ export interface NovaTarefaAgenda {
   lojaId?: number | null;
   expiraComPromocao?: boolean;
 }
+
+export interface RelatorioAgenda {
+  id: number;
+  texto: string;
+  usuarioId: number;
+  usuarioNome: string;
+  criadoEm: string;
+}
