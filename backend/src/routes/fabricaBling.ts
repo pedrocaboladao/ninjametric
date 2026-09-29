@@ -20,6 +20,7 @@ import {
   listarPedidos as listarPedidosBling,
   paraTexto,
   pedidoCru,
+  criarPedidoVenda,
 } from "../services/blingPedidosService";
 import {
   puxarContatos,
@@ -1137,6 +1138,66 @@ fabricaBlingRouter.post("/cmv/pedidos", (req, res) => {
 // lancar estoque em cima deles: o site agrupa por cliente e dia, entao 330
 // pedidos no site podem ser mais de mil no Bling, e e preciso ver se todos sao
 // das lojas da fabrica.
+// Cria um pedido de venda no Bling a partir da lista que a loja mandou.
+//
+// Nasce em simulacao: `simular: false` no corpo e o que grava. Pedido criado
+// errado nao se apaga pela API — sobra pro Hudson na tela, e ainda arrasta o
+// CMV junto quando a saida de estoque rodar.
+//
+// O valor **nao se inventa**: vem da planilha master (coluna VALOR DE CUSTO, o
+// preco que a loja paga). Quem monta a lista confere antes de mandar.
+fabricaBlingRouter.post("/pedidos/criar", async (req, res) => {
+  const b = req.body ?? {};
+  const contatoId = Number(b.contatoId);
+  const data = String(b.data ?? "");
+  const bruto = Array.isArray(b.itens) ? b.itens : [];
+  if (!Number.isInteger(contatoId) || contatoId <= 0) {
+    return res.status(400).json({ error: "Informe o contato do Bling." });
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) {
+    return res.status(400).json({ error: "Informe a data como AAAA-MM-DD." });
+  }
+  type ItemBruto = {
+    codigo: string;
+    quantidade: number;
+    valor: number;
+    descricao?: string;
+  };
+  const itens: ItemBruto[] = bruto.map((i: Record<string, unknown>) => ({
+    codigo: String(i?.codigo ?? "").trim(),
+    quantidade: Number(i?.quantidade),
+    valor: Number(i?.valor),
+    descricao: typeof i?.descricao === "string" ? i.descricao : undefined,
+  }));
+  if (!itens.length) return res.status(400).json({ error: "Pedido sem itens." });
+  const ruim = itens.find(
+    (i: ItemBruto) => !i.codigo || !(i.quantidade > 0) || !(i.valor > 0)
+  );
+  if (ruim) {
+    return res
+      .status(400)
+      .json({ error: `Item invalido: ${ruim.codigo || "(sem codigo)"}.` });
+  }
+  const total = Number(
+    itens.reduce((s: number, i: ItemBruto) => s + i.quantidade * i.valor, 0).toFixed(2)
+  );
+  if (b.simular !== false) {
+    return res.json({ simulacao: true, contatoId, data, itens, total });
+  }
+  try {
+    const r = await criarPedidoVenda({
+      contatoId,
+      data,
+      itens,
+      numeroLoja: typeof b.numeroLoja === "string" ? b.numeroLoja : undefined,
+      observacoes: typeof b.observacoes === "string" ? b.observacoes : undefined,
+    });
+    res.json({ simulacao: false, esperado: total, ...r });
+  } catch (err) {
+    erro(res, err, "Falha ao criar o pedido no Bling.");
+  }
+});
+
 fabricaBlingRouter.get("/pedidos/listar", async (req, res) => {
   const de = String(req.query.de ?? "");
   const ate = String(req.query.ate ?? "");

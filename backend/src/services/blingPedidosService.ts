@@ -238,3 +238,134 @@ export async function jaImportados(numeros: string[]): Promise<Set<string>> {
   );
   return new Set(rows.map((r) => r.documento));
 }
+
+// ---------------------------------------------------------------------------
+// Criar pedido de venda no Bling
+//
+// O caminho de entrada da venda: a loja manda a lista de separacao, e o pedido
+// nasce aqui em vez de ser digitado na tela. Dai o site puxa no sync das 6h e o
+// custo entra sozinho — nenhuma etapa nova no meio.
+//
+// Escopo exigido: **Pedidos de Venda: incluir/alterar**. Mexer no app do Bling
+// invalida o token na hora, entao reautorizar em seguida em
+// `/api/fabrica-bling/autorizar` — senao o sync da manha seguinte cai.
+
+async function escreverPedido<T>(caminho: string, corpo: unknown): Promise<T> {
+  let espera = 2000;
+  for (let tentativa = 1; ; tentativa++) {
+    await vez();
+    const token = await tokenValido();
+    try {
+      const resp = await axios.post<T>(`${BASE}${caminho}`, corpo, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        timeout: 30000,
+      });
+      return resp.data;
+    } catch (err) {
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 429 && tentativa < TENTATIVAS) {
+        await dormir(espera);
+        espera *= 2;
+        continue;
+      }
+      // erro do Bling vem no corpo e e o que diz qual campo ele recusou; sem
+      // isso sobra "Request failed with status code 400" e nada mais
+      if (axios.isAxiosError(err) && err.response) {
+        const d = err.response.data as unknown;
+        const t = typeof d === "string" ? d : JSON.stringify(d);
+        throw new Error(`Bling ${err.response.status}: ${t.slice(0, 400)}`);
+      }
+      throw err;
+    }
+  }
+}
+
+export interface ItemNovoPedido {
+  /** Codigo do produto no Bling. Tem que ser o SKU padronizado — o Bling casa
+   *  por codigo, e codigo que ele nao conhece ele **aceita e cria item solto**,
+   *  sem ligar no produto. Ai a saida de estoque nao acontece e o CMV fica zero. */
+  codigo: string;
+  quantidade: number;
+  valor: number;
+  descricao?: string;
+}
+
+export interface NovoPedidoVenda {
+  contatoId: number;
+  /** AAAA-MM-DD. Sem isso o Bling carimba a data de hoje. */
+  data: string;
+  itens: ItemNovoPedido[];
+  numeroLoja?: string;
+  observacoes?: string;
+}
+
+export interface PedidoCriado {
+  id: number;
+  numero: string;
+  total: number;
+  itens: number;
+  /** o que o Bling devolveu na releitura, pra conferir antes de confiar */
+  conferido: boolean;
+}
+
+/**
+ * Cria um pedido de venda e **le de volta** antes de dizer que deu certo.
+ *
+ * A releitura nao e zelo: o Bling aceita campo que nao conhece e responde 200
+ * calado. Sem conferir item e total, um pedido pela metade passaria por criado.
+ */
+export async function criarPedidoVenda(p: NovoPedidoVenda): Promise<PedidoCriado> {
+  if (!Number.isInteger(p.contatoId) || p.contatoId <= 0) {
+    throw new Error("Informe o contato do Bling.");
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(p.data)) throw new Error("Data invalida.");
+  if (!p.itens.length) throw new Error("Pedido sem itens.");
+  for (const i of p.itens) {
+    if (!i.codigo.trim()) throw new Error("Item sem codigo.");
+    if (!(i.quantidade > 0)) throw new Error(`Quantidade invalida em ${i.codigo}.`);
+    if (!(i.valor > 0)) throw new Error(`Valor invalido em ${i.codigo}.`);
+  }
+
+  const corpo = {
+    data: p.data,
+    contato: { id: p.contatoId },
+    numeroLoja: p.numeroLoja,
+    observacoes: p.observacoes,
+    itens: p.itens.map((i) => ({
+      codigo: i.codigo,
+      descricao: i.descricao ?? i.codigo,
+      quantidade: i.quantidade,
+      valor: i.valor,
+    })),
+  };
+
+  const r = await escreverPedido<{ data?: { id?: number } }>("/pedidos/vendas", corpo);
+  const id = Number(r?.data?.id);
+  if (!Number.isInteger(id) || id <= 0) {
+    throw new Error("O Bling respondeu sem o id do pedido.");
+  }
+
+  const esperado = Number(
+    p.itens.reduce((s, i) => s + i.quantidade * i.valor, 0).toFixed(2)
+  );
+  // releitura pelo mesmo caminho de `itensDoPedido`: o detalhe nao traz total,
+  // entao ele sai da soma dos itens — que e justamente o que precisa bater
+  const { data: d } = await get<RespostaDetalhe>(`/pedidos/vendas/${id}`);
+  const linhas = d.itens ?? [];
+  const total = Number(
+    linhas
+      .reduce((s, i) => s + Number(i.quantidade ?? 0) * Number(i.valor ?? 0), 0)
+      .toFixed(2)
+  );
+  return {
+    id,
+    numero: String(d.numero ?? ""),
+    total,
+    itens: linhas.length,
+    conferido: linhas.length === p.itens.length && Math.abs(total - esperado) <= 0.02,
+  };
+}
