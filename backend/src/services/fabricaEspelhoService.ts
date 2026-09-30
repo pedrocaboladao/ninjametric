@@ -105,6 +105,8 @@ const NAO_E_CUSTO_FIXO = new Set([
 
 export interface TituloEspelhado {
   blingId: number;
+  /** O historico do Bling: e ele que vira a descricao da conta no site. */
+  historico: string;
   vencimento: string;
   valor: number;
   contraparte: string;
@@ -143,6 +145,11 @@ export interface Espelho {
   divergentes: Divergencia[];
   /** Fila de revisao: categoria vazia no Bling ou fora do mapa. */
   paraRevisar: Array<TituloEspelhado & { categoriaBling: number | null }>;
+  /**
+   * O fornecedor sobrou nos DOIS lados: mesma compra registrada diferente
+   * (parcelamento ou valor). Nada foi inserido — inserir duplicaria o dinheiro.
+   */
+  revisarFornecedor: TituloEspelhado[];
   /** Contas a pagar do site sem par no Bling — o Bling e que esta incompleto. */
   orfasDoSite: Orfa[];
   ignoradas: number;
@@ -223,7 +230,18 @@ export async function espelharContasDoBling(
   const adotadas: Espelho["adotadas"] = [];
   const divergentes: Espelho["divergentes"] = [];
   const paraRevisar: Espelho["paraRevisar"] = [];
+  const revisarFornecedor: Espelho["revisarFornecedor"] = [];
+  // titulos do Bling que nao casaram 1-pra-1: a segunda passada decide o
+  // destino deles, e ela nao pode rodar antes de todas as adocoes terminarem
+  const pendentes: TituloEspelhado[] = [];
   const adotados = new Set<number>();
+
+  const noPeriodo = (c: (typeof contas)[number]) => {
+    const d = dia(c.vencimento);
+    return d >= de && d <= ate;
+  };
+  const distanciaEmDias = (a: string, b: string) =>
+    Math.abs(Date.parse(a + "T00:00:00Z") - Date.parse(b + "T00:00:00Z")) / 86400000;
 
   for (const t of titulos) {
     const categoria = categoriaDoSite(t.categoriaId);
@@ -233,6 +251,7 @@ export async function espelharContasDoBling(
       valor: t.valor,
       contraparte: t.contato,
       documento: t.numeroDocumento || "",
+      historico: t.historico || "",
       categoria,
       // sem competencia no Bling o vencimento responde, que e o que o site faz
       competencia: t.competencia ?? t.vencimento,
@@ -275,7 +294,19 @@ export async function espelharContasDoBling(
           dia(c.vencimento) === t.vencimento &&
           apelido(c.contraparte ?? "") === apelido(t.contato)
       ) ||
-      candidatas.find((c) => dia(c.vencimento) === t.vencimento);
+      candidatas.find((c) => dia(c.vencimento) === t.vencimento) ||
+      // ultimo recurso: mesmo valor e mesmo fornecedor com o vencimento a
+      // poucos dias. E o caso mais comum de setembro — REVGOLD de 48.044,05
+      // em 02/09 aqui e 04/09 la, Maringa Full com 2 dias, Mestre e Jacob com
+      // 1. So depois que todo casamento exato ja consumiu suas candidatas, e
+      // com janela curta: dois titulos iguais do mesmo fornecedor no mesmo mes
+      // existem (REVCOLLOR de 28.000,00 duas vezes em outubro), e eles casam
+      // exato antes de chegar aqui.
+      candidatas.find(
+        (c) =>
+          apelido(c.contraparte ?? "") === apelido(t.contato) &&
+          distanciaEmDias(dia(c.vencimento), t.vencimento) <= 5
+      );
 
     if (alvo) {
       adotados.add(alvo.id);
@@ -288,7 +319,31 @@ export async function espelharContasDoBling(
       continue;
     }
 
-    novas.push(base);
+    pendentes.push(base);
+  }
+
+  // Segunda passada, por fornecedor — e ela existe pra nao duplicar dinheiro.
+  //
+  // Titulo do Bling que nao casou 1-pra-1 quase nunca e conta nova: e a mesma
+  // compra registrada diferente. Oswaldo Cruz tem UM titulo de R$ 306.240,00 no
+  // Bling e DOIS no site (150.000,00 + 156.240,00); EXPADER vem em 2 parcelas
+  // aqui e 4 la; I. A. Tavares e um titulo de cada lado com R$ 3.000,00 de
+  // diferenca. Em nenhum desses o valor individual casa — e inserir o do Bling
+  // faria o site contar a compra duas vezes.
+  //
+  // Entao a decisao nao e por titulo, e por fornecedor na janela:
+  //   sobra nos DOIS lados  -> ninguem insere nada, vai pra revisao
+  //   sobra so no Bling     -> e conta que falta aqui de verdade: INSERT
+  //   sobra so no site      -> falta LA (foi como as diarias apareceram)
+  const sobraDoSite = livres.filter((c) => !adotados.has(c.id) && noPeriodo(c));
+  const sobraPorFornecedor = new Set(sobraDoSite.map((c) => apelido(c.contraparte ?? "")));
+
+  for (const p of pendentes) {
+    if (sobraPorFornecedor.has(apelido(p.contraparte))) {
+      revisarFornecedor.push(p);
+      continue;
+    }
+    novas.push(p);
     if (!simular) {
       await pool.query(
         `INSERT INTO fabrica_contas
@@ -299,34 +354,33 @@ export async function espelharContasDoBling(
                  $10::date, $11)
          ON CONFLICT (bling_id) WHERE bling_id IS NOT NULL DO NOTHING`,
         [
-          t.historico || t.numeroDocumento || t.contato || "titulo do Bling",
-          categoria,
-          t.contato || null,
-          t.valor,
-          t.vencimento,
+          p.historico || p.documento || p.contraparte || "titulo do Bling",
+          p.categoria,
+          p.contraparte || null,
+          p.valor,
+          p.vencimento,
           // a baixa vem do Bling, mas a data dela nao: o endpoint de listagem
           // nao traz `dataPagamento`. Quem tem a data e a conciliacao do
           // extrato — deixar NULL e melhor que inventar o vencimento.
-          base.pagoNoBling ? "pago" : "pendente",
-          categoria ? !NAO_E_CUSTO_FIXO.has(categoria) : false,
-          `Espelhado do Bling (titulo ${t.id}).`,
-          t.numeroDocumento || null,
-          base.competencia,
-          t.id,
+          p.pagoNoBling ? "pago" : "pendente",
+          p.categoria ? !NAO_E_CUSTO_FIXO.has(p.categoria) : false,
+          `Espelhado do Bling (titulo ${p.blingId}).`,
+          p.documento || null,
+          p.competencia,
+          p.blingId,
         ]
       );
     }
   }
 
-  // Sobrou no site e nao casou com nada do Bling: se o Bling e o ponto de
-  // partida, essas contas estao faltando LA. Foi assim que as duas diarias do
-  // Douglas e do Rodrigo apareceram.
-  const noPeriodo = (c: (typeof contas)[number]) => {
-    const d = dia(c.vencimento);
-    return d >= de && d <= ate;
-  };
-  const orfasDoSite: Orfa[] = livres
-    .filter((c) => !adotados.has(c.id) && noPeriodo(c))
+  // Sobrou no site e o fornecedor nao tem sobra no Bling: se o Bling e o ponto
+  // de partida, essa conta esta faltando LA. Foi assim que as duas diarias do
+  // Douglas e do Rodrigo apareceram. O fornecedor que sobrou dos dois lados
+  // fica de fora daqui — ele ja esta em `revisarFornecedor`, e listar nos dois
+  // lugares faria a mesma divergencia parecer duas.
+  const emRevisao = new Set(revisarFornecedor.map((p) => apelido(p.contraparte)));
+  const orfasDoSite: Orfa[] = sobraDoSite
+    .filter((c) => !emRevisao.has(apelido(c.contraparte ?? "")))
     .map((c) => ({
       contaId: c.id,
       vencimento: dia(c.vencimento),
@@ -344,6 +398,7 @@ export async function espelharContasDoBling(
     adotadas,
     divergentes,
     paraRevisar,
+    revisarFornecedor,
     orfasDoSite,
     ignoradas,
   };
