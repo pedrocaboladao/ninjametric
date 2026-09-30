@@ -34,6 +34,7 @@ import {
   rodarEGuardar,
   ultimaRodadaAutomatica,
 } from "../services/fabricaSincAutomaticaService";
+import { espelharContasDoBling } from "../services/fabricaEspelhoService";
 import {
   padronizarCodigos,
   listarProdutos as listarProdutosBling,
@@ -378,6 +379,34 @@ fabricaBlingRouter.get("/contas/listar", async (req, res) => {
   } catch (err) {
     console.error("[bling-listar]", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
+  }
+});
+
+// Espelha as contas a pagar do Bling pro site. Nasce em simulacao: sem
+// `aplicar: true` o endpoint so devolve o plano e nao escreve nada. E a mesma
+// ergonomia de `/pedidos/criar`, e aqui importa mais, porque um espelho que
+// erra o pareamento duplica contas a pagar.
+fabricaBlingRouter.post("/contas/espelhar", async (req, res) => {
+  const de = String(req.body?.de ?? "");
+  const ate = String(req.body?.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe de e ate no formato AAAA-MM-DD." });
+  }
+  try {
+    const espelho = await espelharContasDoBling(de, ate, req.body?.aplicar !== true);
+    res.json({
+      ...espelho,
+      resumo: {
+        novas: espelho.novas.length,
+        adotadas: espelho.adotadas.length,
+        divergentes: espelho.divergentes.length,
+        paraRevisar: espelho.paraRevisar.length,
+        orfasDoSite: espelho.orfasDoSite.length,
+      },
+    });
+  } catch (err) {
+    console.error("[bling-espelhar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao espelhar." });
   }
 });
 
