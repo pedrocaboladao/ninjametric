@@ -287,26 +287,31 @@ export async function espelharContasDoBling(
     const candidatas = livres.filter(
       (c) => !adotados.has(c.id) && cent(c.valor) === cent(t.valor)
     );
-    const alvo =
-      (docBling && candidatas.find((c) => chaveDoc(c.documento ?? "") === docBling)) ||
-      candidatas.find(
-        (c) =>
-          dia(c.vencimento) === t.vencimento &&
-          apelido(c.contraparte ?? "") === apelido(t.contato)
-      ) ||
-      candidatas.find((c) => dia(c.vencimento) === t.vencimento) ||
-      // ultimo recurso: mesmo valor e mesmo fornecedor com o vencimento a
-      // poucos dias. E o caso mais comum de setembro — REVGOLD de 48.044,05
-      // em 02/09 aqui e 04/09 la, Maringa Full com 2 dias, Mestre e Jacob com
-      // 1. So depois que todo casamento exato ja consumiu suas candidatas, e
-      // com janela curta: dois titulos iguais do mesmo fornecedor no mesmo mes
-      // existem (REVCOLLOR de 28.000,00 duas vezes em outubro), e eles casam
-      // exato antes de chegar aqui.
-      candidatas.find(
-        (c) =>
-          apelido(c.contraparte ?? "") === apelido(t.contato) &&
-          distanciaEmDias(dia(c.vencimento), t.vencimento) <= 5
-      );
+    // Pontua e escolhe a melhor, em vez de aceitar a primeira que serve.
+    //
+    // A versao anterior testava documento primeiro e parava ali — e isso casa
+    // errado sempre que a nota e parcelada, porque as tres parcelas carregam o
+    // MESMO numero. O CT-e 2145 da NEL tem parcela 1/3 vencendo 25/09, 2/3 em
+    // 02/10 e 3/3 em 09/10: o titulo de 02/10 do Bling colava na parcela de
+    // setembro, e a de outubro ficava orfa. Mesma coisa com o financiamento
+    // Stellantis, cujo documento 211264469 se repete todo mes.
+    //
+    // O vencimento vale mais que o documento. O documento so desempata.
+    const pontuar = (c: (typeof contas)[number]) => {
+      const mesmoVenc = dia(c.vencimento) === t.vencimento;
+      const mesmoDoc = !!docBling && chaveDoc(c.documento ?? "") === docBling;
+      const mesmoForn = apelido(c.contraparte ?? "") === apelido(t.contato);
+      const dist = distanciaEmDias(dia(c.vencimento), t.vencimento);
+      // aceita so o que e defensavel: vencimento igual, ou o mesmo fornecedor
+      // a poucos dias (REVGOLD de 48.044,05 em 02/09 aqui e 04/09 la, Maringa
+      // Full com 2 dias, Mestre e Jacob com 1)
+      if (!mesmoVenc && !(mesmoForn && dist <= 5)) return -1;
+      return (mesmoVenc ? 500 : 0) + (mesmoDoc ? 100 : 0) + (mesmoForn ? 50 : 0) - dist;
+    };
+    const alvo = candidatas
+      .map((c) => ({ c, p: pontuar(c) }))
+      .filter((x) => x.p >= 0)
+      .sort((a, b) => b.p - a.p)[0]?.c;
 
     if (alvo) {
       adotados.add(alvo.id);
