@@ -2039,3 +2039,17 @@ ALTER TABLE agenda_relatorios ALTER COLUMN texto DROP NOT NULL;
 ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS sku TEXT;
 ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS link TEXT;
 ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL;
+
+-- Espelho das contas a pagar do Bling.
+--
+-- O Bling passa a ser o ponto de partida: a funcionária lança a partir da nota
+-- e o site espelha. `bling_id` é o que torna o espelho repetível — sem ele,
+-- rodar duas vezes duplicaria tudo, porque nao existe outra chave estavel
+-- (valor+vencimento repete: dois REVGOLD de 28.360,00 no mesmo 27/09).
+--
+-- UNIQUE e nao NOT NULL de proposito: conta que nasce no site (provisao, ou o
+-- que veio do extrato antes do Bling ter o titulo) fica com NULL e o espelho
+-- nao a toca. Em Postgres, varios NULL convivem sob UNIQUE.
+ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS bling_id BIGINT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_contas_bling_id
+  ON fabrica_contas (bling_id) WHERE bling_id IS NOT NULL;
