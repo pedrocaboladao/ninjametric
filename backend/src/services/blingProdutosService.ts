@@ -582,6 +582,20 @@ export interface ResultadoPadronizacao {
   linhas: LinhaPadronizacao[];
 }
 
+/**
+ * ATENCAO — renomear o codigo APAGA a relacao produto<->fornecedor do Bling, e
+ * com ela o custo.
+ *
+ * Medido em 01/10/2026 no RESIFLEX-12KG-INCOLOR: a relacao 814776905 tinha
+ * custo 61,90, o codigo foi padronizado de `RESIFLEX12KG-INCOLOR` para
+ * `RESIFLEX-12KG-INCOLOR`, e a releitura voltou custo 0 com `relIdAntes: 0` —
+ * a relacao nao foi zerada, foi destruida. Os outros 14 da mesma familia, que
+ * nao foram renomeados, continuaram intactos.
+ *
+ * Entao a ORDEM IMPORTA: padronizar primeiro, carregar custo depois. Rodar uma
+ * padronizacao em massa num catalogo que ja tem custo apaga o custo de tudo que
+ * for renomeado, em silencio — este endpoint aceita 500 pares por chamada.
+ */
 export async function padronizarCodigos(
   pares: ParPadronizacao[],
   simulacao: boolean
