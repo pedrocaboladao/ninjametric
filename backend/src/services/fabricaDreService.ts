@@ -190,7 +190,19 @@ const CATEGORIA_IMOBILIZADO = "IMOBILIZADO";
 // trabalho do socio, valor fixo de contrato, e despesa como qualquer salario.
 // Sao coisas diferentes e nao podem morar na mesma categoria — foi por isso que
 // os R$ 93.000,00 de agosto passaram por despesa antes de alguem olhar.
-const CATEGORIAS_DE_CAIXA = new Set(["EMPRÉSTIMO", "RETIRADA DE LUCROS"]);
+// Saiu do caixa e nao e despesa: aparece no bloco de fora do resultado, porque
+// sumir do relatorio seria pior que aparecer no lugar errado.
+//
+// `CREDITO COM FORNECEDOR` nasceu de um PIX a maior: o titulo da I. A. Tavares
+// era R$ 25.870,00 e sairam R$ 28.870,00. A diferenca nao e custo de mercadoria
+// (a compra foi 25.870,00) nem despesa (o dinheiro volta como desconto na
+// proxima compra) — e um ativo com o fornecedor. Em `ADIANTAMENTO` ela viraria
+// despesa e mudaria o resultado de um mes ja fechado.
+const CATEGORIAS_DE_CAIXA = new Set([
+  "EMPRÉSTIMO",
+  "RETIRADA DE LUCROS",
+  "CRÉDITO COM FORNECEDOR",
+]);
 
 // Alíquota do mês, ou a do mês anterior mais recente. Assim não precisa
 // digitar todo mês, mas o histórico fica preso ao que valia na época.
