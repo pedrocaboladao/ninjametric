@@ -81,7 +81,19 @@ const MAPA_CATEGORIA: Record<number, string> = {
   14734532215: "TARIFAS BANCÁRIAS", // Tarifa cheque — tautologico
   14745638161: "CONSUMO", // tautologico
   14734532226: "CONFRATERNIZAÇÃO E PATROCÍNIO", // Doacoes/Patrocinios — tautologico
+  14734532181: "CONSULTORIA DE SÓCIO", // Servicos Terceirizados — confirmado 01/10
+  14734532228: "SEGURANÇA DO TRABALHO", // Despesas Eventuais — confirmado 01/10
 };
+
+// Fica FORA do mapa de proposito, e nao por falta de evidencia: a mesma
+// categoria do Bling vira duas coisas aqui, e quem decide e o historico.
+//
+// `Licencas, Registros e Taxas` (14734532195) cobre os dois lancamentos da
+// Jacob e Silva Marcas: a assessoria mensal de propriedade intelectual e
+// despesa (JURIDICO E MARCAS), e a parcela do registro da marca e ativo
+// intangivel (IMOBILIZADO). Um mapa por categoria escolheria um dos dois e
+// erraria o outro em silencio, entao os dois seguem caindo na fila de revisao
+// — que custa um clique por mes e nao esconde nada.
 
 // Categoria do site que NAO e custo fixo. O resto e. Sai daqui e nao de um
 // campo do Bling porque o Bling nao tem esse conceito.
