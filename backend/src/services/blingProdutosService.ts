@@ -96,7 +96,7 @@ interface ProdutoBling {
 //
 // O filtro volta o que *parece* com o código, então a conferência é aqui, na
 // volta, comparando o código normalizado. Confiar no filtro pegaria o vizinho.
-async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
+export async function acharPorCodigo(codigo: string): Promise<ProdutoBling | null> {
   const alvo = normalizarSku(codigo);
   // A busca padrao do Bling nao devolve produto inativo — a mesma armadilha que
   // a listagem tem. Sem o passe de situacao "I", gravar o codigo de barras num
