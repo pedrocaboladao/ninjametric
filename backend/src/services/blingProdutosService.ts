@@ -780,15 +780,16 @@ export async function gravarCusto(
         linhas.push({ sku, custo, situacao: "já era esse", produtoId: achado.id, antes });
         continue;
       }
-      if (simulacao) {
-        linhas.push({ sku, custo, situacao: "gravado", produtoId: achado.id, antes });
-        continue;
-      }
       // O custo nao se grava pelo produto. Nem na raiz nem dentro de
       // `fornecedor`: o Bling responde 200 e deixa como estava (testado duas
       // vezes no MANTA-5M). Ele pertence a relacao produto<->fornecedor, que
       // tem endpoint proprio — e o `fornecedor.id` do produto e o id DESSA
       // relacao, nao do contato.
+      //
+      // A checagem vem ANTES do desvio de simulacao de proposito. Ela ficava
+      // depois, e a simulacao respondia "gravado" pra produto sem relacao
+      // nenhuma: em 01/10/2026 os 15 RESIFLEX 12KG passaram simulados e
+      // falharam os 15 no real. Simulacao que mente e pior que nao ter.
       const atual = inteiro.data as { fornecedor?: Record<string, unknown> };
       const rel = atual.fornecedor ?? {};
       const relId = Number((rel as { id?: unknown }).id ?? 0);
@@ -798,6 +799,10 @@ export async function gravarCusto(
           erro: "o produto não tem relação de fornecedor onde guardar o custo",
         });
         if (aoAndar) aoAndar(i + 1, pares.length);
+        continue;
+      }
+      if (simulacao) {
+        linhas.push({ sku, custo, situacao: "gravado", produtoId: achado.id, antes });
         continue;
       }
       const contato = (rel as { contato?: { id?: unknown } }).contato;
@@ -945,7 +950,9 @@ export async function criarCustoPelaRelacao(
       break;
     } catch (err) {
       const t = err instanceof Error ? err.message : String(err);
-      tentativas.push(`${f.nome}: ${t.slice(0, 160)}`);
+      // 600 e nao 160: o Bling diz QUAL campo recusou dentro de `fields`, e
+      // era justamente isso que o corte comia.
+      tentativas.push(`${f.nome}: ${t.slice(0, 600)}`);
     }
   }
   if (!criado) {
