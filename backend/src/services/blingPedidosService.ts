@@ -1,6 +1,7 @@
 import axios from "axios";
 import { pool } from "../db/pool";
 import { tokenValido } from "./blingAuth";
+import { acharPorCodigo } from "./blingProdutosService";
 
 // Puxa os pedidos de venda do Bling e devolve no formato que a conferência de
 // planilha já entende — cliente, data, número, SKU, quantidade e valor.
@@ -330,16 +331,32 @@ export async function criarPedidoVenda(p: NovoPedidoVenda): Promise<PedidoCriado
     if (!(i.valor > 0)) throw new Error(`Valor invalido em ${i.codigo}.`);
   }
 
+  // Cada item vai pelo ID do produto, nao so pelo codigo. Item sem
+  // `produto.id` o Bling trata como produto NOVO a cadastrar, e responde
+  // `code 27: "Codigo dos itens a serem cadastrados ja existem"` — a mensagem
+  // engana, porque o pedido so queria vender o que ja existe.
+  //
+  // E `descricao` nao e texto livre: mandar "TESTE CMV - estornar" fez o Bling
+  // reclamar daquilo como codigo. Ela segue o nome do produto.
+  const resolvidos = await Promise.all(
+    p.itens.map(async (i) => {
+      const achado = await acharPorCodigo(i.codigo);
+      if (!achado) throw new Error(`produto ${i.codigo} nao existe no Bling`);
+      return { item: i, produtoId: achado.id, nome: achado.nome ?? i.codigo };
+    })
+  );
+
   const corpo = {
     data: p.data,
     contato: { id: p.contatoId },
     numeroLoja: p.numeroLoja,
     observacoes: p.observacoes,
-    itens: p.itens.map((i) => ({
-      codigo: i.codigo,
-      descricao: i.descricao ?? i.codigo,
-      quantidade: i.quantidade,
-      valor: i.valor,
+    itens: resolvidos.map(({ item, produtoId, nome }) => ({
+      produto: { id: produtoId },
+      codigo: item.codigo,
+      descricao: item.descricao ?? nome,
+      quantidade: item.quantidade,
+      valor: item.valor,
     })),
   };
 
