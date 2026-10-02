@@ -892,6 +892,10 @@ fabricaBlingRouter.post("/produtos/criar-faltantes", (req, res) => {
   // `inativos: true` traz tambem o que esta inativo no site — e eles nascem
   // inativos no Bling, nao ativos
   const inativos = b.inativos === true;
+  // lista opcional: cadastra so esses SKUs em vez de tudo que falta
+  const skus = Array.isArray(b.skus)
+    ? b.skus.map((x: unknown) => String(x ?? "").trim()).filter(Boolean)
+    : undefined;
   const job = {
     estado: "rodando" as const,
     feitos: 0,
@@ -903,10 +907,17 @@ fabricaBlingRouter.post("/produtos/criar-faltantes", (req, res) => {
   const produtos = catalogoBling.produtos as never[];
   void (async () => {
     try {
-      const r = await criarNoErpOqueFalta(produtos, simulacao, limite, inativos, (f, t) => {
-        job.feitos = f;
-        job.total = t;
-      });
+      const r = await criarNoErpOqueFalta(
+        produtos,
+        simulacao,
+        limite,
+        inativos,
+        (f, t) => {
+          job.feitos = f;
+          job.total = t;
+        },
+        skus
+      );
       criacaoErp = {
         estado: "pronto", feitos: r.linhas.length, total: r.linhas.length,
         erro: null, resultado: r,

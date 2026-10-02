@@ -365,7 +365,13 @@ export async function criarNoErpOqueFalta(
   simulacao: boolean,
   limite: number,
   incluirInativos: boolean,
-  aoAndar?: (feitos: number, total: number) => void
+  aoAndar?: (feitos: number, total: number) => void,
+  /** Quando vem preenchida, cadastra **so** esses SKUs — o resto do que falta
+   *  fica onde esta. Serve pro caso de um pedido travar por tres produtos que o
+   *  site tem e o ERP nao: criar os tres e seguir, em vez de despejar centenas
+   *  de cadastros novos no Bling de uma vez (e cadastro criado nao se apaga
+   *  pela API). Sem ela o comportamento e o de antes: tudo que falta. */
+  skus?: string[]
 ): Promise<ResultadoCriacao> {
   const { rows } = await pool.query<ProdutoDoSite>(
     `SELECT sku, nome, preco_venda, ativo
@@ -375,7 +381,12 @@ export async function criarNoErpOqueFalta(
     [incluirInativos]
   );
   const noErp = new Set(produtosErp.map((p) => normalizarSku(p.codigo)).filter(Boolean));
-  const faltam = rows.filter((r) => !noErp.has(normalizarSku(r.sku)));
+  const pedidos = skus?.length
+    ? new Set(skus.map((x) => normalizarSku(x)).filter(Boolean))
+    : null;
+  const faltam = rows
+    .filter((r) => !noErp.has(normalizarSku(r.sku)))
+    .filter((r) => !pedidos || pedidos.has(normalizarSku(r.sku)));
   const alvo = limite > 0 ? faltam.slice(0, limite) : faltam;
 
   const linhas: LinhaCriacao[] = [];
