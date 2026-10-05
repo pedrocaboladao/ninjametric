@@ -188,7 +188,7 @@ export async function listarPromocoesDasLojas(): Promise<PromocaoDaLoja[]> {
         lojaId: loja.id,
         lojaNome: loja.nome,
         promocaoNome: campanha?.nome ?? null,
-        diasRestantes: campanha ? diasEntre(hoje, campanha.finishDate.slice(0, 10)) : null,
+        diasRestantes: campanha ? diasEntre(hoje, dataISOBR(new Date(campanha.finishDate))) : null,
       };
     })
   );

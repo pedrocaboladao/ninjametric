@@ -378,39 +378,3 @@ agendaRouter.delete("/quadro/cards/:id", async (req, res) => {
   }
 });
 
-// Diagnóstico temporário — testa caminhos de listagem de campanhas próprias
-// do vendedor no Mercado Livre pra achar um que devolva direto as campanhas
-// da loja (em vez de adivinhar pelos anúncios). Remover depois.
-agendaRouter.get("/diag-campanhas", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
-  if (!Number.isInteger(lojaId)) {
-    res.status(400).json({ error: "Informe ?lojaId=" });
-    return;
-  }
-  const loja = (await listLojas()).find((l) => l.id === lojaId);
-  if (!loja?.ml_user_id) {
-    res.status(400).json({ error: "Loja sem ml_user_id." });
-    return;
-  }
-  const accessToken = await getValidAccessToken(lojaId);
-  const base = "https://api.mercadolibre.com";
-  const headers = { Authorization: `Bearer ${accessToken}` };
-  const caminhos: { nome: string; url: string; params: Record<string, string> }[] = [
-    { nome: "promotions-seller-campaign", url: `${base}/seller-promotions/promotions`, params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2" } },
-    { nome: "promotions-geral", url: `${base}/seller-promotions/promotions`, params: { app_version: "v2" } },
-    { nome: "users-user-id", url: `${base}/seller-promotions/users/${loja.ml_user_id}`, params: { app_version: "v2" } },
-    { nome: "users-user-id-promotions", url: `${base}/seller-promotions/users/${loja.ml_user_id}/promotions`, params: { promotion_type: "SELLER_CAMPAIGN", app_version: "v2" } },
-    { nome: "users-user-id-campaigns", url: `${base}/seller-promotions/users/${loja.ml_user_id}/campaigns`, params: { app_version: "v2" } },
-  ];
-  const resultados = await Promise.all(
-    caminhos.map(async (c) => {
-      try {
-        const { data } = await axios.get(c.url, { headers, params: c.params });
-        return { nome: c.nome, ok: true, data };
-      } catch (err: any) {
-        return { nome: c.nome, ok: false, status: err?.response?.status ?? null, erro: err?.response?.data ?? err?.message };
-      }
-    })
-  );
-  res.json({ lojaId, mlUserId: loja.ml_user_id, resultados });
-});
