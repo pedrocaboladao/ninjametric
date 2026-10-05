@@ -2053,3 +2053,27 @@ ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCE
 ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS bling_id BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_contas_bling_id
   ON fabrica_contas (bling_id) WHERE bling_id IS NOT NULL;
+
+-- Quadro de tarefas compartilhado da Agenda (um só, pra dono e funcionário).
+-- Colunas são personalizáveis; sem dono por card (qualquer usuário com acesso
+-- ao módulo move, edita e exclui qualquer card).
+CREATE TABLE IF NOT EXISTS agenda_quadro_colunas (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS agenda_quadro_cards (
+  id SERIAL PRIMARY KEY,
+  coluna_id INTEGER NOT NULL REFERENCES agenda_quadro_colunas(id) ON DELETE CASCADE,
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  atribuido_a_usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  criado_por_usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_quadro_cards_coluna ON agenda_quadro_cards (coluna_id, ordem);

@@ -7113,3 +7113,104 @@ button.contas-cartao:hover {
   word-break: break-all;
   display: inline-block;
 }
+
+.agenda-quadro {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.agenda-quadro-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agenda-quadro-colunas {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.agenda-quadro-coluna {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  min-height: 200px;
+}
+
+.agenda-quadro-coluna-sobre {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.agenda-quadro-coluna-topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agenda-quadro-coluna-topo .financeiro-td-mudo {
+  margin-left: auto;
+}
+
+.agenda-quadro-coluna-acoes {
+  display: flex;
+  gap: 2px;
+}
+
+.agenda-quadro-coluna-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 80px;
+}
+
+.agenda-quadro-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  cursor: grab;
+  touch-action: none;
+}
+
+.agenda-quadro-card:hover {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+}
+
+.agenda-quadro-card-arrastando {
+  opacity: 0.6;
+}
+
+.agenda-quadro-novo-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.agenda-quadro-novo-card:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

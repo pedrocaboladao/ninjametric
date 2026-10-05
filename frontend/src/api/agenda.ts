@@ -7,6 +7,8 @@ import type {
   RelatorioAgenda,
   NovoRelatorioAgenda,
   PromocaoDaLoja,
+  ColunaQuadroAgenda,
+  DadosCardQuadroAgenda,
 } from "../types/agenda";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -113,5 +115,71 @@ export async function criarRelatorioAgenda(dados: NovoRelatorioAgenda): Promise<
 
 export async function excluirRelatorioAgenda(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agenda/relatorios/${id}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function fetchQuadroAgenda(): Promise<ColunaQuadroAgenda[]> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro`, { credentials: "include" });
+  const data = await tratarResposta<{ colunas: ColunaQuadroAgenda[] }>(res);
+  return data.colunas;
+}
+
+export async function criarColunaQuadroAgenda(nome: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/colunas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ nome }),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function renomearColunaQuadroAgenda(id: number, nome: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/colunas/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ nome }),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function excluirColunaQuadroAgenda(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/colunas/${id}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function criarCardQuadroAgenda(colunaId: number, dados: DadosCardQuadroAgenda): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ colunaId, ...dados }),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function atualizarCardQuadroAgenda(id: number, dados: Partial<DadosCardQuadroAgenda>): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(dados),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function moverCardQuadroAgenda(id: number, colunaId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${id}/mover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ colunaId }),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function excluirCardQuadroAgenda(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta<{ ok: true }>(res);
 }

@@ -25,6 +25,7 @@ import {
   fetchPromocoesDasLojas,
 } from "../api/agenda";
 import { AgendaTarefaModal } from "./AgendaTarefaModal";
+import { AgendaQuadro } from "./AgendaQuadro";
 import { IconPlus, IconCheck, IconCalendar } from "./icons";
 import { formatDataHora } from "../utils/format";
 
@@ -559,6 +560,8 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
           )}
         </div>
       )}
+
+      <AgendaQuadro usuarios={usuarios} lojas={lojas} />
 
       {modalAberto && (
         <AgendaTarefaModal

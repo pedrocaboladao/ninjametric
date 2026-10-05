@@ -81,3 +81,26 @@ export interface NovoRelatorioAgenda {
   texto?: string | null;
   lojaId?: number | null;
 }
+
+export interface CardQuadroAgenda {
+  id: number;
+  titulo: string;
+  descricao: string | null;
+  atribuidoAUsuarioId: number | null;
+  atribuidoANome: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
+}
+
+export interface ColunaQuadroAgenda {
+  id: number;
+  nome: string;
+  cards: CardQuadroAgenda[];
+}
+
+export interface DadosCardQuadroAgenda {
+  titulo: string;
+  descricao?: string | null;
+  atribuidoAUsuarioId?: number | null;
+  lojaId?: number | null;
+}

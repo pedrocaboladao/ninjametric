@@ -1,5 +1,15 @@
 import { Router, Response } from "express";
 import {
+  listarQuadro,
+  criarColuna,
+  renomearColuna,
+  excluirColuna,
+  criarCard,
+  atualizarCard,
+  moverCard,
+  excluirCard,
+} from "../services/agendaQuadroService";
+import {
   listarTarefas,
   criarTarefa,
   atualizarTarefa,
@@ -240,5 +250,128 @@ agendaRouter.delete("/tarefas/:id/ocorrencias/:data", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao desmarcar ocorrência.");
+  }
+});
+
+agendaRouter.get("/quadro", async (_req, res) => {
+  try {
+    res.json({ colunas: await listarQuadro() });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar o quadro.");
+  }
+});
+
+agendaRouter.post("/quadro/colunas", async (req, res) => {
+  const { nome } = req.body ?? {};
+  if (typeof nome !== "string" || !nome.trim()) {
+    res.status(400).json({ error: "Informe o nome da coluna." });
+    return;
+  }
+  try {
+    await criarColuna(nome.trim());
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao criar coluna.");
+  }
+});
+
+agendaRouter.patch("/quadro/colunas/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { nome } = req.body ?? {};
+  if (!Number.isInteger(id) || typeof nome !== "string" || !nome.trim()) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await renomearColuna(id, nome.trim());
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao renomear coluna.");
+  }
+});
+
+agendaRouter.delete("/quadro/colunas/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirColuna(id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir coluna.");
+  }
+});
+
+agendaRouter.post("/quadro/cards", async (req, res) => {
+  const { colunaId, titulo, descricao, atribuidoAUsuarioId, lojaId } = req.body ?? {};
+  if (!Number.isInteger(colunaId) || typeof titulo !== "string" || !titulo.trim()) {
+    res.status(400).json({ error: "Informe a coluna e o título do card." });
+    return;
+  }
+  try {
+    await criarCard(req.usuario!.id, colunaId, {
+      titulo: titulo.trim(),
+      descricao: typeof descricao === "string" && descricao.trim() ? descricao.trim() : null,
+      atribuidoAUsuarioId: Number.isInteger(atribuidoAUsuarioId) ? atribuidoAUsuarioId : null,
+      lojaId: Number.isInteger(lojaId) ? lojaId : null,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao criar card.");
+  }
+});
+
+agendaRouter.patch("/quadro/cards/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const { titulo, descricao, atribuidoAUsuarioId, lojaId } = req.body ?? {};
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  if (titulo !== undefined && (typeof titulo !== "string" || !titulo.trim())) {
+    res.status(400).json({ error: "Título inválido." });
+    return;
+  }
+  try {
+    await atualizarCard(id, {
+      titulo: titulo !== undefined ? titulo.trim() : undefined,
+      descricao: descricao !== undefined ? (typeof descricao === "string" && descricao.trim() ? descricao.trim() : null) : undefined,
+      atribuidoAUsuarioId: atribuidoAUsuarioId !== undefined ? (Number.isInteger(atribuidoAUsuarioId) ? atribuidoAUsuarioId : null) : undefined,
+      lojaId: lojaId !== undefined ? (Number.isInteger(lojaId) ? lojaId : null) : undefined,
+    });
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao atualizar card.");
+  }
+});
+
+agendaRouter.post("/quadro/cards/:id/mover", async (req, res) => {
+  const id = Number(req.params.id);
+  const { colunaId } = req.body ?? {};
+  if (!Number.isInteger(id) || !Number.isInteger(colunaId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await moverCard(id, colunaId);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao mover card.");
+  }
+});
+
+agendaRouter.delete("/quadro/cards/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirCard(id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir card.");
   }
 });
