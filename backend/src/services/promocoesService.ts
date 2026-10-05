@@ -24,6 +24,8 @@ export interface ResultadoCriarCampanha {
   promotionId: string;
   nome: string;
   itens: ResultadoItemCampanha[];
+  emAndamento?: boolean;
+  itensTotal?: number;
 }
 
 export interface CampanhaItem {
@@ -44,6 +46,12 @@ export interface Campanha {
   dataFim: string;
   status: string;
   campanhaAnteriorId: number | null;
+  processamento: string;
+  itensTotal: number;
+  itensProcessados: number;
+  itensOk: number;
+  falhasItens: { itemId: string; erro: string }[];
+  erroProcessamento: string | null;
   itens: CampanhaItem[];
 }
 
@@ -124,40 +132,6 @@ export async function criarCampanha(
     throw err;
   }
 
-  const precos = await getItemsBasicInfo(
-    lojaId,
-    itens.map((i) => i.itemId)
-  );
-  const itensResultado: ResultadoItemCampanha[] = [];
-
-  for (const { itemId, percentual } of itens) {
-    const info = precos.get(itemId);
-    if (!info) {
-      itensResultado.push({ itemId, ok: false, erro: "Anúncio não encontrado." });
-      continue;
-    }
-    // Item fora da faixa aceita pelo ML (10-70%) não trava o lote inteiro —
-    // fica de fora só ele, com o motivo explicado.
-    if (percentual < PERCENTUAL_MINIMO || percentual > PERCENTUAL_MAXIMO) {
-      itensResultado.push({
-        itemId,
-        ok: false,
-        erro: `Percentual (${percentual.toFixed(1)}%) fora da faixa aceita pelo ML (${PERCENTUAL_MINIMO}-${PERCENTUAL_MAXIMO}%).`,
-      });
-      continue;
-    }
-    const dealPrice = arredondarCentavos(info.price * (1 - percentual / 100));
-    try {
-      await adicionarItemCampanha(lojaId, itemId, campanhaMl.id, "SELLER_CAMPAIGN", dealPrice);
-      itensResultado.push({ itemId, ok: true, precoOriginal: info.price, dealPrice });
-    } catch (err) {
-      const mensagem =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Falha ao adicionar item — provavelmente não elegível (reputação, condição ou exposição do anúncio).";
-      itensResultado.push({ itemId, ok: false, erro: mensagem });
-    }
-  }
-
   // percentual_desconto da campanha é só um valor representativo pra
   // exibição na lista (média do que foi aplicado de fato) — o preço real de
   // cada item usa o percentual individual dele, guardado em promocoes_itens.
@@ -166,24 +140,97 @@ export async function criarCampanha(
 
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO promocoes_campanhas
-       (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status, campanha_anterior_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status, campanha_anterior_id,
+        processamento, itens_total)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'em_andamento', $9)
      RETURNING id`,
-    [lojaId, campanhaMl.id, nome, percentualMedio, dataInicio, dataFim, campanhaMl.status, campanhaAnteriorId]
+    [lojaId, campanhaMl.id, nome, percentualMedio, dataInicio, dataFim, campanhaMl.status, campanhaAnteriorId, itens.length]
   );
   const campanhaId = rows[0].id;
 
-  for (const item of itensResultado) {
-    if (!item.ok || item.precoOriginal === undefined || item.dealPrice === undefined) continue;
-    const info = precos.get(item.itemId);
+  // Adicionar item a item leva minutos numa campanha grande — passa de longe
+  // do limite de espera do proxy, então roda em segundo plano e a tela acompanha
+  // pelo progresso gravado na própria linha da campanha.
+  processarItensCampanha(campanhaId, lojaId, campanhaMl.id, itens).catch((err) => {
+    console.error(`Falha no processamento da campanha ${campanhaId}:`, err);
+  });
+
+  return { campanhaId, promotionId: campanhaMl.id, nome, itens: [], emAndamento: true, itensTotal: itens.length };
+}
+
+const ITENS_EM_PARALELO = 4;
+
+async function processarItensCampanha(
+  campanhaId: number,
+  lojaId: number,
+  promotionId: string,
+  itens: ItemComPercentual[]
+): Promise<void> {
+  try {
+    const precos = await getItemsBasicInfo(
+      lojaId,
+      itens.map((i) => i.itemId)
+    );
+    for (let i = 0; i < itens.length; i += ITENS_EM_PARALELO) {
+      const lote = itens.slice(i, i + ITENS_EM_PARALELO);
+      await Promise.all(lote.map((item) => processarUmItemCampanha(campanhaId, lojaId, promotionId, item, precos)));
+    }
+    await pool.query("UPDATE promocoes_campanhas SET processamento = 'concluido' WHERE id = $1", [campanhaId]);
+  } catch (err) {
+    const mensagem = err instanceof Error ? err.message : "Erro desconhecido.";
+    await pool.query(
+      "UPDATE promocoes_campanhas SET processamento = 'erro', erro_processamento = $2 WHERE id = $1",
+      [campanhaId, mensagem]
+    );
+  }
+}
+
+async function processarUmItemCampanha(
+  campanhaId: number,
+  lojaId: number,
+  promotionId: string,
+  { itemId, percentual }: ItemComPercentual,
+  precos: Map<string, { price: number; title?: string }>
+): Promise<void> {
+  const info = precos.get(itemId);
+  let falha: string | null = null;
+  let dealPrice = 0;
+  if (!info) {
+    falha = "Anúncio não encontrado.";
+  } else if (percentual < PERCENTUAL_MINIMO || percentual > PERCENTUAL_MAXIMO) {
+    // Item fora da faixa aceita pelo ML (10-70%) não trava o lote inteiro —
+    // fica de fora só ele, com o motivo explicado.
+    falha = `Percentual (${percentual.toFixed(1)}%) fora da faixa aceita pelo ML (${PERCENTUAL_MINIMO}-${PERCENTUAL_MAXIMO}%).`;
+  } else {
+    dealPrice = arredondarCentavos(info.price * (1 - percentual / 100));
+    try {
+      await adicionarItemCampanha(lojaId, itemId, promotionId, "SELLER_CAMPAIGN", dealPrice);
+    } catch (err) {
+      falha =
+        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+        "Falha ao adicionar item — provavelmente não elegível (reputação, condição ou exposição do anúncio).";
+    }
+  }
+
+  if (falha === null && info) {
     await pool.query(
       `INSERT INTO promocoes_itens (campanha_id, item_id, titulo, preco_original, deal_price)
        VALUES ($1, $2, $3, $4, $5)`,
-      [campanhaId, item.itemId, info?.title ?? null, item.precoOriginal, item.dealPrice]
+      [campanhaId, itemId, info.title ?? null, info.price, dealPrice]
+    );
+    await pool.query(
+      "UPDATE promocoes_campanhas SET itens_processados = itens_processados + 1, itens_ok = itens_ok + 1 WHERE id = $1",
+      [campanhaId]
+    );
+  } else {
+    await pool.query(
+      `UPDATE promocoes_campanhas
+       SET itens_processados = itens_processados + 1,
+           falhas_itens = falhas_itens || $2::jsonb
+       WHERE id = $1`,
+      [campanhaId, JSON.stringify([{ itemId, erro: falha }])]
     );
   }
-
-  return { campanhaId, promotionId: campanhaMl.id, nome, itens: itensResultado };
 }
 
 export interface RegistroExistente {
@@ -313,9 +360,16 @@ export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
     data_fim: string;
     status: string;
     campanha_anterior_id: number | null;
+    processamento: string;
+    itens_total: number;
+    itens_processados: number;
+    itens_ok: number;
+    falhas_itens: { itemId: string; erro: string }[];
+    erro_processamento: string | null;
   }>(
     `SELECT c.id, c.loja_id, l.nome AS loja_nome, c.promotion_id, c.nome, c.percentual_desconto,
-            c.data_inicio::text AS data_inicio, c.data_fim::text AS data_fim, c.status, c.campanha_anterior_id
+            c.data_inicio::text AS data_inicio, c.data_fim::text AS data_fim, c.status, c.campanha_anterior_id,
+            c.processamento, c.itens_total, c.itens_processados, c.itens_ok, c.falhas_itens, c.erro_processamento
      FROM promocoes_campanhas c
      JOIN lojas l ON l.id = c.loja_id
      WHERE c.loja_id = ANY($1)
@@ -357,6 +411,12 @@ export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
     dataFim: r.data_fim,
     status: r.status,
     campanhaAnteriorId: r.campanha_anterior_id,
+    processamento: r.processamento,
+    itensTotal: r.itens_total,
+    itensProcessados: r.itens_processados,
+    itensOk: r.itens_ok,
+    falhasItens: r.falhas_itens,
+    erroProcessamento: r.erro_processamento,
     itens: itensPorCampanha.get(r.id) ?? [],
   }));
 }
@@ -677,6 +737,14 @@ export async function iniciarDescobertaCampanhas(lojaIdFiltro?: number, lojasPer
       progressoDescoberta.lojaAtual = null;
     }
   })();
+}
+
+// Criação em segundo plano não sobrevive a um reinício do servidor (deploy).
+// Sem isso, a campanha ficaria "em andamento" pra sempre.
+export async function marcarProcessamentosInterrompidos(): Promise<void> {
+  await pool.query(
+    "UPDATE promocoes_campanhas SET processamento = 'erro', erro_processamento = 'Interrompida por reinício do servidor. Itens já adicionados continuam na campanha.' WHERE processamento = 'em_andamento'"
+  );
 }
 
 export function iniciarSincronizacaoPromocoes(): void {

@@ -2092,3 +2092,12 @@ CREATE TABLE IF NOT EXISTS agenda_quadro_anexos (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_quadro_anexos_card ON agenda_quadro_anexos (card_id);
+
+-- Criação de campanha roda em segundo plano: a linha nasce com o progresso
+-- zerado e vai sendo atualizada item a item (ver processarItensCampanha).
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS processamento TEXT NOT NULL DEFAULT 'concluido';
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_total INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_processados INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_ok INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS falhas_itens JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS erro_processamento TEXT;

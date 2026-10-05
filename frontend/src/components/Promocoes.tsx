@@ -50,7 +50,91 @@ function statusInfo(c: Campanha): { texto: string; classe: string } {
   return { texto: `Ativa — vence em ${dias} dias`, classe: "financeiro-margem-positiva" };
 }
 
+// A criação roda em segundo plano no servidor (adicionar centenas de itens
+// leva minutos). Esta tela consulta a campanha até o processamento terminar e
+// mostra o progresso e, no fim, quais itens não entraram e por quê.
+function AcompanhamentoCampanha({ campanhaId }: { campanhaId: number }) {
+  const [campanha, setCampanha] = useState<Campanha | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    const timer = setInterval(async () => {
+      try {
+        const lista = await fetchCampanhas("todas");
+        const achada = lista.find((c) => c.id === campanhaId) ?? null;
+        if (!ativo || !achada) return;
+        setCampanha(achada);
+        if (achada.processamento !== "em_andamento") clearInterval(timer);
+      } catch (err) {
+        if (ativo) setErro(err instanceof Error ? err.message : "Falha ao acompanhar a campanha.");
+      }
+    }, 3000);
+    fetchCampanhas("todas")
+      .then((lista) => {
+        if (ativo) setCampanha(lista.find((c) => c.id === campanhaId) ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      ativo = false;
+      clearInterval(timer);
+    };
+  }, [campanhaId]);
+
+  if (erro) return <div className="state-message state-error">{erro}</div>;
+  if (!campanha) return <div className="state-message">Iniciando criação da campanha...</div>;
+
+  const emAndamento = campanha.processamento === "em_andamento";
+  const porcentagem = campanha.itensTotal > 0 ? Math.round((campanha.itensProcessados / campanha.itensTotal) * 100) : 0;
+
+  if (emAndamento) {
+    return (
+      <div className="promocoes-resultado">
+        <div className="financeiro-td-mudo">
+          Criando campanha "{campanha.nome}": {campanha.itensProcessados} de {campanha.itensTotal} itens processados
+          ({campanha.itensOk} entraram). Pode fechar esta tela, o processo continua no servidor.
+        </div>
+        <div className="financeiro-equilibrio-barra">
+          <div className="financeiro-equilibrio-barra-preenchida" style={{ width: `${porcentagem}%` }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (campanha.processamento === "erro") {
+    return (
+      <div className="promocoes-resultado">
+        <div className="financeiro-margem-negativa">
+          A criação da campanha "{campanha.nome}" parou: {campanha.erroProcessamento ?? "erro desconhecido"}
+        </div>
+        <div className="financeiro-td-mudo">{campanha.itensOk} itens tinham entrado antes da falha.</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="promocoes-resultado">
+      <div className="financeiro-margem-positiva">
+        {campanha.itensOk} de {campanha.itensTotal} itens entraram na campanha "{campanha.nome}".
+      </div>
+      {campanha.falhasItens.length > 0 && (
+        <div className="promocoes-resultado-falhas">
+          <span className="financeiro-margem-negativa">Não entraram:</span>
+          {campanha.falhasItens.map((f) => (
+            <div key={f.itemId} className="financeiro-td-mudo">
+              {f.itemId}: {f.erro}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultadoCriacao({ resultado }: { resultado: ResultadoCriarCampanha }) {
+  if (resultado.emAndamento) {
+    return <AcompanhamentoCampanha campanhaId={resultado.campanhaId} />;
+  }
   const sucesso = resultado.itens.filter((i) => i.ok);
   const falha = resultado.itens.filter((i) => !i.ok);
   return (

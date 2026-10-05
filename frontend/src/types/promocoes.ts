@@ -16,6 +16,12 @@ export interface Campanha {
   dataFim: string;
   status: string;
   campanhaAnteriorId: number | null;
+  processamento: string;
+  itensTotal: number;
+  itensProcessados: number;
+  itensOk: number;
+  falhasItens: { itemId: string; erro: string }[];
+  erroProcessamento: string | null;
   itens: CampanhaItem[];
 }
 
@@ -32,6 +38,8 @@ export interface ResultadoCriarCampanha {
   promotionId: string;
   nome: string;
   itens: ResultadoItemCampanha[];
+  emAndamento?: boolean;
+  itensTotal?: number;
 }
 
 export interface RegistroExistenteEntrada {
