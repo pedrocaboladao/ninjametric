@@ -2054,6 +2054,63 @@ ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS bling_id BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_contas_bling_id
   ON fabrica_contas (bling_id) WHERE bling_id IS NOT NULL;
 
+-- Quadro de tarefas compartilhado da Agenda (um só, pra dono e funcionário).
+-- Colunas são personalizáveis; sem dono por card (qualquer usuário com acesso
+-- ao módulo move, edita e exclui qualquer card).
+CREATE TABLE IF NOT EXISTS agenda_quadro_colunas (
+  id SERIAL PRIMARY KEY,
+  nome TEXT NOT NULL,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS agenda_quadro_cards (
+  id SERIAL PRIMARY KEY,
+  coluna_id INTEGER NOT NULL REFERENCES agenda_quadro_colunas(id) ON DELETE CASCADE,
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  atribuido_a_usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL,
+  ordem INTEGER NOT NULL DEFAULT 0,
+  criado_por_usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_quadro_cards_coluna ON agenda_quadro_cards (coluna_id, ordem);
+
+-- Anexos dos cards do quadro. O arquivo mora no banco (mesma convenção de
+-- fabrica_conta_anexos: o deploy reconstrói o container, disco sumiria).
+-- `capa` marca a imagem usada como foto de capa do card (no máximo uma).
+CREATE TABLE IF NOT EXISTS agenda_quadro_anexos (
+  id SERIAL PRIMARY KEY,
+  card_id INTEGER NOT NULL REFERENCES agenda_quadro_cards(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  tamanho INTEGER NOT NULL,
+  conteudo BYTEA NOT NULL,
+  capa BOOLEAN NOT NULL DEFAULT false,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_quadro_anexos_card ON agenda_quadro_anexos (card_id);
+
+-- Criação de campanha roda em segundo plano: a linha nasce com o progresso
+-- zerado e vai sendo atualizada item a item (ver processarItensCampanha).
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS processamento TEXT NOT NULL DEFAULT 'concluido';
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_total INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_processados INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_ok INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS falhas_itens JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS erro_processamento TEXT;
+
+-- Mural de avisos da Agenda: recados curtos entre os usuários com acesso.
+CREATE TABLE IF NOT EXISTS agenda_avisos (
+  id SERIAL PRIMARY KEY,
+  texto TEXT NOT NULL,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_avisos_criado_em ON agenda_avisos (criado_em DESC);
+
 -- Histórico da sincronização automática de vendas (6h de Maringá).
 --
 -- Antes o resultado vivia só em memória: todo deploy zerava, e a tela voltava a

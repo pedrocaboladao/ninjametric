@@ -6974,34 +6974,43 @@ button.contas-cartao:hover {
   font-weight: 600;
 }
 
-/* Aviso de expiração de promoção — cor por urgência real (dias até vencer a
-   campanha própria da loja), independe do feita/atrasada normal do card. */
-.agenda-ocorrencia-urgencia-verde {
-  border-left-color: var(--good-text);
+.agenda-topo-direita {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.agenda-ocorrencia-urgencia-laranja {
-  border-left-color: #fbbf24;
+/* Resumo fixo da expiração de campanha própria por loja — sempre visível no
+   topo, cor por urgência real (dias até vencer), igual ao raciocínio do
+   termômetro de progresso. */
+.agenda-resumo-promocoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.agenda-ocorrencia-urgencia-vermelho {
-  border-left-color: var(--critical-text);
-}
-
-.agenda-promocao-aviso {
-  font-size: 11.5px;
+.agenda-resumo-promocao {
+  font-size: 0.75rem;
   font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
-.agenda-promocao-aviso-verde {
+.agenda-resumo-promocao-verde {
+  background: var(--good-bg);
   color: var(--good-text);
 }
 
-.agenda-promocao-aviso-laranja {
+.agenda-resumo-promocao-laranja {
+  background: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
 
-.agenda-promocao-aviso-vermelho {
+.agenda-resumo-promocao-vermelho {
+  background: var(--critical-bg);
   color: var(--critical-text);
 }
 
@@ -7103,4 +7112,193 @@ button.contas-cartao:hover {
   font-size: 12.5px;
   word-break: break-all;
   display: inline-block;
+}
+
+.agenda-quadro {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 8px;
+}
+
+.agenda-quadro-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.agenda-quadro-colunas {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(240px, 1fr);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+
+.agenda-quadro-coluna {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  min-height: 200px;
+}
+
+.agenda-quadro-coluna-sobre {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.agenda-quadro-coluna-topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agenda-quadro-coluna-topo .financeiro-td-mudo {
+  margin-left: auto;
+}
+
+.agenda-quadro-coluna-acoes {
+  display: flex;
+  gap: 2px;
+}
+
+.agenda-quadro-coluna-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-height: 80px;
+}
+
+.agenda-quadro-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-app);
+  cursor: grab;
+  touch-action: none;
+}
+
+.agenda-quadro-card:hover {
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.1);
+}
+
+.agenda-quadro-card-arrastando {
+  opacity: 0.6;
+}
+
+.agenda-quadro-novo-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 10px;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.agenda-quadro-novo-card:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.agenda-quadro-capa {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg-panel-alt);
+}
+
+.agenda-card-anexos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.agenda-card-anexos-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agenda-card-anexos-botao {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.agenda-card-anexo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agenda-card-anexo-acoes {
+  display: flex;
+  gap: 6px;
+}
+
+.agenda-quadro-coluna {
+  border-top: 3px solid var(--accent);
+}
+
+.agenda-quadro-coluna-nome {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.agenda-mural {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agenda-mural-novo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.agenda-mural-novo .btn-responder {
+  align-self: flex-end;
+}
+
+.agenda-mural-aviso {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.agenda-mural-aviso-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.agenda-mural-aviso-texto {
+  white-space: pre-wrap;
+  line-height: 1.45;
 }

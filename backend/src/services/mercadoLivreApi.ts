@@ -441,10 +441,6 @@ export interface MlPromocaoDoItem {
   // mandando só promotion_id devolveu 400 "Offer id is required" — é esse
   // campo que a API quer no join (ver adicionarItemCampanha).
   refId: string | null;
-  // Data de término — confirmada ao vivo em SELLER_CAMPAIGN e DEAL (não
-  // documentada explicitamente, mas presente na resposta real). Usada pelo
-  // aviso de expiração de promoção da Agenda (ver obterCampanhaAtivaDaLoja).
-  finishDate: string | null;
 }
 
 // Versão mais rica de getPromocaoStatus (que só devolve um enum
@@ -501,32 +497,22 @@ export interface CampanhaExpirandoDaLoja {
   finishDate: string;
 }
 
-// Amostra alguns itens ativos da loja (sem paginação completa — só o
-// suficiente pra achar uma campanha própria em vigor) e devolve a que vence
-// mais cedo. Não é garantia de achar: se a campanha não cobrir nenhum dos
-// itens amostrados, devolve null (achado real: numa família de 13 cores, 4
-// não tinham a campanha geral — ver histórico da Hangar). Pro aviso de
-// expiração da Agenda, uma amostra de 10 itens já cobre a maioria dos casos
-// reais, já que campanha geral costuma abranger a maior parte do catálogo.
+// Lista todas as promoções da conta direto (sem amostrar anúncios) e devolve a
+// campanha própria (SELLER_CAMPAIGN) em andamento que vence mais cedo.
 export async function obterCampanhaAtivaDaLoja(lojaId: number, mlUserId: number): Promise<CampanhaExpirandoDaLoja | null> {
   const accessToken = await getValidAccessToken(lojaId);
-  const { data } = await axios.get<{ results: string[] }>(`${ML_API_BASE}/users/${mlUserId}/items/search`, {
+  const { data } = await axios.get<{
+    results: Array<{ type: string; status: string; name?: string; finish_date?: string }>;
+  }>(`${ML_API_BASE}/seller-promotions/users/${mlUserId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
-    params: { status: "active", limit: 10 },
+    params: { app_version: "v2" },
   });
 
   let maisProxima: CampanhaExpirandoDaLoja | null = null;
-  for (const itemId of data.results) {
-    try {
-      const promocoes = await consultarPromocoesDoItem(lojaId, itemId);
-      for (const p of promocoes) {
-        if (p.type !== "SELLER_CAMPAIGN" || p.status !== "started" || !p.finishDate) continue;
-        if (!maisProxima || p.finishDate < maisProxima.finishDate) {
-          maisProxima = { nome: p.name ?? "Campanha própria", finishDate: p.finishDate };
-        }
-      }
-    } catch {
-      // item pontual falhou, tenta o próximo da amostra
+  for (const p of data.results) {
+    if (p.type !== "SELLER_CAMPAIGN" || p.status !== "started" || !p.finish_date) continue;
+    if (!maisProxima || p.finish_date < maisProxima.finishDate) {
+      maisProxima = { nome: p.name ?? "Campanha própria", finishDate: p.finish_date };
     }
   }
   return maisProxima;

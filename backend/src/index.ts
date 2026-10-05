@@ -48,7 +48,7 @@ import { internalRouter } from "./routes/internal";
 import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requireAuth";
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
-import { iniciarSincronizacaoPromocoes } from "./services/promocoesService";
+import { iniciarSincronizacaoPromocoes, marcarProcessamentosInterrompidos } from "./services/promocoesService";
 import { iniciarBuscaOportunidades } from "./services/promocoesOportunidadesService";
 import { agendarPorHorario } from "./services/dateUtils";
 import { iniciarSincronizacaoVendas } from "./services/fabricaSincAutomaticaService";
@@ -171,6 +171,7 @@ server.requestTimeout = 360_000;
 
 iniciarPrewarmPromocoes();
 iniciarSnapshotAds();
+marcarProcessamentosInterrompidos().catch((err) => console.error("Falha ao marcar criações interrompidas:", err));
 iniciarSincronizacaoPromocoes();
 iniciarSincronizacaoVendas();
 // Varredura diária de "Promoções da Conta" às 3h (horário de menor uso do

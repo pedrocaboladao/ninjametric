@@ -8,7 +8,6 @@ export interface TarefaAgenda {
   atribuidoANome: string | null;
   lojaId: number | null;
   lojaNome: string | null;
-  expiraComPromocao: boolean;
   criadoPorUsuarioId: number;
   criadoPorNome: string;
   ativo: boolean;
@@ -24,9 +23,6 @@ export interface OcorrenciaDia {
   lojaNome: string | null;
   concluido: boolean;
   atrasado: boolean;
-  expiraComPromocao: boolean;
-  promocaoNome: string | null;
-  promocaoDiasRestantes: number | null;
 }
 
 export interface DiaSemanaAgenda {
@@ -58,7 +54,13 @@ export interface NovaTarefaAgenda {
   dataInicio: string;
   atribuidoAUsuarioId?: number | null;
   lojaId?: number | null;
-  expiraComPromocao?: boolean;
+}
+
+export interface PromocaoDaLoja {
+  lojaId: number;
+  lojaNome: string;
+  promocaoNome: string | null;
+  diasRestantes: number | null;
 }
 
 export interface RelatorioAgenda {
@@ -78,4 +80,46 @@ export interface NovoRelatorioAgenda {
   link: string;
   texto?: string | null;
   lojaId?: number | null;
+}
+
+export interface CardQuadroAgenda {
+  id: number;
+  titulo: string;
+  descricao: string | null;
+  atribuidoAUsuarioId: number | null;
+  atribuidoANome: string | null;
+  lojaId: number | null;
+  lojaNome: string | null;
+  capaAnexoId: number | null;
+  totalAnexos: number;
+}
+
+export interface AnexoCardAgenda {
+  id: number;
+  nome: string;
+  tipo: string;
+  tamanho: number;
+  capa: boolean;
+  criadoEm: string;
+}
+
+export interface ColunaQuadroAgenda {
+  id: number;
+  nome: string;
+  cards: CardQuadroAgenda[];
+}
+
+export interface DadosCardQuadroAgenda {
+  titulo: string;
+  descricao?: string | null;
+  atribuidoAUsuarioId?: number | null;
+  lojaId?: number | null;
+}
+
+export interface AvisoAgenda {
+  id: number;
+  texto: string;
+  usuarioNome: string;
+  criadoEm: string;
+  podeExcluir: boolean;
 }
