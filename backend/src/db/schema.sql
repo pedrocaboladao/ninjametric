@@ -2077,3 +2077,18 @@ CREATE TABLE IF NOT EXISTS agenda_quadro_cards (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_quadro_cards_coluna ON agenda_quadro_cards (coluna_id, ordem);
+
+-- Anexos dos cards do quadro. O arquivo mora no banco (mesma convenção de
+-- fabrica_conta_anexos: o deploy reconstrói o container, disco sumiria).
+-- `capa` marca a imagem usada como foto de capa do card (no máximo uma).
+CREATE TABLE IF NOT EXISTS agenda_quadro_anexos (
+  id SERIAL PRIMARY KEY,
+  card_id INTEGER NOT NULL REFERENCES agenda_quadro_cards(id) ON DELETE CASCADE,
+  nome TEXT NOT NULL,
+  tipo TEXT NOT NULL,
+  tamanho INTEGER NOT NULL,
+  conteudo BYTEA NOT NULL,
+  capa BOOLEAN NOT NULL DEFAULT false,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_quadro_anexos_card ON agenda_quadro_anexos (card_id);

@@ -1,5 +1,14 @@
 import { pool } from "../db/pool";
 
+export interface AnexoCard {
+  id: number;
+  nome: string;
+  tipo: string;
+  tamanho: number;
+  capa: boolean;
+  criadoEm: string;
+}
+
 export interface CardQuadro {
   id: number;
   titulo: string;
@@ -8,6 +17,8 @@ export interface CardQuadro {
   atribuidoANome: string | null;
   lojaId: number | null;
   lojaNome: string | null;
+  capaAnexoId: number | null;
+  totalAnexos: number;
 }
 
 export interface ColunaQuadro {
@@ -40,9 +51,13 @@ export async function listarQuadro(): Promise<ColunaQuadro[]> {
     atribuido_a_nome: string | null;
     loja_id: number | null;
     loja_nome: string | null;
+    capa_anexo_id: number | null;
+    total_anexos: number;
   }>(
     `SELECT c.id, c.coluna_id, c.titulo, c.descricao, c.atribuido_a_usuario_id, u.nome AS atribuido_a_nome,
-            c.loja_id, loja.nome AS loja_nome
+            c.loja_id, loja.nome AS loja_nome,
+            (SELECT a.id FROM agenda_quadro_anexos a WHERE a.card_id = c.id AND a.capa LIMIT 1) AS capa_anexo_id,
+            (SELECT COUNT(*)::int FROM agenda_quadro_anexos a WHERE a.card_id = c.id) AS total_anexos
      FROM agenda_quadro_cards c
      LEFT JOIN usuarios u ON u.id = c.atribuido_a_usuario_id
      LEFT JOIN lojas loja ON loja.id = c.loja_id
@@ -61,6 +76,8 @@ export async function listarQuadro(): Promise<ColunaQuadro[]> {
         atribuidoANome: c.atribuido_a_nome,
         lojaId: c.loja_id,
         lojaNome: c.loja_nome,
+        capaAnexoId: c.capa_anexo_id,
+        totalAnexos: c.total_anexos,
       })),
   }));
 }
@@ -140,4 +157,47 @@ export async function moverCard(id: number, colunaId: number): Promise<void> {
 
 export async function excluirCard(id: number): Promise<void> {
   await pool.query("DELETE FROM agenda_quadro_cards WHERE id = $1", [id]);
+}
+
+export async function listarAnexosDoCard(cardId: number): Promise<AnexoCard[]> {
+  const { rows } = await pool.query<{ id: number; nome: string; tipo: string; tamanho: number; capa: boolean; criado_em: string }>(
+    "SELECT id, nome, tipo, tamanho, capa, criado_em FROM agenda_quadro_anexos WHERE card_id = $1 ORDER BY criado_em",
+    [cardId]
+  );
+  return rows.map((r) => ({ id: r.id, nome: r.nome, tipo: r.tipo, tamanho: r.tamanho, capa: r.capa, criadoEm: r.criado_em }));
+}
+
+export async function salvarAnexoDoCard(cardId: number, nome: string, tipo: string, conteudo: Buffer): Promise<void> {
+  await pool.query(
+    "INSERT INTO agenda_quadro_anexos (card_id, nome, tipo, tamanho, conteudo) VALUES ($1, $2, $3, $4, $5)",
+    [cardId, nome, tipo, conteudo.length, conteudo]
+  );
+}
+
+export async function lerAnexoDoCard(anexoId: number): Promise<{ nome: string; tipo: string; conteudo: Buffer } | null> {
+  const { rows } = await pool.query<{ nome: string; tipo: string; conteudo: Buffer }>(
+    "SELECT nome, tipo, conteudo FROM agenda_quadro_anexos WHERE id = $1",
+    [anexoId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function apagarAnexoDoCard(anexoId: number): Promise<void> {
+  await pool.query("DELETE FROM agenda_quadro_anexos WHERE id = $1", [anexoId]);
+}
+
+// Capa é sempre uma imagem e só uma por card: ao marcar uma, desmarca as outras.
+export async function definirCapaDoCard(anexoId: number, marcar: boolean): Promise<void> {
+  if (!marcar) {
+    await pool.query("UPDATE agenda_quadro_anexos SET capa = false WHERE id = $1", [anexoId]);
+    return;
+  }
+  const { rows } = await pool.query<{ card_id: number; tipo: string }>(
+    "SELECT card_id, tipo FROM agenda_quadro_anexos WHERE id = $1",
+    [anexoId]
+  );
+  if (!rows[0]) throw new Error("Anexo não encontrado.");
+  if (!rows[0].tipo.startsWith("image/")) throw new Error("A capa precisa ser uma imagem.");
+  await pool.query("UPDATE agenda_quadro_anexos SET capa = false WHERE card_id = $1", [rows[0].card_id]);
+  await pool.query("UPDATE agenda_quadro_anexos SET capa = true WHERE id = $1", [anexoId]);
 }

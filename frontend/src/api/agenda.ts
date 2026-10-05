@@ -9,6 +9,7 @@ import type {
   PromocaoDaLoja,
   ColunaQuadroAgenda,
   DadosCardQuadroAgenda,
+  AnexoCardAgenda,
 } from "../types/agenda";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -182,4 +183,38 @@ export async function moverCardQuadroAgenda(id: number, colunaId: number): Promi
 export async function excluirCardQuadroAgenda(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta<{ ok: true }>(res);
+}
+
+export async function fetchAnexosCardAgenda(cardId: number): Promise<AnexoCardAgenda[]> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${cardId}/anexos`, { credentials: "include" });
+  const data = await tratarResposta<{ anexos: AnexoCardAgenda[] }>(res);
+  return data.anexos;
+}
+
+export async function enviarAnexoCardAgenda(cardId: number, arquivo: File): Promise<void> {
+  const corpo = new FormData();
+  corpo.append("arquivo", arquivo);
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${cardId}/anexos`, {
+    method: "POST",
+    credentials: "include",
+    body: corpo,
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function excluirAnexoCardAgenda(anexoId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/anexos/${anexoId}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function definirCapaAnexoAgenda(anexoId: number, marcar: boolean): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/anexos/${anexoId}/capa`, {
+    method: marcar ? "POST" : "DELETE",
+    credentials: "include",
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export function urlAnexoCardAgenda(anexoId: number): string {
+  return `${API_BASE}/api/agenda/quadro/anexos/${anexoId}`;
 }

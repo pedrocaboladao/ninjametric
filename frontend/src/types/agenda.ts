@@ -90,6 +90,17 @@ export interface CardQuadroAgenda {
   atribuidoANome: string | null;
   lojaId: number | null;
   lojaNome: string | null;
+  capaAnexoId: number | null;
+  totalAnexos: number;
+}
+
+export interface AnexoCardAgenda {
+  id: number;
+  nome: string;
+  tipo: string;
+  tamanho: number;
+  capa: boolean;
+  criadoEm: string;
 }
 
 export interface ColunaQuadroAgenda {

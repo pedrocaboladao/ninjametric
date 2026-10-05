@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import type {
+  AnexoCardAgenda,
   CardQuadroAgenda,
   ColunaQuadroAgenda,
   DadosCardQuadroAgenda,
@@ -8,6 +9,11 @@ import type {
   UsuarioParaAtribuir,
 } from "../types/agenda";
 import {
+  urlAnexoCardAgenda,
+  fetchAnexosCardAgenda,
+  enviarAnexoCardAgenda,
+  excluirAnexoCardAgenda,
+  definirCapaAnexoAgenda,
   fetchQuadroAgenda,
   criarColunaQuadroAgenda,
   renomearColunaQuadroAgenda,
@@ -41,10 +47,12 @@ function CardItem({ card, onAbrir }: CardProps) {
       className={`agenda-quadro-card ${isDragging ? "agenda-quadro-card-arrastando" : ""}`}
       onClick={() => onAbrir(card)}
     >
+      {card.capaAnexoId && <img className="agenda-quadro-capa" src={urlAnexoCardAgenda(card.capaAnexoId)} alt="" />}
       <span className="agenda-ocorrencia-titulo">{card.titulo}</span>
       <div className="agenda-ocorrencia-meta">
         <span>{card.atribuidoANome ?? "Sem responsável"}</span>
         {card.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(card.lojaNome)}</span>}
+        {card.totalAnexos > 0 && <span className="financeiro-td-mudo">📎 {card.totalAnexos}</span>}
       </div>
     </div>
   );
@@ -86,6 +94,106 @@ function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard }: 
   );
 }
 
+interface AnexosCardProps {
+  cardId: number;
+  onMudou: () => void;
+}
+
+function AnexosCard({ cardId, onMudou }: AnexosCardProps) {
+  const [anexos, setAnexos] = useState<AnexoCardAgenda[] | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
+
+  const carregar = useCallback(async () => {
+    try {
+      setAnexos(await fetchAnexosCardAgenda(cardId));
+      setErro(null);
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao carregar anexos.");
+    }
+  }, [cardId]);
+
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function enviar(arquivo: File) {
+    setEnviando(true);
+    setErro(null);
+    try {
+      await enviarAnexoCardAgenda(cardId, arquivo);
+      await carregar();
+      onMudou();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao anexar o arquivo.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function excluir(anexo: AnexoCardAgenda) {
+    if (!window.confirm(`Excluir o arquivo "${anexo.nome}"?`)) return;
+    try {
+      await excluirAnexoCardAgenda(anexo.id);
+      await carregar();
+      onMudou();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao excluir o arquivo.");
+    }
+  }
+
+  async function alternarCapa(anexo: AnexoCardAgenda) {
+    try {
+      await definirCapaAnexoAgenda(anexo.id, !anexo.capa);
+      await carregar();
+      onMudou();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao definir a capa.");
+    }
+  }
+
+  return (
+    <div className="agenda-card-anexos">
+      <div className="agenda-card-anexos-topo">
+        <span className="agenda-dia-nome">Arquivos</span>
+        <label className="btn-responder agenda-card-anexos-botao">
+          {enviando ? "Enviando..." : "Adicionar arquivo"}
+          <input
+            type="file"
+            hidden
+            disabled={enviando}
+            onChange={(e) => {
+              const arquivo = e.target.files?.[0];
+              if (arquivo) enviar(arquivo);
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      {erro && <div className="clonar-erro">{erro}</div>}
+      {anexos === null && !erro && <div className="state-message">Carregando...</div>}
+      {anexos?.length === 0 && <div className="financeiro-td-mudo">Nenhum arquivo ainda.</div>}
+      {anexos?.map((anexo) => (
+        <div key={anexo.id} className="agenda-card-anexo">
+          <a href={urlAnexoCardAgenda(anexo.id)} target="_blank" rel="noopener noreferrer" className="agenda-relatorio-link">
+            {anexo.nome}
+          </a>
+          <div className="agenda-card-anexo-acoes">
+            {anexo.tipo.startsWith("image/") && (
+              <button type="button" className="btn-responder" onClick={() => alternarCapa(anexo)}>
+                {anexo.capa ? "Tirar da capa" : "Usar como capa"}
+              </button>
+            )}
+            <button type="button" className="btn-excluir" onClick={() => excluir(anexo)}>
+              Excluir
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 interface CardModalProps {
   card: CardQuadroAgenda | null;
   usuarios: UsuarioParaAtribuir[];
@@ -93,9 +201,10 @@ interface CardModalProps {
   onSalvar: (dados: DadosCardQuadroAgenda) => void;
   onExcluir: () => void;
   onFechar: () => void;
+  onAnexosMudaram: () => void;
 }
 
-function CardModal({ card, usuarios, lojas, onSalvar, onExcluir, onFechar }: CardModalProps) {
+function CardModal({ card, usuarios, lojas, onSalvar, onExcluir, onFechar, onAnexosMudaram }: CardModalProps) {
   const [titulo, setTitulo] = useState(card?.titulo ?? "");
   const [descricao, setDescricao] = useState(card?.descricao ?? "");
   const [atribuidoAUsuarioId, setAtribuidoAUsuarioId] = useState(
@@ -166,6 +275,7 @@ function CardModal({ card, usuarios, lojas, onSalvar, onExcluir, onFechar }: Car
           </select>
         </label>
       </form>
+      {card && <AnexosCard cardId={card.id} onMudou={onAnexosMudaram} />}
     </Modal>
   );
 }
@@ -300,6 +410,7 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
           lojas={lojas}
           onSalvar={salvarCard}
           onExcluir={excluirCardAtual}
+          onAnexosMudaram={carregar}
           onFechar={() => {
             setCardModal(null);
             setErroModal(null);

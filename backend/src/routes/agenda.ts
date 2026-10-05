@@ -1,6 +1,5 @@
-import { Router, Response } from "express";
-import axios from "axios";
-import { listLojas, getValidAccessToken } from "../services/tokenStore";
+import { Router, Response, Request } from "express";
+import multer from "multer";
 import {
   listarQuadro,
   criarColuna,
@@ -10,7 +9,14 @@ import {
   atualizarCard,
   moverCard,
   excluirCard,
+  listarAnexosDoCard,
+  salvarAnexoDoCard,
+  lerAnexoDoCard,
+  apagarAnexoDoCard,
+  definirCapaDoCard,
 } from "../services/agendaQuadroService";
+
+const uploadAnexo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 import {
   listarTarefas,
   criarTarefa,
@@ -378,3 +384,96 @@ agendaRouter.delete("/quadro/cards/:id", async (req, res) => {
   }
 });
 
+
+agendaRouter.get("/quadro/cards/:id/anexos", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    res.json({ anexos: await listarAnexosDoCard(id) });
+  } catch (err) {
+    erro(res, err, "Falha ao listar anexos do card.");
+  }
+});
+
+agendaRouter.post("/quadro/cards/:id/anexos", uploadAnexo.single("arquivo"), async (req: Request, res: Response) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  if (!req.file) {
+    res.status(400).json({ error: "Envie o arquivo." });
+    return;
+  }
+  try {
+    await salvarAnexoDoCard(id, req.file.originalname || "anexo", req.file.mimetype || "application/octet-stream", req.file.buffer);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao anexar o arquivo.");
+  }
+});
+
+agendaRouter.get("/quadro/anexos/:anexoId", async (req, res) => {
+  const id = Number(req.params.anexoId);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    const anexo = await lerAnexoDoCard(id);
+    if (!anexo) {
+      res.status(404).json({ error: "Anexo não encontrado." });
+      return;
+    }
+    res.setHeader("Content-Type", anexo.tipo || "application/octet-stream");
+    res.setHeader("Content-Disposition", `inline; filename="${anexo.nome.replace(/[^w.-]/g, "_")}"`);
+    res.send(anexo.conteudo);
+  } catch (err) {
+    erro(res, err, "Falha ao abrir o anexo.");
+  }
+});
+
+agendaRouter.delete("/quadro/anexos/:anexoId", async (req, res) => {
+  const id = Number(req.params.anexoId);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await apagarAnexoDoCard(id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao apagar o anexo.");
+  }
+});
+
+agendaRouter.post("/quadro/anexos/:anexoId/capa", async (req, res) => {
+  const id = Number(req.params.anexoId);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await definirCapaDoCard(id, true);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao definir a capa.");
+  }
+});
+
+agendaRouter.delete("/quadro/anexos/:anexoId/capa", async (req, res) => {
+  const id = Number(req.params.anexoId);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await definirCapaDoCard(id, false);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao remover a capa.");
+  }
+});

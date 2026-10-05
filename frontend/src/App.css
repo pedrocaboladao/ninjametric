@@ -7214,3 +7214,45 @@ button.contas-cartao:hover {
   color: var(--accent);
   border-color: var(--accent);
 }
+
+.agenda-quadro-capa {
+  width: 100%;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: var(--bg-panel-alt);
+}
+
+.agenda-card-anexos {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.agenda-card-anexos-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.agenda-card-anexos-botao {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.agenda-card-anexo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.agenda-card-anexo-acoes {
+  display: flex;
+  gap: 6px;
+}
