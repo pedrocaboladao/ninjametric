@@ -72,7 +72,7 @@ function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard }: 
   return (
     <div className={`agenda-quadro-coluna ${isOver ? "agenda-quadro-coluna-sobre" : ""}`}>
       <div className="agenda-quadro-coluna-topo">
-        <span className="agenda-dia-nome">{coluna.nome}</span>
+        <span className="agenda-quadro-coluna-nome">{coluna.nome}</span>
         <span className="financeiro-td-mudo">{coluna.cards.length}</span>
         <div className="agenda-quadro-coluna-acoes">
           <button type="button" className="agenda-relatorio-excluir" onClick={() => onRenomear(coluna)} title="Renomear">

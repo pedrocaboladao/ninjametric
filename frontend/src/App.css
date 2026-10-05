@@ -7256,3 +7256,13 @@ button.contas-cartao:hover {
   display: flex;
   gap: 6px;
 }
+
+.agenda-quadro-coluna {
+  border-top: 3px solid var(--accent);
+}
+
+.agenda-quadro-coluna-nome {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--accent);
+}
