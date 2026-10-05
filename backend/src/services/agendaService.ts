@@ -161,7 +161,7 @@ async function obterCampanhaComCache(lojaId: number): Promise<{ nome: string; fi
   const loja = (await listLojas()).find((l) => l.id === lojaId);
   let data: { nome: string; finishDate: string } | null = null;
   if (loja?.ml_user_id) {
-    data = await obterCampanhaAtivaDaLoja(lojaId, loja.ml_user_id).catch(() => null);
+    data = await obterCampanhaAtivaDaLoja(lojaId, loja.ml_user_id);
   }
   cacheCampanhaPorLoja.set(lojaId, { data, expiraEm: Date.now() + CACHE_CAMPANHA_TTL_MS });
   return data;
@@ -183,7 +183,10 @@ export async function listarPromocoesDasLojas(): Promise<PromocaoDaLoja[]> {
   const lojas = await listarLojasParaAgenda();
   return Promise.all(
     lojas.map(async (loja) => {
-      const campanha = await obterCampanhaComCache(loja.id);
+      const campanha = await obterCampanhaComCache(loja.id).catch((err) => {
+        console.error(`Falha ao buscar campanha da loja ${loja.nome}:`, err);
+        return null;
+      });
       return {
         lojaId: loja.id,
         lojaNome: loja.nome,

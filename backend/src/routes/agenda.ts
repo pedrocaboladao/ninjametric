@@ -477,26 +477,3 @@ agendaRouter.delete("/quadro/anexos/:anexoId/capa", async (req, res) => {
     erro(res, err, "Falha ao remover a capa.");
   }
 });
-
-// Diagnóstico temporário — resposta crua das promoções da conta da loja.
-agendaRouter.get("/diag-promocoes", async (req, res) => {
-  const lojaId = Number(req.query.lojaId);
-  const loja = (await listarLojasParaAgenda()).find((l) => l.id === lojaId);
-  if (!Number.isInteger(lojaId) || !loja) {
-    res.status(400).json({ error: "Informe ?lojaId= de uma das 4 lojas." });
-    return;
-  }
-  try {
-    const { listLojas, getValidAccessToken } = await import("../services/tokenStore");
-    const axiosMod = (await import("axios")).default;
-    const mlUserId = (await listLojas()).find((l) => l.id === lojaId)?.ml_user_id;
-    const token = await getValidAccessToken(lojaId);
-    const { data } = await axiosMod.get(`https://api.mercadolibre.com/seller-promotions/users/${mlUserId}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      params: { app_version: "v2" },
-    });
-    res.json({ lojaId, mlUserId, data });
-  } catch (err: any) {
-    res.status(400).json({ error: err?.response?.data ?? err?.message });
-  }
-});
