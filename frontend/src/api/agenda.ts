@@ -6,6 +6,7 @@ import type {
   NovaTarefaAgenda,
   RelatorioAgenda,
   NovoRelatorioAgenda,
+  PromocaoDaLoja,
 } from "../types/agenda";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -39,6 +40,12 @@ export async function fetchLojasParaAgenda(): Promise<LojaParaAgenda[]> {
   const res = await fetch(`${API_BASE}/api/agenda/lojas`, { credentials: "include" });
   const data = await tratarResposta<{ lojas: LojaParaAgenda[] }>(res);
   return data.lojas;
+}
+
+export async function fetchPromocoesDasLojas(): Promise<PromocaoDaLoja[]> {
+  const res = await fetch(`${API_BASE}/api/agenda/promocoes`, { credentials: "include" });
+  const data = await tratarResposta<{ promocoes: PromocaoDaLoja[] }>(res);
+  return data.promocoes;
 }
 
 export async function fetchAgendaPendentes(): Promise<number> {

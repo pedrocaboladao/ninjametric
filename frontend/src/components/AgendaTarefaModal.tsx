@@ -30,13 +30,11 @@ export function AgendaTarefaModal({ tarefa, usuarios, lojas, salvando, erro, onS
     return usuarios.length === 1 ? String(usuarios[0].id) : "";
   });
   const [lojaId, setLojaId] = useState(tarefa?.lojaId != null ? String(tarefa.lojaId) : "");
-  const [expiraComPromocao, setExpiraComPromocao] = useState(tarefa?.expiraComPromocao ?? false);
 
   function submeter(e: React.FormEvent) {
     e.preventDefault();
-    const intervalo = expiraComPromocao ? 1 : Number(intervaloDias);
+    const intervalo = Number(intervaloDias);
     if (!titulo.trim() || !Number.isInteger(intervalo) || intervalo <= 0 || !dataInicio) return;
-    if (expiraComPromocao && !lojaId) return;
     onSalvar({
       titulo: titulo.trim(),
       descricao: descricao.trim() || null,
@@ -44,7 +42,6 @@ export function AgendaTarefaModal({ tarefa, usuarios, lojas, salvando, erro, onS
       dataInicio,
       atribuidoAUsuarioId: atribuidoAUsuarioId ? Number(atribuidoAUsuarioId) : null,
       lojaId: lojaId ? Number(lojaId) : null,
-      expiraComPromocao,
     });
   }
 
@@ -80,19 +77,17 @@ export function AgendaTarefaModal({ tarefa, usuarios, lojas, salvando, erro, onS
           Descrição (opcional)
           <textarea className="clonar-input" value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} />
         </label>
-        {!expiraComPromocao && (
-          <label>
-            Repetir a cada quantos dias
-            <input
-              type="number"
-              min={1}
-              className="clonar-input"
-              value={intervaloDias}
-              onChange={(e) => setIntervaloDias(e.target.value)}
-              required
-            />
-          </label>
-        )}
+        <label>
+          Repetir a cada quantos dias
+          <input
+            type="number"
+            min={1}
+            className="clonar-input"
+            value={intervaloDias}
+            onChange={(e) => setIntervaloDias(e.target.value)}
+            required
+          />
+        </label>
         <label>
           Data de início
           <input
@@ -114,29 +109,15 @@ export function AgendaTarefaModal({ tarefa, usuarios, lojas, salvando, erro, onS
           </select>
         </label>
         <label>
-          Loja {expiraComPromocao ? "" : "(opcional)"}
-          <select
-            className="clonar-input"
-            value={lojaId}
-            onChange={(e) => setLojaId(e.target.value)}
-            required={expiraComPromocao}
-          >
-            {!expiraComPromocao && <option value="">Sem loja específica</option>}
-            {expiraComPromocao && <option value="">Selecione a loja</option>}
+          Loja (opcional)
+          <select className="clonar-input" value={lojaId} onChange={(e) => setLojaId(e.target.value)}>
+            <option value="">Sem loja específica</option>
             {lojas.map((l) => (
               <option key={l.id} value={l.id}>
                 {l.nome}
               </option>
             ))}
           </select>
-        </label>
-        <label className="tarefas-toggle">
-          <input
-            type="checkbox"
-            checked={expiraComPromocao}
-            onChange={(e) => setExpiraComPromocao(e.target.checked)}
-          />
-          Ligar ao vencimento da promoção própria da loja (repete todo dia, cor muda por urgência)
         </label>
       </form>
     </Modal>

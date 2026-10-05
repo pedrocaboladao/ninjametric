@@ -6974,34 +6974,43 @@ button.contas-cartao:hover {
   font-weight: 600;
 }
 
-/* Aviso de expiração de promoção — cor por urgência real (dias até vencer a
-   campanha própria da loja), independe do feita/atrasada normal do card. */
-.agenda-ocorrencia-urgencia-verde {
-  border-left-color: var(--good-text);
+.agenda-topo-direita {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
-.agenda-ocorrencia-urgencia-laranja {
-  border-left-color: #fbbf24;
+/* Resumo fixo da expiração de campanha própria por loja — sempre visível no
+   topo, cor por urgência real (dias até vencer), igual ao raciocínio do
+   termômetro de progresso. */
+.agenda-resumo-promocoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
-.agenda-ocorrencia-urgencia-vermelho {
-  border-left-color: var(--critical-text);
-}
-
-.agenda-promocao-aviso {
-  font-size: 11.5px;
+.agenda-resumo-promocao {
+  font-size: 0.75rem;
   font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
-.agenda-promocao-aviso-verde {
+.agenda-resumo-promocao-verde {
+  background: var(--good-bg);
   color: var(--good-text);
 }
 
-.agenda-promocao-aviso-laranja {
+.agenda-resumo-promocao-laranja {
+  background: rgba(251, 191, 36, 0.15);
   color: #fbbf24;
 }
 
-.agenda-promocao-aviso-vermelho {
+.agenda-resumo-promocao-vermelho {
+  background: var(--critical-bg);
   color: var(--critical-text);
 }
 

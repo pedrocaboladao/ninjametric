@@ -14,7 +14,6 @@ export interface TarefaAgenda {
   atribuidoANome: string | null;
   lojaId: number | null;
   lojaNome: string | null;
-  expiraComPromocao: boolean;
   criadoPorUsuarioId: number;
   criadoPorNome: string;
   ativo: boolean;
@@ -30,7 +29,6 @@ interface LinhaTarefa {
   atribuido_a_nome: string | null;
   loja_id: number | null;
   loja_nome: string | null;
-  expira_com_promocao: boolean;
   criado_por_usuario_id: number;
   criado_por_nome: string;
   ativo: boolean;
@@ -47,7 +45,6 @@ function mapearTarefa(l: LinhaTarefa): TarefaAgenda {
     atribuidoANome: l.atribuido_a_nome,
     lojaId: l.loja_id,
     lojaNome: l.loja_nome,
-    expiraComPromocao: l.expira_com_promocao,
     criadoPorUsuarioId: l.criado_por_usuario_id,
     criadoPorNome: l.criado_por_nome,
     ativo: l.ativo,
@@ -60,7 +57,6 @@ const SELECT_TAREFA = `
     to_char(t.data_inicio, 'YYYY-MM-DD') AS data_inicio,
     t.atribuido_a_usuario_id, atribuido.nome AS atribuido_a_nome,
     t.loja_id, loja.nome AS loja_nome,
-    t.expira_com_promocao,
     t.criado_por_usuario_id, criador.nome AS criado_por_nome,
     t.ativo
   FROM agenda_tarefas t
@@ -83,24 +79,19 @@ export async function criarTarefa(
     dataInicio: string;
     atribuidoAUsuarioId?: number | null;
     lojaId?: number | null;
-    expiraComPromocao?: boolean;
   }
 ): Promise<TarefaAgenda> {
-  // Aviso de expiração é sempre diário — a urgência (cor) já muda sozinha
-  // conforme o prazo real encolhe, não faz sentido "pular dias" nesse tipo.
-  const intervaloDias = dados.expiraComPromocao ? 1 : dados.intervaloDias;
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO agenda_tarefas (titulo, descricao, intervalo_dias, data_inicio, atribuido_a_usuario_id, loja_id, expira_com_promocao, criado_por_usuario_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO agenda_tarefas (titulo, descricao, intervalo_dias, data_inicio, atribuido_a_usuario_id, loja_id, criado_por_usuario_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING id`,
     [
       dados.titulo,
       dados.descricao ?? null,
-      intervaloDias,
+      dados.intervaloDias,
       dados.dataInicio,
       dados.atribuidoAUsuarioId ?? null,
       dados.lojaId ?? null,
-      dados.expiraComPromocao ?? false,
       criadoPorUsuarioId,
     ]
   );
@@ -117,7 +108,6 @@ export async function atualizarTarefa(
     dataInicio: string;
     atribuidoAUsuarioId: number | null;
     lojaId: number | null;
-    expiraComPromocao: boolean;
     ativo: boolean;
   }>
 ): Promise<void> {
@@ -131,15 +121,10 @@ export async function atualizarTarefa(
   }
   if (dados.titulo !== undefined) set("titulo", dados.titulo);
   if (dados.descricao !== undefined) set("descricao", dados.descricao);
-  // Igual em criarTarefa: aviso de expiração é sempre diário.
-  if (dados.intervaloDias !== undefined) set("intervalo_dias", dados.expiraComPromocao ? 1 : dados.intervaloDias);
+  if (dados.intervaloDias !== undefined) set("intervalo_dias", dados.intervaloDias);
   if (dados.dataInicio !== undefined) set("data_inicio", dados.dataInicio);
   if (dados.atribuidoAUsuarioId !== undefined) set("atribuido_a_usuario_id", dados.atribuidoAUsuarioId);
   if (dados.lojaId !== undefined) set("loja_id", dados.lojaId);
-  if (dados.expiraComPromocao !== undefined) {
-    set("expira_com_promocao", dados.expiraComPromocao);
-    if (dados.expiraComPromocao && dados.intervaloDias === undefined) set("intervalo_dias", 1);
-  }
   if (dados.ativo !== undefined) set("ativo", dados.ativo);
   if (campos.length === 0) return;
   campos.push("atualizado_em = now()");
@@ -161,14 +146,6 @@ export interface OcorrenciaDia {
   lojaNome: string | null;
   concluido: boolean;
   atrasado: boolean;
-  expiraComPromocao: boolean;
-  // Só fazem sentido quando expiraComPromocao é true — nome da campanha
-  // própria em vigor na loja e quantos dias faltam pra vencer.
-  // promocaoDiasRestantes null (com expiraComPromocao true) = não achou
-  // nenhuma campanha própria ativa — o front trata isso como o caso MAIS
-  // urgente, não como "sem info".
-  promocaoNome: string | null;
-  promocaoDiasRestantes: number | null;
 }
 
 // Cache do lookup "qual campanha própria está valendo nessa loja" — bate na
@@ -188,6 +165,33 @@ async function obterCampanhaComCache(lojaId: number): Promise<{ nome: string; fi
   }
   cacheCampanhaPorLoja.set(lojaId, { data, expiraEm: Date.now() + CACHE_CAMPANHA_TTL_MS });
   return data;
+}
+
+export interface PromocaoDaLoja {
+  lojaId: number;
+  lojaNome: string;
+  promocaoNome: string | null;
+  diasRestantes: number | null;
+}
+
+// Resumo fixo pro topo da tela: pras 4 lojas do dono, qual campanha própria
+// está valendo e quantos dias reais faltam pra vencer — sem precisar
+// cadastrar nenhuma tarefa pra isso, calculado ao vivo (com cache) direto do
+// Mercado Livre, igual ao antigo aviso por tarefa (ver histórico do módulo).
+export async function listarPromocoesDasLojas(): Promise<PromocaoDaLoja[]> {
+  const hoje = dataISOBR(new Date());
+  const lojas = await listarLojasParaAgenda();
+  return Promise.all(
+    lojas.map(async (loja) => {
+      const campanha = await obterCampanhaComCache(loja.id);
+      return {
+        lojaId: loja.id,
+        lojaNome: loja.nome,
+        promocaoNome: campanha?.nome ?? null,
+        diasRestantes: campanha ? diasEntre(hoje, campanha.finishDate.slice(0, 10)) : null,
+      };
+    })
+  );
 }
 
 export interface DiaSemanaAgenda {
@@ -216,11 +220,10 @@ export async function obterSemanaAtual(): Promise<SemanaAgenda> {
     atribuido_a_nome: string | null;
     loja_id: number | null;
     loja_nome: string | null;
-    expira_com_promocao: boolean;
   }>(
     `SELECT t.id, t.titulo, t.descricao, t.intervalo_dias, to_char(t.data_inicio, 'YYYY-MM-DD') AS data_inicio,
             t.atribuido_a_usuario_id, u.nome AS atribuido_a_nome,
-            t.loja_id, loja.nome AS loja_nome, t.expira_com_promocao
+            t.loja_id, loja.nome AS loja_nome
      FROM agenda_tarefas t
      LEFT JOIN usuarios u ON u.id = t.atribuido_a_usuario_id
      LEFT JOIN lojas loja ON loja.id = t.loja_id
@@ -235,25 +238,12 @@ export async function obterSemanaAtual(): Promise<SemanaAgenda> {
   );
   const feitasSet = new Set(feitas.map((f) => `${f.tarefa_id}|${f.data_ocorrencia}`));
 
-  // Uma consulta de campanha por LOJA (não por tarefa) — o cache já garante
-  // isso, mas resolver aqui antes do map evita await dentro de callback.
-  const infoPromocaoPorTarefa = new Map<number, { promocaoNome: string | null; promocaoDiasRestantes: number | null }>();
-  for (const t of tarefas) {
-    if (!t.expira_com_promocao || t.loja_id === null) continue;
-    const campanha = await obterCampanhaComCache(t.loja_id);
-    infoPromocaoPorTarefa.set(t.id, {
-      promocaoNome: campanha?.nome ?? null,
-      promocaoDiasRestantes: campanha ? diasEntre(hoje, campanha.finishDate.slice(0, 10)) : null,
-    });
-  }
-
   const diasResp: DiaSemanaAgenda[] = dias.map((data) => ({
     data,
     ocorrencias: tarefas
       .filter((t) => ehOcorrencia(t.data_inicio, t.intervalo_dias, data))
       .map((t) => {
         const concluido = feitasSet.has(`${t.id}|${data}`);
-        const infoPromocao = infoPromocaoPorTarefa.get(t.id);
         return {
           tarefaId: t.id,
           titulo: t.titulo,
@@ -264,9 +254,6 @@ export async function obterSemanaAtual(): Promise<SemanaAgenda> {
           lojaNome: t.loja_nome,
           concluido,
           atrasado: !concluido && data < hoje,
-          expiraComPromocao: t.expira_com_promocao,
-          promocaoNome: infoPromocao?.promocaoNome ?? null,
-          promocaoDiasRestantes: infoPromocao?.promocaoDiasRestantes ?? null,
         };
       }),
   }));

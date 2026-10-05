@@ -7,6 +7,7 @@ import type {
   LojaParaAgenda,
   NovaTarefaAgenda,
   RelatorioAgenda,
+  PromocaoDaLoja,
 } from "../types/agenda";
 import {
   fetchSemanaAtual,
@@ -21,6 +22,7 @@ import {
   fetchRelatoriosAgenda,
   criarRelatorioAgenda,
   excluirRelatorioAgenda,
+  fetchPromocoesDasLojas,
 } from "../api/agenda";
 import { AgendaTarefaModal } from "./AgendaTarefaModal";
 import { IconPlus, IconCheck, IconCalendar } from "./icons";
@@ -67,21 +69,42 @@ function nomeCurtoDaLoja(nome: string): string {
   return nome === "Catedral Impermeabilizantes" ? "Catedral" : nome;
 }
 
-// Cor de urgência do aviso de expiração de promoção — sem campanha achada
-// ou bem perto de vencer é o caso mais grave (vermelho), tempo confortável
-// é verde, o meio-termo é laranja. Independe de feita/atrasada normal: o
-// ponto desse tipo de tarefa é mostrar o prazo real, não só "fiz hoje?".
+// Cor de urgência do resumo de promoções — sem campanha achada ou bem perto
+// de vencer é o caso mais grave (vermelho), tempo confortável é verde, o
+// meio-termo é laranja.
 function corUrgenciaPromocao(diasRestantes: number | null): "verde" | "laranja" | "vermelho" {
   if (diasRestantes === null || diasRestantes < 3) return "vermelho";
   if (diasRestantes <= 7) return "laranja";
   return "verde";
 }
 
-function textoPromocao(nome: string | null, diasRestantes: number | null): string {
-  if (diasRestantes === null) return "Nenhuma campanha própria ativa encontrada";
-  if (diasRestantes < 0) return `${nome ?? "Campanha"} venceu há ${Math.abs(diasRestantes)} dia(s)`;
-  if (diasRestantes === 0) return `${nome ?? "Campanha"} vence hoje`;
-  return `${nome ?? "Campanha"} — faltam ${diasRestantes} dia(s)`;
+// Resumo fixo no topo da tela: pras 4 lojas, qual campanha própria está
+// valendo e quantos dias reais faltam — sempre visível, sem precisar
+// cadastrar tarefa nenhuma (ver obterCampanhaAtivaDaLoja no backend).
+function ResumoPromocoes({ promocoes }: { promocoes: PromocaoDaLoja[] | null }) {
+  if (!promocoes || promocoes.length === 0) return null;
+  return (
+    <div className="agenda-resumo-promocoes">
+      {promocoes.map((p) => {
+        const cor = corUrgenciaPromocao(p.diasRestantes);
+        let texto: string;
+        if (p.diasRestantes === null) {
+          texto = `${nomeCurtoDaLoja(p.lojaNome)}: sem campanha própria ativa`;
+        } else if (p.diasRestantes < 0) {
+          texto = `${p.promocaoNome ?? "Campanha"}: venceu há ${Math.abs(p.diasRestantes)} dia(s)`;
+        } else if (p.diasRestantes === 0) {
+          texto = `${p.promocaoNome ?? "Campanha"}: vence hoje`;
+        } else {
+          texto = `${p.promocaoNome ?? "Campanha"}: faltam ${p.diasRestantes} dia(s)`;
+        }
+        return (
+          <span key={p.lojaId} className={`agenda-resumo-promocao agenda-resumo-promocao-${cor}`} title={p.lojaNome}>
+            {texto}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 // % de tarefas de HOJE já marcadas como feitas — reseta sozinho todo dia,
@@ -130,6 +153,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   const [novoTexto, setNovoTexto] = useState("");
   const [novaLojaId, setNovaLojaId] = useState<number | "">("");
   const [enviandoRelatorio, setEnviandoRelatorio] = useState(false);
+  const [promocoes, setPromocoes] = useState<PromocaoDaLoja[] | null>(null);
 
   const carregarSemana = useCallback(async () => {
     try {
@@ -162,6 +186,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
       .catch(() => {});
     fetchLojasParaAgenda()
       .then(setLojas)
+      .catch(() => {});
+    fetchPromocoesDasLojas()
+      .then(setPromocoes)
       .catch(() => {});
   }, [carregarSemana]);
 
@@ -283,7 +310,6 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
         dataInicio: tarefa.dataInicio,
         atribuidoAUsuarioId: tarefa.atribuidoAUsuarioId,
         lojaId,
-        expiraComPromocao: tarefa.expiraComPromocao,
       });
       await Promise.all([carregarSemana(), carregarTarefas()]);
       onOcorrenciaAlterada();
@@ -317,11 +343,14 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
             Relatório
           </button>
         </div>
-        {aba === "gerenciar" && (
-          <button type="button" className="btn-responder" onClick={abrirNova}>
-            <IconPlus size={14} /> Nova tarefa
-          </button>
-        )}
+        <div className="agenda-topo-direita">
+          <ResumoPromocoes promocoes={promocoes} />
+          {aba === "gerenciar" && (
+            <button type="button" className="btn-responder" onClick={abrirNova}>
+              <IconPlus size={14} /> Nova tarefa
+            </button>
+          )}
+        </div>
       </div>
 
       {erro && <div className="clonar-erro">{erro}</div>}
@@ -347,36 +376,28 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                     </div>
                     <div className="agenda-dia-corpo">
                       {dia.ocorrencias.length === 0 && <p className="agenda-dia-vazio">Sem tarefas</p>}
-                      {dia.ocorrencias.map((oc) => {
-                        const urgencia = oc.expiraComPromocao ? corUrgenciaPromocao(oc.promocaoDiasRestantes) : null;
-                        return (
-                          <button
-                            key={oc.tarefaId}
-                            type="button"
-                            className={`agenda-ocorrencia ${oc.concluido ? "agenda-ocorrencia-feita" : ""} ${
-                              oc.atrasado ? "agenda-ocorrencia-atrasada" : ""
-                            } ${urgencia ? `agenda-ocorrencia-urgencia-${urgencia}` : ""}`}
-                            onClick={() => alternarOcorrencia(oc.tarefaId, dia.data, oc.concluido)}
-                          >
-                            <span className={`agenda-ocorrencia-check ${oc.concluido ? "agenda-ocorrencia-check-feita" : ""}`}>
-                              {oc.concluido && <IconCheck size={11} />}
+                      {dia.ocorrencias.map((oc) => (
+                        <button
+                          key={oc.tarefaId}
+                          type="button"
+                          className={`agenda-ocorrencia ${oc.concluido ? "agenda-ocorrencia-feita" : ""} ${
+                            oc.atrasado ? "agenda-ocorrencia-atrasada" : ""
+                          }`}
+                          onClick={() => alternarOcorrencia(oc.tarefaId, dia.data, oc.concluido)}
+                        >
+                          <span className={`agenda-ocorrencia-check ${oc.concluido ? "agenda-ocorrencia-check-feita" : ""}`}>
+                            {oc.concluido && <IconCheck size={11} />}
+                          </span>
+                          <span className="agenda-ocorrencia-conteudo">
+                            <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
+                            <span className="agenda-ocorrencia-meta">
+                              <span>{oc.atribuidoANome ?? "Qualquer um"}</span>
+                              {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
+                              {oc.atrasado && <span className="agenda-atrasada-tag">Atrasada</span>}
                             </span>
-                            <span className="agenda-ocorrencia-conteudo">
-                              <span className="agenda-ocorrencia-titulo">{oc.titulo}</span>
-                              <span className="agenda-ocorrencia-meta">
-                                <span>{oc.atribuidoANome ?? "Qualquer um"}</span>
-                                {oc.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(oc.lojaNome)}</span>}
-                                {!oc.expiraComPromocao && oc.atrasado && <span className="agenda-atrasada-tag">Atrasada</span>}
-                              </span>
-                              {oc.expiraComPromocao && (
-                                <span className={`agenda-promocao-aviso agenda-promocao-aviso-${urgencia}`}>
-                                  {textoPromocao(oc.promocaoNome, oc.promocaoDiasRestantes)}
-                                </span>
-                              )}
-                            </span>
-                          </button>
-                        );
-                      })}
+                          </span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 );
@@ -419,10 +440,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
                 <tr key={t.id}>
                   <td>
                     <span className="financeiro-td-titulo">{t.titulo}</span>
-                    {t.expiraComPromocao && <span className="agenda-loja-tag">Vinculada à promoção</span>}
                     {t.descricao && <div className="financeiro-td-mudo">{t.descricao}</div>}
                   </td>
-                  <td>{t.expiraComPromocao ? "Diária" : `A cada ${t.intervaloDias} dia${t.intervaloDias > 1 ? "s" : ""}`}</td>
+                  <td>A cada {t.intervaloDias} dia{t.intervaloDias > 1 ? "s" : ""}</td>
                   <td>{formatDataCurta(t.dataInicio)}</td>
                   <td>{t.atribuidoANome ?? "Qualquer um"}</td>
                   <td>{t.lojaNome ?? "—"}</td>

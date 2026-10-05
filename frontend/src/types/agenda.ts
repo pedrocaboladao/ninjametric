@@ -8,7 +8,6 @@ export interface TarefaAgenda {
   atribuidoANome: string | null;
   lojaId: number | null;
   lojaNome: string | null;
-  expiraComPromocao: boolean;
   criadoPorUsuarioId: number;
   criadoPorNome: string;
   ativo: boolean;
@@ -24,9 +23,6 @@ export interface OcorrenciaDia {
   lojaNome: string | null;
   concluido: boolean;
   atrasado: boolean;
-  expiraComPromocao: boolean;
-  promocaoNome: string | null;
-  promocaoDiasRestantes: number | null;
 }
 
 export interface DiaSemanaAgenda {
@@ -58,7 +54,13 @@ export interface NovaTarefaAgenda {
   dataInicio: string;
   atribuidoAUsuarioId?: number | null;
   lojaId?: number | null;
-  expiraComPromocao?: boolean;
+}
+
+export interface PromocaoDaLoja {
+  lojaId: number;
+  lojaNome: string;
+  promocaoNome: string | null;
+  diasRestantes: number | null;
 }
 
 export interface RelatorioAgenda {
