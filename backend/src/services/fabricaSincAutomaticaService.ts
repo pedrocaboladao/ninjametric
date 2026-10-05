@@ -1,3 +1,4 @@
+import { pool } from "../db/pool";
 import { buscarVendas, paraTexto } from "./blingPedidosService";
 import {
   clientesFaltando,
@@ -28,6 +29,9 @@ import { vendaSemCusto, type VendaSemCusto } from "./fabricaPedidosService";
 const DIAS_PRA_TRAS = 7;
 const HORA = 6; // 6h de Maringá
 const FUSO = "America/Sao_Paulo";
+// Espera antes de recuperar um dia perdido: o deploy ainda está assentando, e
+// dez minutos de Bling concorrendo com o start do container não ajuda ninguém.
+const ATRASO_RECUPERACAO_MS = 2 * 60 * 1000;
 
 export interface UltimaRodada {
   iniciadoEm: string;
@@ -59,11 +63,89 @@ export interface UltimaRodada {
   erro: string | null;
 }
 
+export type OrigemRodada = "relogio" | "recuperacao" | "manual";
+
+export interface LinhaHistorico {
+  dia: string;
+  origem: OrigemRodada;
+  iniciadoEm: string;
+  terminadoEm: string | null;
+  pedidosCriados: number;
+  itensLancados: number;
+  valorLancado: number;
+  erro: string | null;
+}
+
 let ultima: UltimaRodada | null = null;
 let rodando = false;
 
 export function ultimaRodadaAutomatica(): UltimaRodada | null {
   return ultima;
+}
+
+// Memória não sobrevive a deploy, e deploy aqui acontece várias vezes por dia.
+// Sem isto a tela dizia "nunca rodou" para quem tinha rodado às 6h — e dizia a
+// mesma coisa para quem não rodou, que é o caso que precisa aparecer.
+async function gravarRodada(u: UltimaRodada, origem: OrigemRodada): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO fabrica_sinc_automatica
+         (dia, origem, iniciado_em, terminado_em, resultado, erro)
+       VALUES ($1::date, $2, $3::timestamptz, $4::timestamptz, $5::jsonb, $6)`,
+      [u.ate, origem, u.iniciadoEm, u.terminadoEm, JSON.stringify(u), u.erro]
+    );
+  } catch (err) {
+    // perder o registro é ruim; perder a importação por causa dele seria pior
+    console.error("[sinc-automatica] gravar", err);
+  }
+}
+
+export async function historicoAutomatico(limite = 14): Promise<LinhaHistorico[]> {
+  const { rows } = await pool.query<{
+    dia: string;
+    origem: OrigemRodada;
+    iniciado_em: Date;
+    terminado_em: Date | null;
+    resultado: UltimaRodada | null;
+    erro: string | null;
+  }>(
+    `SELECT to_char(dia,'YYYY-MM-DD') AS dia, origem, iniciado_em, terminado_em, resultado, erro
+       FROM fabrica_sinc_automatica
+      ORDER BY id DESC
+      LIMIT $1`,
+    [limite]
+  );
+  return rows.map((r) => ({
+    dia: r.dia,
+    origem: r.origem,
+    iniciadoEm: r.iniciado_em.toISOString(),
+    terminadoEm: r.terminado_em ? r.terminado_em.toISOString() : null,
+    pedidosCriados: r.resultado?.pedidosCriados ?? 0,
+    itensLancados: r.resultado?.itensLancados ?? 0,
+    valorLancado: r.resultado?.valorLancado ?? 0,
+    erro: r.erro,
+  }));
+}
+
+/** A última que terminou sem erro. É dela que sai o "está atrasada?". */
+export async function ultimoDiaComSucesso(): Promise<string | null> {
+  const { rows } = await pool.query<{ dia: string }>(
+    `SELECT to_char(dia,'YYYY-MM-DD') AS dia
+       FROM fabrica_sinc_automatica
+      WHERE erro IS NULL
+      ORDER BY id DESC
+      LIMIT 1`
+  );
+  return rows[0]?.dia ?? null;
+}
+
+async function diaJaRodouSemErro(dia: string): Promise<boolean> {
+  const { rows } = await pool.query<{ n: string }>(
+    `SELECT count(*) AS n FROM fabrica_sinc_automatica
+      WHERE dia = $1::date AND erro IS NULL`,
+    [dia]
+  );
+  return Number(rows[0]?.n ?? 0) > 0;
 }
 
 export function rodadaEmAndamento(): boolean {
@@ -144,11 +226,14 @@ export async function rodarSincronizacaoAutomatica(): Promise<UltimaRodada> {
 // devolvia o resultado so na resposta HTTP: quem fechou a aba antes de terminar
 // nao descobria mais como foi, e "ultima rodada" continuava dizendo que nunca
 // rodou. Rodada e rodada, tenha vindo do relogio ou do botao.
-export async function rodarEGuardar(): Promise<UltimaRodada | null> {
+export async function rodarEGuardar(
+  origem: OrigemRodada = "manual"
+): Promise<UltimaRodada | null> {
   if (rodando) return ultima;
   rodando = true;
   try {
     ultima = await rodarSincronizacaoAutomatica();
+    await gravarRodada(ultima, origem);
     if (ultima.erro) console.error("[sinc-automatica]", ultima.erro);
     else
       console.log(
@@ -171,31 +256,55 @@ export async function rodarEGuardar(): Promise<UltimaRodada | null> {
 }
 
 // Quantos milissegundos faltam pra próxima HORA no fuso de Maringá.
-function ateProximaHora(): number {
-  const agora = new Date();
+function segundosNoDiaMaringa(): number {
   const partes = new Intl.DateTimeFormat("en-US", {
     timeZone: FUSO,
     hour: "numeric",
     minute: "numeric",
     second: "numeric",
     hour12: false,
-  }).formatToParts(agora);
+  }).formatToParts(new Date());
   const pega = (t: string) => Number(partes.find((p) => p.type === t)?.value ?? 0);
-  const segundosNoDia = (pega("hour") % 24) * 3600 + pega("minute") * 60 + pega("second");
+  return (pega("hour") % 24) * 3600 + pega("minute") * 60 + pega("second");
+}
+
+function ateProximaHora(): number {
+  const segundosNoDia = segundosNoDiaMaringa();
   const alvo = HORA * 3600;
   const faltam = alvo > segundosNoDia ? alvo - segundosNoDia : 24 * 3600 - segundosNoDia + alvo;
   return faltam * 1000;
 }
 
+// O dia perdido.
+//
+// O agendamento só olha pra frente: subiu às 7h, agenda pras 6h de amanhã e o
+// dia de hoje passa em branco — sem erro, sem aviso, sem ninguém saber. E
+// deploy depois das 6h é o caso comum, não a exceção.
+//
+// Então, ao subir, se a janela de hoje já passou e nenhuma rodada de hoje
+// terminou bem, recupera. Não é "rodar ao subir": é rodar o que ficou faltando.
+// Quem sobe às 5h não dispara nada, e quem já rodou hoje também não.
+async function recuperarDiaPerdido(): Promise<void> {
+  try {
+    if (segundosNoDiaMaringa() < HORA * 3600) return;
+    const hoje = diaIso(new Date());
+    if (await diaJaRodouSemErro(hoje)) return;
+    console.log(`[sinc-automatica] ${hoje} ainda não rodou e a janela já passou; recuperando`);
+    await rodarEGuardar("recuperacao");
+  } catch (err) {
+    console.error("[sinc-automatica] recuperar", err);
+  }
+}
+
 export function iniciarSincronizacaoVendas(): void {
-  // não roda ao subir: deploy no meio da tarde dispararia dez minutos de Bling
-  // sem ninguém pedir, e o horário existe justamente pra isso acontecer quando
-  // ninguém está usando a cota
+  // o relógio continua mandando: a rodada normal é às 6h e não dispara no boot
   const agendar = () => {
     setTimeout(() => {
-      void rodarEGuardar().finally(agendar);
+      void rodarEGuardar("relogio").finally(agendar);
     }, ateProximaHora());
   };
   agendar();
+  // a recuperação espera o deploy assentar antes de pedir 7 dias ao Bling
+  setTimeout(() => void recuperarDiaPerdido(), ATRASO_RECUPERACAO_MS);
   console.log(`[sinc-automatica] agendada para ${HORA}h (${FUSO})`);
 }
