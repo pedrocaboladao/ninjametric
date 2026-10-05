@@ -180,6 +180,16 @@ export async function moverCardQuadroAgenda(id: number, colunaId: number): Promi
   await tratarResposta<{ ok: true }>(res);
 }
 
+export async function clonarCardQuadroAgenda(id: number, colunaId: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${id}/clonar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ colunaId }),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
 export async function excluirCardQuadroAgenda(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agenda/quadro/cards/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta<{ ok: true }>(res);

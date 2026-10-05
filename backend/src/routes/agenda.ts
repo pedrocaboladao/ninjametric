@@ -14,6 +14,7 @@ import {
   lerAnexoDoCard,
   apagarAnexoDoCard,
   definirCapaDoCard,
+  clonarCard,
 } from "../services/agendaQuadroService";
 
 const uploadAnexo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -475,5 +476,20 @@ agendaRouter.delete("/quadro/anexos/:anexoId/capa", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao remover a capa.");
+  }
+});
+
+agendaRouter.post("/quadro/cards/:id/clonar", async (req, res) => {
+  const id = Number(req.params.id);
+  const { colunaId } = req.body ?? {};
+  if (!Number.isInteger(id) || !Number.isInteger(colunaId)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await clonarCard(id, colunaId, req.usuario!.id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao clonar card.");
   }
 });

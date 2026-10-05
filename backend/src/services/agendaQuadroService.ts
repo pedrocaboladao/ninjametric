@@ -201,3 +201,32 @@ export async function definirCapaDoCard(anexoId: number, marcar: boolean): Promi
   await pool.query("UPDATE agenda_quadro_anexos SET capa = false WHERE card_id = $1", [rows[0].card_id]);
   await pool.query("UPDATE agenda_quadro_anexos SET capa = true WHERE id = $1", [anexoId]);
 }
+
+// Cria uma cópia do card na coluna de destino (no fim), com os mesmos dados e
+// arquivos. O card original fica onde está.
+export async function clonarCard(cardId: number, colunaId: number, usuarioId: number): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const { rows } = await client.query<{ id: number }>(
+      `INSERT INTO agenda_quadro_cards (coluna_id, titulo, descricao, atribuido_a_usuario_id, loja_id, criado_por_usuario_id, ordem)
+       SELECT $2, titulo, descricao, atribuido_a_usuario_id, loja_id, $3,
+         (SELECT COALESCE(MAX(ordem), -1) + 1 FROM agenda_quadro_cards WHERE coluna_id = $2)
+       FROM agenda_quadro_cards WHERE id = $1
+       RETURNING id`,
+      [cardId, colunaId, usuarioId]
+    );
+    if (rows.length === 0) throw new Error("Card não encontrado.");
+    await client.query(
+      `INSERT INTO agenda_quadro_anexos (card_id, nome, tipo, tamanho, conteudo, capa)
+       SELECT $2, nome, tipo, tamanho, conteudo, capa FROM agenda_quadro_anexos WHERE card_id = $1`,
+      [cardId, rows[0].id]
+    );
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+}

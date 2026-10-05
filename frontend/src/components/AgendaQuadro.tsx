@@ -22,6 +22,7 @@ import {
   atualizarCardQuadroAgenda,
   moverCardQuadroAgenda,
   excluirCardQuadroAgenda,
+  clonarCardQuadroAgenda,
 } from "../api/agenda";
 import { Modal } from "./Modal";
 import { IconPlus } from "./icons";
@@ -196,6 +197,8 @@ function AnexosCard({ cardId, onMudou }: AnexosCardProps) {
 
 interface CardModalProps {
   card: CardQuadroAgenda | null;
+  colunas: ColunaQuadroAgenda[];
+  colunaAtualId: number | null;
   usuarios: UsuarioParaAtribuir[];
   lojas: LojaParaAgenda[];
   onSalvar: (dados: DadosCardQuadroAgenda) => void;
@@ -204,7 +207,26 @@ interface CardModalProps {
   onAnexosMudaram: () => void;
 }
 
-function CardModal({ card, usuarios, lojas, onSalvar, onExcluir, onFechar, onAnexosMudaram }: CardModalProps) {
+function CardModal({ card, colunas, colunaAtualId, usuarios, lojas, onSalvar, onExcluir, onFechar, onAnexosMudaram }: CardModalProps) {
+  const [colunaDestinoId, setColunaDestinoId] = useState("");
+  const [clonando, setClonando] = useState(false);
+  const [erroClonar, setErroClonar] = useState<string | null>(null);
+  const outrasColunas = colunas.filter((c) => c.id !== colunaAtualId);
+
+  async function clonar() {
+    if (!card || !colunaDestinoId) return;
+    setClonando(true);
+    setErroClonar(null);
+    try {
+      await clonarCardQuadroAgenda(card.id, Number(colunaDestinoId));
+      onAnexosMudaram();
+      onFechar();
+    } catch (err) {
+      setErroClonar(err instanceof Error ? err.message : "Falha ao clonar card.");
+    } finally {
+      setClonando(false);
+    }
+  }
   const [titulo, setTitulo] = useState(card?.titulo ?? "");
   const [descricao, setDescricao] = useState(card?.descricao ?? "");
   const [atribuidoAUsuarioId, setAtribuidoAUsuarioId] = useState(
@@ -276,6 +298,25 @@ function CardModal({ card, usuarios, lojas, onSalvar, onExcluir, onFechar, onAne
         </label>
       </form>
       {card && <AnexosCard cardId={card.id} onMudou={onAnexosMudaram} />}
+      {card && outrasColunas.length > 0 && (
+        <div className="agenda-card-anexos">
+          <span className="agenda-dia-nome">Clonar para outra coluna</span>
+          {erroClonar && <div className="clonar-erro">{erroClonar}</div>}
+          <div className="agenda-card-anexo">
+            <select className="clonar-input" value={colunaDestinoId} onChange={(e) => setColunaDestinoId(e.target.value)}>
+              <option value="">Escolha a coluna</option>
+              {outrasColunas.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn-responder" onClick={clonar} disabled={!colunaDestinoId || clonando}>
+              {clonando ? "Clonando..." : "Clonar"}
+            </button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
@@ -411,6 +452,8 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
           onSalvar={salvarCard}
           onExcluir={excluirCardAtual}
           onAnexosMudaram={carregar}
+          colunas={colunas ?? []}
+          colunaAtualId={cardModal.card ? (colunas?.find((c) => c.cards.some((x) => x.id === cardModal.card!.id))?.id ?? null) : null}
           onFechar={() => {
             setCardModal(null);
             setErroModal(null);
