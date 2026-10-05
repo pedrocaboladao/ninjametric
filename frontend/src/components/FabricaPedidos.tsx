@@ -38,6 +38,8 @@ import {
   fetchFechamentos,
   previaFechamento,
   sincronizarAgora,
+  ultimaRodada,
+  type EstadoSincAutomatica,
   type Fechamento,
   sincronizarBling,
   type RodadaSincronia,
@@ -157,6 +159,9 @@ export function FabricaPedidos() {
   // Clicar duas vezes nao duplica — a mesma venda volta e e reconhecida.
   const [sincronizando, setSincronizando] = useState(false);
   const [rodada, setRodada] = useState<RodadaSincronia | null>(null);
+  // Estado da sincronização automática das 6h. Serve pro aviso de dia em branco:
+  // antes, um dia sem rodar era indistinguível de um dia que rodou bem.
+  const [sincAuto, setSincAuto] = useState<EstadoSincAutomatica | null>(null);
 
   // importacao de planilha: cola o relatorio, confere, depois lanca
   const [impTexto, setImpTexto] = useState("");
@@ -1252,6 +1257,13 @@ export function FabricaPedidos() {
       .catch(() => undefined);
   }, [aba, blingProgresso, acolherBling]);
 
+  useEffect(() => {
+    if (aba !== "pedidos") return;
+    void ultimaRodada()
+      .then(setSincAuto)
+      .catch(() => undefined);
+  }, [aba, rodada]);
+
   async function sincronizarDoBling() {
     setSincronizando(true);
     setErro(null);
@@ -1659,6 +1671,20 @@ export function FabricaPedidos() {
               </button>
             )}
           </div>
+
+          {sincAuto?.atrasada && (
+            <p className="pedidos-alerta-custo">
+              <strong>A sincronização automática não rodou hoje.</strong>{" "}
+              {sincAuto.ultimoSucesso
+                ? `O último dia que entrou sozinho foi ${sincAuto.ultimoSucesso.split("-").reverse().join("/")}` +
+                  (sincAuto.diasSemRodar && sincAuto.diasSemRodar > 1
+                    ? ` — ${sincAuto.diasSemRodar} dias atrás.`
+                    : ".")
+                : "Nunca houve uma rodada bem-sucedida registrada."}{" "}
+              Clique em <strong>Sincronizar agora</strong> — ele lê os últimos 7 dias e não
+              duplica o que já entrou.
+            </p>
+          )}
 
           {buscaPedido.trim() && (
             <p className="financeiro-td-mudo">

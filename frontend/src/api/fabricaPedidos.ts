@@ -629,14 +629,32 @@ export async function sincronizarAgora(): Promise<RodadaSincronia> {
   return tratarResposta<RodadaSincronia>(res);
 }
 
-export async function ultimaRodada(): Promise<{
+export interface LinhaHistoricoSinc {
+  dia: string;
+  origem: "relogio" | "recuperacao" | "manual";
+  iniciadoEm: string;
+  terminadoEm: string | null;
+  pedidosCriados: number;
+  itensLancados: number;
+  valorLancado: number;
+  erro: string | null;
+}
+
+export interface EstadoSincAutomatica {
   rodando: boolean;
   ultima: RodadaSincronia | null;
-}> {
+  historico: LinhaHistoricoSinc[];
+  ultimoSucesso: string | null;
+  diasSemRodar: number | null;
+  /** `true` quando o último sucesso não é de hoje — inclusive quando nunca houve. */
+  atrasada: boolean;
+}
+
+export async function ultimaRodada(): Promise<EstadoSincAutomatica> {
   const res = await fetch(`${API_BASE}/api/fabrica-bling/automatica`, {
     credentials: "include",
   });
-  return tratarResposta<{ rodando: boolean; ultima: RodadaSincronia | null }>(res);
+  return tratarResposta<EstadoSincAutomatica>(res);
 }
 
 export async function progressoBling(): Promise<ProgressoBling> {

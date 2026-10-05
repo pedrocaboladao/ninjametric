@@ -2053,3 +2053,25 @@ ALTER TABLE agenda_relatorios ADD COLUMN IF NOT EXISTS loja_id INTEGER REFERENCE
 ALTER TABLE fabrica_contas ADD COLUMN IF NOT EXISTS bling_id BIGINT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_fabrica_contas_bling_id
   ON fabrica_contas (bling_id) WHERE bling_id IS NOT NULL;
+
+-- Histórico da sincronização automática de vendas (6h de Maringá).
+--
+-- Antes o resultado vivia só em memória: todo deploy zerava, e a tela voltava a
+-- dizer "nunca rodou" mesmo tendo rodado. Pior, não dava pra saber que um dia
+-- tinha passado em branco — e o dia passa em branco sempre que o backend
+-- reinicia depois das 6h, porque o agendamento pula pra manhã seguinte.
+--
+-- `dia` é o dia de Maringá que a rodada cobriu (o `ate` da janela), não o
+-- relógio do servidor: às 6h de Brasília um servidor em UTC já virou o dia.
+CREATE TABLE IF NOT EXISTS fabrica_sinc_automatica (
+  id BIGSERIAL PRIMARY KEY,
+  dia DATE NOT NULL,
+  origem TEXT NOT NULL DEFAULT 'relogio',
+  iniciado_em TIMESTAMPTZ NOT NULL,
+  terminado_em TIMESTAMPTZ,
+  resultado JSONB,
+  erro TEXT
+);
+
+CREATE INDEX IF NOT EXISTS fabrica_sinc_automatica_dia
+  ON fabrica_sinc_automatica (dia DESC, id DESC);

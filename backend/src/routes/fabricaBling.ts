@@ -33,6 +33,8 @@ import {
   rodadaEmAndamento,
   rodarEGuardar,
   ultimaRodadaAutomatica,
+  historicoAutomatico,
+  ultimoDiaComSucesso,
 } from "../services/fabricaSincAutomaticaService";
 import { espelharContasDoBling } from "../services/fabricaEspelhoService";
 import {
@@ -748,8 +750,39 @@ fabricaBlingRouter.get("/pedido-cru/:id", async (req, res) => {
   }
 });
 
-fabricaBlingRouter.get("/automatica", (_req, res) => {
-  res.json({ rodando: rodadaEmAndamento(), ultima: ultimaRodadaAutomatica() });
+// Como anda a sincronização automática.
+//
+// `ultima` vive em memória e some a cada deploy, então sozinha ela nunca
+// provou nada: dizia "nunca rodou" tanto pra quem rodou às 6h quanto pra quem
+// passou o dia em branco. O histórico vem do banco, e é dele que sai `atrasada`
+// — o aviso que faltava.
+fabricaBlingRouter.get("/automatica", async (_req, res) => {
+  try {
+    const [historico, ultimoSucesso] = await Promise.all([
+      historicoAutomatico(14),
+      ultimoDiaComSucesso(),
+    ]);
+    const hoje = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date());
+    const dias =
+      ultimoSucesso === null
+        ? null
+        : Math.round(
+            (Date.parse(`${hoje}T00:00:00Z`) - Date.parse(`${ultimoSucesso}T00:00:00Z`)) / 86400000
+          );
+    res.json({
+      rodando: rodadaEmAndamento(),
+      ultima: ultimaRodadaAutomatica(),
+      historico,
+      ultimoSucesso,
+      diasSemRodar: dias,
+      // nunca rodou, ou o último sucesso não é de hoje
+      atrasada: dias === null || dias > 0,
+    });
+  } catch (err) {
+    erro(res, err, "Falha ao ler o histórico da sincronização.");
+  }
 });
 
 // Dispara a rodada automatica agora, sem esperar a manha seguinte.
