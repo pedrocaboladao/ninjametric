@@ -7,6 +7,7 @@ import type {
   RelatorioAgenda,
   NovoRelatorioAgenda,
   PromocaoDaLoja,
+  AvisoAgenda,
   ColunaQuadroAgenda,
   DadosCardQuadroAgenda,
   AnexoCardAgenda,
@@ -227,4 +228,25 @@ export async function definirCapaAnexoAgenda(anexoId: number, marcar: boolean): 
 
 export function urlAnexoCardAgenda(anexoId: number): string {
   return `${API_BASE}/api/agenda/quadro/anexos/${anexoId}`;
+}
+
+export async function fetchAvisosAgenda(): Promise<AvisoAgenda[]> {
+  const res = await fetch(`${API_BASE}/api/agenda/avisos`, { credentials: "include" });
+  const data = await tratarResposta<{ avisos: AvisoAgenda[] }>(res);
+  return data.avisos;
+}
+
+export async function publicarAvisoAgenda(texto: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/avisos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ texto }),
+  });
+  await tratarResposta<{ ok: true }>(res);
+}
+
+export async function excluirAvisoAgenda(id: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/avisos/${id}`, { method: "DELETE", credentials: "include" });
+  await tratarResposta<{ ok: true }>(res);
 }

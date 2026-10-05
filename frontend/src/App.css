@@ -7266,3 +7266,39 @@ button.contas-cartao:hover {
   font-weight: 700;
   color: var(--accent);
 }
+
+.agenda-mural {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agenda-mural-novo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.agenda-mural-novo .btn-responder {
+  align-self: flex-end;
+}
+
+.agenda-mural-aviso {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.agenda-mural-aviso-topo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.agenda-mural-aviso-texto {
+  white-space: pre-wrap;
+  line-height: 1.45;
+}

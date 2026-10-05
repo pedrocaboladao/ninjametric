@@ -2101,3 +2101,12 @@ ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_processados INTEG
 ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_ok INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS falhas_itens JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS erro_processamento TEXT;
+
+-- Mural de avisos da Agenda: recados curtos entre os usuários com acesso.
+CREATE TABLE IF NOT EXISTS agenda_avisos (
+  id SERIAL PRIMARY KEY,
+  texto TEXT NOT NULL,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_agenda_avisos_criado_em ON agenda_avisos (criado_em DESC);

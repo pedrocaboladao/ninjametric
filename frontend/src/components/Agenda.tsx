@@ -26,6 +26,7 @@ import {
 } from "../api/agenda";
 import { AgendaTarefaModal } from "./AgendaTarefaModal";
 import { AgendaQuadro } from "./AgendaQuadro";
+import { AgendaMural } from "./AgendaMural";
 import { IconPlus, IconCheck, IconCalendar } from "./icons";
 import { formatDataHora } from "../utils/format";
 
@@ -138,7 +139,7 @@ function TermometroDiario({ dia }: { dia: DiaSemanaAgenda | undefined }) {
 }
 
 export function Agenda({ onOcorrenciaAlterada }: Props) {
-  const [aba, setAba] = useState<"semana" | "gerenciar" | "relatorio">("semana");
+  const [aba, setAba] = useState<"semana" | "gerenciar" | "relatorio" | "mural">("semana");
   const [semana, setSemana] = useState<SemanaAgenda | null>(null);
   const [tarefas, setTarefas] = useState<TarefaAgenda[] | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioParaAtribuir[]>([]);
@@ -342,6 +343,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
           </button>
           <button className={`tarefas-aba ${aba === "relatorio" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("relatorio")}>
             Relatório
+          </button>
+          <button className={`tarefas-aba ${aba === "mural" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("mural")}>
+            Mural de avisos
           </button>
         </div>
         <div className="agenda-topo-direita">
@@ -561,7 +565,9 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
         </div>
       )}
 
-      <AgendaQuadro usuarios={usuarios} lojas={lojas} />
+      {aba === "semana" && <AgendaQuadro usuarios={usuarios} lojas={lojas} />}
+
+      {aba === "mural" && <AgendaMural />}
 
       {modalAberto && (
         <AgendaTarefaModal

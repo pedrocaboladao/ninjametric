@@ -396,3 +396,36 @@ export async function criarRelatorio(
 export async function excluirRelatorio(id: number): Promise<void> {
   await pool.query("DELETE FROM agenda_relatorios WHERE id = $1", [id]);
 }
+
+export interface AvisoAgenda {
+  id: number;
+  texto: string;
+  usuarioNome: string;
+  criadoEm: string;
+  podeExcluir: boolean;
+}
+
+export async function listarAvisos(usuarioId: number): Promise<AvisoAgenda[]> {
+  const { rows } = await pool.query<{ id: number; texto: string; usuario_id: number; usuario_nome: string; criado_em: string }>(
+    `SELECT a.id, a.texto, a.usuario_id, u.nome AS usuario_nome, a.criado_em
+     FROM agenda_avisos a JOIN usuarios u ON u.id = a.usuario_id
+     ORDER BY a.criado_em DESC LIMIT 200`
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    texto: r.texto,
+    usuarioNome: r.usuario_nome,
+    criadoEm: r.criado_em,
+    podeExcluir: r.usuario_id === usuarioId,
+  }));
+}
+
+export async function criarAviso(usuarioId: number, texto: string): Promise<void> {
+  await pool.query("INSERT INTO agenda_avisos (texto, usuario_id) VALUES ($1, $2)", [texto, usuarioId]);
+}
+
+// Só quem escreveu o aviso apaga — o mural é de recado, não de moderação.
+export async function excluirAviso(id: number, usuarioId: number): Promise<void> {
+  const { rowCount } = await pool.query("DELETE FROM agenda_avisos WHERE id = $1 AND usuario_id = $2", [id, usuarioId]);
+  if (rowCount === 0) throw new Error("Aviso não encontrado ou não é seu.");
+}

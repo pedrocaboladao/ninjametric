@@ -33,6 +33,9 @@ import {
   criarRelatorio,
   excluirRelatorio,
   listarPromocoesDasLojas,
+  listarAvisos,
+  criarAviso,
+  excluirAviso,
 } from "../services/agendaService";
 
 const REGEX_DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -491,5 +494,41 @@ agendaRouter.post("/quadro/cards/:id/clonar", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     erro(res, err, "Falha ao clonar card.");
+  }
+});
+
+agendaRouter.get("/avisos", async (req, res) => {
+  try {
+    res.json({ avisos: await listarAvisos(req.usuario!.id) });
+  } catch (err) {
+    erro(res, err, "Falha ao carregar os avisos.");
+  }
+});
+
+agendaRouter.post("/avisos", async (req, res) => {
+  const texto = typeof req.body?.texto === "string" ? req.body.texto.trim() : "";
+  if (!texto) {
+    res.status(400).json({ error: "Escreva o aviso." });
+    return;
+  }
+  try {
+    await criarAviso(req.usuario!.id, texto);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao publicar o aviso.");
+  }
+});
+
+agendaRouter.delete("/avisos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
+  try {
+    await excluirAviso(id, req.usuario!.id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao excluir o aviso.");
   }
 });

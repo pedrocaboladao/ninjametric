@@ -115,3 +115,11 @@ export interface DadosCardQuadroAgenda {
   atribuidoAUsuarioId?: number | null;
   lojaId?: number | null;
 }
+
+export interface AvisoAgenda {
+  id: number;
+  texto: string;
+  usuarioNome: string;
+  criadoEm: string;
+  podeExcluir: boolean;
+}
