@@ -1120,10 +1120,15 @@ export async function criarVariacoes(
 ): Promise<{ simulacao: boolean; paiId?: number; paiCriado: boolean; linhas: LinhaVariacao[] }> {
   const nome = nomePai || paiCodigo;
   let pai = await acharPorCodigo(paiCodigo);
-  let paiCriado = false;
+  const paiCriado = false;
 
+  // Pai que ainda nao existe nasce JUNTO com as filhas, no mesmo POST: o Bling
+  // recusa um "V" vazio com o codigo 93, "Obrigatorio informar as variacoes do
+  // produto". Quando o pai ja existe, cada cor entra sozinha no laco abaixo.
   if (!pai && !simulacao) {
-    const resp = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
+    const resp = await chamar<{
+      data?: { id?: number; variacoes?: Array<{ id?: number; codigo?: string }> };
+    }>("post", "/produtos", undefined, {
       nome,
       codigo: paiCodigo,
       preco: cores[0]?.preco ?? 0,
@@ -1131,9 +1136,27 @@ export async function criarVariacoes(
       situacao: "A",
       formato: "V",
       unidade: "UN",
+      variacoes: cores.map((c, i) => ({
+        nome: `${nome} ${c.cor}`,
+        codigo: c.codigo,
+        preco: c.preco,
+        variacao: { nome: `${paiCodigo}:${c.cor}`, ordem: i + 1 },
+      })),
     });
-    paiCriado = true;
-    pai = resp.data?.id ? { id: resp.data.id, codigo: paiCodigo } as ProdutoBling : null;
+    const nascidas = resp.data?.variacoes ?? [];
+    return {
+      simulacao,
+      paiId: resp.data?.id,
+      paiCriado: true,
+      linhas: cores.map((c, i) => ({
+        codigo: c.codigo,
+        cor: c.cor,
+        preco: c.preco,
+        produtoId:
+          nascidas.find((v) => v.codigo === c.codigo)?.id ?? nascidas[i]?.id,
+        situacao: "criada" as const,
+      })),
+    };
   }
 
   const linhas: LinhaVariacao[] = [];
