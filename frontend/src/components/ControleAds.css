@@ -359,6 +359,47 @@
   color: var(--text-muted);
 }
 
+.controle-ads-lista-sangria {
+  border-top: 4px solid var(--critical-text);
+}
+
+.controle-ads-lista-sangria .controle-ads-lista-titulo {
+  color: var(--critical-text);
+}
+
+.controle-ads-contagem {
+  display: inline-block;
+  min-width: 24px;
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+.controle-ads-lucro {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.controle-ads-alerta {
+  font-size: 0.75rem;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--critical-bg);
+  color: var(--critical-text);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.controle-ads-skus {
+  font-weight: 600;
+  word-break: break-word;
+}
+
 @media (max-width: 600px) {
   .controle-ads-listas,
   .controle-ads-grade {

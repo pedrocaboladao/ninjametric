@@ -24,7 +24,11 @@ export interface ContaControleAds extends IndicadoresControleAds {
   nivel: NivelControleAds;
   meta: MetaControleAds;
   metaPadrao: boolean;
+  receitaAtribuida: number;
+  gastoAtribuido: number;
   gastoSemVenda: number;
+  vendasSemCusto: number;
+  skusSemCusto: string[];
   lucroAposAds: number | null;
   roasEquilibrio: number | null;
   anterior: IndicadoresControleAds;
@@ -38,10 +42,11 @@ export interface CampanhaControleAds {
   nome: string;
   status: string;
   gasto: number;
-  faturamento: number;
+  receita: number;
   roas: number | null;
-  lucroEstimado: number | null;
-  saldo: number;
+  lucroAposAds: number | null;
+  margemPosAds: number | null;
+  itensSemCusto: number;
   nivel: NivelControleAds;
 }
 
@@ -51,6 +56,5 @@ export interface PainelControleAds {
   anterior: { inicio: string; fim: string };
   metaPadrao: MetaControleAds;
   contas: ContaControleAds[];
-  atencao: CampanhaControleAds[];
-  motores: CampanhaControleAds[];
+  campanhas: CampanhaControleAds[];
 }

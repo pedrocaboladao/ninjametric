@@ -1,25 +1,26 @@
 import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
-import { listarCampanhasAds, CampanhaAds } from "./adsService";
-import { obterGastoAdsHistoricoPorLoja } from "./adsService";
+import { listarCampanhasAds, obterGastoAdsHistoricoPorLoja } from "./adsService";
 import { listarVendasFinanceiras } from "./financeiroService";
 import { dataISOBR } from "./dateUtils";
+import { getAdvertiserId, getAnunciosAds, MlAnuncioAds } from "./mercadoLivreApi";
 
 // As 4 lojas do dono (mesmos ids de agendaService.ts). Este painel é pessoal:
 // mostra só essas, mesmo que existam outras lojas ML cadastradas.
 export const LOJAS_DO_DONO = [1, 2, 3, 4];
 
-// Classificação pela MARGEM PÓS ADS (lucro depois de custo, taxa, frete e
-// gasto com Ads, em % do faturamento). Padrão quando a loja não tem meta
-// própria: margem de pelo menos 10% = motor, entre 0% e 10% = atenção, abaixo
-// de 0% = sangria (o anúncio está dando prejuízo).
+// Classificação pela MARGEM PÓS ADS: (margem de contribuição − gasto com Ads)
+// ÷ faturamento. Padrão quando a loja não tem meta própria: motor a partir de
+// 10%, atenção de 0% a 10%, sangria abaixo de 0%.
 export const MARGEM_MOTOR_PADRAO = 10;
 export const MARGEM_ATENCAO_PADRAO = 0;
 
 // Campanha que gastou menos que isso é ruído (teste, lance mínimo) e fica
-// fora das listas ATENÇÃO e MOTORES.
+// fora da lista de campanhas.
 const GASTO_MINIMO_LISTA = 5;
-const ITENS_POR_LISTA = 5;
+
+// Mesma janela de cache das outras telas de Ads (ver adsService.ts).
+const CACHE_ANUNCIOS_MS = 15 * 60 * 1000;
 
 export type NivelAds = "motor" | "atencao" | "sangria" | "sem_dados";
 
@@ -47,12 +48,22 @@ export interface ContaAds extends Indicadores {
   nivel: NivelAds;
   meta: MetaLoja;
   metaPadrao: boolean;
+  // ROAS exato da loja: receita que o ML atribui às campanhas ÷ gasto das
+  // campanhas (mesma base dos dois números, ambos da API de anúncios).
+  receitaAtribuida: number;
+  gastoAtribuido: number;
+  // Gasto de anúncios que não gerou nenhuma venda atribuída.
   gastoSemVenda: number;
-  // Margem de contribuição (já descontado custo, taxa e frete) menos o gasto
-  // de Ads. Null quando alguma venda do período não tem custo cadastrado.
+  // Vendas do período sem custo de produto cadastrado. Enquanto houver
+  // alguma, a margem da loja fica em branco em vez de sair inflada.
+  vendasSemCusto: number;
+  // SKUs dessas vendas que não têm custo na planilha SKU MASTER (ou o SKU
+  // nem veio no pedido). É a lista a corrigir pra margem fechar.
+  skusSemCusto: string[];
+  // Margem de contribuição − gasto total com Ads (inclui campanhas já
+  // excluídas, pelo retrato salvo). Null se faltar custo em alguma venda.
   lucroAposAds: number | null;
-  // ROAS de equilíbrio: a partir de quanto a campanha paga o próprio custo do
-  // produto, taxa e frete. Abaixo disso, cada real em Ads dá prejuízo.
+  // ROAS mínimo pra não dar prejuízo, a partir da margem bruta da loja.
   roasEquilibrio: number | null;
   anterior: Indicadores;
   diario: DiaAds[];
@@ -65,14 +76,15 @@ export interface CampanhaRanking {
   nome: string;
   status: string;
   gasto: number;
-  // Receita atribuída pelo ML à campanha (vendas diretas + indiretas).
-  faturamento: number;
+  // Receita que o ML atribui à campanha (diretas + indiretas).
+  receita: number;
   roas: number | null;
-  // Receita da campanha × margem bruta média da loja, menos o gasto. É uma
-  // estimativa: a campanha não tem custo de produto próprio, então usa a média.
-  lucroEstimado: number | null;
-  // Sobra de caixa simples: receita menos gasto (sem custo de produto).
-  saldo: number;
+  // Margem pós Ads da campanha, calculada item a item: cada anúncio usa a
+  // margem de contribuição % dos seus pedidos no período. Null se algum item
+  // não tem custo cadastrado.
+  lucroAposAds: number | null;
+  margemPosAds: number | null;
+  itensSemCusto: number;
   nivel: NivelAds;
 }
 
@@ -81,8 +93,7 @@ export interface PainelAds {
   fim: string;
   anterior: { inicio: string; fim: string };
   contas: ContaAds[];
-  atencao: CampanhaRanking[];
-  motores: CampanhaRanking[];
+  campanhas: CampanhaRanking[];
 }
 
 interface LojaPainel {
@@ -105,19 +116,14 @@ function diasEntre(inicio: string, fim: string): string[] {
 const arred1 = (n: number) => Math.round(n * 10) / 10;
 const arred2 = (n: number) => Math.round(n * 100) / 100;
 
-function roasDe(gasto: number, faturamento: number): number | null {
-  return gasto > 0 ? arred2(faturamento / gasto) : null;
+function roasDe(receita: number, gasto: number): number | null {
+  return gasto > 0 ? arred2(receita / gasto) : null;
 }
 
-function margemPosAdsDe(faturamento: number, lucroAposAds: number | null): number | null {
-  if (lucroAposAds === null || faturamento <= 0) return null;
-  return arred1((lucroAposAds / faturamento) * 100);
-}
-
-function nivelDaMargem(gasto: number, faturamento: number, margem: number | null, meta: MetaLoja): NivelAds {
-  if (gasto === 0 && faturamento === 0) return "sem_dados";
+function nivelDaMargem(gasto: number, receita: number, margem: number | null, meta: MetaLoja): NivelAds {
+  if (gasto === 0 && receita === 0) return "sem_dados";
   // Gastou e não vendeu nada: não tem margem pra calcular, mas é sangria certa.
-  if (faturamento === 0) return "sangria";
+  if (receita === 0) return "sangria";
   if (margem === null) return "sem_dados";
   if (margem >= meta.motorMinimo) return "motor";
   if (margem >= meta.atencaoMinimo) return "atencao";
@@ -150,9 +156,22 @@ export async function salvarMeta(lojaId: number, motorMinimo: number, atencaoMin
   );
 }
 
+// Anúncios de cada loja no período, já com custo e receita por item e campanha
+// (API de anúncios do ML, a mesma que alimenta Gestão de Ads). Não engole erro:
+// se uma loja falhar, o painel mostra o erro em vez de números faltando.
+const cacheAnuncios = new Map<string, { data: MlAnuncioAds[]; expiraEm: number }>();
+async function anunciosDaLoja(lojaId: number, inicio: string, fim: string): Promise<MlAnuncioAds[]> {
+  const chave = `${lojaId}|${inicio}|${fim}`;
+  const emCache = cacheAnuncios.get(chave);
+  if (emCache && emCache.expiraEm > Date.now()) return emCache.data;
+  const advertiserId = await getAdvertiserId(lojaId);
+  const data = advertiserId === null ? [] : await getAnunciosAds(lojaId, advertiserId, inicio, fim);
+  cacheAnuncios.set(chave, { data, expiraEm: Date.now() + CACHE_ANUNCIOS_MS });
+  return data;
+}
+
 // Gasto por dia e loja do retrato salvo (ads_gasto_diario). Serve só pro
-// gráfico diário — o total do período continua vindo da API ao vivo, que é a
-// fonte de verdade (ver obterGastoAdsHistoricoPorLoja).
+// gráfico diário — os totais vêm da API ao vivo (ver obterGastoAdsHistoricoPorLoja).
 async function gastoDiarioSnapshot(lojaIds: number[], inicio: string, fim: string): Promise<Map<string, number>> {
   const { rows } = await pool.query<{ loja_id: number; data: string; gasto: string }>(
     `SELECT loja_id, to_char(data, 'YYYY-MM-DD') AS data, SUM(custo) AS gasto
@@ -166,8 +185,7 @@ async function gastoDiarioSnapshot(lojaIds: number[], inicio: string, fim: strin
 
 interface PeriodoCalculado {
   contas: ContaAds[];
-  campanhas: CampanhaAds[];
-  margemBrutaPorLoja: Map<number, number | null>;
+  campanhas: CampanhaRanking[];
 }
 
 async function calcularPeriodo(
@@ -177,30 +195,95 @@ async function calcularPeriodo(
   metas: Map<number, MetaLoja>
 ): Promise<PeriodoCalculado> {
   const ids = lojas.map((l) => l.id);
-  const [gastoPorLoja, resultado, campanhas, snapshot] = await Promise.all([
+  const [gastoPorLoja, resultado, nomesCampanhas, snapshot, anunciosPorLoja] = await Promise.all([
     obterGastoAdsHistoricoPorLoja(undefined, ids, inicio, fim),
     listarVendasFinanceiras(undefined, ids, inicio, fim),
     listarCampanhasAds(undefined, ids, inicio, fim),
     gastoDiarioSnapshot(ids, inicio, fim),
+    Promise.all(lojas.map(async (l) => [l.id, await anunciosDaLoja(l.id, inicio, fim)] as const)),
   ]);
+  const anuncios = new Map<number, MlAnuncioAds[]>(anunciosPorLoja);
+  const nomePorCampanha = new Map(nomesCampanhas.map((c) => [`${c.lojaId}|${c.campanhaId}`, c]));
+
+  // Margem de contribuição % de cada anúncio = margem ÷ receita dos pedidos
+  // desse item no período. Se algum pedido do item não tem custo, a margem
+  // do item fica null (e a campanha que o contém fica sem margem).
+  const acumuladoItem = new Map<string, { receita: number; margem: number | null }>();
+  for (const v of resultado.vendas) {
+    const chave = `${v.lojaId}|${v.itemId}`;
+    const e = acumuladoItem.get(chave) ?? { receita: 0, margem: 0 };
+    e.receita += v.receitaTotal;
+    e.margem = e.margem === null || v.margemContribuicao === null ? null : e.margem + v.margemContribuicao;
+    acumuladoItem.set(chave, e);
+  }
+  const fracaoMargemDoItem = (lojaId: number, itemId: string): number | null => {
+    const e = acumuladoItem.get(`${lojaId}|${itemId}`);
+    return e && e.margem !== null && e.receita > 0 ? e.margem / e.receita : null;
+  };
 
   const dias = diasEntre(inicio, fim);
-  const margemBrutaPorLoja = new Map<number, number | null>();
-  const contas = lojas.map((loja): ContaAds => {
+  const contas: ContaAds[] = [];
+  const campanhas: CampanhaRanking[] = [];
+
+  for (const loja of lojas) {
     const meta = metaOuPadrao(metas, loja.id);
     const vendas = resultado.vendas.filter((v) => v.lojaId === loja.id);
     const faturamento = vendas.reduce((s, v) => s + v.receitaTotal, 0);
-    const margem = vendas.reduce<number | null>(
-      (s, v) => (s === null || v.margemContribuicao === null ? null : s + v.margemContribuicao),
-      0
-    );
+    const vendasSemCusto = vendas.filter((v) => v.margemContribuicao === null).length;
+    const margemTotal = vendasSemCusto === 0 ? vendas.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0) : null;
     const gasto = gastoPorLoja.get(loja.id) ?? 0;
-    const lucroAposAds = margem === null ? null : arred2(margem - gasto);
-    margemBrutaPorLoja.set(loja.id, margem === null || faturamento <= 0 ? null : margem / faturamento);
+    const lucroAposAds = margemTotal === null ? null : arred2(margemTotal - gasto);
+    const margemPosAds = lucroAposAds === null || faturamento <= 0 ? null : arred1((lucroAposAds / faturamento) * 100);
+    const roasEquilibrio =
+      margemTotal !== null && faturamento > 0 && margemTotal > 0 ? arred2(faturamento / margemTotal) : null;
 
-    const gastoSemVenda = campanhas
-      .filter((c) => c.lojaId === loja.id && c.vendasTotais === 0)
-      .reduce((s, c) => s + c.custo, 0);
+    // ROAS atribuído: só campanhas vivas, porque o ML não devolve receita de
+    // campanha excluída. Gasto de excluída fica só no total acima.
+    let receitaAtribuida = 0;
+    let gastoAtribuido = 0;
+    let gastoSemVenda = 0;
+    for (const a of anuncios.get(loja.id) ?? []) {
+      receitaAtribuida += a.metrics.total_amount;
+      gastoAtribuido += a.metrics.cost;
+      if (a.metrics.total_amount === 0) gastoSemVenda += a.metrics.cost;
+    }
+
+    // Lucro por campanha: soma, item a item, receita × margem% − custo do anúncio.
+    const porCampanha = new Map<number, { gasto: number; receita: number; lucro: number; semCusto: number }>();
+    for (const a of anuncios.get(loja.id) ?? []) {
+      const c = porCampanha.get(a.campaign_id) ?? { gasto: 0, receita: 0, lucro: 0, semCusto: 0 };
+      const receita = a.metrics.total_amount;
+      const custo = a.metrics.cost;
+      c.gasto += custo;
+      c.receita += receita;
+      if (receita === 0) {
+        c.lucro -= custo;
+      } else {
+        const fracao = fracaoMargemDoItem(loja.id, a.item_id);
+        if (fracao === null) c.semCusto += 1;
+        else c.lucro += receita * fracao - custo;
+      }
+      porCampanha.set(a.campaign_id, c);
+    }
+    for (const [campanhaId, c] of porCampanha) {
+      if (c.gasto < GASTO_MINIMO_LISTA) continue;
+      const lucro = c.semCusto > 0 ? null : arred2(c.lucro);
+      const nome = nomePorCampanha.get(`${loja.id}|${campanhaId}`);
+      campanhas.push({
+        lojaId: loja.id,
+        lojaNome: loja.nome,
+        campanhaId,
+        nome: nome?.nome ?? `Campanha ${campanhaId}`,
+        status: nome?.status ?? "desconhecido",
+        gasto: arred2(c.gasto),
+        receita: arred2(c.receita),
+        roas: roasDe(c.receita, c.gasto),
+        lucroAposAds: lucro,
+        margemPosAds: lucro === null || c.receita <= 0 ? null : arred1((lucro / c.receita) * 100),
+        itensSemCusto: c.semCusto,
+        nivel: nivelDaMargem(c.gasto, c.receita, lucro === null || c.receita <= 0 ? null : (lucro / c.receita) * 100, meta),
+      });
+    }
 
     const faturamentoPorDia = new Map<string, number>();
     for (const v of vendas) {
@@ -208,58 +291,35 @@ async function calcularPeriodo(
       faturamentoPorDia.set(dia, (faturamentoPorDia.get(dia) ?? 0) + v.receitaTotal);
     }
 
-    const margemPosAds = margemPosAdsDe(faturamento, lucroAposAds);
-    const bruta = margemBrutaPorLoja.get(loja.id) ?? null;
-    return {
+    contas.push({
       lojaId: loja.id,
       lojaNome: loja.nome,
       gasto: arred2(gasto),
       faturamento: arred2(faturamento),
-      roas: roasDe(gasto, faturamento),
+      roas: roasDe(receitaAtribuida, gastoAtribuido),
       margemPosAds,
       nivel: nivelDaMargem(gasto, faturamento, margemPosAds, meta),
       meta,
       metaPadrao: !metas.has(loja.id),
+      receitaAtribuida: arred2(receitaAtribuida),
+      gastoAtribuido: arred2(gastoAtribuido),
       gastoSemVenda: arred2(gastoSemVenda),
+      vendasSemCusto,
+      skusSemCusto: [
+        ...new Set(vendas.filter((v) => v.margemContribuicao === null).map((v) => v.sku ?? `item ${v.itemId}`)),
+      ].slice(0, 30),
       lucroAposAds,
-      roasEquilibrio: bruta !== null && bruta > 0 ? arred2(1 / bruta) : null,
+      roasEquilibrio,
       anterior: { gasto: 0, faturamento: 0, roas: null, margemPosAds: null },
       diario: dias.map((d) => ({
         data: d,
         gasto: arred2(snapshot.get(`${loja.id}|${d}`) ?? 0),
         faturamento: arred2(faturamentoPorDia.get(d) ?? 0),
       })),
-    };
-  });
-
-  return { contas, campanhas, margemBrutaPorLoja };
-}
-
-function rankingDe(campanhas: CampanhaAds[], margemBrutaPorLoja: Map<number, number | null>): CampanhaRanking[] {
-  return campanhas
-    .filter((c) => c.custo >= GASTO_MINIMO_LISTA)
-    .map((c): CampanhaRanking => {
-      const faturamento = c.vendasTotais;
-      const bruta = margemBrutaPorLoja.get(c.lojaId) ?? null;
-      const roas = roasDe(c.custo, faturamento);
-      const equilibrio = bruta !== null && bruta > 0 ? 1 / bruta : null;
-      const lucroEstimado = bruta === null ? null : arred2(faturamento * bruta - c.custo);
-      // Sem venda, ou ROAS abaixo do equilíbrio da loja, a campanha está dando prejuízo.
-      const sangrando = faturamento === 0 || (roas !== null && equilibrio !== null && roas < equilibrio);
-      return {
-        lojaId: c.lojaId,
-        lojaNome: c.lojaNome,
-        campanhaId: c.campanhaId,
-        nome: c.nome,
-        status: c.status,
-        gasto: arred2(c.custo),
-        faturamento: arred2(faturamento),
-        roas,
-        lucroEstimado,
-        saldo: arred2(faturamento - c.custo),
-        nivel: sangrando ? "sangria" : "motor",
-      };
     });
+  }
+
+  return { contas, campanhas };
 }
 
 export async function obterPainelAds(inicio: string, fim: string): Promise<PainelAds> {
@@ -290,24 +350,11 @@ export async function obterPainelAds(inicio: string, fim: string): Promise<Paine
   const ordem: Record<NivelAds, number> = { sangria: 0, atencao: 1, motor: 2, sem_dados: 3 };
   contas.sort((a, b) => ordem[a.nivel] - ordem[b.nivel] || b.gasto - a.gasto);
 
-  const ranking = rankingDe(atual.campanhas, atual.margemBrutaPorLoja);
-  // Ordena pelo lucro estimado quando existe; sem custo cadastrado, usa a sobra simples.
-  const chave = (c: CampanhaRanking) => c.lucroEstimado ?? c.saldo;
-  const atencao = ranking
-    .filter((c) => c.nivel === "sangria")
-    .sort((a, b) => chave(a) - chave(b))
-    .slice(0, ITENS_POR_LISTA);
-  const motores = ranking
-    .filter((c) => c.nivel === "motor" && chave(c) > 0)
-    .sort((a, b) => chave(b) - chave(a))
-    .slice(0, ITENS_POR_LISTA);
-
   return {
     inicio,
     fim,
     anterior: { inicio: anteriorInicio, fim: anteriorFim },
     contas,
-    atencao,
-    motores,
+    campanhas: atual.campanhas,
   };
 }

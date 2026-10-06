@@ -19,7 +19,7 @@ const ROTULOS: Record<NivelControleAds, string> = {
   motor: "MOTOR",
   atencao: "ATENÇÃO",
   sangria: "SANGRIA",
-  sem_dados: "SEM DADOS",
+  sem_dados: "SEM CUSTO",
 };
 
 function posicaoNaEscala(margem: number): number {
@@ -150,17 +150,14 @@ function CartaoConta({
         <div className="controle-ads-acos">{formatarMargem(conta.margemPosAds)}</div>
         {compMargem && <div className={`controle-ads-comp ${compMargem.classe}`}>{compMargem.texto}</div>}
       </div>
-      <div className="financeiro-td-mudo">Margem pós Ads do período</div>
+      <div className="financeiro-td-mudo">Margem pós Ads da loja</div>
 
       <div
         className="controle-ads-barra"
         title={`Motor a partir de ${conta.meta.motorMinimo}% · Atenção a partir de ${conta.meta.atencaoMinimo}%`}
       >
         {conta.margemPosAds !== null && (
-          <div
-            className="controle-ads-barra-preenchida"
-            style={{ width: `${posicaoNaEscala(conta.margemPosAds)}%` }}
-          />
+          <div className="controle-ads-barra-preenchida" style={{ width: `${posicaoNaEscala(conta.margemPosAds)}%` }} />
         )}
         <div className="controle-ads-marca" style={{ left: `${posicaoNaEscala(conta.meta.atencaoMinimo)}%` }} />
         <div className="controle-ads-marca" style={{ left: `${posicaoNaEscala(conta.meta.motorMinimo)}%` }} />
@@ -188,15 +185,22 @@ function CartaoConta({
       </div>
 
       <div className="controle-ads-valores">
-        <span>Gasto {formatCurrency(conta.gasto)}</span>
-        <span>Venda {formatCurrency(conta.faturamento)}</span>
+        <span>Gasto Ads {formatCurrency(conta.gasto)}</span>
+        <span>Venda total {formatCurrency(conta.faturamento)}</span>
       </div>
       <div className="controle-ads-valores">
-        <span>Gasto sem venda {formatCurrency(conta.gastoSemVenda)}</span>
-        <span className={conta.lucroAposAds === null ? "" : conta.lucroAposAds >= 0 ? "controle-ads-melhorou" : "controle-ads-piorou"}>
-          Lucro após Ads {conta.lucroAposAds === null ? "sem custo cadastrado" : formatCurrency(conta.lucroAposAds)}
-        </span>
+        <span>Receita atribuída {formatCurrency(conta.receitaAtribuida)}</span>
+        <span>Sem venda {formatCurrency(conta.gastoSemVenda)}</span>
       </div>
+      <div className={`controle-ads-lucro ${conta.lucroAposAds === null ? "" : conta.lucroAposAds >= 0 ? "controle-ads-melhorou" : "controle-ads-piorou"}`}>
+        Lucro após Ads {conta.lucroAposAds === null ? "— (falta custo)" : formatCurrency(conta.lucroAposAds)}
+      </div>
+      {conta.vendasSemCusto > 0 && (
+        <div className="controle-ads-alerta">
+          {conta.vendasSemCusto} venda(s) sem custo na SKU MASTER — margem em branco até cadastrar:
+          <span className="controle-ads-skus">{conta.skusSemCusto.join(", ")}</span>
+        </div>
+      )}
 
       {!editando ? (
         <div className="controle-ads-meta-linha">
@@ -232,42 +236,42 @@ function CartaoConta({
   );
 }
 
-function ListaCampanhas({
+function ColunaCampanhas({
   titulo,
-  tom,
+  nivel,
   itens,
   vazio,
 }: {
   titulo: string;
-  tom: "atencao" | "motor";
+  nivel: "sangria" | "atencao" | "motor";
   itens: CampanhaControleAds[];
   vazio: string;
 }) {
   return (
-    <div className={`controle-ads-lista controle-ads-lista-${tom}`}>
-      <div className="controle-ads-lista-titulo">{titulo}</div>
+    <div className={`controle-ads-lista controle-ads-lista-${nivel}`}>
+      <div className="controle-ads-lista-titulo">
+        {titulo} <span className="controle-ads-contagem">{itens.length}</span>
+      </div>
       {itens.length === 0 && <div className="financeiro-td-mudo">{vazio}</div>}
-      {itens.map((c) => {
-        const lucro = c.lucroEstimado ?? c.saldo;
-        return (
-          <div key={`${c.lojaId}-${c.campanhaId}`} className="controle-ads-item">
-            <div className="controle-ads-item-topo">
-              <span className="controle-ads-item-nome" title={c.nome}>{c.nome}</span>
-              <span className="controle-ads-loja-tag">{c.lojaNome}</span>
-            </div>
-            <div className="controle-ads-valores">
-              <span>Gasto {formatCurrency(c.gasto)}</span>
-              <span>Venda {formatCurrency(c.faturamento)}</span>
-              <span>ROAS {c.roas === null ? "sem venda" : `${c.roas.toFixed(2)}x`}</span>
-            </div>
-            <div className={`controle-ads-saldo ${lucro >= 0 ? "controle-ads-melhorou" : "controle-ads-piorou"}`}>
-              {lucro >= 0 ? "Sobra" : "Perde"} {formatCurrency(Math.abs(lucro))}
-              {c.lucroEstimado === null ? " (receita − gasto)" : " pós Ads (estimado)"}
-              {c.status !== "active" && <span className="controle-ads-status"> · {c.status === "paused" ? "pausada" : c.status}</span>}
-            </div>
+      {itens.map((c) => (
+        <div key={`${c.lojaId}-${c.campanhaId}`} className="controle-ads-item">
+          <div className="controle-ads-item-topo">
+            <span className="controle-ads-item-nome" title={c.nome}>{c.nome}</span>
+            <span className="controle-ads-loja-tag">{c.lojaNome}</span>
           </div>
-        );
-      })}
+          <div className="controle-ads-valores">
+            <span>Gasto {formatCurrency(c.gasto)}</span>
+            <span>Receita {formatCurrency(c.receita)}</span>
+            <span>ROAS {formatarRoas(c.roas)}</span>
+          </div>
+          <div className={`controle-ads-saldo ${c.lucroAposAds === null ? "" : c.lucroAposAds >= 0 ? "controle-ads-melhorou" : "controle-ads-piorou"}`}>
+            Margem pós Ads {formatarMargem(c.margemPosAds)}
+            {c.lucroAposAds !== null && <> · {formatCurrency(c.lucroAposAds)}</>}
+            {c.itensSemCusto > 0 && <span className="controle-ads-status"> · {c.itensSemCusto} item(ns) sem custo</span>}
+            {c.status !== "active" && <span className="controle-ads-status"> · {c.status === "paused" ? "pausada" : c.status}</span>}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -296,7 +300,7 @@ export function ControleAds() {
     };
   }, [intervalo.inicio, intervalo.fim, recarregar]);
 
-  // Avisa quando uma conta ENTRA em sangria enquanto a tela está aberta.
+  // Avisa quando uma loja ENTRA em sangria enquanto a tela está aberta.
   // A primeira carga do período só guarda o estado — senão toda vez que você
   // troca o filtro ou abre a tela, avisaria de tudo de novo.
   useEffect(() => {
@@ -323,13 +327,19 @@ export function ControleAds() {
 
   const totalGasto = dados?.contas.reduce((s, c) => s + c.gasto, 0) ?? 0;
   const totalFaturamento = dados?.contas.reduce((s, c) => s + c.faturamento, 0) ?? 0;
+  const totalAtribuido = dados?.contas.reduce((s, c) => s + c.receitaAtribuida, 0) ?? 0;
+  const totalGastoAtribuido = dados?.contas.reduce((s, c) => s + c.gastoAtribuido, 0) ?? 0;
   const totalSemVenda = dados?.contas.reduce((s, c) => s + c.gastoSemVenda, 0) ?? 0;
   const lucroTotal = dados?.contas.every((c) => c.lucroAposAds !== null)
     ? dados.contas.reduce((s, c) => s + (c.lucroAposAds ?? 0), 0)
     : null;
-  const roasGeral = totalGasto > 0 ? totalFaturamento / totalGasto : null;
+  const roasGeral = totalGastoAtribuido > 0 ? totalAtribuido / totalGastoAtribuido : null;
   const margemGeral = lucroTotal !== null && totalFaturamento > 0 ? (lucroTotal / totalFaturamento) * 100 : null;
-  const contagem = (nivel: NivelControleAds) => dados?.contas.filter((c) => c.nivel === nivel).length ?? 0;
+  const contagemLoja = (nivel: NivelControleAds) => dados?.contas.filter((c) => c.nivel === nivel).length ?? 0;
+  const campanhasDo = (nivel: NivelControleAds) =>
+    (dados?.campanhas ?? [])
+      .filter((c) => c.nivel === nivel)
+      .sort((a, b) => (a.margemPosAds ?? 0) - (b.margemPosAds ?? 0));
 
   return (
     <div className="controle-ads">
@@ -389,17 +399,17 @@ export function ControleAds() {
               </b>
             </div>
             <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">ROAS geral</span>
+              <span className="financeiro-td-mudo">ROAS (atribuído)</span>
               <b>{formatarRoas(roasGeral)}</b>
             </div>
             <div className="controle-ads-resumo-item">
               <span className="financeiro-td-mudo">Lucro após Ads</span>
               <b className={lucroTotal !== null && lucroTotal < 0 ? "controle-ads-piorou" : "controle-ads-melhorou"}>
-                {lucroTotal === null ? "—" : formatCurrency(lucroTotal)}
+                {lucroTotal === null ? "— (falta custo)" : formatCurrency(lucroTotal)}
               </b>
             </div>
             <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">Gasto total</span>
+              <span className="financeiro-td-mudo">Gasto Ads</span>
               <b>{formatCurrency(totalGasto)}</b>
             </div>
             <div className="controle-ads-resumo-item">
@@ -407,31 +417,44 @@ export function ControleAds() {
               <b className="controle-ads-piorou">{formatCurrency(totalSemVenda)}</b>
             </div>
             <div className="controle-ads-resumo-item controle-ads-selos">
-              <span className="controle-ads-selo controle-ads-selo-sangria">{contagem("sangria")} sangrando</span>
-              <span className="controle-ads-selo controle-ads-selo-atencao">{contagem("atencao")} atenção</span>
-              <span className="controle-ads-selo controle-ads-selo-motor">{contagem("motor")} motor</span>
+              <span className="controle-ads-selo controle-ads-selo-sangria">{contagemLoja("sangria")} lojas em sangria</span>
+              <span className="controle-ads-selo controle-ads-selo-atencao">{contagemLoja("atencao")} atenção</span>
+              <span className="controle-ads-selo controle-ads-selo-motor">{contagemLoja("motor")} motor</span>
             </div>
           </div>
 
           <div className="controle-ads-listas">
-            <ListaCampanhas
-              titulo="ATENÇÃO:"
-              tom="atencao"
-              itens={dados.atencao}
-              vazio="Nenhuma campanha abaixo do ROAS de equilíbrio. Bom sinal."
+            <ColunaCampanhas
+              titulo="SANGRIA"
+              nivel="sangria"
+              itens={campanhasDo("sangria")}
+              vazio="Nenhuma campanha em sangria no período."
             />
-            <ListaCampanhas
-              titulo="MOTORES:"
-              tom="motor"
-              itens={dados.motores}
-              vazio="Nenhuma campanha dando lucro depois do Ads no período."
+            <ColunaCampanhas
+              titulo="ATENÇÃO"
+              nivel="atencao"
+              itens={campanhasDo("atencao")}
+              vazio="Nenhuma campanha na faixa de atenção."
+            />
+            <ColunaCampanhas
+              titulo="MOTOR"
+              nivel="motor"
+              itens={campanhasDo("motor")}
+              vazio="Nenhuma campanha no nível motor no período."
             />
           </div>
 
+          {campanhasDo("sem_dados").length > 0 && (
+            <div className="controle-ads-legenda financeiro-td-mudo">
+              {campanhasDo("sem_dados").length} campanha(s) sem custo completo na SKU MASTER — ficam fora das colunas até cadastrar.
+            </div>
+          )}
+
           <div className="controle-ads-legenda financeiro-td-mudo">
-            Classificação pela margem pós Ads (lucro depois de custo, taxa, frete e Ads, sobre o faturamento).
+            Margem pós Ads = (margem de contribuição − gasto com Ads) ÷ faturamento. Custo do produto vem da planilha SKU MASTER.
+            Campanha: cada anúncio usa a margem % dos seus pedidos no período. ROAS = receita atribuída pelo ML ÷ gasto.
             Padrão: motor ≥ {dados.metaPadrao.motorMinimo}% · atenção ≥ {dados.metaPadrao.atencaoMinimo}% · abaixo disso, sangria.
-            ROAS = faturamento ÷ gasto. Equilíbrio = ROAS mínimo para não dar prejuízo. Comparando com {dados.anterior.inicio} a {dados.anterior.fim}.
+            Comparando com {dados.anterior.inicio} a {dados.anterior.fim}.
           </div>
 
           <div className="controle-ads-grade">
