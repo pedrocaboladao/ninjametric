@@ -27,8 +27,12 @@ function nivelDoAcos(gasto: number, faturamento: number, acos: number | null): N
   return "sangria";
 }
 
+// As 4 lojas do dono (mesmos ids de agendaService.ts). Este painel é pessoal:
+// mostra só essas, mesmo que existam outras lojas ML cadastradas.
+const LOJAS_DO_DONO = [1, 2, 3, 4];
+
 export async function obterPainelAds(inicio: string, fim: string): Promise<ContaAds[]> {
-  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null);
+  const lojas = (await listLojas()).filter((l) => l.ml_user_id !== null && LOJAS_DO_DONO.includes(l.id));
   const [gastoPorLoja, resultado] = await Promise.all([
     obterGastoAdsHistoricoPorLoja(undefined, undefined, inicio, fim),
     listarVendasFinanceiras(undefined, undefined, inicio, fim),
