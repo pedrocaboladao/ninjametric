@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type {
   CampanhaControleAds,
   ContaControleAds,
@@ -8,14 +8,12 @@ import type {
   PainelControleAds,
 } from "../types/controleAds";
 import { fetchPainelControleAds, salvarMetaControleAds } from "../api/controleAds";
-import { formatCurrency } from "../utils/format";
+import { Dispersao, LinhaDiaria, MiniArea, Rosca, Velocimetro, COR_NIVEL, type PontoDispersao } from "./ControleAdsGraficos";
 import "./ControleAds.css";
 
-// A barra de margem vai de -20% (prejuízo forte) a +40%.
-const MARGEM_MINIMA_ESCALA = -20;
-const MARGEM_MAXIMA_ESCALA = 40;
-
 const INTERVALO_ATUALIZACAO_MS = 5 * 60 * 1000;
+const MARGEM_MIN = -20;
+const MARGEM_MAX = 40;
 
 const ROTULOS: Record<NivelControleAds, string> = {
   motor: "MOTOR",
@@ -24,10 +22,8 @@ const ROTULOS: Record<NivelControleAds, string> = {
   sem_dados: "SEM CUSTO",
 };
 
-function posicaoNaEscala(margem: number): number {
-  const pct = ((margem - MARGEM_MINIMA_ESCALA) / (MARGEM_MAXIMA_ESCALA - MARGEM_MINIMA_ESCALA)) * 100;
-  return Math.min(Math.max(pct, 0), 100);
-}
+const moedaCompacta = new Intl.NumberFormat("pt-BR", { notation: "compact", style: "currency", currency: "BRL" });
+const moeda = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
 function formatarData(d: Date): string {
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -45,50 +41,54 @@ function diasAtrasISO(n: number): string {
   return formatarData(d);
 }
 
-// Compara um indicador com o período anterior. `subirEhBom` diz qual seta é
-// boa: margem e ROAS sobem quando vai bem.
-function comparativo(
-  atual: number | null,
-  anterior: number | null,
-  unidade: string,
-  subirEhBom: boolean
-): { texto: string; classe: string } | null {
-  if (atual === null || anterior === null) return null;
-  const diff = Math.round((atual - anterior) * 10) / 10;
-  if (diff === 0) return { texto: `= igual ao anterior`, classe: "controle-ads-neutro" };
-  const subiu = diff > 0;
+const formatarMargem = (m: number | null) => (m === null ? "—" : `${m.toFixed(1)}%`);
+const formatarRoas = (r: number | null) => (r === null ? "—" : `${r.toFixed(2)}x`);
+const formatarMoeda = (v: number | null) => (v === null ? "— (falta custo)" : moeda.format(v));
+
+// Variação percentual contra o período anterior. Subir é "bom" só quando
+// `subirEhBom` for verdadeiro (venda sobe = bom; gasto sobe = ruim).
+function variacao(atual: number, anterior: number, subirEhBom: boolean): { texto: string; classe: string } | null {
+  if (anterior <= 0) return null;
+  const pct = ((atual - anterior) / anterior) * 100;
+  const subiu = pct > 0;
   const bom = subiu === subirEhBom;
   return {
-    texto: `${subiu ? "▲" : "▼"} ${Math.abs(diff).toFixed(1)}${unidade} vs anterior`,
-    classe: bom ? "controle-ads-melhorou" : "controle-ads-piorou",
+    texto: `${subiu ? "▲" : "▼"} ${Math.abs(pct).toFixed(1)}% vs anterior`,
+    classe: bom ? "pbi-bom" : "pbi-ruim",
   };
 }
 
-const formatarMargem = (m: number | null) => (m === null ? "—" : `${m.toFixed(1)}%`);
-const formatarRoas = (r: number | null) => (r === null ? "—" : `${r.toFixed(2)}x`);
-
-function Sparkline({ diario }: { diario: DiaControleAds[] }) {
-  if (diario.length < 2) return null;
-  const largura = 200;
-  const altura = 44;
-  const maximo = Math.max(1, ...diario.flatMap((d) => [d.gasto, d.faturamento]));
-  const pontos = (valor: (d: DiaControleAds) => number) =>
-    diario
-      .map((d, i) => {
-        const x = (i / (diario.length - 1)) * largura;
-        const y = altura - (valor(d) / maximo) * (altura - 4) - 2;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      })
-      .join(" ");
+function KpiTile({
+  titulo,
+  valor,
+  sub,
+  delta,
+  serie,
+  cor,
+  corValor,
+}: {
+  titulo: string;
+  valor: string;
+  sub: string;
+  delta?: { texto: string; classe: string } | null;
+  serie?: number[];
+  cor: string;
+  corValor?: string;
+}) {
   return (
-    <svg className="controle-ads-sparkline" viewBox={`0 0 ${largura} ${altura}`} preserveAspectRatio="none" role="img" aria-label="Venda e gasto por dia">
-      <polyline points={pontos((d) => d.faturamento)} style={{ stroke: "var(--good-text)" }} />
-      <polyline points={pontos((d) => d.gasto)} style={{ stroke: "var(--critical-text)" }} />
-    </svg>
+    <div className="pbi-kpi" style={{ borderTopColor: cor }}>
+      <div className="pbi-kpi-titulo">{titulo}</div>
+      <div className="pbi-kpi-valor" style={corValor ? { color: corValor } : undefined}>{valor}</div>
+      <div className="pbi-kpi-sub">
+        {sub}
+        {delta && <span className={`pbi-delta ${delta.classe}`}>{delta.texto}</span>}
+      </div>
+      {serie && <MiniArea valores={serie} cor={cor} />}
+    </div>
   );
 }
 
-function CartaoConta({
+function LojaTile({
   conta,
   metaPadrao,
   onMetaSalva,
@@ -102,9 +102,6 @@ function CartaoConta({
   const [atencao, setAtencao] = useState(String(conta.meta.atencaoMinimo));
   const [erroMeta, setErroMeta] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
-
-  const compMargem = comparativo(conta.margemPosAds, conta.anterior.margemPosAds, " pp", true);
-  const compRoas = comparativo(conta.roas, conta.anterior.roas, "x", true);
 
   async function salvar() {
     setErroMeta(null);
@@ -127,104 +124,54 @@ function CartaoConta({
     setEditando(false);
   }
 
+  const comp = variacao(conta.margemPosAds ?? 0, conta.anterior.margemPosAds ?? 0, true);
+
   return (
-    <div className={`controle-ads-card controle-ads-card-${conta.nivel}`}>
-      <div className="controle-ads-card-topo">
-        <span className="controle-ads-nome">{conta.lojaNome}</span>
-        <span className={`controle-ads-selo controle-ads-selo-${conta.nivel}`}>{ROTULOS[conta.nivel]}</span>
+    <div className="pbi-loja" style={{ borderTopColor: COR_NIVEL[conta.nivel] }}>
+      <div className="pbi-loja-topo">
+        <span className="pbi-loja-nome">{conta.lojaNome}</span>
+        <span className="pbi-pill" style={{ background: COR_NIVEL[conta.nivel] }}>{ROTULOS[conta.nivel]}</span>
       </div>
-
-      <div className="controle-ads-acos-linha">
-        <div className="controle-ads-acos">{formatarMargem(conta.margemPosAds)}</div>
-        {compMargem && <div className={`controle-ads-comp ${compMargem.classe}`}>{compMargem.texto}</div>}
+      <Velocimetro valor={conta.margemPosAds} min={MARGEM_MIN} max={MARGEM_MAX} atencao={conta.meta.atencaoMinimo} motor={conta.meta.motorMinimo} />
+      <div className="pbi-loja-metricas">
+        <div><span>ROAS</span><b>{formatarRoas(conta.roas)}</b></div>
+        <div><span>Equilíbrio</span><b>{conta.roasEquilibrio === null ? "—" : `${conta.roasEquilibrio.toFixed(2)}x`}</b></div>
+        <div><span>Lucro após Ads</span><b className={conta.lucroAposAds === null ? "" : conta.lucroAposAds >= 0 ? "pbi-bom" : "pbi-ruim"}>{formatarMoeda(conta.lucroAposAds)}</b></div>
+        <div><span>Sem venda</span><b className="pbi-ruim">{moedaCompacta.format(conta.gastoSemVenda)}</b></div>
       </div>
-      <div className="financeiro-td-mudo">Margem pós Ads da loja</div>
-
-      <div
-        className="controle-ads-barra"
-        title={`Motor a partir de ${conta.meta.motorMinimo}% · Atenção a partir de ${conta.meta.atencaoMinimo}%`}
-      >
-        {conta.margemPosAds !== null && (
-          <div className="controle-ads-barra-preenchida" style={{ width: `${posicaoNaEscala(conta.margemPosAds)}%` }} />
-        )}
-        <div className="controle-ads-marca" style={{ left: `${posicaoNaEscala(conta.meta.atencaoMinimo)}%` }} />
-        <div className="controle-ads-marca" style={{ left: `${posicaoNaEscala(conta.meta.motorMinimo)}%` }} />
-      </div>
-      <div className="controle-ads-escala financeiro-td-mudo">
-        <span>{MARGEM_MINIMA_ESCALA}%</span>
-        <span>0%</span>
-        <span>{MARGEM_MAXIMA_ESCALA}%</span>
-      </div>
-
-      <div className="controle-ads-roas-linha">
-        <div>
-          <div className="controle-ads-roas">ROAS {formatarRoas(conta.roas)}</div>
-          <div className="financeiro-td-mudo">
-            Equilíbrio {conta.roasEquilibrio === null ? "—" : `${conta.roasEquilibrio.toFixed(2)}x`}
-          </div>
-        </div>
-        {compRoas && <div className={`controle-ads-comp ${compRoas.classe}`}>{compRoas.texto}</div>}
-      </div>
-
-      <Sparkline diario={conta.diario} />
-      <div className="controle-ads-legenda-grafico financeiro-td-mudo">
-        <span className="controle-ads-bolinha controle-ads-bolinha-venda" /> venda
-        <span className="controle-ads-bolinha controle-ads-bolinha-gasto" /> gasto
-      </div>
-
-      <div className="controle-ads-valores">
-        <span>Gasto Ads {formatCurrency(conta.gasto)}</span>
-        <span>Venda total {formatCurrency(conta.faturamento)}</span>
-      </div>
-      <div className="controle-ads-valores">
-        <span>Receita atribuída {formatCurrency(conta.receitaAtribuida)}</span>
-        <span>Sem venda {formatCurrency(conta.gastoSemVenda)}</span>
-      </div>
-      <div className={`controle-ads-lucro ${conta.lucroAposAds === null ? "" : conta.lucroAposAds >= 0 ? "controle-ads-melhorou" : "controle-ads-piorou"}`}>
-        Lucro após Ads {conta.lucroAposAds === null ? "— (falta custo)" : formatCurrency(conta.lucroAposAds)}
-      </div>
+      {comp && <div className={`pbi-loja-comp ${comp.classe}`}>margem {comp.texto}</div>}
       {conta.vendasSemCusto > 0 && (
-        <div className="controle-ads-alerta">
-          {conta.vendasSemCusto} venda(s) sem custo na SKU MASTER — margem em branco até cadastrar:
-          <span className="controle-ads-skus">{conta.skusSemCusto.join(", ")}</span>
+        <div className="pbi-alerta">
+          {conta.vendasSemCusto} venda(s) sem custo na SKU MASTER: <b>{conta.skusSemCusto.join(", ")}</b>
         </div>
       )}
 
       {!editando ? (
-        <div className="controle-ads-meta-linha">
-          <span className="financeiro-td-mudo">
-            Motor ≥ {conta.meta.motorMinimo}% · Atenção ≥ {conta.meta.atencaoMinimo}%
-            {conta.metaPadrao ? " (padrão)" : ""}
-          </span>
-          <button className="btn-responder" onClick={() => setEditando(true)}>Editar meta</button>
+        <div className="pbi-loja-rodape">
+          <span>Motor ≥ {conta.meta.motorMinimo}% · Atenção ≥ {conta.meta.atencaoMinimo}%{conta.metaPadrao ? " (padrão)" : ""}</span>
+          <button className="pbi-botao-ghost" onClick={() => setEditando(true)}>Editar meta</button>
         </div>
       ) : (
-        <div className="controle-ads-meta-editor">
-          <label>
-            Margem mínima para motor (%)
-            <input type="number" step="0.5" className="clonar-input" value={motor} onChange={(e) => setMotor(e.target.value)} />
+        <div className="pbi-meta-editor">
+          <label>Margem mínima motor (%)
+            <input type="number" step="0.5" value={motor} onChange={(e) => setMotor(e.target.value)} />
           </label>
-          <label>
-            Margem mínima para atenção (%)
-            <input type="number" step="0.5" className="clonar-input" value={atencao} onChange={(e) => setAtencao(e.target.value)} />
+          <label>Margem mínima atenção (%)
+            <input type="number" step="0.5" value={atencao} onChange={(e) => setAtencao(e.target.value)} />
           </label>
-          <div className="controle-ads-meta-botoes">
-            <button className="btn-responder" onClick={salvar} disabled={salvando}>
-              {salvando ? "Salvando..." : "Salvar"}
-            </button>
-            <button className="btn-excluir" onClick={cancelar} disabled={salvando}>Cancelar</button>
+          <div className="pbi-meta-botoes">
+            <button className="pbi-botao" onClick={salvar} disabled={salvando}>{salvando ? "Salvando..." : "Salvar"}</button>
+            <button className="pbi-botao-ghost" onClick={cancelar} disabled={salvando}>Cancelar</button>
           </div>
-          {erroMeta && <div className="clonar-erro">{erroMeta}</div>}
-          <span className="financeiro-td-mudo">
-            Padrão do painel: motor ≥ {metaPadrao.motorMinimo}% · atenção ≥ {metaPadrao.atencaoMinimo}%
-          </span>
+          {erroMeta && <div className="pbi-erro">{erroMeta}</div>}
+          <span className="pbi-muted">Padrão: motor ≥ {metaPadrao.motorMinimo}% · atenção ≥ {metaPadrao.atencaoMinimo}%</span>
         </div>
       )}
     </div>
   );
 }
 
-function ColunaCampanhas({
+function ListaCampanhas({
   titulo,
   nivel,
   itens,
@@ -236,30 +183,27 @@ function ColunaCampanhas({
   vazio: string;
 }) {
   return (
-    <div className={`controle-ads-lista controle-ads-lista-${nivel}`}>
-      <div className="controle-ads-lista-titulo">
-        {titulo} <span className="controle-ads-contagem">{itens.length}</span>
+    <div className="pbi-coluna" style={{ borderTopColor: COR_NIVEL[nivel] }}>
+      <div className="pbi-coluna-titulo" style={{ color: COR_NIVEL[nivel] }}>
+        {titulo} <span className="pbi-contagem">{itens.length}</span>
       </div>
-      {itens.length === 0 && <div className="financeiro-td-mudo">{vazio}</div>}
-      {itens.map((c) => (
-        <div key={`${c.lojaId}-${c.campanhaId}`} className="controle-ads-item">
-          <div className="controle-ads-item-topo">
-            <span className="controle-ads-item-nome" title={c.nome}>{c.nome}</span>
-            <span className="controle-ads-loja-tag">{c.lojaNome}</span>
+      {itens.length === 0 && <div className="pbi-muted">{vazio}</div>}
+      {itens.slice(0, 12).map((c) => (
+        <div key={`${c.lojaId}-${c.campanhaId}`} className="pbi-item">
+          <div className="pbi-item-topo">
+            <span className="pbi-item-nome" title={c.nome}>{c.nome}</span>
+            <span className="pbi-tag">{c.lojaNome}</span>
           </div>
-          <div className="controle-ads-valores">
-            <span>Gasto {formatCurrency(c.gasto)}</span>
-            <span>Receita {formatCurrency(c.receita)}</span>
+          <div className="pbi-item-linha">
+            <span>Gasto {moedaCompacta.format(c.gasto)}</span>
             <span>ROAS {formatarRoas(c.roas)}</span>
+            <b style={{ color: COR_NIVEL[c.nivel] }}>{formatarMargem(c.margemPosAds)}</b>
           </div>
-          <div className={`controle-ads-saldo ${c.lucroAposAds === null ? "" : c.lucroAposAds >= 0 ? "controle-ads-melhorou" : "controle-ads-piorou"}`}>
-            Margem pós Ads {formatarMargem(c.margemPosAds)}
-            {c.lucroAposAds !== null && <> · {formatCurrency(c.lucroAposAds)}</>}
-            {c.itensSemCusto > 0 && <span className="controle-ads-status"> · {c.itensSemCusto} item(ns) sem custo</span>}
-            {c.status !== "active" && <span className="controle-ads-status"> · {c.status === "paused" ? "pausada" : c.status}</span>}
-          </div>
+          {c.itensSemCusto > 0 && <div className="pbi-muted">{c.itensSemCusto} item(ns) sem custo</div>}
+          {c.status !== "active" && <div className="pbi-muted">{c.status === "paused" ? "pausada" : c.status}</div>}
         </div>
       ))}
+      {itens.length > 12 && <div className="pbi-muted">+ {itens.length - 12} campanhas</div>}
     </div>
   );
 }
@@ -322,8 +266,7 @@ export function ControleAds() {
   }, [dataInicio, dataFim, recarregar]);
 
   // Avisa quando uma loja ENTRA em sangria enquanto a tela está aberta.
-  // A primeira carga do período só guarda o estado — senão toda vez que você
-  // troca o filtro ou abre a tela, avisaria de tudo de novo.
+  // A primeira carga do período só guarda o estado.
   useEffect(() => {
     if (!dados) return;
     const atuais = new Map(dados.contas.map((c) => [c.lojaId, c.nivel]));
@@ -346,180 +289,222 @@ export function ControleAds() {
     setRecarregar((n) => n + 1);
   }
 
-  const contasVisiveis = (dados?.contas ?? []).filter((c) => lojaFiltro === "todas" || c.lojaId === lojaFiltro);
-  const campanhasVisiveis = (dados?.campanhas ?? []).filter((c) => lojaFiltro === "todas" || c.lojaId === lojaFiltro);
+  const contasVisiveis = useMemo(
+    () => (dados?.contas ?? []).filter((c) => lojaFiltro === "todas" || c.lojaId === lojaFiltro),
+    [dados, lojaFiltro]
+  );
+  const campanhasVisiveis = useMemo(
+    () => (dados?.campanhas ?? []).filter((c) => lojaFiltro === "todas" || c.lojaId === lojaFiltro),
+    [dados, lojaFiltro]
+  );
+
+  // Série diária somada entre as lojas visíveis (ou de uma loja só).
+  const diarioSomado = useMemo<DiaControleAds[]>(() => {
+    const mapa = new Map<string, DiaControleAds>();
+    for (const c of contasVisiveis) {
+      for (const d of c.diario) {
+        const atual = mapa.get(d.data) ?? { data: d.data, gasto: 0, faturamento: 0 };
+        atual.gasto += d.gasto;
+        atual.faturamento += d.faturamento;
+        mapa.set(d.data, atual);
+      }
+    }
+    return [...mapa.values()].sort((a, b) => (a.data < b.data ? -1 : 1));
+  }, [contasVisiveis]);
 
   const totalGasto = contasVisiveis.reduce((s, c) => s + c.gasto, 0);
   const totalFaturamento = contasVisiveis.reduce((s, c) => s + c.faturamento, 0);
   const totalAtribuido = contasVisiveis.reduce((s, c) => s + c.receitaAtribuida, 0);
   const totalGastoAtribuido = contasVisiveis.reduce((s, c) => s + c.gastoAtribuido, 0);
   const totalSemVenda = contasVisiveis.reduce((s, c) => s + c.gastoSemVenda, 0);
-  const lucroTotal = contasVisiveis.length > 0 && contasVisiveis.every((c) => c.lucroAposAds !== null)
-    ? contasVisiveis.reduce((s, c) => s + (c.lucroAposAds ?? 0), 0)
-    : null;
+  const anteriorGasto = contasVisiveis.reduce((s, c) => s + c.anterior.gasto, 0);
+  const anteriorFaturamento = contasVisiveis.reduce((s, c) => s + c.anterior.faturamento, 0);
+  const lucroTotal =
+    contasVisiveis.length > 0 && contasVisiveis.every((c) => c.lucroAposAds !== null)
+      ? contasVisiveis.reduce((s, c) => s + (c.lucroAposAds ?? 0), 0)
+      : null;
   const roasGeral = totalGastoAtribuido > 0 ? totalAtribuido / totalGastoAtribuido : null;
   const margemGeral = lucroTotal !== null && totalFaturamento > 0 ? (lucroTotal / totalFaturamento) * 100 : null;
-  const contagemLoja = (nivel: NivelControleAds) => contasVisiveis.filter((c) => c.nivel === nivel).length;
+
+  const distribuicao = useMemo(() => {
+    const soma = (n: NivelControleAds) => campanhasVisiveis.filter((c) => c.nivel === n).reduce((s, c) => s + c.gasto, 0);
+    return [
+      { label: "Sangria", valor: soma("sangria"), cor: COR_NIVEL.sangria },
+      { label: "Atenção", valor: soma("atencao"), cor: COR_NIVEL.atencao },
+      { label: "Motor", valor: soma("motor"), cor: COR_NIVEL.motor },
+      { label: "Sem custo", valor: soma("sem_dados"), cor: COR_NIVEL.sem_dados },
+    ];
+  }, [campanhasVisiveis]);
+
+  const pontosDispersao: PontoDispersao[] = campanhasVisiveis
+    .filter((c) => c.roas !== null && c.margemPosAds !== null)
+    .map((c) => ({
+      chave: `${c.lojaId}-${c.campanhaId}`,
+      titulo: `${c.nome} (${c.lojaNome})`,
+      x: c.roas as number,
+      y: c.margemPosAds as number,
+      gasto: c.gasto,
+      nivel: c.nivel,
+    }));
+
   const campanhasDo = (nivel: NivelControleAds) =>
-    campanhasVisiveis
-      .filter((c) => c.nivel === nivel)
-      .sort((a, b) => (a.margemPosAds ?? 0) - (b.margemPosAds ?? 0));
+    campanhasVisiveis.filter((c) => c.nivel === nivel).sort((a, b) => (a.margemPosAds ?? 0) - (b.margemPosAds ?? 0));
+  const topGasto = [...campanhasVisiveis].sort((a, b) => b.gasto - a.gasto).slice(0, 10);
+  const maiorGasto = Math.max(1, ...topGasto.map((c) => c.gasto));
+
+  const deltaGasto = variacao(totalGasto, anteriorGasto, false);
+  const deltaVenda = variacao(totalFaturamento, anteriorFaturamento, true);
 
   return (
-    <div className="controle-ads">
-      <div className="controle-ads-topo">
-        <span className="painel-eyebrow">Ads · pessoal</span>
-        <h1>Controle de Ads</h1>
-        <p className="painel-sub">Só as suas 4 lojas. Quem dá lucro depois do Ads, quem só queima dinheiro e onde ele escapa.</p>
-      </div>
-
-      <div className="financeiro-filtros">
-        <div className="financeiro-filtro-datas">
-          <input
-            type="date"
-            className="dashboard-select"
-            value={dataInicio}
-            max={dataFim}
-            onChange={(e) => setDataInicio(e.target.value)}
-          />
+    <div className="pbi">
+      <div className="pbi-topo">
+        <div>
+          <span className="pbi-eyebrow">Ads · pessoal</span>
+          <h1>Controle de Ads</h1>
+        </div>
+        <div className="pbi-filtros">
+          <input type="date" value={dataInicio} max={dataFim} onChange={(e) => setDataInicio(e.target.value)} />
           <span>até</span>
-          <input
-            type="date"
-            className="dashboard-select"
-            value={dataFim}
-            min={dataInicio}
-            max={hojeISO()}
-            onChange={(e) => setDataFim(e.target.value)}
-          />
-          <button
-            type="button"
-            className="btn-responder financeiro-btn-hoje"
-            onClick={() => {
-              setDataInicio(hojeISO());
-              setDataFim(hojeISO());
-            }}
-          >
-            Hoje
-          </button>
-          <button
-            type="button"
-            className="btn-responder financeiro-btn-hoje"
-            onClick={() => {
-              setDataInicio(diasAtrasISO(6));
-              setDataFim(hojeISO());
-            }}
-          >
-            7 dias
-          </button>
-          <button
-            type="button"
-            className="btn-responder financeiro-btn-hoje"
-            onClick={atualizarAgora}
-            disabled={atualizando}
-            title="Buscar dados novos agora, sem esperar o cache"
-          >
+          <input type="date" value={dataFim} min={dataInicio} max={hojeISO()} onChange={(e) => setDataFim(e.target.value)} />
+          <button type="button" onClick={() => { setDataInicio(hojeISO()); setDataFim(hojeISO()); }}>Hoje</button>
+          <button type="button" onClick={() => { setDataInicio(diasAtrasISO(6)); setDataFim(hojeISO()); }}>7 dias</button>
+          <button type="button" onClick={atualizarAgora} disabled={atualizando} title="Buscar dados novos agora, sem esperar o cache">
             {atualizando ? "Atualizando..." : "Atualizar"}
           </button>
-          {ultimaAtualizacao && (
-            <span className="financeiro-td-mudo">
-              Atualizado às {ultimaAtualizacao.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · auto a cada 5 min
-            </span>
-          )}
+          <select value={lojaFiltro} onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}>
+            <option value="todas">Todas as lojas</option>
+            {(dados?.contas ?? []).map((c) => (
+              <option key={c.lojaId} value={c.lojaId}>{c.lojaNome}</option>
+            ))}
+          </select>
         </div>
-        <select
-          className="dashboard-select"
-          value={lojaFiltro}
-          onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
-        >
-          <option value="todas">Todas as lojas</option>
-          {(dados?.contas ?? []).map((c) => (
-            <option key={c.lojaId} value={c.lojaId}>
-              {c.lojaNome}
-            </option>
-          ))}
-        </select>
+        {ultimaAtualizacao && (
+          <div className="pbi-muted">
+            Atualizado às {ultimaAtualizacao.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · auto a cada 5 min
+          </div>
+        )}
       </div>
 
-      {erro && <div className="clonar-erro">{erro}</div>}
-      {!dados && !erro && <div className="state-message">Carregando contas...</div>}
+      {erro && <div className="pbi-erro">{erro}</div>}
+      {!dados && !erro && <div className="pbi-vazio">Carregando contas...</div>}
 
       {dados && (
         <>
-          <div className="controle-ads-resumo">
-            <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">Margem pós Ads</span>
-              <b className={margemGeral !== null && margemGeral < 0 ? "controle-ads-piorou" : "controle-ads-melhorou"}>
-                {formatarMargem(margemGeral)}
-              </b>
-            </div>
-            <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">ROAS (atribuído)</span>
-              <b>{formatarRoas(roasGeral)}</b>
-            </div>
-            <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">Lucro após Ads</span>
-              <b className={lucroTotal !== null && lucroTotal < 0 ? "controle-ads-piorou" : "controle-ads-melhorou"}>
-                {lucroTotal === null ? "— (falta custo)" : formatCurrency(lucroTotal)}
-              </b>
-            </div>
-            <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">Gasto Ads</span>
-              <b>{formatCurrency(totalGasto)}</b>
-            </div>
-            <div className="controle-ads-resumo-item">
-              <span className="financeiro-td-mudo">Gasto sem venda</span>
-              <b className="controle-ads-piorou">{formatCurrency(totalSemVenda)}</b>
-            </div>
-            <div className="controle-ads-resumo-item controle-ads-selos">
-              <span className="controle-ads-selo controle-ads-selo-sangria">{contagemLoja("sangria")} lojas em sangria</span>
-              <span className="controle-ads-selo controle-ads-selo-atencao">{contagemLoja("atencao")} atenção</span>
-              <span className="controle-ads-selo controle-ads-selo-motor">{contagemLoja("motor")} motor</span>
-            </div>
-          </div>
-
-          <div className="controle-ads-listas">
-            <ColunaCampanhas
-              titulo="SANGRIA"
-              nivel="sangria"
-              itens={campanhasDo("sangria")}
-              vazio="Nenhuma campanha em sangria no período."
+          <div className="pbi-kpis">
+            <KpiTile
+              titulo="Margem pós Ads"
+              valor={formatarMargem(margemGeral)}
+              sub={`Lucro ${formatarMoeda(lucroTotal)}`}
+              cor={margemGeral !== null && margemGeral < 0 ? COR_NIVEL.sangria : COR_NIVEL.motor}
+              corValor={margemGeral !== null && margemGeral < 0 ? COR_NIVEL.sangria : COR_NIVEL.motor}
             />
-            <ColunaCampanhas
-              titulo="ATENÇÃO"
-              nivel="atencao"
-              itens={campanhasDo("atencao")}
-              vazio="Nenhuma campanha na faixa de atenção."
+            <KpiTile
+              titulo="ROAS atribuído"
+              valor={formatarRoas(roasGeral)}
+              sub={`Receita ${moedaCompacta.format(totalAtribuido)}`}
+              cor="var(--pbi-azul)"
             />
-            <ColunaCampanhas
-              titulo="MOTOR"
-              nivel="motor"
-              itens={campanhasDo("motor")}
-              vazio="Nenhuma campanha no nível motor no período."
+            <KpiTile
+              titulo="Lucro após Ads"
+              valor={lucroTotal === null ? "—" : moedaCompacta.format(lucroTotal)}
+              sub="margem de contribuição − Ads"
+              cor={lucroTotal !== null && lucroTotal < 0 ? COR_NIVEL.sangria : COR_NIVEL.motor}
+            />
+            <KpiTile
+              titulo="Gasto Ads"
+              valor={moedaCompacta.format(totalGasto)}
+              sub="no período"
+              delta={deltaGasto}
+              serie={diarioSomado.map((d) => d.gasto)}
+              cor={COR_NIVEL.sangria}
+            />
+            <KpiTile
+              titulo="Venda total"
+              valor={moedaCompacta.format(totalFaturamento)}
+              sub="faturamento das lojas"
+              delta={deltaVenda}
+              serie={diarioSomado.map((d) => d.faturamento)}
+              cor={COR_NIVEL.motor}
+            />
+            <KpiTile
+              titulo="Gasto sem venda"
+              valor={moedaCompacta.format(totalSemVenda)}
+              sub={totalGasto > 0 ? `${((totalSemVenda / totalGasto) * 100).toFixed(1)}% do gasto` : "—"}
+              cor={COR_NIVEL.atencao}
             />
           </div>
 
-          {campanhasDo("sem_dados").length > 0 && (
-            <div className="controle-ads-legenda financeiro-td-mudo">
-              {campanhasDo("sem_dados").length} campanha(s) sem custo completo na SKU MASTER — ficam fora das colunas até cadastrar.
-            </div>
-          )}
+          <div className="pbi-grade-2">
+            <section className="pbi-card">
+              <div className="pbi-card-titulo">Margem pós Ads por loja</div>
+              <div className="pbi-lojas">
+                {contasVisiveis.map((conta) => (
+                  <LojaTile
+                    key={conta.lojaId}
+                    conta={conta}
+                    metaPadrao={dados.metaPadrao}
+                    onMetaSalva={() => setRecarregar((n) => n + 1)}
+                  />
+                ))}
+              </div>
+            </section>
+            <section className="pbi-card">
+              <div className="pbi-card-titulo">Onde o gasto está</div>
+              <Rosca fatias={distribuicao} centro={moedaCompacta.format(distribuicao.reduce((s, f) => s + f.valor, 0))} />
+            </section>
+          </div>
 
-          <div className="controle-ads-legenda financeiro-td-mudo">
+          <div className="pbi-grade-2">
+            <section className="pbi-card">
+              <div className="pbi-card-titulo">Venda × gasto por dia</div>
+              <LinhaDiaria diario={diarioSomado} />
+            </section>
+            <section className="pbi-card">
+              <div className="pbi-card-titulo">ROAS × margem pós Ads por campanha</div>
+              <div className="pbi-muted">Quanto maior a bolha, mais gasto. Acima de 0% dá lucro depois do Ads.</div>
+              <Dispersao pontos={pontosDispersao} />
+            </section>
+          </div>
+
+          <div className="pbi-grade-2">
+            <section className="pbi-card">
+              <div className="pbi-card-titulo">Campanhas que mais gastam</div>
+              <div className="pbi-ranking">
+                {topGasto.length === 0 && <div className="pbi-muted">Nenhuma campanha com gasto no período.</div>}
+                {topGasto.map((c) => (
+                  <div key={`${c.lojaId}-${c.campanhaId}`} className="pbi-rank-linha">
+                    <div className="pbi-rank-texto">
+                      <span title={c.nome}>{c.nome}</span>
+                      <span className="pbi-tag">{c.lojaNome}</span>
+                    </div>
+                    <div className="pbi-rank-barra">
+                      <div style={{ width: `${(c.gasto / maiorGasto) * 100}%`, background: COR_NIVEL[c.nivel] }} />
+                    </div>
+                    <div className="pbi-rank-valor">
+                      {moedaCompacta.format(c.gasto)} · <b style={{ color: COR_NIVEL[c.nivel] }}>{formatarMargem(c.margemPosAds)}</b>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+            <section className="pbi-card">
+              <div className="pbi-card-titulo">Campanhas por faixa</div>
+              <div className="pbi-colunas">
+                <ListaCampanhas titulo="SANGRIA" nivel="sangria" itens={campanhasDo("sangria")} vazio="Nenhuma em sangria." />
+                <ListaCampanhas titulo="ATENÇÃO" nivel="atencao" itens={campanhasDo("atencao")} vazio="Nenhuma na faixa de atenção." />
+                <ListaCampanhas titulo="MOTOR" nivel="motor" itens={campanhasDo("motor")} vazio="Nenhuma no nível motor." />
+              </div>
+              {campanhasDo("sem_dados").length > 0 && (
+                <div className="pbi-muted">
+                  {campanhasDo("sem_dados").length} campanha(s) sem custo completo na SKU MASTER: fora das colunas até cadastrar.
+                </div>
+              )}
+            </section>
+          </div>
+
+          <div className="pbi-rodape">
             Margem pós Ads = (margem de contribuição − gasto com Ads) ÷ faturamento. Custo do produto vem da planilha SKU MASTER.
-            Campanha: cada anúncio usa a margem % dos seus pedidos no período. ROAS = receita atribuída pelo ML ÷ gasto.
-            Padrão: motor ≥ {dados.metaPadrao.motorMinimo}% · atenção ≥ {dados.metaPadrao.atencaoMinimo}% · abaixo disso, sangria.
-            Comparando com {dados.anterior.inicio} a {dados.anterior.fim}.
-          </div>
-
-          <div className="controle-ads-grade">
-            {contasVisiveis.map((conta) => (
-              <CartaoConta
-                key={conta.lojaId}
-                conta={conta}
-                metaPadrao={dados.metaPadrao}
-                onMetaSalva={() => setRecarregar((n) => n + 1)}
-              />
-            ))}
+            ROAS = receita atribuída pelo ML ÷ gasto. Comparando com {dados.anterior.inicio} a {dados.anterior.fim}.
           </div>
         </>
       )}
