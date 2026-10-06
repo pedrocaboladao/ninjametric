@@ -756,6 +756,8 @@ export interface LinhaPreco {
   situacao: "gravado" | "já era esse" | "não achei no ERP" | "erro";
   produtoId?: number;
   antes?: number;
+  /** custo relido DEPOIS de gravar o preco: denuncia relacao derrubada */
+  custoDepois?: number;
   erro?: string;
 }
 
@@ -882,12 +884,29 @@ export async function gravarPreco(
         continue;
       }
       if (!simulacao) {
+        // Corpo MINIMO, nao o produto inteiro. Devolver `...inteiro.data` leva
+        // junto o bloco `fornecedor`, e o Bling trata isso como ordem de
+        // regravar a relacao produto<->fornecedor — que e onde mora o custo.
+        // Em 06/10/2026 isso destruiu a relacao de 187 lixas ZA350M-SF numa
+        // carga de 1.240 precos: o `fornecedor` voltou a `{id: 0}` e o custo
+        // foi junto. Mesma familia do rename de codigo, que ja fazia isso.
         await chamar("put", `/produtos/${achado.id}`, undefined, {
-          ...inteiro.data,
+          nome: inteiro.data.nome,
+          codigo: inteiro.data.codigo,
           preco,
         });
       }
-      linhas.push({ sku, preco, situacao: "gravado", produtoId: achado.id, antes });
+      // Rele: o PUT do Bling responde 200 sem provar que gravou, e aqui ainda
+      // interessa saber se o custo sobreviveu ao preco.
+      let custoDepois: number | null = null;
+      if (!simulacao) {
+        const conf = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+        custoDepois = custoDoProduto(conf.data as Record<string, unknown>);
+      }
+      linhas.push({
+        sku, preco, situacao: "gravado", produtoId: achado.id, antes,
+        ...(custoDepois !== null ? { custoDepois } : {}),
+      });
     } catch (err) {
       linhas.push({
         sku, preco, situacao: "erro",
