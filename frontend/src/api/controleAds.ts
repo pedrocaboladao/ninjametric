@@ -10,8 +10,9 @@ async function tratarResposta<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-export async function fetchPainelControleAds(inicio: string, fim: string): Promise<PainelControleAds> {
+export async function fetchPainelControleAds(inicio: string, fim: string, atualizar = false): Promise<PainelControleAds> {
   const params = new URLSearchParams({ inicio, fim });
+  if (atualizar) params.set("atualizar", "1");
   const res = await fetch(`${API_BASE}/api/controle-ads?${params}`, { credentials: "include" });
   return tratarResposta<PainelControleAds>(res);
 }

@@ -160,10 +160,10 @@ export async function salvarMeta(lojaId: number, motorMinimo: number, atencaoMin
 // (API de anúncios do ML, a mesma que alimenta Gestão de Ads). Não engole erro:
 // se uma loja falhar, o painel mostra o erro em vez de números faltando.
 const cacheAnuncios = new Map<string, { data: MlAnuncioAds[]; expiraEm: number }>();
-async function anunciosDaLoja(lojaId: number, inicio: string, fim: string): Promise<MlAnuncioAds[]> {
+async function anunciosDaLoja(lojaId: number, inicio: string, fim: string, forcar: boolean): Promise<MlAnuncioAds[]> {
   const chave = `${lojaId}|${inicio}|${fim}`;
   const emCache = cacheAnuncios.get(chave);
-  if (emCache && emCache.expiraEm > Date.now()) return emCache.data;
+  if (!forcar && emCache && emCache.expiraEm > Date.now()) return emCache.data;
   const advertiserId = await getAdvertiserId(lojaId);
   const data = advertiserId === null ? [] : await getAnunciosAds(lojaId, advertiserId, inicio, fim);
   cacheAnuncios.set(chave, { data, expiraEm: Date.now() + CACHE_ANUNCIOS_MS });
@@ -192,15 +192,16 @@ async function calcularPeriodo(
   inicio: string,
   fim: string,
   lojas: LojaPainel[],
-  metas: Map<number, MetaLoja>
+  metas: Map<number, MetaLoja>,
+  forcar: boolean
 ): Promise<PeriodoCalculado> {
   const ids = lojas.map((l) => l.id);
   const [gastoPorLoja, resultado, nomesCampanhas, snapshot, anunciosPorLoja] = await Promise.all([
     obterGastoAdsHistoricoPorLoja(undefined, ids, inicio, fim),
-    listarVendasFinanceiras(undefined, ids, inicio, fim),
-    listarCampanhasAds(undefined, ids, inicio, fim),
+    listarVendasFinanceiras(undefined, ids, inicio, fim, forcar),
+    listarCampanhasAds(undefined, ids, inicio, fim, forcar),
     gastoDiarioSnapshot(ids, inicio, fim),
-    Promise.all(lojas.map(async (l) => [l.id, await anunciosDaLoja(l.id, inicio, fim)] as const)),
+    Promise.all(lojas.map(async (l) => [l.id, await anunciosDaLoja(l.id, inicio, fim, forcar)] as const)),
   ]);
   const anuncios = new Map<number, MlAnuncioAds[]>(anunciosPorLoja);
   const nomePorCampanha = new Map(nomesCampanhas.map((c) => [`${c.lojaId}|${c.campanhaId}`, c]));
@@ -322,7 +323,8 @@ async function calcularPeriodo(
   return { contas, campanhas };
 }
 
-export async function obterPainelAds(inicio: string, fim: string): Promise<PainelAds> {
+// `forcar` ignora o cache de 15 min e busca de novo no Mercado Livre (botão Atualizar).
+export async function obterPainelAds(inicio: string, fim: string, forcar = false): Promise<PainelAds> {
   const lojas: LojaPainel[] = (await listLojas())
     .filter((l) => l.ml_user_id !== null && LOJAS_DO_DONO.includes(l.id))
     .map((l) => ({ id: l.id, nome: l.nome }));
@@ -334,8 +336,8 @@ export async function obterPainelAds(inicio: string, fim: string): Promise<Paine
   const anteriorInicio = addDias(inicio, -n);
   const anteriorFim = addDias(inicio, -1);
 
-  const atual = await calcularPeriodo(inicio, fim, lojas, metas);
-  const anterior = await calcularPeriodo(anteriorInicio, anteriorFim, lojas, metas);
+  const atual = await calcularPeriodo(inicio, fim, lojas, metas, forcar);
+  const anterior = await calcularPeriodo(anteriorInicio, anteriorFim, lojas, metas, forcar);
 
   const contas = atual.contas.map((conta): ContaAds => {
     const ant = anterior.contas.find((c) => c.lojaId === conta.lojaId);

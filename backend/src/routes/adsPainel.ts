@@ -21,7 +21,7 @@ adsPainelRouter.get("/", async (req, res) => {
   try {
     res.json({
       metaPadrao: { motorMinimo: MARGEM_MOTOR_PADRAO, atencaoMinimo: MARGEM_ATENCAO_PADRAO },
-      ...(await obterPainelAds(inicio, fim)),
+      ...(await obterPainelAds(inicio, fim, req.query.atualizar === "1")),
     });
   } catch (err) {
     console.error("Falha ao montar o controle de Ads:", err);

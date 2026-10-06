@@ -32,30 +32,16 @@ function formatarData(d: Date): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-function diasAtras(n: number): string {
+function hojeISO(): string {
+  return formatarData(new Date());
+}
+
+// Mesmo critério do resto dos painéis: "7 dias" são 7 dias contando hoje.
+function diasAtrasISO(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return formatarData(d);
 }
-
-type Periodo = "hoje" | "semana" | "quinzena" | "mes" | "livre";
-type PeriodoPredefinido = Exclude<Periodo, "livre">;
-
-function intervaloDoPeriodo(periodo: PeriodoPredefinido): { inicio: string; fim: string } {
-  const hoje = formatarData(new Date());
-  if (periodo === "hoje") return { inicio: hoje, fim: hoje };
-  if (periodo === "semana") return { inicio: diasAtras(6), fim: hoje };
-  if (periodo === "quinzena") return { inicio: diasAtras(14), fim: hoje };
-  const d = new Date();
-  return { inicio: formatarData(new Date(d.getFullYear(), d.getMonth(), 1)), fim: hoje };
-}
-
-const PERIODOS: { id: PeriodoPredefinido; rotulo: string }[] = [
-  { id: "hoje", rotulo: "Hoje" },
-  { id: "semana", rotulo: "7 dias" },
-  { id: "quinzena", rotulo: "15 dias" },
-  { id: "mes", rotulo: "Mês" },
-];
 
 // Compara um indicador com o período anterior. `subirEhBom` diz qual seta é
 // boa: margem e ROAS sobem quando vai bem.
@@ -277,28 +263,41 @@ function ColunaCampanhas({
 }
 
 export function ControleAds() {
-  const [periodo, setPeriodo] = useState<Periodo>("hoje");
-  const [intervalo, setIntervalo] = useState(() => intervaloDoPeriodo("hoje"));
+  const [dataInicio, setDataInicio] = useState(hojeISO);
+  const [dataFim, setDataFim] = useState(hojeISO);
+  const [lojaFiltro, setLojaFiltro] = useState<"todas" | number>("todas");
   const [recarregar, setRecarregar] = useState(0);
   const [dados, setDados] = useState<PainelControleAds | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [atualizando, setAtualizando] = useState(false);
+  const forcarAtualizacao = useRef(false);
   const niveisAnteriores = useRef<Map<number, NivelControleAds> | null>(null);
 
   useEffect(() => {
+    if (dataInicio > dataFim) {
+      setErro("A data inicial é maior que a final.");
+      return;
+    }
     let ativo = true;
+    const atualizar = forcarAtualizacao.current;
+    forcarAtualizacao.current = false;
     setErro(null);
+    setAtualizando(atualizar);
     niveisAnteriores.current = null;
-    fetchPainelControleAds(intervalo.inicio, intervalo.fim)
+    fetchPainelControleAds(dataInicio, dataFim, atualizar)
       .then((d) => {
         if (ativo) setDados(d);
       })
       .catch((err) => {
         if (ativo) setErro(err instanceof Error ? err.message : "Falha ao carregar o controle de Ads.");
+      })
+      .finally(() => {
+        if (ativo) setAtualizando(false);
       });
     return () => {
       ativo = false;
     };
-  }, [intervalo.inicio, intervalo.fim, recarregar]);
+  }, [dataInicio, dataFim, recarregar]);
 
   // Avisa quando uma loja ENTRA em sangria enquanto a tela está aberta.
   // A primeira carga do período só guarda o estado — senão toda vez que você
@@ -320,24 +319,27 @@ export function ControleAds() {
     niveisAnteriores.current = atuais;
   }, [dados]);
 
-  function escolherPeriodo(p: PeriodoPredefinido) {
-    setPeriodo(p);
-    setIntervalo(intervaloDoPeriodo(p));
+  function atualizarAgora() {
+    forcarAtualizacao.current = true;
+    setRecarregar((n) => n + 1);
   }
 
-  const totalGasto = dados?.contas.reduce((s, c) => s + c.gasto, 0) ?? 0;
-  const totalFaturamento = dados?.contas.reduce((s, c) => s + c.faturamento, 0) ?? 0;
-  const totalAtribuido = dados?.contas.reduce((s, c) => s + c.receitaAtribuida, 0) ?? 0;
-  const totalGastoAtribuido = dados?.contas.reduce((s, c) => s + c.gastoAtribuido, 0) ?? 0;
-  const totalSemVenda = dados?.contas.reduce((s, c) => s + c.gastoSemVenda, 0) ?? 0;
-  const lucroTotal = dados?.contas.every((c) => c.lucroAposAds !== null)
-    ? dados.contas.reduce((s, c) => s + (c.lucroAposAds ?? 0), 0)
+  const contasVisiveis = (dados?.contas ?? []).filter((c) => lojaFiltro === "todas" || c.lojaId === lojaFiltro);
+  const campanhasVisiveis = (dados?.campanhas ?? []).filter((c) => lojaFiltro === "todas" || c.lojaId === lojaFiltro);
+
+  const totalGasto = contasVisiveis.reduce((s, c) => s + c.gasto, 0);
+  const totalFaturamento = contasVisiveis.reduce((s, c) => s + c.faturamento, 0);
+  const totalAtribuido = contasVisiveis.reduce((s, c) => s + c.receitaAtribuida, 0);
+  const totalGastoAtribuido = contasVisiveis.reduce((s, c) => s + c.gastoAtribuido, 0);
+  const totalSemVenda = contasVisiveis.reduce((s, c) => s + c.gastoSemVenda, 0);
+  const lucroTotal = contasVisiveis.length > 0 && contasVisiveis.every((c) => c.lucroAposAds !== null)
+    ? contasVisiveis.reduce((s, c) => s + (c.lucroAposAds ?? 0), 0)
     : null;
   const roasGeral = totalGastoAtribuido > 0 ? totalAtribuido / totalGastoAtribuido : null;
   const margemGeral = lucroTotal !== null && totalFaturamento > 0 ? (lucroTotal / totalFaturamento) * 100 : null;
-  const contagemLoja = (nivel: NivelControleAds) => dados?.contas.filter((c) => c.nivel === nivel).length ?? 0;
+  const contagemLoja = (nivel: NivelControleAds) => contasVisiveis.filter((c) => c.nivel === nivel).length;
   const campanhasDo = (nivel: NivelControleAds) =>
-    (dados?.campanhas ?? [])
+    campanhasVisiveis
       .filter((c) => c.nivel === nivel)
       .sort((a, b) => (a.margemPosAds ?? 0) - (b.margemPosAds ?? 0));
 
@@ -349,41 +351,66 @@ export function ControleAds() {
         <p className="painel-sub">Só as suas 4 lojas. Quem dá lucro depois do Ads, quem só queima dinheiro e onde ele escapa.</p>
       </div>
 
-      <div className="controle-ads-filtros">
-        <div className="tarefas-abas">
-          {PERIODOS.map((p) => (
-            <button
-              key={p.id}
-              className={`tarefas-aba ${periodo === p.id ? "tarefas-aba-ativa" : ""}`}
-              onClick={() => escolherPeriodo(p.id)}
-            >
-              {p.rotulo}
-            </button>
-          ))}
+      <div className="financeiro-filtros">
+        <div className="financeiro-filtro-datas">
+          <input
+            type="date"
+            className="dashboard-select"
+            value={dataInicio}
+            max={dataFim}
+            onChange={(e) => setDataInicio(e.target.value)}
+          />
+          <span>até</span>
+          <input
+            type="date"
+            className="dashboard-select"
+            value={dataFim}
+            min={dataInicio}
+            max={hojeISO()}
+            onChange={(e) => setDataFim(e.target.value)}
+          />
           <button
-            className={`tarefas-aba ${periodo === "livre" ? "tarefas-aba-ativa" : ""}`}
-            onClick={() => setPeriodo("livre")}
+            type="button"
+            className="btn-responder financeiro-btn-hoje"
+            onClick={() => {
+              setDataInicio(hojeISO());
+              setDataFim(hojeISO());
+            }}
           >
-            Personalizado
+            Hoje
+          </button>
+          <button
+            type="button"
+            className="btn-responder financeiro-btn-hoje"
+            onClick={() => {
+              setDataInicio(diasAtrasISO(6));
+              setDataFim(hojeISO());
+            }}
+          >
+            7 dias
+          </button>
+          <button
+            type="button"
+            className="btn-responder financeiro-btn-hoje"
+            onClick={atualizarAgora}
+            disabled={atualizando}
+            title="Buscar dados novos agora, sem esperar o cache"
+          >
+            {atualizando ? "Atualizando..." : "Atualizar"}
           </button>
         </div>
-        {periodo === "livre" && (
-          <div className="controle-ads-datas">
-            <input
-              type="date"
-              className="clonar-input"
-              value={intervalo.inicio}
-              onChange={(e) => setIntervalo((v) => ({ ...v, inicio: e.target.value }))}
-            />
-            <span className="financeiro-td-mudo">até</span>
-            <input
-              type="date"
-              className="clonar-input"
-              value={intervalo.fim}
-              onChange={(e) => setIntervalo((v) => ({ ...v, fim: e.target.value }))}
-            />
-          </div>
-        )}
+        <select
+          className="dashboard-select"
+          value={lojaFiltro}
+          onChange={(e) => setLojaFiltro(e.target.value === "todas" ? "todas" : Number(e.target.value))}
+        >
+          <option value="todas">Todas as lojas</option>
+          {(dados?.contas ?? []).map((c) => (
+            <option key={c.lojaId} value={c.lojaId}>
+              {c.lojaNome}
+            </option>
+          ))}
+        </select>
       </div>
 
       {erro && <div className="clonar-erro">{erro}</div>}
@@ -458,7 +485,7 @@ export function ControleAds() {
           </div>
 
           <div className="controle-ads-grade">
-            {dados.contas.map((conta) => (
+            {contasVisiveis.map((conta) => (
               <CartaoConta
                 key={conta.lojaId}
                 conta={conta}
