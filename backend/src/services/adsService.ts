@@ -345,7 +345,8 @@ async function calcularGastoAdsPorLoja(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
-  dataFim?: string
+  dataFim?: string,
+  forcarAtualizacao = false
 ): Promise<Map<number, number>> {
   const lojas = (await listLojas()).filter(
     (l) =>
@@ -361,7 +362,13 @@ async function calcularGastoAdsPorLoja(
   const dataInicioReal = dataInicio ?? seteDiasAtras;
   const dataFimReal = dataFim ?? hoje;
 
-  const campanhasAoVivo = await listarCampanhasAds(lojaIdFiltro, lojasPermitidas, dataInicioReal, dataFimReal);
+  const campanhasAoVivo = await listarCampanhasAds(
+    lojaIdFiltro,
+    lojasPermitidas,
+    dataInicioReal,
+    dataFimReal,
+    forcarAtualizacao
+  );
   for (const c of campanhasAoVivo) {
     porLoja.set(c.lojaId, (porLoja.get(c.lojaId) ?? 0) + c.custo);
   }
@@ -408,9 +415,10 @@ export async function obterGastoAdsHistoricoPorLoja(
   lojaIdFiltro?: number,
   lojasPermitidas?: number[],
   dataInicio?: string,
-  dataFim?: string
+  dataFim?: string,
+  forcarAtualizacao = false
 ): Promise<Map<number, number>> {
-  return calcularGastoAdsPorLoja(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim);
+  return calcularGastoAdsPorLoja(lojaIdFiltro, lojasPermitidas, dataInicio, dataFim, forcarAtualizacao);
 }
 
 const HORARIOS_SNAPSHOT_ADS = [0, 4, 8, 12, 16, 20];

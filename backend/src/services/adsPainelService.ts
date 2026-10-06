@@ -197,7 +197,7 @@ async function calcularPeriodo(
 ): Promise<PeriodoCalculado> {
   const ids = lojas.map((l) => l.id);
   const [gastoPorLoja, resultado, nomesCampanhas, snapshot, anunciosPorLoja] = await Promise.all([
-    obterGastoAdsHistoricoPorLoja(undefined, ids, inicio, fim),
+    obterGastoAdsHistoricoPorLoja(undefined, ids, inicio, fim, forcar),
     listarVendasFinanceiras(undefined, ids, inicio, fim, forcar),
     listarCampanhasAds(undefined, ids, inicio, fim, forcar),
     gastoDiarioSnapshot(ids, inicio, fim),
