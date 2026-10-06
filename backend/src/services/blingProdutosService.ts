@@ -74,7 +74,7 @@ async function chamar<T>(
       if (axios.isAxiosError(err) && err.response) {
         const d = err.response.data as unknown;
         const t = typeof d === "string" ? d : JSON.stringify(d);
-        throw new Error(`Bling ${err.response.status}: ${t.slice(0, 300)}`);
+        throw new Error(`Bling ${err.response.status}: ${t.slice(0, 1500)}`);
       }
       throw err;
     }
@@ -1140,6 +1140,10 @@ export async function criarVariacoes(
         nome: `${nome} ${c.cor}`,
         codigo: c.codigo,
         preco: c.preco,
+        tipo: "P",
+        situacao: "A",
+        formato: "S",
+        unidade: "UN",
         variacao: { nome: `${paiCodigo}:${c.cor}`, ordem: i + 1 },
       })),
     });
