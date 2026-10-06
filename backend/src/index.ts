@@ -12,6 +12,7 @@ import { discrepanciasRouter } from "./routes/discrepancias";
 import { mensagensRouter } from "./routes/mensagens";
 import { tarefasRouter } from "./routes/tarefas";
 import { agendaRouter } from "./routes/agenda";
+import { adsPainelRouter } from "./routes/adsPainel";
 import { empacotadoresRouter } from "./routes/empacotadores";
 import { usuariosRouter } from "./routes/usuarios";
 import { youtubeRouter } from "./routes/youtube";
@@ -92,6 +93,7 @@ app.use("/api/produtos", requireAuth, requirePermissao("produtos"), produtosRout
 app.use("/api/financeiro", requireAuth, requirePermissao("financeiro"), financeiroRouter);
 app.use("/api/financeiro-shopee", requireAuth, requirePermissao("financeiro_shopee"), financeiroShopeeRouter);
 app.use("/api/ads", requireAuth, requirePermissao("ads"), adsRouter);
+app.use("/api/controle-ads", requireAuth, requirePermissao("controle_ads"), adsPainelRouter);
 app.use("/api/ads-shopee", requireAuth, requirePermissao("ads_shopee"), adsShopeeRouter);
 app.use("/api/contas", requireAuth, requirePermissao("contas"), contasRouter);
 app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);

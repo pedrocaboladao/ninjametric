@@ -29,6 +29,7 @@ export const MODULOS_VALIDOS = [
   "discrepancias",
   "mensagens",
   "agenda",
+  "controle_ads",
 ] as const;
 
 export interface Usuario {

@@ -1,0 +1,161 @@
+.controle-ads {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.controle-ads-filtros {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.controle-ads-datas {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.controle-ads-resumo {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 14px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.controle-ads-resumo-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 130px;
+}
+
+.controle-ads-selos {
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.controle-ads-legenda {
+  font-size: 0.8rem;
+}
+
+.controle-ads-grade {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 14px;
+}
+
+.controle-ads-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.controle-ads-card-motor {
+  border-top-color: var(--good-text);
+}
+
+.controle-ads-card-atencao {
+  border-top-color: #fbbf24;
+}
+
+.controle-ads-card-sangria {
+  border-top-color: var(--critical-text);
+}
+
+.controle-ads-card-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.controle-ads-nome {
+  font-weight: 700;
+}
+
+.controle-ads-acos {
+  font-size: 2rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.controle-ads-barra {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.controle-ads-barra-preenchida {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.controle-ads-card-motor .controle-ads-barra-preenchida {
+  background: var(--good-text);
+}
+
+.controle-ads-card-atencao .controle-ads-barra-preenchida {
+  background: #fbbf24;
+}
+
+.controle-ads-card-sangria .controle-ads-barra-preenchida {
+  background: var(--critical-text);
+}
+
+.controle-ads-valores {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+
+.controle-ads-selo {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  margin-right: 4px;
+}
+
+.controle-ads-selo-motor {
+  background: var(--good-bg);
+  color: var(--good-text);
+}
+
+.controle-ads-selo-atencao {
+  background: rgba(251, 191, 36, 0.15);
+  color: #fbbf24;
+}
+
+.controle-ads-selo-sangria {
+  background: var(--critical-bg);
+  color: var(--critical-text);
+}
+
+.controle-ads-selo-sem_dados {
+  background: var(--bg-panel-alt);
+  color: var(--text-muted);
+}
+
+@media (max-width: 600px) {
+  .controle-ads-grade {
+    grid-template-columns: 1fr;
+  }
+}
