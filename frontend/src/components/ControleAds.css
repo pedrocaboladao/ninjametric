@@ -31,7 +31,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 130px;
+  min-width: 120px;
 }
 
 .controle-ads-selos {
@@ -44,9 +44,93 @@
   font-size: 0.8rem;
 }
 
+/* ATENÇÃO / MOTORES lado a lado: a leitura principal da tela */
+.controle-ads-listas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.controle-ads-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg-panel);
+}
+
+.controle-ads-lista-atencao {
+  border-top: 4px solid var(--critical-text);
+}
+
+.controle-ads-lista-motor {
+  border-top: 4px solid var(--good-text);
+}
+
+.controle-ads-lista-titulo {
+  font-size: 1.1rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.controle-ads-lista-atencao .controle-ads-lista-titulo {
+  color: var(--critical-text);
+}
+
+.controle-ads-lista-motor .controle-ads-lista-titulo {
+  color: var(--good-text);
+}
+
+.controle-ads-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+}
+
+.controle-ads-item-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.controle-ads-item-nome {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.controle-ads-loja-tag {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  white-space: nowrap;
+}
+
+.controle-ads-saldo {
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.controle-ads-status {
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+/* Cards por loja */
 .controle-ads-grade {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
 
@@ -84,23 +168,51 @@
   font-weight: 700;
 }
 
+.controle-ads-acos-linha {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .controle-ads-acos {
   font-size: 2rem;
   font-weight: 800;
   line-height: 1;
 }
 
+.controle-ads-comp {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.controle-ads-melhorou {
+  color: var(--good-text);
+}
+
+.controle-ads-piorou {
+  color: var(--critical-text);
+}
+
+.controle-ads-neutro {
+  color: var(--text-muted);
+}
+
+/* Barra com marcas nos limites motor e atenção da loja */
 .controle-ads-barra {
+  position: relative;
   height: 10px;
   border-radius: 999px;
   background: var(--bg-panel-alt);
   border: 1px solid var(--border);
-  overflow: hidden;
+  overflow: visible;
 }
 
 .controle-ads-barra-preenchida {
   height: 100%;
   border-radius: 999px;
+  background: var(--critical-text);
   transition: width 0.3s ease;
 }
 
@@ -112,7 +224,71 @@
   background: #fbbf24;
 }
 
-.controle-ads-card-sangria .controle-ads-barra-preenchida {
+.controle-ads-marca {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 2px;
+  background: var(--text-muted);
+  border-radius: 2px;
+}
+
+.controle-ads-escala {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  margin-top: 2px;
+}
+
+.controle-ads-roas-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.controle-ads-roas {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* Gráfico diário */
+.controle-ads-sparkline {
+  width: 100%;
+  height: 44px;
+  margin-top: 4px;
+  overflow: visible;
+}
+
+.controle-ads-sparkline polyline {
+  fill: none;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.controle-ads-legenda-grafico {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+}
+
+.controle-ads-bolinha {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+
+.controle-ads-bolinha-venda {
+  background: var(--good-text);
+}
+
+.controle-ads-bolinha-gasto {
   background: var(--critical-text);
 }
 
@@ -123,6 +299,35 @@
   font-size: 0.8rem;
   color: var(--text-muted);
   flex-wrap: wrap;
+}
+
+.controle-ads-meta-linha {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.controle-ads-meta-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.controle-ads-meta-editor label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.controle-ads-meta-botoes {
+  display: flex;
+  gap: 8px;
 }
 
 .controle-ads-selo {
@@ -155,6 +360,7 @@
 }
 
 @media (max-width: 600px) {
+  .controle-ads-listas,
   .controle-ads-grade {
     grid-template-columns: 1fr;
   }

@@ -2111,6 +2111,15 @@ CREATE TABLE IF NOT EXISTS agenda_avisos (
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_avisos_criado_em ON agenda_avisos (criado_em DESC);
 
+-- Metas de margem pós Ads por loja do Controle de Ads (pessoal). Sem linha =
+-- usa o padrão de adsPainelService.ts (motor a partir de 10%, atenção a partir de 0%).
+CREATE TABLE IF NOT EXISTS controle_ads_metas (
+  loja_id INTEGER PRIMARY KEY REFERENCES lojas(id) ON DELETE CASCADE,
+  motor_minimo NUMERIC(6,2) NOT NULL,
+  atencao_minimo NUMERIC(6,2) NOT NULL,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Histórico da sincronização automática de vendas (6h de Maringá).
 --
 -- Antes o resultado vivia só em memória: todo deploy zerava, e a tela voltava a
