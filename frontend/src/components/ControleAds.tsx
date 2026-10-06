@@ -15,6 +15,8 @@ import "./ControleAds.css";
 const MARGEM_MINIMA_ESCALA = -20;
 const MARGEM_MAXIMA_ESCALA = 40;
 
+const INTERVALO_ATUALIZACAO_MS = 5 * 60 * 1000;
+
 const ROTULOS: Record<NivelControleAds, string> = {
   motor: "MOTOR",
   atencao: "ATENÇÃO",
@@ -270,8 +272,26 @@ export function ControleAds() {
   const [dados, setDados] = useState<PainelControleAds | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [atualizando, setAtualizando] = useState(false);
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<Date | null>(null);
   const forcarAtualizacao = useRef(false);
   const niveisAnteriores = useRef<Map<number, NivelControleAds> | null>(null);
+
+  // Trocar o período recomeça a comparação de sangria. Atualizações automáticas
+  // no mesmo período NÃO recomeçam, senão a transição nunca seria percebida.
+  useEffect(() => {
+    niveisAnteriores.current = null;
+  }, [dataInicio, dataFim]);
+
+  // Atualização automática a cada 5 min, só com a aba visível. Força a busca
+  // no Mercado Livre, porque o cache de 15 min seria maior que o intervalo.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      forcarAtualizacao.current = true;
+      setRecarregar((n) => n + 1);
+    }, INTERVALO_ATUALIZACAO_MS);
+    return () => clearInterval(id);
+  }, []);
 
   useEffect(() => {
     if (dataInicio > dataFim) {
@@ -283,10 +303,12 @@ export function ControleAds() {
     forcarAtualizacao.current = false;
     setErro(null);
     setAtualizando(atualizar);
-    niveisAnteriores.current = null;
     fetchPainelControleAds(dataInicio, dataFim, atualizar)
       .then((d) => {
-        if (ativo) setDados(d);
+        if (ativo) {
+          setDados(d);
+          setUltimaAtualizacao(new Date());
+        }
       })
       .catch((err) => {
         if (ativo) setErro(err instanceof Error ? err.message : "Falha ao carregar o controle de Ads.");
@@ -398,6 +420,11 @@ export function ControleAds() {
           >
             {atualizando ? "Atualizando..." : "Atualizar"}
           </button>
+          {ultimaAtualizacao && (
+            <span className="financeiro-td-mudo">
+              Atualizado às {ultimaAtualizacao.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · auto a cada 5 min
+            </span>
+          )}
         </div>
         <select
           className="dashboard-select"
