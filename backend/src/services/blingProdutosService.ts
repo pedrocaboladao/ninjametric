@@ -1091,3 +1091,87 @@ export async function estoqueDoPedido(
   const r = await chamar<unknown>("post", caminho, undefined, {});
   return { ok: true, acao, idPedido, caminho, resposta: r };
 }
+
+export interface LinhaVariacao {
+  codigo: string;
+  cor: string;
+  preco: number;
+  produtoId?: number;
+  situacao: "criada" | "já existia" | "erro";
+  erro?: string;
+}
+
+/**
+ * Cria variacoes sob um produto pai (formato "V"), que e como a fabrica
+ * cadastra familia + cor: quem vende e a variacao, o pai so agrupa.
+ *
+ * O pai nasce aqui se nao existir. O nome do atributo e o proprio codigo do
+ * pai — e o padrao que o TELHAFLEX-30KG-50M ja usa na tela do Bling, e o
+ * Bling guarda a variacao como "<atributo>:<opcao>".
+ *
+ * Nao renomeia nada: codigo trocado derruba a relacao de fornecedor e leva o
+ * custo junto. Variacao que ja existe volta como "já existia" e fica intacta.
+ */
+export async function criarVariacoes(
+  paiCodigo: string,
+  cores: Array<{ cor: string; codigo: string; preco: number }>,
+  simulacao: boolean,
+  nomePai?: string
+): Promise<{ simulacao: boolean; paiId?: number; paiCriado: boolean; linhas: LinhaVariacao[] }> {
+  const nome = nomePai || paiCodigo;
+  let pai = await acharPorCodigo(paiCodigo);
+  let paiCriado = false;
+
+  if (!pai && !simulacao) {
+    const resp = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
+      nome,
+      codigo: paiCodigo,
+      preco: cores[0]?.preco ?? 0,
+      tipo: "P",
+      situacao: "A",
+      formato: "V",
+      unidade: "UN",
+    });
+    paiCriado = true;
+    pai = resp.data?.id ? { id: resp.data.id, codigo: paiCodigo } as ProdutoBling : null;
+  }
+
+  const linhas: LinhaVariacao[] = [];
+  for (let i = 0; i < cores.length; i++) {
+    const c = cores[i];
+    const ja = await acharPorCodigo(c.codigo);
+    if (ja) {
+      linhas.push({ codigo: c.codigo, cor: c.cor, preco: c.preco,
+        produtoId: ja.id, situacao: "já existia" });
+      continue;
+    }
+    if (simulacao || !pai) {
+      linhas.push({ codigo: c.codigo, cor: c.cor, preco: c.preco, situacao: "criada" });
+      continue;
+    }
+    try {
+      const resp = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
+        nome: `${nome} ${c.cor}`,
+        codigo: c.codigo,
+        preco: c.preco,
+        tipo: "P",
+        situacao: "A",
+        formato: "S",
+        unidade: "UN",
+        variacao: {
+          nome: `${paiCodigo}:${c.cor}`,
+          ordem: i + 1,
+          produtoPai: { id: pai.id },
+        },
+      });
+      linhas.push({ codigo: c.codigo, cor: c.cor, preco: c.preco,
+        produtoId: resp.data?.id, situacao: "criada" });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "falha ao cadastrar";
+      linhas.push({ codigo: c.codigo, cor: c.cor, preco: c.preco,
+        situacao: /já existe|duplicad/i.test(msg) ? "já existia" : "erro",
+        erro: msg.slice(0, 300) });
+    }
+  }
+  return { simulacao, paiId: pai?.id, paiCriado, linhas };
+}

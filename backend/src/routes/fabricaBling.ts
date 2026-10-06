@@ -48,6 +48,7 @@ import {
   lerCustos,
   gravarCusto,
   criarCustoPelaRelacao,
+  criarVariacoes,
   lancarEstoque,
   pedidoPorNumero,
   estoqueDoPedido,
@@ -1449,4 +1450,32 @@ fabricaBlingRouter.post("/produtos/inativar", (req, res) => {
 fabricaBlingRouter.get("/produtos/inativar", (_req, res) => {
   if (!inativarJob) return res.json({ estado: "nenhuma" });
   res.json(inativarJob);
+});
+
+// Cria variacoes de cor sob um produto pai no ERP. Existe porque
+// `criar-faltantes` so sabe fazer produto simples, e familia+cor da fabrica
+// (TELHAFLEX-30KG-50M, RESIFLEX-30KG-50M) precisa nascer como variacao: quem
+// vende e a filha, o pai so agrupa. O custo entra depois, por
+// `produtos/custo-relacao` — criar e custear na mesma chamada esconderia qual
+// dos dois falhou.
+fabricaBlingRouter.post("/produtos/variacoes", async (req, res) => {
+  const b = req.body ?? {};
+  const pai = String(b.pai ?? "").trim();
+  const cores = Array.isArray(b.cores) ? b.cores : [];
+  if (!pai) return res.status(400).json({ error: "Informe o código do produto pai." });
+  if (!cores.length) return res.status(400).json({ error: "Informe as cores." });
+  const lista = cores
+    .map((c: Record<string, unknown>) => ({
+      cor: String(c.cor ?? "").trim(),
+      codigo: String(c.codigo ?? "").trim(),
+      preco: Number(c.preco) || 0,
+    }))
+    .filter((c: { cor: string; codigo: string }) => c.cor && c.codigo);
+  if (!lista.length) return res.status(400).json({ error: "Nenhuma cor válida." });
+  try {
+    const nomePai = b.nomePai ? String(b.nomePai) : undefined;
+    res.json(await criarVariacoes(pai, lista, b.simular !== false, nomePai));
+  } catch (err) {
+    erro(res, err, "Falha ao criar as variações no ERP.");
+  }
 });
