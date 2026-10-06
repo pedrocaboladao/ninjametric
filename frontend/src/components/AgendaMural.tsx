@@ -63,22 +63,32 @@ export function AgendaMural() {
 
       {erro && <div className="clonar-erro">{erro}</div>}
       {avisos === null && !erro && <div className="state-message">Carregando...</div>}
-      {avisos?.length === 0 && <div className="state-message">Nenhum aviso ainda.</div>}
-
-      {avisos?.map((aviso) => (
-        <div key={aviso.id} className="agenda-mural-aviso">
-          <div className="agenda-mural-aviso-topo">
-            <span className="agenda-relatorio-autor">{aviso.usuarioNome}</span>
-            <span className="agenda-relatorio-data">{formatDataHora(aviso.criadoEm)}</span>
-            {aviso.podeExcluir && (
-              <button type="button" className="agenda-relatorio-excluir" onClick={() => excluir(aviso)} title="Apagar">
-                ×
-              </button>
-            )}
-          </div>
-          <div className="agenda-mural-aviso-texto">{aviso.texto}</div>
+      {avisos && (
+        <div className="agenda-mural-colunas">
+          {[
+            { titulo: "Meus avisos", itens: avisos.filter((a) => a.podeExcluir) },
+            { titulo: "Avisos do Brunão", itens: avisos.filter((a) => !a.podeExcluir) },
+          ].map((coluna) => (
+            <div key={coluna.titulo} className="agenda-mural-coluna">
+              <div className="agenda-mural-coluna-titulo">{coluna.titulo}</div>
+              {coluna.itens.length === 0 && <div className="financeiro-td-mudo">Nenhum aviso ainda.</div>}
+              {coluna.itens.map((aviso) => (
+                <div key={aviso.id} className="agenda-mural-aviso">
+                  <div className="agenda-mural-aviso-topo">
+                    <span className="agenda-relatorio-data">{formatDataHora(aviso.criadoEm)}</span>
+                    {aviso.podeExcluir && (
+                      <button type="button" className="agenda-relatorio-excluir" onClick={() => excluir(aviso)} title="Apagar">
+                        ×
+                      </button>
+                    )}
+                  </div>
+                  <div className="agenda-mural-aviso-texto">{aviso.texto}</div>
+                </div>
+              ))}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
