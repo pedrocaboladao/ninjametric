@@ -239,11 +239,19 @@ function construirAvisoSemSku(lista: AnuncioSemSku[]): string {
 // sempre analisar as 16 juntas. Não recalcula o mapa de canibalismo (usa
 // o mesmo cache de 4h, já cobre as 16 lojas) — só filtra as disputas que
 // envolvem essa loja específica.
+interface ContextoDiretorAds {
+  texto: string;
+  // true só quando NENHUM dado de campanha foi obtido por falha de busca
+  // (não por estar genuinamente zerado) — usado pra não gastar tokens do
+  // Claude chamando o modelo com um contexto que é só "não consegui buscar".
+  falhaTotal: boolean;
+}
+
 async function montarContextoLojaUnica(
   diasPeriodo: number,
   lojaId: number,
   canibalismoCompleto: ResultadoCanibalismo
-): Promise<string> {
+): Promise<ContextoDiretorAds> {
   const ehSua = LOJAS_AGENTE.includes(lojaId);
   let falhaBusca = false;
   const campanhas = await (ehSua
@@ -273,14 +281,17 @@ async function montarContextoLojaUnica(
   const lojas = await listLojas();
   const nomeLoja = lojas.find((l) => l.id === lojaId)?.nome ?? `Loja ${lojaId}`;
 
-  return `=== ANÁLISE FOCADA — ${nomeLoja}${ehSua ? " (uma das suas 4 lojas pessoais)" : " (loja do grupo, não é sua)"}, campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
+  const texto = `=== ANÁLISE FOCADA — ${nomeLoja}${ehSua ? " (uma das suas 4 lojas pessoais)" : " (loja do grupo, não é sua)"}, campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
 ${linhas || "Nenhuma campanha ativa com gasto no período."}
 
 === DISPUTA PELO MESMO PRODUTO envolvendo essa loja especificamente ===
 ${construirLinhasCanibalismo(disputasDaLoja)}${construirAvisoSemSku(semSkuDaLoja)}${avisoFalha}`;
+  // Única fonte de dado dessa loja é a busca de campanhas — se ela falhou,
+  // não sobrou nada aproveitável pra analisar.
+  return { texto, falhaTotal: falhaBusca };
 }
 
-async function montarContextoDiretorAds(diasPeriodo: number, lojaIdFiltro?: number): Promise<string> {
+async function montarContextoDiretorAds(diasPeriodo: number, lojaIdFiltro?: number): Promise<ContextoDiretorAds> {
   const canibalismo = await obterMapaCanibalismo(diasPeriodo).catch((err) => {
     console.error("Diretor de Ads: falha ao calcular canibalismo interno:", err);
     return { conflitos: new Map<string, EntradaRankingSku[]>(), semSku: [] as AnuncioSemSku[] };
@@ -318,7 +329,7 @@ async function montarContextoDiretorAds(diasPeriodo: number, lojaIdFiltro?: numb
     ? "\n(ATENÇÃO: a busca das outras lojas do grupo falhou agora por instabilidade pontual na API do Mercado Livre — NÃO trate isso como gasto zero, diga que a busca falhou e peça pra tentar de novo.)"
     : "";
 
-  return `=== ADS — suas 4 lojas pessoais, campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
+  const texto = `=== ADS — suas 4 lojas pessoais, campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
 ${linhasSuas || "Nenhuma campanha ativa com gasto no período."}${avisoFalhaSuas}
 
 === ADS — outras lojas do grupo (12+), campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
@@ -326,6 +337,10 @@ ${linhasOutras || "Nenhuma campanha ativa com gasto no período."}${avisoFalhaOu
 
 === DISPUTA PELO MESMO PRODUTO — quando uma das suas 4 lojas e outra loja do grupo anunciam o mesmo SKU ao mesmo tempo ===
 ${construirLinhasCanibalismo(canibalismo.conflitos)}${construirAvisoSemSku(canibalismo.semSku)}`;
+  // Só é falha total quando as DUAS buscas falharam — se só uma falhou, a
+  // outra metade do contexto ainda é real e vale gastar o token pra
+  // responder com ela (mais o aviso da que faltou).
+  return { texto, falhaTotal: falhaSuas && falhaOutras };
 }
 
 let clienteAnthropic: Anthropic | null | undefined;
@@ -367,7 +382,18 @@ export async function perguntarDiretorAds(
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
   }
 
-  const contexto = await montarContextoDiretorAds(DIAS_JANELA, lojaId);
+  const { texto: contexto, falhaTotal } = await montarContextoDiretorAds(DIAS_JANELA, lojaId);
+
+  // Busca de dado falhou por completo (mesmo depois da retentativa em
+  // comRetentativa) — não vale gastar um Opus com thinking xhigh só pra
+  // responder "não consegui buscar". Responde direto, sem chamar o modelo.
+  if (falhaTotal) {
+    return {
+      pensamento: null,
+      resposta:
+        "Não consegui buscar os dados de Ads agora — a API do Mercado Livre falhou, mesmo depois de tentar de novo. Tente perguntar de novo em alguns instantes.",
+    };
+  }
 
   // .stream() + finalMessage() (não .create()) pelo mesmo motivo do Growth
   // Hacker: Opus + thinking "xhigh" + teto de 24000 tokens pode passar dos
