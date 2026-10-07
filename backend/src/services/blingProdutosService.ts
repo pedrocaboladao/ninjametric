@@ -894,6 +894,11 @@ export async function gravarPreco(
           nome: inteiro.data.nome,
           codigo: inteiro.data.codigo,
           preco,
+          // o Bling recusa o PUT sem estes tres (codigos 61, 8 e 64). Vao com o
+          // valor que o produto ja tem: o alvo e mudar so o preco.
+          tipo: inteiro.data.tipo,
+          situacao: inteiro.data.situacao,
+          formato: inteiro.data.formato,
         });
       }
       // Rele: o PUT do Bling responde 200 sem provar que gravou, e aqui ainda
