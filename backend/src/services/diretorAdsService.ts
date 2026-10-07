@@ -244,15 +244,24 @@ async function montarContextoLojaUnica(
   canibalismoCompleto: ResultadoCanibalismo
 ): Promise<string> {
   const ehSua = LOJAS_AGENTE.includes(lojaId);
+  let falhaBusca = false;
   const campanhas = await (ehSua
     ? buscarCampanhasComTacos(diasPeriodo, lojaId)
     : buscarCampanhasComTacosParaLojas(diasPeriodo, [lojaId])
   ).catch((err) => {
     console.error(`Diretor de Ads: falha ao buscar campanhas da loja ${lojaId}:`, err);
+    falhaBusca = true;
     return [];
   });
 
   const linhas = construirLinhasCampanhas(campanhas.filter((c) => c.status === "active" && c.custo > 0));
+  // Falha de busca não é "zero campanhas" — avisa explicitamente, senão o
+  // agente responde com confiança que a loja não está gastando nada quando
+  // na real a busca no Mercado Livre falhou dessa vez (ver nota em
+  // tokenStore.ts sobre a corrida de renovação de token).
+  const avisoFalha = falhaBusca
+    ? "\n\n=== ATENÇÃO: a busca de campanhas dessa loja falhou agora (instabilidade pontual na API do Mercado Livre). NÃO diga que a loja está com gasto zero — diga que a busca falhou e peça pro dono tentar de novo em instantes. ==="
+    : "";
 
   const disputasDaLoja = new Map<string, EntradaRankingSku[]>();
   for (const [sku, ranking] of canibalismoCompleto.conflitos) {
@@ -267,7 +276,7 @@ async function montarContextoLojaUnica(
 ${linhas || "Nenhuma campanha ativa com gasto no período."}
 
 === DISPUTA PELO MESMO PRODUTO envolvendo essa loja especificamente ===
-${construirLinhasCanibalismo(disputasDaLoja)}${construirAvisoSemSku(semSkuDaLoja)}`;
+${construirLinhasCanibalismo(disputasDaLoja)}${construirAvisoSemSku(semSkuDaLoja)}${avisoFalha}`;
 }
 
 async function montarContextoDiretorAds(diasPeriodo: number, lojaIdFiltro?: number): Promise<string> {
@@ -282,25 +291,37 @@ async function montarContextoDiretorAds(diasPeriodo: number, lojaIdFiltro?: numb
 
   const outras = await idsOutrasLojas();
 
+  let falhaSuas = false;
+  let falhaOutras = false;
   const [campanhasSuas, campanhasOutras] = await Promise.all([
     buscarCampanhasComTacos(diasPeriodo).catch((err) => {
       console.error("Diretor de Ads: falha ao buscar campanhas das suas 4 lojas:", err);
+      falhaSuas = true;
       return [];
     }),
     buscarCampanhasComTacosParaLojas(diasPeriodo, outras).catch((err) => {
       console.error("Diretor de Ads: falha ao buscar campanhas das outras lojas do grupo:", err);
+      falhaOutras = true;
       return [];
     }),
   ]);
 
   const linhasSuas = construirLinhasCampanhas(campanhasSuas.filter((c) => c.status === "active" && c.custo > 0));
   const linhasOutras = construirLinhasCampanhas(campanhasOutras.filter((c) => c.status === "active" && c.custo > 0));
+  // Falha de busca não é "zero campanhas" — ver nota equivalente em
+  // montarContextoLojaUnica.
+  const avisoFalhaSuas = falhaSuas
+    ? "\n(ATENÇÃO: a busca das suas 4 lojas falhou agora por instabilidade pontual na API do Mercado Livre — NÃO trate isso como gasto zero, diga que a busca falhou e peça pra tentar de novo.)"
+    : "";
+  const avisoFalhaOutras = falhaOutras
+    ? "\n(ATENÇÃO: a busca das outras lojas do grupo falhou agora por instabilidade pontual na API do Mercado Livre — NÃO trate isso como gasto zero, diga que a busca falhou e peça pra tentar de novo.)"
+    : "";
 
   return `=== ADS — suas 4 lojas pessoais, campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
-${linhasSuas || "Nenhuma campanha ativa com gasto no período."}
+${linhasSuas || "Nenhuma campanha ativa com gasto no período."}${avisoFalhaSuas}
 
 === ADS — outras lojas do grupo (12+), campanhas ativas com gasto (últimos ${diasPeriodo} dias) ===
-${linhasOutras || "Nenhuma campanha ativa com gasto no período."}
+${linhasOutras || "Nenhuma campanha ativa com gasto no período."}${avisoFalhaOutras}
 
 === DISPUTA PELO MESMO PRODUTO — quando uma das suas 4 lojas e outra loja do grupo anunciam o mesmo SKU ao mesmo tempo ===
 ${construirLinhasCanibalismo(canibalismo.conflitos)}${construirAvisoSemSku(canibalismo.semSku)}`;

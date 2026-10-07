@@ -47,6 +47,20 @@ export async function saveTokens(lojaId: number, token: MlTokenResponse): Promis
   );
 }
 
+// Chamadas concorrentes pra mesma loja perto do vencimento do token (comum:
+// Diretor de Ads, Controle de Ads, Gestão de Ads e o snapshot de 4h todos
+// batem nas mesmas lojas) caíam numa corrida — cada uma lia o mesmo
+// refresh_token do banco e tentava renovar ao mesmo tempo. O Mercado Livre
+// invalida o refresh_token no primeiro uso, então a segunda chamada tomava
+// erro (invalid_grant). Esse erro é engolido mais acima pelos catches que
+// tratam "falha ao buscar Ads" igual a "loja sem dado" — na prática virava
+// um card/resposta zerada que se resolvia sozinha ao tentar de novo, porque
+// aí o token já tinha sido renovado pela outra chamada (ver reclamação de
+// 07/10/2026 sobre o Diretor de Ads do Grupo vindo zerado pra "Pinta e
+// Constrói" e se corrigindo na repetição). Dedup por loja: a segunda chamada
+// só espera a primeira terminar, em vez de competir pelo mesmo refresh_token.
+const renovacoesEmAndamento = new Map<number, Promise<string>>();
+
 export async function getValidAccessToken(lojaId: number): Promise<string> {
   const { rows } = await pool.query<{
     access_token: string;
@@ -67,7 +81,18 @@ export async function getValidAccessToken(lojaId: number): Promise<string> {
     return conta.access_token;
   }
 
-  const refreshed = await refreshAccessToken(conta.refresh_token);
-  await saveTokens(lojaId, refreshed);
-  return refreshed.access_token;
+  const emAndamento = renovacoesEmAndamento.get(lojaId);
+  if (emAndamento) return emAndamento;
+
+  const promessa = (async () => {
+    try {
+      const refreshed = await refreshAccessToken(conta.refresh_token);
+      await saveTokens(lojaId, refreshed);
+      return refreshed.access_token;
+    } finally {
+      renovacoesEmAndamento.delete(lojaId);
+    }
+  })();
+  renovacoesEmAndamento.set(lojaId, promessa);
+  return promessa;
 }
