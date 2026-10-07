@@ -3,7 +3,7 @@ import { listLojas } from "./tokenStore";
 import { listarCampanhasAds, obterGastoAdsHistoricoPorLoja } from "./adsService";
 import { listarVendasFinanceiras } from "./financeiroService";
 import { dataISOBR } from "./dateUtils";
-import { getAdvertiserId, getAnunciosAds, MlAnuncioAds } from "./mercadoLivreApi";
+import { getAdvertiserId, getAnunciosAds, MlAnuncioAds, comRetentativa } from "./mercadoLivreApi";
 
 // As 4 lojas do dono (mesmos ids de agendaService.ts). Este painel é pessoal:
 // mostra só essas, mesmo que existam outras lojas ML cadastradas.
@@ -165,7 +165,7 @@ async function anunciosDaLoja(lojaId: number, inicio: string, fim: string, forca
   const emCache = cacheAnuncios.get(chave);
   if (!forcar && emCache && emCache.expiraEm > Date.now()) return emCache.data;
   const advertiserId = await getAdvertiserId(lojaId);
-  const data = advertiserId === null ? [] : await getAnunciosAds(lojaId, advertiserId, inicio, fim);
+  const data = advertiserId === null ? [] : await comRetentativa(() => getAnunciosAds(lojaId, advertiserId, inicio, fim));
   cacheAnuncios.set(chave, { data, expiraEm: Date.now() + CACHE_ANUNCIOS_MS });
   return data;
 }

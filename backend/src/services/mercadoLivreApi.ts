@@ -812,19 +812,45 @@ export interface MlCampanhaAds {
 // Cada loja tem uma conta de anunciante própria dentro do Product Ads —
 // precisa desse id antes de listar as campanhas. Uma loja pode nunca ter
 // aberto o Product Ads (404) — nesse caso não tem o que gerir, retorna null.
+function esperarMs(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Retentativa simples pra chamada de Ads que falha por motivo pontual (rede,
+// 5xx do ML, timeout) — essas chamadas são lidas por telas/agentes que
+// tratam "deu erro" e "não tem dado" da mesma forma mais acima na cadeia
+// (ver getAdvertiserId, listarCampanhasAds e tacosService.ts), então uma
+// falha de 1 chamada vira silenciosamente "essa loja está zerada". Uma
+// retentativa rápida resolve a maioria dos casos sem esperar o usuário
+// perceber e pedir de novo manualmente.
+export async function comRetentativa<T>(fn: () => Promise<T>, tentativas = 2, esperaMs = 600): Promise<T> {
+  let ultimoErro: unknown;
+  for (let i = 0; i < tentativas; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      ultimoErro = err;
+      if (i < tentativas - 1) await esperarMs(esperaMs * (i + 1));
+    }
+  }
+  throw ultimoErro;
+}
+
 export async function getAdvertiserId(lojaId: number): Promise<number | null> {
   try {
-    const accessToken = await getValidAccessToken(lojaId);
-    const { data } = await axios.get<{ advertisers: { advertiser_id: number }[] }>(
-      `${ML_API_BASE}/advertising/advertisers`,
-      { headers: { Authorization: `Bearer ${accessToken}` }, params: { product_id: "PADS" } }
-    );
-    return data.advertisers?.[0]?.advertiser_id ?? null;
+    return await comRetentativa(async () => {
+      const accessToken = await getValidAccessToken(lojaId);
+      const { data } = await axios.get<{ advertisers: { advertiser_id: number }[] }>(
+        `${ML_API_BASE}/advertising/advertisers`,
+        { headers: { Authorization: `Bearer ${accessToken}` }, params: { product_id: "PADS" } }
+      );
+      return data.advertisers?.[0]?.advertiser_id ?? null;
+    });
   } catch (err) {
     // Antes tratava QUALQUER erro (token vencido, 500 do ML, rede) igual a
     // "loja nunca abriu o Product Ads" — mesmo sintoma (null), sem distinguir
-    // no log. Só loga; continua devolvendo null igual antes.
-    console.error(`Erro ao buscar advertiser_id da loja ${lojaId}:`, err);
+    // no log, e sem tentar de novo. Já tentou 2x; só loga e devolve null.
+    console.error(`Erro ao buscar advertiser_id da loja ${lojaId} (após retentativa):`, err);
     return null;
   }
 }

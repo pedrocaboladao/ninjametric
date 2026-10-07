@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { env } from "../config/env";
 import { listLojas, type Loja } from "./tokenStore";
-import { getAdvertiserId, getAnunciosAds, getItemsBasicInfo } from "./mercadoLivreApi";
+import { getAdvertiserId, getAnunciosAds, getItemsBasicInfo, comRetentativa } from "./mercadoLivreApi";
 import { normalizarSku } from "./financeiroService";
 import { dataISOBR } from "./dateUtils";
 import { listarCampanhasAds } from "./adsService";
@@ -98,8 +98,9 @@ async function coletarAnunciosAtivosPorSku(
 
   let anuncios;
   try {
-    anuncios = await getAnunciosAds(loja.id, advertiserId, dataInicio, dataFim);
-  } catch {
+    anuncios = await comRetentativa(() => getAnunciosAds(loja.id, advertiserId, dataInicio, dataFim));
+  } catch (err) {
+    console.error(`Diretor de Ads: falha ao buscar anúncios da loja ${loja.id} (${loja.nome}) após retentativa:`, err);
     return { porSku, semSku };
   }
   const ativos = anuncios.filter((a) => a.status === "active" && a.metrics.cost > 0);

@@ -1,6 +1,6 @@
 import { pool } from "../db/pool";
 import { listLojas } from "./tokenStore";
-import { getAdvertiserId, getCampanhasAds, MlCampanhaAds } from "./mercadoLivreApi";
+import { getAdvertiserId, getCampanhasAds, MlCampanhaAds, comRetentativa } from "./mercadoLivreApi";
 import { janelaHoje, chaveJanelaDoDia, dataISOBR } from "./dateUtils";
 
 export interface CampanhaAds {
@@ -123,16 +123,16 @@ export async function listarCampanhasAds(
       const advertiserId = await getAdvertiserId(loja.id);
       if (advertiserId === null) return [];
       try {
-        const campanhas = await getCampanhasAds(loja.id, advertiserId, dateFrom, dateTo);
+        const campanhas = await comRetentativa(() => getCampanhasAds(loja.id, advertiserId, dateFrom, dateTo));
         return campanhas.map((c) =>
           mapearCampanha(loja.id, loja.nome, c, metaAnteriorPorCampanha.get(`${loja.id}-${c.id}`) ?? null)
         );
       } catch (err) {
         // Antes engolia o erro em silêncio — uma loja sumia da tela de Ads
         // sem nenhum rastro de por quê (token vencido, erro do ML, etc.).
-        // Só loga; o retorno vazio continua igual, não muda o resultado
-        // pras outras lojas.
-        console.error(`Erro ao buscar campanhas de Ads da loja ${loja.id} (${loja.nome}):`, err);
+        // Já tentou de novo (comRetentativa); só loga e segue com []. O
+        // retorno vazio continua igual, não muda o resultado pras outras lojas.
+        console.error(`Erro ao buscar campanhas de Ads da loja ${loja.id} (${loja.nome}) após retentativa:`, err);
         return [];
       }
     })

@@ -1,4 +1,4 @@
-import { getAdvertiserId, getAnunciosAds } from "./mercadoLivreApi";
+import { getAdvertiserId, getAnunciosAds, comRetentativa } from "./mercadoLivreApi";
 import { listLojas } from "./tokenStore";
 import { listarVendasFinanceiras } from "./financeiroService";
 
@@ -73,8 +73,11 @@ export async function listarReceitaRealPorCampanha(
 
       let anuncios;
       try {
-        anuncios = await getAnunciosAds(loja.id, advertiserId, dataInicioReal, dataFimReal);
-      } catch {
+        anuncios = await comRetentativa(() => getAnunciosAds(loja.id, advertiserId, dataInicioReal, dataFimReal));
+      } catch (err) {
+        // Antes falhava em silêncio total, sem log — essa loja sumia da
+        // receita real atribuída sem nenhum rastro. Já tentou de novo.
+        console.error(`listarReceitaRealPorCampanha: falha ao buscar anúncios da loja ${loja.id} após retentativa:`, err);
         return [];
       }
 
