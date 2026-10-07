@@ -851,6 +851,11 @@ interface MensagemExibida extends MensagemChat {
 }
 
 
+interface SugestaoChatAgente {
+  label: string;
+  texto: string;
+}
+
 interface PropsChatAgente {
   perguntar: (pergunta: string, historico: MensagemChat[]) => Promise<RespostaChatAgente>;
   placeholder?: string;
@@ -859,6 +864,10 @@ interface PropsChatAgente {
   // que persiste no servidor) — undefined/omitido = começa vazia, como os
   // agentes sem histórico salvo (ex.: Diretor de Ads).
   mensagensIniciais?: MensagemChat[];
+  // Perguntas prontas, pra não precisar digitar de novo toda vez (pedido do
+  // dono: ele tem uma pergunta "padrão" que usa quase sempre). Um clique já
+  // envia — não só preenche o campo.
+  sugestoes?: SugestaoChatAgente[];
 }
 
 // Pergunta livre pro agente — mantém o histórico só na memória da página
@@ -868,19 +877,17 @@ interface PropsChatAgente {
 // pedido explícito do dono: "eu pensando e falando, ele pensando e falando".
 // Reaproveitado por qualquer agente de chat (Growth Hacker, Diretor de
 // Ads...) via a prop `perguntar`, que só muda a chamada de API por baixo.
-function ChatAgente({ perguntar, placeholder, mensagemVazia, mensagensIniciais }: PropsChatAgente) {
+function ChatAgente({ perguntar, placeholder, mensagemVazia, mensagensIniciais, sugestoes }: PropsChatAgente) {
   const [mensagens, setMensagens] = useState<MensagemExibida[]>(mensagensIniciais ?? []);
   const [input, setInput] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erroChat, setErroChat] = useState<string | null>(null);
 
-  async function enviar(e: FormEvent) {
-    e.preventDefault();
-    const pergunta = input.trim();
-    if (!pergunta || enviando) return;
-
-    // Historico enviado ao backend não carrega o campo "pensamento" — a API
-    // só espera papel/texto pra reconstruir a conversa.
+  // Historico enviado ao backend não carrega o campo "pensamento" — a API só
+  // espera papel/texto pra reconstruir a conversa. Compartilhado pelo envio
+  // normal (form) e pelos botões de sugestão, que pulam direto pra cá.
+  async function enviarPergunta(pergunta: string) {
+    if (!pergunta.trim() || enviando) return;
     const historico: MensagemChat[] = mensagens.map(({ papel, texto }) => ({ papel, texto }));
     setMensagens((m) => [...m, { papel: "usuario", texto: pergunta }]);
     setInput("");
@@ -894,6 +901,11 @@ function ChatAgente({ perguntar, placeholder, mensagemVazia, mensagensIniciais }
     } finally {
       setEnviando(false);
     }
+  }
+
+  async function enviar(e: FormEvent) {
+    e.preventDefault();
+    await enviarPergunta(input.trim());
   }
 
   return (
@@ -939,6 +951,23 @@ function ChatAgente({ perguntar, placeholder, mensagemVazia, mensagensIniciais }
       )}
 
       {erroChat && <div className="state-message state-error">{erroChat}</div>}
+
+      {sugestoes && sugestoes.length > 0 && (
+        <div className="agente-chat-sugestoes">
+          {sugestoes.map((s) => (
+            <button
+              key={s.label}
+              type="button"
+              className="agente-chat-sugestao"
+              onClick={() => enviarPergunta(s.texto)}
+              disabled={enviando}
+              title={s.texto}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <form className="agente-chat-form" onSubmit={enviar}>
         <input
@@ -1129,6 +1158,13 @@ function DiretorAdsGrupo() {
             ? `Análise focada só na ${nomeLojaSelecionada} — mesma profundidade, sem o resto do grupo disputando espaço na resposta.`
             : "Pergunte sobre o Ads de qualquer loja do grupo — competição saudável entre as outras contas, mas nenhuma pode ultrapassar as suas 4 num produto disputado. Quer focar numa loja só? Selecione ela ali em cima."
         }
+        sugestoes={[
+          {
+            label: "Diagnóstico da semana (ROAS)",
+            texto:
+              "Quero o diagnóstico da loja desta semana, foco sempre em aumentar faturamento e escalar sem perder margem. Quero o passo a passo do que preciso fazer, e por favor seja claro nas respostas, e sem falar sobre ACOS, apenas ROAS nas ações a se fazer.",
+          },
+        ]}
       />
     </>
   );

@@ -5405,6 +5405,35 @@
   white-space: pre-wrap;
 }
 
+.agente-chat-sugestoes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.agente-chat-sugestao {
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-family: var(--sans);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.agente-chat-sugestao:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-panel);
+}
+
+.agente-chat-sugestao:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
 .agente-chat-form {
   display: flex;
   gap: 10px;
