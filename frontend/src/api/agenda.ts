@@ -250,3 +250,14 @@ export async function excluirAvisoAgenda(id: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/agenda/avisos/${id}`, { method: "DELETE", credentials: "include" });
   await tratarResposta<{ ok: true }>(res);
 }
+
+export async function fetchAvisosNaoVistosAgenda(): Promise<number> {
+  const res = await fetch(`${API_BASE}/api/agenda/mural/nao-vistos`, { credentials: "include" });
+  const data = await tratarResposta<{ total: number }>(res);
+  return data.total;
+}
+
+export async function marcarMuralVistoAgenda(): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agenda/mural/visto`, { method: "POST", credentials: "include" });
+  await tratarResposta<{ ok: true }>(res);
+}

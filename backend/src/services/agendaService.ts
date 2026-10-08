@@ -424,6 +424,30 @@ export async function criarAviso(usuarioId: number, texto: string): Promise<void
   await pool.query("INSERT INTO agenda_avisos (texto, usuario_id) VALUES ($1, $2)", [texto, usuarioId]);
 }
 
+// Quantos avisos de OUTRO usuário chegaram desde a última vez que este
+// usuário viu o mural — vira a bolinha "+N" na aba Mural de avisos. Sem
+// linha em agenda_mural_visto (nunca abriu o mural), o COALESCE cai pra
+// now(): nenhum aviso antigo é "novo", só os que chegarem daqui pra frente.
+export async function contarAvisosNaoVistos(usuarioId: number): Promise<number> {
+  const { rows } = await pool.query<{ total: number }>(
+    `SELECT COUNT(*)::int AS total FROM agenda_avisos a
+     WHERE a.usuario_id != $1
+       AND a.criado_em > COALESCE((SELECT ultimo_visto FROM agenda_mural_visto WHERE usuario_id = $1), now())`,
+    [usuarioId]
+  );
+  return rows[0].total;
+}
+
+// Chamado quando o usuário abre (ou já está) na aba Mural de avisos —
+// zera a contagem de não vistos marcando "visto agora".
+export async function marcarMuralVisto(usuarioId: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO agenda_mural_visto (usuario_id, ultimo_visto) VALUES ($1, now())
+     ON CONFLICT (usuario_id) DO UPDATE SET ultimo_visto = now()`,
+    [usuarioId]
+  );
+}
+
 // Só quem escreveu o aviso apaga — o mural é de recado, não de moderação.
 export async function excluirAviso(id: number, usuarioId: number): Promise<void> {
   const { rowCount } = await pool.query("DELETE FROM agenda_avisos WHERE id = $1 AND usuario_id = $2", [id, usuarioId]);

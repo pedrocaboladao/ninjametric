@@ -25,7 +25,7 @@ import {
   clonarCardQuadroAgenda,
 } from "../api/agenda";
 import { Modal } from "./Modal";
-import { IconPlus } from "./icons";
+import { IconPlus, IconCheck } from "./icons";
 
 function nomeCurtoDaLoja(nome: string): string {
   return nome === "Catedral Impermeabilizantes" ? "Catedral" : nome;
@@ -34,9 +34,10 @@ function nomeCurtoDaLoja(nome: string): string {
 interface CardProps {
   card: CardQuadroAgenda;
   onAbrir: (card: CardQuadroAgenda) => void;
+  onAlternarConcluido: (card: CardQuadroAgenda) => void;
 }
 
-function CardItem({ card, onAbrir }: CardProps) {
+function CardItem({ card, onAbrir, onAlternarConcluido }: CardProps) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: `card-${card.id}` });
   const estilo = transform ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` } : undefined;
   return (
@@ -45,11 +46,28 @@ function CardItem({ card, onAbrir }: CardProps) {
       style={estilo}
       {...listeners}
       {...attributes}
-      className={`agenda-quadro-card ${isDragging ? "agenda-quadro-card-arrastando" : ""}`}
+      className={`agenda-quadro-card ${isDragging ? "agenda-quadro-card-arrastando" : ""} ${
+        card.concluido ? "agenda-quadro-card-concluido" : ""
+      }`}
       onClick={() => onAbrir(card)}
     >
       {card.capaAnexoId && <img className="agenda-quadro-capa" src={urlAnexoCardAgenda(card.capaAnexoId)} alt="" />}
-      <span className="agenda-ocorrencia-titulo">{card.titulo}</span>
+      <div className="agenda-quadro-card-topo">
+        <button
+          type="button"
+          className={`agenda-ocorrencia-check agenda-quadro-card-check ${
+            card.concluido ? "agenda-ocorrencia-check-feita" : ""
+          }`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onAlternarConcluido(card);
+          }}
+          title={card.concluido ? "Marcar como não concluído" : "Marcar como concluído"}
+        >
+          {card.concluido && <IconCheck size={11} />}
+        </button>
+        <span className="agenda-ocorrencia-titulo">{card.titulo}</span>
+      </div>
       <div className="agenda-ocorrencia-meta">
         <span>{card.atribuidoANome ?? "Sem responsável"}</span>
         {card.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(card.lojaNome)}</span>}
@@ -65,9 +83,10 @@ interface ColunaProps {
   onRenomear: (coluna: ColunaQuadroAgenda) => void;
   onExcluir: (coluna: ColunaQuadroAgenda) => void;
   onAbrirCard: (card: CardQuadroAgenda) => void;
+  onAlternarConcluido: (card: CardQuadroAgenda) => void;
 }
 
-function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard }: ColunaProps) {
+function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard, onAlternarConcluido }: ColunaProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `coluna-${coluna.id}` });
   return (
     <div className={`agenda-quadro-coluna ${isOver ? "agenda-quadro-coluna-sobre" : ""}`}>
@@ -85,7 +104,7 @@ function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard }: 
       </div>
       <div ref={setNodeRef} className="agenda-quadro-coluna-corpo">
         {coluna.cards.map((card) => (
-          <CardItem key={card.id} card={card} onAbrir={onAbrirCard} />
+          <CardItem key={card.id} card={card} onAbrir={onAbrirCard} onAlternarConcluido={onAlternarConcluido} />
         ))}
       </div>
       <button type="button" className="agenda-quadro-novo-card" onClick={() => onNovoCard(coluna.id)}>
@@ -403,6 +422,10 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
     }
   }
 
+  async function alternarConcluido(card: CardQuadroAgenda) {
+    await executar(() => atualizarCardQuadroAgenda(card.id, { concluido: !card.concluido }));
+  }
+
   async function excluirCardAtual() {
     if (!cardModal?.card) return;
     if (!window.confirm(`Excluir o card "${cardModal.card.titulo}"?`)) return;
@@ -438,6 +461,7 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
                 onRenomear={renomearColuna}
                 onExcluir={excluirColuna}
                 onAbrirCard={(card) => setCardModal({ card, colunaId: null })}
+                onAlternarConcluido={alternarConcluido}
               />
             ))}
           </div>

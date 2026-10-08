@@ -23,6 +23,8 @@ import {
   criarRelatorioAgenda,
   excluirRelatorioAgenda,
   fetchPromocoesDasLojas,
+  fetchAvisosNaoVistosAgenda,
+  marcarMuralVistoAgenda,
 } from "../api/agenda";
 import { AgendaTarefaModal } from "./AgendaTarefaModal";
 import { AgendaQuadro } from "./AgendaQuadro";
@@ -156,6 +158,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   const [novaLojaId, setNovaLojaId] = useState<number | "">("");
   const [enviandoRelatorio, setEnviandoRelatorio] = useState(false);
   const [promocoes, setPromocoes] = useState<PromocaoDaLoja[] | null>(null);
+  const [avisosNaoVistos, setAvisosNaoVistos] = useState(0);
 
   const carregarSemana = useCallback(async () => {
     try {
@@ -201,6 +204,35 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
   useEffect(() => {
     if (aba === "relatorio" && relatorios === null) carregarRelatorios();
   }, [aba, relatorios, carregarRelatorios]);
+
+  // Bolinha "+N" na aba Mural de avisos — conta avisos do OUTRO usuário desde
+  // a última vez que este usuário abriu o mural. Poll de 60s, mesmo ritmo das
+  // tarefas pendentes (não é chat, não precisa de quase-tempo-real).
+  const carregarAvisosNaoVistos = useCallback(async () => {
+    try {
+      setAvisosNaoVistos(await fetchAvisosNaoVistosAgenda());
+    } catch {
+      // silencioso — é só o badge
+    }
+  }, []);
+
+  useEffect(() => {
+    carregarAvisosNaoVistos();
+    const id = setInterval(carregarAvisosNaoVistos, 60 * 1000);
+    return () => clearInterval(id);
+  }, [carregarAvisosNaoVistos]);
+
+  // Enquanto a aba Mural está aberta, qualquer não visto detectado (seja ao
+  // entrar na aba, seja um aviso novo chegando no poll acima) já marca como
+  // visto na hora — senão o badge voltaria a aparecer assim que você saísse
+  // e entrasse de novo na aba, mesmo já tendo lido tudo.
+  useEffect(() => {
+    if (aba === "mural" && avisosNaoVistos > 0) {
+      marcarMuralVistoAgenda()
+        .then(() => setAvisosNaoVistos(0))
+        .catch(() => {});
+    }
+  }, [aba, avisosNaoVistos]);
 
   async function enviarRelatorio() {
     if (!novoSku.trim() || !novoLink.trim()) return;
@@ -346,6 +378,7 @@ export function Agenda({ onOcorrenciaAlterada }: Props) {
           </button>
           <button className={`tarefas-aba ${aba === "mural" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("mural")}>
             Mural de avisos
+            {avisosNaoVistos > 0 && <span className="agenda-mural-badge">{avisosNaoVistos}</span>}
           </button>
         </div>
         <div className="agenda-topo-direita">

@@ -19,6 +19,7 @@ export interface CardQuadro {
   lojaNome: string | null;
   capaAnexoId: number | null;
   totalAnexos: number;
+  concluido: boolean;
 }
 
 export interface ColunaQuadro {
@@ -53,9 +54,10 @@ export async function listarQuadro(): Promise<ColunaQuadro[]> {
     loja_nome: string | null;
     capa_anexo_id: number | null;
     total_anexos: number;
+    concluido: boolean;
   }>(
     `SELECT c.id, c.coluna_id, c.titulo, c.descricao, c.atribuido_a_usuario_id, u.nome AS atribuido_a_nome,
-            c.loja_id, loja.nome AS loja_nome,
+            c.loja_id, loja.nome AS loja_nome, c.concluido,
             (SELECT a.id FROM agenda_quadro_anexos a WHERE a.card_id = c.id AND a.capa LIMIT 1) AS capa_anexo_id,
             (SELECT COUNT(*)::int FROM agenda_quadro_anexos a WHERE a.card_id = c.id) AS total_anexos
      FROM agenda_quadro_cards c
@@ -78,6 +80,7 @@ export async function listarQuadro(): Promise<ColunaQuadro[]> {
         lojaNome: c.loja_nome,
         capaAnexoId: c.capa_anexo_id,
         totalAnexos: c.total_anexos,
+        concluido: c.concluido,
       })),
   }));
 }
@@ -126,7 +129,13 @@ export async function criarCard(
 
 export async function atualizarCard(
   id: number,
-  dados: Partial<{ titulo: string; descricao: string | null; atribuidoAUsuarioId: number | null; lojaId: number | null }>
+  dados: Partial<{
+    titulo: string;
+    descricao: string | null;
+    atribuidoAUsuarioId: number | null;
+    lojaId: number | null;
+    concluido: boolean;
+  }>
 ): Promise<void> {
   const campos: string[] = [];
   const valores: unknown[] = [];
@@ -138,6 +147,7 @@ export async function atualizarCard(
   if (dados.descricao !== undefined) set("descricao", dados.descricao);
   if (dados.atribuidoAUsuarioId !== undefined) set("atribuido_a_usuario_id", dados.atribuidoAUsuarioId);
   if (dados.lojaId !== undefined) set("loja_id", dados.lojaId);
+  if (dados.concluido !== undefined) set("concluido", dados.concluido);
   if (campos.length === 0) return;
   campos.push("atualizado_em = now()");
   valores.push(id);

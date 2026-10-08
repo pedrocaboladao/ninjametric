@@ -36,6 +36,8 @@ import {
   listarAvisos,
   criarAviso,
   excluirAviso,
+  contarAvisosNaoVistos,
+  marcarMuralVisto,
 } from "../services/agendaService";
 
 const REGEX_DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -337,7 +339,7 @@ agendaRouter.post("/quadro/cards", async (req, res) => {
 
 agendaRouter.patch("/quadro/cards/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { titulo, descricao, atribuidoAUsuarioId, lojaId } = req.body ?? {};
+  const { titulo, descricao, atribuidoAUsuarioId, lojaId, concluido } = req.body ?? {};
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
@@ -346,12 +348,17 @@ agendaRouter.patch("/quadro/cards/:id", async (req, res) => {
     res.status(400).json({ error: "Título inválido." });
     return;
   }
+  if (concluido !== undefined && typeof concluido !== "boolean") {
+    res.status(400).json({ error: "Parâmetros inválidos." });
+    return;
+  }
   try {
     await atualizarCard(id, {
       titulo: titulo !== undefined ? titulo.trim() : undefined,
       descricao: descricao !== undefined ? (typeof descricao === "string" && descricao.trim() ? descricao.trim() : null) : undefined,
       atribuidoAUsuarioId: atribuidoAUsuarioId !== undefined ? (Number.isInteger(atribuidoAUsuarioId) ? atribuidoAUsuarioId : null) : undefined,
       lojaId: lojaId !== undefined ? (Number.isInteger(lojaId) ? lojaId : null) : undefined,
+      concluido,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -502,6 +509,23 @@ agendaRouter.get("/avisos", async (req, res) => {
     res.json({ avisos: await listarAvisos(req.usuario!.id) });
   } catch (err) {
     erro(res, err, "Falha ao carregar os avisos.");
+  }
+});
+
+agendaRouter.get("/mural/nao-vistos", async (req, res) => {
+  try {
+    res.json({ total: await contarAvisosNaoVistos(req.usuario!.id) });
+  } catch (err) {
+    erro(res, err, "Falha ao contar avisos não vistos.");
+  }
+});
+
+agendaRouter.post("/mural/visto", async (req, res) => {
+  try {
+    await marcarMuralVisto(req.usuario!.id);
+    res.json({ ok: true });
+  } catch (err) {
+    erro(res, err, "Falha ao marcar o mural como visto.");
   }
 });
 

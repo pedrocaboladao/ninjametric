@@ -2077,6 +2077,10 @@ CREATE TABLE IF NOT EXISTS agenda_quadro_cards (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_quadro_cards_coluna ON agenda_quadro_cards (coluna_id, ordem);
+-- Check de "concluído" direto no card, independente da coluna em que ele
+-- está — o quadro tem colunas personalizadas (nem sempre existe uma
+-- "Feito"), então marcar concluído não pode depender de mover o card.
+ALTER TABLE agenda_quadro_cards ADD COLUMN IF NOT EXISTS concluido BOOLEAN NOT NULL DEFAULT false;
 
 -- Anexos dos cards do quadro. O arquivo mora no banco (mesma convenção de
 -- fabrica_conta_anexos: o deploy reconstrói o container, disco sumiria).
@@ -2110,6 +2114,16 @@ CREATE TABLE IF NOT EXISTS agenda_avisos (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_agenda_avisos_criado_em ON agenda_avisos (criado_em DESC);
+
+-- Marca "até onde" cada usuário já viu o mural — não existe lido/não lido
+-- por aviso individual, só esse marcador por usuário, usado pra badge de
+-- não vistos. Sem linha = usuário nunca abriu o mural; a consulta trata
+-- esse caso como "visto agora" (ver contarAvisosNaoVistos), pra não jogar
+-- todo o histórico como não visto na primeira vez que alguém abre a tela.
+CREATE TABLE IF NOT EXISTS agenda_mural_visto (
+  usuario_id INTEGER PRIMARY KEY REFERENCES usuarios(id) ON DELETE CASCADE,
+  ultimo_visto TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 
 -- Metas de margem pós Ads por loja do Controle de Ads (pessoal). Sem linha =
 -- usa o padrão de adsPainelService.ts (motor a partir de 10%, atenção a partir de 0%).

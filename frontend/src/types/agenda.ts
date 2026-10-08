@@ -92,6 +92,7 @@ export interface CardQuadroAgenda {
   lojaNome: string | null;
   capaAnexoId: number | null;
   totalAnexos: number;
+  concluido: boolean;
 }
 
 export interface AnexoCardAgenda {
@@ -114,6 +115,7 @@ export interface DadosCardQuadroAgenda {
   descricao?: string | null;
   atribuidoAUsuarioId?: number | null;
   lojaId?: number | null;
+  concluido?: boolean;
 }
 
 export interface AvisoAgenda {
