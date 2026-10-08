@@ -493,6 +493,10 @@ export async function consultarPromocoesDoItem(lojaId: number, itemId: string): 
 }
 
 export interface CampanhaExpirandoDaLoja {
+  // Precisa pra poder ADICIONAR item nela depois (ver adicionarItemCampanha
+  // em promocoesService.adicionarItensNaPromocaoGeral) — sem isso dava só
+  // pra mostrar "faltam X dias", nunca pra agir em cima da campanha achada.
+  promotionId: string;
   nome: string;
   finishDate: string;
 }
@@ -502,7 +506,7 @@ export interface CampanhaExpirandoDaLoja {
 export async function obterCampanhaAtivaDaLoja(lojaId: number, mlUserId: number): Promise<CampanhaExpirandoDaLoja | null> {
   const accessToken = await getValidAccessToken(lojaId);
   const { data } = await axios.get<{
-    results: Array<{ type: string; status: string; name?: string; finish_date?: string }>;
+    results: Array<{ id?: string; type: string; status: string; name?: string; finish_date?: string }>;
   }>(`${ML_API_BASE}/seller-promotions/users/${mlUserId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
     params: { app_version: "v2" },
@@ -510,9 +514,9 @@ export async function obterCampanhaAtivaDaLoja(lojaId: number, mlUserId: number)
 
   let maisProxima: CampanhaExpirandoDaLoja | null = null;
   for (const p of data.results) {
-    if (p.type !== "SELLER_CAMPAIGN" || p.status !== "started" || !p.finish_date) continue;
+    if (p.type !== "SELLER_CAMPAIGN" || p.status !== "started" || !p.finish_date || !p.id) continue;
     if (!maisProxima || p.finish_date < maisProxima.finishDate) {
-      maisProxima = { nome: p.name ?? "Campanha própria", finishDate: p.finish_date };
+      maisProxima = { promotionId: p.id, nome: p.name ?? "Campanha própria", finishDate: p.finish_date };
     }
   }
   return maisProxima;

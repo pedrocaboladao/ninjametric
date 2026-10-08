@@ -8,8 +8,10 @@ import {
   getItemsBasicInfo,
   listarItensAtivos,
   consultarPromocoesDoItem,
+  obterCampanhaAtivaDaLoja,
   type MlItemCampanha,
 } from "./mercadoLivreApi";
+import { normalizarSku } from "./financeiroService";
 
 export interface ResultadoItemCampanha {
   itemId: string;
@@ -231,6 +233,95 @@ async function processarUmItemCampanha(
       [campanhaId, JSON.stringify([{ itemId, erro: falha }])]
     );
   }
+}
+
+export interface AnuncioEncontradoPorSku {
+  itemId: string;
+  titulo: string;
+  preco: number;
+}
+
+// Varre os anúncios ATIVOS da loja (mesmo escaneamento usado pela descoberta
+// automática, ver listarItensAtivos) e filtra pelo SKU normalizado — mesmo
+// critério do Financeiro (normalizarSku), pra bater SKU digitado com
+// grafia/maiúscula diferente da cadastrada no anúncio. Em loja grande
+// (Catedral passa de mil anúncios ativos) isso pode levar alguns segundos:
+// aceitável porque é sob demanda, pra uma loja só, não as 16 do grupo.
+export async function buscarAnunciosAtivosPorSku(lojaId: number, sku: string): Promise<AnuncioEncontradoPorSku[]> {
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    throw new Error("Essa loja não tem conta do Mercado Livre conectada.");
+  }
+
+  const skuNorm = normalizarSku(sku);
+  const itemIds = await listarItensAtivos(lojaId, loja.ml_user_id);
+  const info = await getItemsBasicInfo(lojaId, itemIds);
+
+  const encontrados: AnuncioEncontradoPorSku[] = [];
+  for (const item of info.values()) {
+    if (!item.seller_custom_field) continue;
+    if (normalizarSku(item.seller_custom_field) !== skuNorm) continue;
+    encontrados.push({ itemId: item.id, titulo: item.title, preco: item.price });
+  }
+  return encontrados;
+}
+
+// Acrescenta itens na campanha PRÓPRIA já em andamento da loja (a "Promoção
+// Geral" que aparece no resumo da Agenda, ver obterCampanhaAtivaDaLoja) — NÃO
+// cria uma campanha nova. Se já rastreamos essa campanha localmente (achada
+// antes pela descoberta automática, ou por uma adição anterior por aqui),
+// soma os itens nela; senão, começa a rastrear agora. Reaproveita
+// processarItensCampanha (mesmo processamento em segundo plano + progresso
+// da criação normal), só pulando a etapa de criar a campanha no ML.
+export async function adicionarItensNaPromocaoGeral(
+  lojaId: number,
+  itens: ItemComPercentual[]
+): Promise<ResultadoCriarCampanha> {
+  if (itens.length === 0) {
+    throw new Error("Selecione ao menos um anúncio.");
+  }
+
+  const loja = (await listLojas()).find((l) => l.id === lojaId);
+  if (!loja || loja.ml_user_id === null) {
+    throw new Error("Essa loja não tem conta do Mercado Livre conectada.");
+  }
+
+  const ativa = await obterCampanhaAtivaDaLoja(lojaId, loja.ml_user_id);
+  if (!ativa) {
+    throw new Error(
+      "Essa loja não tem uma Promoção Geral em andamento agora no Mercado Livre — crie uma campanha primeiro."
+    );
+  }
+
+  const { rows: existentes } = await pool.query<{ id: number }>(
+    "SELECT id FROM promocoes_campanhas WHERE loja_id = $1 AND promotion_id = $2",
+    [lojaId, ativa.promotionId]
+  );
+
+  let campanhaId: number;
+  if (existentes.length > 0) {
+    campanhaId = existentes[0].id;
+    await pool.query(
+      "UPDATE promocoes_campanhas SET itens_total = itens_total + $2, processamento = 'em_andamento' WHERE id = $1",
+      [campanhaId, itens.length]
+    );
+  } else {
+    const percentualMedio = itens.reduce((s, i) => s + i.percentual, 0) / itens.length;
+    const { rows } = await pool.query<{ id: number }>(
+      `INSERT INTO promocoes_campanhas
+         (loja_id, promotion_id, nome, percentual_desconto, data_inicio, data_fim, status, processamento, itens_total)
+       VALUES ($1, $2, $3, $4, $5, $6, 'started', 'em_andamento', $7)
+       RETURNING id`,
+      [lojaId, ativa.promotionId, ativa.nome, percentualMedio, dataISO(new Date()), ativa.finishDate.slice(0, 10), itens.length]
+    );
+    campanhaId = rows[0].id;
+  }
+
+  processarItensCampanha(campanhaId, lojaId, ativa.promotionId, itens).catch((err) => {
+    console.error(`Falha ao adicionar itens na Promoção Geral (campanha ${campanhaId}):`, err);
+  });
+
+  return { campanhaId, promotionId: ativa.promotionId, nome: ativa.nome, itens: [], emAndamento: true, itensTotal: itens.length };
 }
 
 export interface RegistroExistente {

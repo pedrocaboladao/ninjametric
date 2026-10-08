@@ -127,6 +127,12 @@ export interface ResultadoAprovacaoLote {
   erro?: string;
 }
 
+export interface AnuncioEncontradoPorSku {
+  itemId: string;
+  titulo: string;
+  preco: number;
+}
+
 export interface ProgressoBuscaOportunidades {
   emAndamento: boolean;
   lojaAtual: string | null;

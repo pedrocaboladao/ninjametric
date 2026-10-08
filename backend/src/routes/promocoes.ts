@@ -8,6 +8,8 @@ import {
   obterProgressoDescoberta,
   excluirCampanha,
   limparCampanhas,
+  buscarAnunciosAtivosPorSku,
+  adicionarItensNaPromocaoGeral,
   type ResultadoCriarCampanha,
 } from "../services/promocoesService";
 import {
@@ -152,6 +154,61 @@ promocoesRouter.post("/", async (req, res) => {
     res.json(await criarCampanha(lojaIdNum, nome.trim(), itens));
   } catch (err) {
     erro(res, err, "Falha ao criar campanha.");
+  }
+});
+
+// Ferramenta "promoção por SKU": busca os anúncios ativos da loja que batem
+// com o SKU digitado — pra escolher quais entram na Promoção Geral sem
+// precisar catar MLB um por um.
+promocoesRouter.get("/buscar-por-sku", async (req, res) => {
+  const lojaIdNum = Number(req.query.lojaId);
+  const sku = typeof req.query.sku === "string" ? req.query.sku.trim() : "";
+  if (!Number.isInteger(lojaIdNum)) {
+    res.status(400).json({ error: "Informe a loja." });
+    return;
+  }
+  if (!temAcessoLoja(req.usuario!, lojaIdNum)) {
+    res.status(403).json({ error: "Você não tem acesso a essa loja." });
+    return;
+  }
+  if (!sku) {
+    res.status(400).json({ error: "Informe o SKU." });
+    return;
+  }
+  try {
+    res.json({ anuncios: await buscarAnunciosAtivosPorSku(lojaIdNum, sku) });
+  } catch (err) {
+    erro(res, err, "Falha ao buscar anúncios pelo SKU.");
+  }
+});
+
+// Acrescenta os itens escolhidos na campanha própria já em andamento da loja
+// (a "Promoção Geral") — não cria campanha nova, ver adicionarItensNaPromocaoGeral.
+promocoesRouter.post("/geral/adicionar", async (req, res) => {
+  const { lojaId, percentual, itemIds } = req.body ?? {};
+  const lojaIdNum = Number(lojaId);
+  const percentualNum = Number(percentual);
+  if (!Number.isInteger(lojaIdNum)) {
+    res.status(400).json({ error: "Informe a loja." });
+    return;
+  }
+  if (!temAcessoLoja(req.usuario!, lojaIdNum)) {
+    res.status(403).json({ error: "Você não tem acesso a essa loja." });
+    return;
+  }
+  if (!Number.isFinite(percentualNum)) {
+    res.status(400).json({ error: "Percentual inválido." });
+    return;
+  }
+  if (!Array.isArray(itemIds) || itemIds.length === 0 || itemIds.some((id) => typeof id !== "string")) {
+    res.status(400).json({ error: "Selecione ao menos um anúncio." });
+    return;
+  }
+  try {
+    const itens = itemIds.map((itemId: string) => ({ itemId, percentual: percentualNum }));
+    res.json(await adicionarItensNaPromocaoGeral(lojaIdNum, itens));
+  } catch (err) {
+    erro(res, err, "Falha ao adicionar itens na Promoção Geral.");
   }
 });
 

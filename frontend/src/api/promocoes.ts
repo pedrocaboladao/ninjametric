@@ -9,6 +9,7 @@ import type {
   ComparacaoOportunidade,
   ResultadoAprovacaoLote,
   MargemSimulada,
+  AnuncioEncontradoPorSku,
 } from "../types/promocoes";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -39,6 +40,27 @@ export async function criarCampanha(
     headers: { "Content-Type": "application/json" },
     credentials: "include",
     body: JSON.stringify({ lojaId, nome, percentual, itemIds }),
+  });
+  return tratarResposta<ResultadoCriarCampanha>(res);
+}
+
+export async function buscarAnunciosPorSku(lojaId: number, sku: string): Promise<AnuncioEncontradoPorSku[]> {
+  const params = new URLSearchParams({ lojaId: String(lojaId), sku });
+  const res = await fetch(`${API_BASE}/api/promocoes/buscar-por-sku?${params}`, { credentials: "include" });
+  const data = await tratarResposta<{ anuncios: AnuncioEncontradoPorSku[] }>(res);
+  return data.anuncios;
+}
+
+export async function adicionarNaPromocaoGeral(
+  lojaId: number,
+  percentual: number,
+  itemIds: string[]
+): Promise<ResultadoCriarCampanha> {
+  const res = await fetch(`${API_BASE}/api/promocoes/geral/adicionar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ lojaId, percentual, itemIds }),
   });
   return tratarResposta<ResultadoCriarCampanha>(res);
 }

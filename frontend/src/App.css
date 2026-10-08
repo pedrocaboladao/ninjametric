@@ -3990,6 +3990,19 @@
   margin-bottom: 14px;
 }
 
+.promocoes-item-sku {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.promocoes-item-sku:hover {
+  background: var(--bg-panel-alt);
+  border-radius: 6px;
+}
+
 .promocoes-grupo-sku-cabecalho {
   display: flex;
   align-items: center;

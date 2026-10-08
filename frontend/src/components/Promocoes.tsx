@@ -18,6 +18,8 @@ import {
   fetchSimularMargem,
   limparOportunidades,
   compararComVendaReal,
+  buscarAnunciosPorSku,
+  adicionarNaPromocaoGeral,
 } from "../api/promocoes";
 import { fetchLojas, type Loja } from "../api/lojas";
 import type {
@@ -30,6 +32,7 @@ import type {
   ProgressoBuscaOportunidades,
   ComparacaoOportunidade,
   ResultadoAprovacaoLote,
+  AnuncioEncontradoPorSku,
 } from "../types/promocoes";
 import { formatCurrency } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
@@ -279,6 +282,187 @@ function NovaCampanhaForm({ lojas, onCriada }: { lojas: Loja[]; onCriada: () => 
           <div className="fabricacao-editor-acoes">
             <button type="button" className="btn-responder" disabled={enviando} onClick={confirmar}>
               {enviando ? "Criando..." : "Confirmar e criar"}
+            </button>
+            <button type="button" className="btn-excluir" onClick={() => setConfirmando(false)}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Ferramenta "promoção por SKU": digita o SKU, acha todos os anúncios ativos
+// da loja com esse SKU de uma vez (variações/duplicatas costumam ter MLBs
+// diferentes pro mesmo produto), escolhe quais entram e manda todos juntos
+// pra Promoção Geral já em andamento — sem catar MLB um por um.
+function AdicionarPorSkuForm({ lojas, onAdicionado }: { lojas: Loja[]; onAdicionado: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [lojaId, setLojaId] = useState<number | "">("");
+  const [sku, setSku] = useState("");
+  const [buscando, setBuscando] = useState(false);
+  const [anuncios, setAnuncios] = useState<AnuncioEncontradoPorSku[] | null>(null);
+  const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
+  const [percentual, setPercentual] = useState("20");
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoCriarCampanha | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  async function buscar() {
+    setErro(null);
+    setResultado(null);
+    if (!lojaId) {
+      setErro("Escolha a loja.");
+      return;
+    }
+    if (!sku.trim()) {
+      setErro("Informe o SKU.");
+      return;
+    }
+    setBuscando(true);
+    setAnuncios(null);
+    try {
+      const encontrados = await buscarAnunciosPorSku(Number(lojaId), sku.trim());
+      setAnuncios(encontrados);
+      // Já vem tudo marcado — na maioria das vezes é isso que se quer (todo
+      // anúncio desse SKU na promoção); desmarcar o que não quiser é 1 clique.
+      setSelecionados(new Set(encontrados.map((a) => a.itemId)));
+      if (encontrados.length === 0) setErro("Nenhum anúncio ativo dessa loja usa esse SKU.");
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao buscar anúncios pelo SKU.");
+    } finally {
+      setBuscando(false);
+    }
+  }
+
+  function alternar(itemId: string) {
+    setSelecionados((atual) => {
+      const novo = new Set(atual);
+      if (novo.has(itemId)) novo.delete(itemId);
+      else novo.add(itemId);
+      return novo;
+    });
+  }
+
+  function pedirConfirmacao() {
+    setErro(null);
+    const p = Number(percentual);
+    if (!Number.isFinite(p) || p < 10 || p > 70) {
+      setErro("Percentual precisa ficar entre 10% e 70% (regra do Mercado Livre).");
+      return;
+    }
+    if (selecionados.size === 0) {
+      setErro("Selecione ao menos um anúncio.");
+      return;
+    }
+    setConfirmando(true);
+  }
+
+  async function confirmar() {
+    setEnviando(true);
+    setErro(null);
+    try {
+      const res = await adicionarNaPromocaoGeral(Number(lojaId), Number(percentual), Array.from(selecionados));
+      setResultado(res);
+      setConfirmando(false);
+      onAdicionado();
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao adicionar os itens na Promoção Geral.");
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  if (!aberto) {
+    return (
+      <button type="button" className="btn-responder" onClick={() => setAberto(true)}>
+        Promoção por SKU
+      </button>
+    );
+  }
+
+  return (
+    <div className="promocoes-form">
+      {erro && <div className="state-message state-error">{erro}</div>}
+      {resultado && <ResultadoCriacao resultado={resultado} />}
+
+      {!confirmando && (
+        <>
+          <div className="fabricacao-editor-topo">
+            <select
+              className="dashboard-select"
+              value={lojaId}
+              onChange={(e) => {
+                setLojaId(e.target.value ? Number(e.target.value) : "");
+                setAnuncios(null);
+                setResultado(null);
+              }}
+            >
+              <option value="">Loja...</option>
+              {lojas.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.nome}
+                </option>
+              ))}
+            </select>
+            <input
+              className="clonar-input"
+              placeholder="SKU"
+              value={sku}
+              onChange={(e) => setSku(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && buscar()}
+            />
+            <button type="button" className="btn-responder" onClick={buscar} disabled={buscando}>
+              {buscando ? "Buscando..." : "Buscar anúncios"}
+            </button>
+          </div>
+
+          {anuncios && anuncios.length > 0 && (
+            <>
+              <div className="promocoes-resultado-falhas">
+                {anuncios.map((a) => (
+                  <label key={a.itemId} className="promocoes-item-sku">
+                    <input type="checkbox" checked={selecionados.has(a.itemId)} onChange={() => alternar(a.itemId)} />
+                    <span className="financeiro-td-mudo">{a.itemId}</span>
+                    <span>{a.titulo}</span>
+                    <span className="financeiro-td-mudo">{formatCurrency(a.preco)}</span>
+                  </label>
+                ))}
+              </div>
+              <div className="fabricacao-editor-topo">
+                <input
+                  className="clonar-input"
+                  placeholder="% de desconto (10-70)"
+                  value={percentual}
+                  onChange={(e) => setPercentual(e.target.value)}
+                />
+                <button type="button" className="btn-responder" onClick={pedirConfirmacao}>
+                  Adicionar {selecionados.size} à Promoção Geral
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="fabricacao-editor-acoes">
+            <button type="button" className="btn-excluir" onClick={() => setAberto(false)}>
+              Fechar
+            </button>
+          </div>
+        </>
+      )}
+
+      {confirmando && (
+        <div className="promocoes-confirmacao">
+          <p>
+            Confirma adicionar <b>{selecionados.size}</b> anúncio{selecionados.size > 1 ? "s" : ""} do SKU{" "}
+            <b>{sku}</b> na Promoção Geral da loja <b>{lojas.find((l) => l.id === lojaId)?.nome}</b>, com{" "}
+            <b>{percentual}%</b> de desconto? Isso muda o preço de verdade no Mercado Livre agora.
+          </p>
+          <div className="fabricacao-editor-acoes">
+            <button type="button" className="btn-responder" disabled={enviando} onClick={confirmar}>
+              {enviando ? "Adicionando..." : "Confirmar e adicionar"}
             </button>
             <button type="button" className="btn-excluir" onClick={() => setConfirmando(false)}>
               Voltar
@@ -1317,6 +1501,7 @@ export function Promocoes() {
 
       <div className="promocoes-acoes-topo">
         <NovaCampanhaForm lojas={lojas} onCriada={atualizarAgora} />
+        <AdicionarPorSkuForm lojas={lojas} onAdicionado={atualizarAgora} />
         <RegistrarExistentesForm lojas={lojas} onRegistradas={atualizarAgora} />
         <DescobertaAutomatica lojaFiltro={lojaFiltro} onEncontradas={atualizarAgora} />
         {dados !== null && dados.length > 0 && <LimparTudo lojaFiltro={lojaFiltro} onLimpo={atualizarAgora} />}
