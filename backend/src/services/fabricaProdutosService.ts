@@ -1,5 +1,6 @@
 import { pool } from "../db/pool";
 import { listarFormulas } from "./fabricacaoService";
+import { chaveApelidoSku } from "./fabricaProdutoApelidosService";
 
 // Produto acabado da Fábrica Distribuidora — o que ela vende para as lojas
 // do grupo. Fica separado de `produtos` (que é catálogo de anúncio do Mercado
@@ -493,4 +494,128 @@ export async function aplicarPrecosCatalogo(
     cliente.release();
   }
   return { atualizados: aplicar.length };
+}
+
+export interface MesclaProduto {
+  simulacao: boolean;
+  de: { id: number; sku: string };
+  para: { id: number; sku: string };
+  pedidoItens: number;
+  ajustes: number;
+  devolucoes: number;
+  entradaItens: number;
+  apelidosMovidos: number;
+  apelidoCriado: string | null;
+}
+
+// Mesclar produto duplicado: a mesma coisa cadastrada duas vezes, com a grafia
+// que o anúncio do ML manda e a grafia que o catálogo tem.
+// Em 08/10/2026 eram 7 pares — MICAFLOCADABRILHA-500G x MICAFLOCADA-500G,
+// RESIFLEXVERNIZ-900ML x VERNIZ-RESIFLEX-900ML, os quatro KIT-GESSOEMPO.
+//
+// Apagar o errado direto não dá, e o banco está certo em barrar: as 74 linhas
+// de venda apontavam pra ele, a última de dois dias antes. Toda a venda estava
+// na grafia errada e a certa nunca vendeu uma unidade.
+//
+// Então o errado não é apagado, é mesclado: o que aponta pra ele passa a
+// apontar pro certo, e a grafia errada fica gravada como apelido do certo.
+//
+// O apelido é o que impede o duplicado de renascer. O anúncio continua mandando
+// a grafia velha até alguém corrigir no ML, e o Bling grava o código dentro do
+// pedido, congelado na hora da venda — sem o apelido, o sync de amanhã bate
+// "SKU errado" e a venda não entra.
+export async function mesclarProduto(
+  deSku: string,
+  paraSku: string,
+  simulacao = true
+): Promise<MesclaProduto> {
+  // Entra por SKU, não por id: id trocado move a venda de outro produto, e
+  // isso só aparece no fechamento da terça.
+  const achar = async (sku: string, qual: string) => {
+    const { rows } = await pool.query<{ id: number; sku: string }>(
+      "SELECT id, sku FROM fabrica_produtos WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))",
+      [sku]
+    );
+    if (!rows.length) throw new Error(`SKU de ${qual} não encontrado: ${sku}`);
+    return rows[0];
+  };
+  const de = await achar(deSku, "origem");
+  const para = await achar(paraSku, "destino");
+  if (de.id === para.id) throw new Error("Origem e destino são o mesmo produto.");
+  const deId = de.id;
+  const paraId = para.id;
+
+  const contar = async (tabela: string) => {
+    const { rows } = await pool.query<{ n: string }>(
+      `SELECT COUNT(*) AS n FROM ${tabela} WHERE produto_id = $1`,
+      [deId]
+    );
+    return Number(rows[0].n);
+  };
+  const [pedidoItens, ajustes, devolucoes, entradaItens, apelidos] = await Promise.all([
+    contar("fabrica_pedido_itens"),
+    contar("fabrica_produto_ajustes"),
+    contar("fabrica_devolucoes"),
+    contar("fabrica_entrada_itens"),
+    contar("fabrica_produto_apelidos"),
+  ]);
+
+  const chave = chaveApelidoSku(de.sku);
+  const { rows: donoChave } = await pool.query<{ produto_id: number }>(
+    "SELECT produto_id FROM fabrica_produto_apelidos WHERE chave = $1",
+    [chave]
+  );
+  const apelidoCriado = donoChave.length ? null : de.sku;
+
+  const resumo: MesclaProduto = {
+    simulacao,
+    de: { id: de.id, sku: de.sku },
+    para: { id: para.id, sku: para.sku },
+    pedidoItens,
+    ajustes,
+    devolucoes,
+    entradaItens,
+    apelidosMovidos: apelidos,
+    apelidoCriado,
+  };
+  if (simulacao) return resumo;
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    for (const tabela of [
+      "fabrica_pedido_itens",
+      "fabrica_produto_ajustes",
+      "fabrica_devolucoes",
+      "fabrica_entrada_itens",
+    ]) {
+      await cliente.query(`UPDATE ${tabela} SET produto_id = $2 WHERE produto_id = $1`, [
+        deId,
+        paraId,
+      ]);
+    }
+    // Apelido com chave repetida fica pra trás e sai no CASCADE: já existe o
+    // mesmo apelido no destino, mover criaria duas linhas pro mesmo código.
+    await cliente.query(
+      `UPDATE fabrica_produto_apelidos SET produto_id = $2
+        WHERE produto_id = $1
+          AND chave NOT IN (SELECT chave FROM fabrica_produto_apelidos WHERE produto_id = $2)`,
+      [deId, paraId]
+    );
+    if (apelidoCriado) {
+      await cliente.query(
+        `INSERT INTO fabrica_produto_apelidos (produto_id, apelido, chave)
+         VALUES ($1, $2, $3) ON CONFLICT (chave) DO NOTHING`,
+        [paraId, apelidoCriado, chave]
+      );
+    }
+    await cliente.query("DELETE FROM fabrica_produtos WHERE id = $1", [deId]);
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  return resumo;
 }
