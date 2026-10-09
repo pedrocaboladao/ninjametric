@@ -520,6 +520,8 @@ export interface LinhaInativacao {
     | "não achei no ERP"
     | "erro";
   produtoId?: number;
+  /** custo relido DEPOIS de mudar a situacao: denuncia relacao derrubada */
+  custoDepois?: number;
   erro?: string;
 }
 
@@ -553,17 +555,33 @@ export async function definirSituacaoProdutos(
         });
         continue;
       }
+      let custoDepois: number | null = null;
       if (!simulacao) {
-        // leitura e devolucao: so a situacao muda, o resto volta como veio
+        // Corpo MINIMO, nao o produto inteiro. Devolver `...inteiro.data` leva
+        // junto o bloco `fornecedor`, e o Bling trata isso como ordem de
+        // regravar a relacao produto<->fornecedor — que e onde mora o custo.
+        //
+        // Em 09/10/2026 isso zerou o custo de 106 produtos de uma vez: um ciclo
+        // de inativar e reativar 121 cores apagou a relacao de todas. O mesmo
+        // defeito que gravarPreco e padronizarCodigos ja tinham tido.
         await chamar("put", `/produtos/${achado.id}`, undefined, {
-          ...inteiro.data,
+          nome: inteiro.data.nome,
+          codigo: inteiro.data.codigo,
+          preco: inteiro.data.preco,
+          tipo: inteiro.data.tipo,
+          formato: inteiro.data.formato,
           situacao,
         });
+        // Rele: o 200 do Bling nunca provou que gravou, e aqui ainda interessa
+        // saber se o custo sobreviveu.
+        const conf = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+        custoDepois = custoDoProduto(conf.data as Record<string, unknown>);
       }
       linhas.push({
         sku,
         situacao: situacao === "I" ? "inativado" : "reativado",
         produtoId: achado.id,
+        ...(custoDepois !== null ? { custoDepois } : {}),
       });
     } catch (err) {
       linhas.push({
@@ -606,6 +624,8 @@ export interface LinhaPadronizacao {
     | "fora do catálogo do site"
     | "erro";
   detalhe?: string;
+  /** custo relido DEPOIS de trocar o codigo: denuncia relacao derrubada */
+  custoDepois?: number;
 }
 
 export interface ResultadoPadronizacao {
@@ -716,17 +736,29 @@ export async function padronizarCodigos(
     }
 
     try {
-      // leitura e devolução: manda o produto inteiro de volta com o código
-      // trocado. Montar o corpo do zero apagaria preço, estoque, fornecedor.
+      // Corpo MINIMO, nao o produto inteiro. O comentario que ficava aqui dizia
+      // que montar o corpo do zero apagaria preco, estoque e fornecedor — e
+      // era o contrario: devolver `...inteiro.data` leva o bloco `fornecedor`
+      // junto, e o Bling regrava a relacao produto<->fornecedor, que e onde
+      // mora o custo. Preco e estoque sobrevivem; o custo e que ia embora.
+      //
+      // Terceira rota com o mesmo defeito: gravarPreco derrubou 187 lixas em
+      // 06/10 e definirSituacaoProdutos zerou 106 produtos em 09/10.
       const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${origem.id}`);
       await chamar("put", `/produtos/${origem.id}`, undefined, {
-        ...inteiro.data,
+        nome: inteiro.data.nome,
         codigo: para,
+        preco: (inteiro.data as { preco?: unknown }).preco,
+        // o Bling recusa o PUT sem estes tres (codigos 61, 8 e 64)
+        tipo: inteiro.data.tipo,
+        situacao: (inteiro.data as { situacao?: unknown }).situacao,
+        formato: inteiro.data.formato,
       });
 
       // Rele: o 200 do Bling nunca provou que gravou. Um codigo que nao entrou
       // deixaria a venda sumindo do site do mesmo jeito, e calado.
       const depois = (await chamar<{ data: ProdutoBling }>("get", `/produtos/${origem.id}`)).data;
+      const custoDepois = custoDoProduto(depois as unknown as Record<string, unknown>);
       if (normalizarSku(depois?.codigo ?? "") !== normalizarSku(para)) {
         linhas.push({
           de,
@@ -744,6 +776,7 @@ export async function padronizarCodigos(
         produtoId: origem.id,
         nome: origem.nome ?? null,
         situacao: "renomeado",
+        ...(custoDepois !== null ? { custoDepois } : {}),
       });
     } catch (err) {
       linhas.push({
