@@ -624,6 +624,8 @@ export interface LinhaPadronizacao {
     | "fora do catálogo do site"
     | "erro";
   detalhe?: string;
+  /** custo relido DEPOIS de trocar o codigo: denuncia relacao derrubada */
+  custoDepois?: number;
 }
 
 export interface ResultadoPadronizacao {
@@ -734,17 +736,29 @@ export async function padronizarCodigos(
     }
 
     try {
-      // leitura e devolução: manda o produto inteiro de volta com o código
-      // trocado. Montar o corpo do zero apagaria preço, estoque, fornecedor.
+      // Corpo MINIMO, nao o produto inteiro. O comentario que ficava aqui dizia
+      // que montar o corpo do zero apagaria preco, estoque e fornecedor — e
+      // era o contrario: devolver `...inteiro.data` leva o bloco `fornecedor`
+      // junto, e o Bling regrava a relacao produto<->fornecedor, que e onde
+      // mora o custo. Preco e estoque sobrevivem; o custo e que ia embora.
+      //
+      // Terceira rota com o mesmo defeito: gravarPreco derrubou 187 lixas em
+      // 06/10 e definirSituacaoProdutos zerou 106 produtos em 09/10.
       const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${origem.id}`);
       await chamar("put", `/produtos/${origem.id}`, undefined, {
-        ...inteiro.data,
+        nome: inteiro.data.nome,
         codigo: para,
+        preco: (inteiro.data as { preco?: unknown }).preco,
+        // o Bling recusa o PUT sem estes tres (codigos 61, 8 e 64)
+        tipo: inteiro.data.tipo,
+        situacao: (inteiro.data as { situacao?: unknown }).situacao,
+        formato: inteiro.data.formato,
       });
 
       // Rele: o 200 do Bling nunca provou que gravou. Um codigo que nao entrou
       // deixaria a venda sumindo do site do mesmo jeito, e calado.
       const depois = (await chamar<{ data: ProdutoBling }>("get", `/produtos/${origem.id}`)).data;
+      const custoDepois = custoDoProduto(depois as unknown as Record<string, unknown>);
       if (normalizarSku(depois?.codigo ?? "") !== normalizarSku(para)) {
         linhas.push({
           de,
@@ -762,6 +776,7 @@ export async function padronizarCodigos(
         produtoId: origem.id,
         nome: origem.nome ?? null,
         situacao: "renomeado",
+        ...(custoDepois !== null ? { custoDepois } : {}),
       });
     } catch (err) {
       linhas.push({
