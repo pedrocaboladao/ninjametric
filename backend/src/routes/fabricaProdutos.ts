@@ -10,6 +10,7 @@ import {
   conferirPrecosCatalogo,
   aplicarPrecosCatalogo,
   mesclarProduto,
+  ajustarCustoHistorico,
 } from "../services/fabricaProdutosService";
 import { exportarProdutos } from "../services/fabricaProdutosExportService";
 import {
@@ -226,6 +227,23 @@ fabricaProdutosRouter.delete("/:id", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao excluir produto.");
+  }
+});
+
+// Reescreve o custo congelado nas vendas ja lancadas de um SKU. Simula por
+// padrao: isso mexe em margem de mes fechado.
+fabricaProdutosRouter.post("/ajustar-custo-historico", async (req, res) => {
+  const sku = String(req.body?.sku ?? "").trim();
+  if (!sku) return res.status(400).json({ error: "Informe o SKU." });
+  const bruto = req.body?.custo;
+  const custo = bruto === undefined || bruto === null || bruto === "" ? null : Number(bruto);
+  if (custo !== null && (!Number.isFinite(custo) || custo <= 0)) {
+    return res.status(400).json({ error: "Custo invalido." });
+  }
+  try {
+    res.json(await ajustarCustoHistorico(sku, custo, req.body?.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao ajustar o custo historico.");
   }
 });
 

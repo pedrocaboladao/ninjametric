@@ -617,3 +617,99 @@ export async function mesclarProduto(
   }
   return resumo;
 }
+
+export interface AjusteCustoLinha {
+  pedidoId: number;
+  data: string;
+  quantidade: number;
+  custoAntes: number;
+  custoDepois: number;
+  diferenca: number;
+}
+
+export interface AjusteCustoHistorico {
+  simulacao: boolean;
+  sku: string;
+  custoAtual: number;
+  linhas: AjusteCustoLinha[];
+  unidades: number;
+  faltando: number;
+}
+
+// Corrige o custo congelado nas vendas ja lancadas.
+//
+// `fabrica_pedido_itens.custo_unitario` guarda o custo do momento da venda, de
+// proposito: mudar o cadastro depois nao pode reescrever a margem de um mes que
+// ja fechou. Mas quando o cadastro estava ERRADO na hora da venda, o que ficou
+// congelado foi o erro.
+//
+// Em 09/10/2026 eram dois casos. Os KIT-GESSOEMPO custeados com o preco do
+// gesso avulso em vez do kit, e o saco 53x70 vendido como se fosse o de 20
+// litros: 38 unidades a R$ 10,50 quando o saco custa R$ 35,00. Somados,
+// R$ 1.211,42 de CMV que nunca entraram no DRE.
+//
+// So mexe no custo. Quantidade, preco de venda e data ficam como estao — o que
+// o cliente pagou nao muda, so o que a fabrica gastou pra entregar.
+export async function ajustarCustoHistorico(
+  sku: string,
+  custoNovo: number | null,
+  simulacao = true
+): Promise<AjusteCustoHistorico> {
+  const { rows: achados } = await pool.query<{ id: number; sku: string; custo_compra: string | null }>(
+    "SELECT id, sku, custo_compra FROM fabrica_produtos WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))",
+    [sku]
+  );
+  if (!achados.length) throw new Error(`SKU nao encontrado: ${sku}`);
+  const produto = achados[0];
+
+  // Sem custo informado, vale o do cadastro — que e o motivo de estar corrigindo
+  const custo = custoNovo ?? Number(produto.custo_compra ?? 0);
+  if (!Number.isFinite(custo) || custo <= 0) {
+    throw new Error(`Custo invalido para ${produto.sku}: informe o custo ou preencha o cadastro.`);
+  }
+
+  const { rows } = await pool.query<{
+    id: number;
+    pedido_id: number;
+    data: string;
+    quantidade: string;
+    custo_unitario: string;
+  }>(
+    `SELECT i.id, i.pedido_id, p.data::text AS data, i.quantidade, i.custo_unitario
+       FROM fabrica_pedido_itens i
+       JOIN fabrica_pedidos p ON p.id = i.pedido_id
+      WHERE i.produto_id = $1
+        AND p.status <> 'CANCELADO'
+        AND ROUND(i.custo_unitario::numeric, 2) <> ROUND($2::numeric, 2)
+      ORDER BY p.data, i.id`,
+    [produto.id, custo]
+  );
+
+  const linhas: AjusteCustoLinha[] = rows.map((r) => {
+    const antes = Number(r.custo_unitario);
+    const qtd = Number(r.quantidade);
+    return {
+      pedidoId: r.pedido_id,
+      data: r.data,
+      quantidade: qtd,
+      custoAntes: antes,
+      custoDepois: custo,
+      diferenca: Number(((custo - antes) * qtd).toFixed(2)),
+    };
+  });
+  const resumo: AjusteCustoHistorico = {
+    simulacao,
+    sku: produto.sku,
+    custoAtual: custo,
+    linhas,
+    unidades: linhas.reduce((a, l) => a + l.quantidade, 0),
+    faltando: Number(linhas.reduce((a, l) => a + l.diferenca, 0).toFixed(2)),
+  };
+  if (simulacao || !rows.length) return resumo;
+
+  await pool.query(
+    `UPDATE fabrica_pedido_itens SET custo_unitario = $2 WHERE id = ANY($1::int[])`,
+    [rows.map((r) => r.id), custo]
+  );
+  return resumo;
+}
