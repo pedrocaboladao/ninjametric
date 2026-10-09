@@ -154,6 +154,14 @@ export async function acharPorCodigo(codigo: string): Promise<ProdutoBling | nul
 // pagina, e o enfileirador de 350ms fecha em menos de meio minuto. O que nao
 // termina e a base de contatos, que carrega tambem o cliente final da Fabrica
 // Loja — dezenas de milhares.
+// O pai de uma variacao, se a listagem trouxer. O Bling aninha em
+// `variacao.produtoPai.id`.
+function paiDaVariacao(p: Record<string, unknown>): number | null {
+  const v = p.variacao as { produtoPai?: { id?: unknown } } | undefined;
+  const id = v?.produtoPai?.id;
+  return typeof id === "number" && id > 0 ? id : null;
+}
+
 export interface ProdutoDoBling {
   id: number;
   codigo: string;
@@ -170,6 +178,18 @@ export interface ProdutoDoBling {
   situacao: string;
   tipo: string;
   formato: string;
+  /**
+   * Id do produto PAI, quando este e uma variacao.
+   *
+   * Existe porque o codigo do filho NAO diz quem e o pai dele:
+   * RECICLADA-18L-GRAFITE comeca com RECICLADA-18L mas pendura em
+   * RECICLADA-18KG-. Em 09/10/2026 eu contei filhos por prefixo de codigo,
+   * inativei 21 pais "vazios" e derrubei 121 cores que vendem.
+   *
+   * `null` quando o produto nao e variacao — ou quando a listagem do Bling nao
+   * trouxe o campo, que nao e a mesma coisa. Na duvida, ler o produto inteiro.
+   */
+  paiId: number | null;
 }
 
 // O Bling nao devolve o produto inativo na listagem padrao — nem com
@@ -215,6 +235,7 @@ export async function listarProdutos(
         situacao: String(p.situacao ?? ""),
         tipo: String(p.tipo ?? ""),
         formato: String(p.formato ?? ""),
+        paiId: paiDaVariacao(p),
       });
     }
     if (aoAndar) aoAndar(saida.length);
