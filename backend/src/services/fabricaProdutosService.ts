@@ -1,5 +1,6 @@
 import { pool } from "../db/pool";
 import { listarFormulas } from "./fabricacaoService";
+import { chaveApelidoSku } from "./fabricaProdutoApelidosService";
 
 // Produto acabado da Fábrica Distribuidora — o que ela vende para as lojas
 // do grupo. Fica separado de `produtos` (que é catálogo de anúncio do Mercado
@@ -493,4 +494,126 @@ export async function aplicarPrecosCatalogo(
     cliente.release();
   }
   return { atualizados: aplicar.length };
+}
+
+export interface MesclaProduto {
+  simulacao: boolean;
+  de: { id: number; sku: string };
+  para: { id: number; sku: string };
+  pedidoItens: number;
+  ajustes: number;
+  devolucoes: number;
+  entradaItens: number;
+  apelidosMovidos: number;
+  apelidoCriado: string | null;
+}
+
+// Mesclar produto duplicado: a mesma coisa cadastrada duas vezes.
+//
+// Em 09/10/2026 eram os sacos: o cadastro tinha duas familias pro mesmo
+// produto, SACO-40L-53X57-100UN e SACOLIXO-40L-C/100UN, e as duas vendiam —
+// 117 de um lado, 120 do outro. O mesmo saco contado como dois, com metade do
+// giro em cada.
+//
+// Apagar o que sai nao da: a venda aponta pra ele e o banco barra no
+// ON DELETE RESTRICT, com razao. Entao o duplicado e mesclado: o que aponta
+// pra ele passa a apontar pro que fica, a grafia que sai vira apelido do que
+// fica, e so ai o cadastro sai.
+//
+// O apelido e o que impede o duplicado de renascer: o Bling grava o codigo
+// dentro do pedido, congelado na hora da venda, e o import ja casa por apelido.
+export async function mesclarProduto(
+  deSku: string,
+  paraSku: string,
+  simulacao = true
+): Promise<MesclaProduto> {
+  // Entra por SKU, nao por id: id trocado move a venda de outro produto, e
+  // isso so aparece no fechamento da terca.
+  const achar = async (sku: string, qual: string) => {
+    const { rows } = await pool.query<{ id: number; sku: string }>(
+      "SELECT id, sku FROM fabrica_produtos WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))",
+      [sku]
+    );
+    if (!rows.length) throw new Error(`SKU de ${qual} nao encontrado: ${sku}`);
+    return rows[0];
+  };
+  const de = await achar(deSku, "origem");
+  const para = await achar(paraSku, "destino");
+  if (de.id === para.id) throw new Error("Origem e destino sao o mesmo produto.");
+  const deId = de.id;
+  const paraId = para.id;
+
+  const contar = async (tabela: string) => {
+    const { rows } = await pool.query<{ n: string }>(
+      `SELECT COUNT(*) AS n FROM ${tabela} WHERE produto_id = $1`,
+      [deId]
+    );
+    return Number(rows[0].n);
+  };
+  const [pedidoItens, ajustes, devolucoes, entradaItens, apelidos] = await Promise.all([
+    contar("fabrica_pedido_itens"),
+    contar("fabrica_produto_ajustes"),
+    contar("fabrica_devolucoes"),
+    contar("fabrica_entrada_itens"),
+    contar("fabrica_produto_apelidos"),
+  ]);
+
+  const chave = chaveApelidoSku(de.sku);
+  const { rows: donoChave } = await pool.query<{ produto_id: number }>(
+    "SELECT produto_id FROM fabrica_produto_apelidos WHERE chave = $1",
+    [chave]
+  );
+  const apelidoCriado = donoChave.length ? null : de.sku;
+
+  const resumo: MesclaProduto = {
+    simulacao,
+    de: { id: de.id, sku: de.sku },
+    para: { id: para.id, sku: para.sku },
+    pedidoItens,
+    ajustes,
+    devolucoes,
+    entradaItens,
+    apelidosMovidos: apelidos,
+    apelidoCriado,
+  };
+  if (simulacao) return resumo;
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    for (const tabela of [
+      "fabrica_pedido_itens",
+      "fabrica_produto_ajustes",
+      "fabrica_devolucoes",
+      "fabrica_entrada_itens",
+    ]) {
+      await cliente.query(`UPDATE ${tabela} SET produto_id = $2 WHERE produto_id = $1`, [
+        deId,
+        paraId,
+      ]);
+    }
+    // Apelido com chave repetida fica pra tras e sai no CASCADE: ja existe o
+    // mesmo apelido no destino, mover criaria duas linhas pro mesmo codigo.
+    await cliente.query(
+      `UPDATE fabrica_produto_apelidos SET produto_id = $2
+        WHERE produto_id = $1
+          AND chave NOT IN (SELECT chave FROM fabrica_produto_apelidos WHERE produto_id = $2)`,
+      [deId, paraId]
+    );
+    if (apelidoCriado) {
+      await cliente.query(
+        `INSERT INTO fabrica_produto_apelidos (produto_id, apelido, chave)
+         VALUES ($1, $2, $3) ON CONFLICT (chave) DO NOTHING`,
+        [paraId, apelidoCriado, chave]
+      );
+    }
+    await cliente.query("DELETE FROM fabrica_produtos WHERE id = $1", [deId]);
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  return resumo;
 }

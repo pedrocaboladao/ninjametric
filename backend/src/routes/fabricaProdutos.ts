@@ -9,6 +9,7 @@ import {
   importarCatalogo,
   conferirPrecosCatalogo,
   aplicarPrecosCatalogo,
+  mesclarProduto,
 } from "../services/fabricaProdutosService";
 import { exportarProdutos } from "../services/fabricaProdutosExportService";
 import {
@@ -225,6 +226,19 @@ fabricaProdutosRouter.delete("/:id", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao excluir produto.");
+  }
+});
+
+// Mescla um cadastro duplicado no outro. Simula por padrão: quem chama tem
+// que pedir a real, porque isso move venda de produto e apaga cadastro.
+fabricaProdutosRouter.post("/mesclar", async (req, res) => {
+  const de = String(req.body?.de ?? "").trim();
+  const para = String(req.body?.para ?? "").trim();
+  if (!de || !para) return res.status(400).json({ error: "Informe de e para (SKU)." });
+  try {
+    res.json(await mesclarProduto(de, para, req.body?.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao mesclar produto.");
   }
 });
 
