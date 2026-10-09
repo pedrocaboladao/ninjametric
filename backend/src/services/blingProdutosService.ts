@@ -1226,3 +1226,83 @@ export async function criarVariacoes(
   }
   return { simulacao, paiId: pai?.id, paiCriado, linhas };
 }
+
+export interface LinhaNome {
+  sku: string;
+  nome: string;
+  situacao: "gravado" | "já era esse" | "não achei no ERP" | "erro";
+  produtoId?: number;
+  antes?: string;
+  /** custo relido DEPOIS de gravar: denuncia relacao de fornecedor derrubada */
+  custoDepois?: number;
+  erro?: string;
+}
+
+// Grava o nome do produto no ERP.
+//
+// Existe porque a padronizacao de codigo nao cobre o nome: em 08/10/2026 os
+// quatro KIT-GESSOEMPO ficaram com o codigo certo e o nome ainda escrito na
+// grafia velha, "GESSOEMPO/2UN-2KG". Nome torto nao quebra o casamento de
+// venda — mas e o que sai impresso na nota fiscal.
+export async function gravarNome(
+  pares: Array<{ sku: string; nome: string }>,
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<{ simulacao: boolean; linhas: LinhaNome[] }> {
+  const linhas: LinhaNome[] = [];
+  for (let i = 0; i < pares.length; i++) {
+    const { sku, nome } = pares[i];
+    try {
+      const achado = await acharPorCodigo(sku);
+      if (!achado) {
+        linhas.push({ sku, nome, situacao: "não achei no ERP" });
+        continue;
+      }
+      const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+      const antes = String(inteiro.data.nome ?? "");
+      if (antes.trim() === nome.trim()) {
+        linhas.push({ sku, nome, situacao: "já era esse", produtoId: achado.id, antes });
+        continue;
+      }
+      if (!simulacao) {
+        // Corpo MINIMO — ver o comentario em gravarPreco: devolver
+        // `...inteiro.data` leva o bloco `fornecedor` junto e o Bling derruba a
+        // relacao que guarda o custo.
+        await chamar("put", `/produtos/${achado.id}`, undefined, {
+          nome,
+          codigo: inteiro.data.codigo,
+          preco: inteiro.data.preco,
+          tipo: inteiro.data.tipo,
+          situacao: inteiro.data.situacao,
+          formato: inteiro.data.formato,
+        });
+      }
+      // Rele: o 200 do Bling nunca provou que gravou.
+      let custoDepois: number | null = null;
+      let virou = nome;
+      if (!simulacao) {
+        const conf = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+        custoDepois = custoDoProduto(conf.data as Record<string, unknown>);
+        virou = String(conf.data.nome ?? "");
+      }
+      if (!simulacao && virou.trim() !== nome.trim()) {
+        linhas.push({
+          sku, nome, situacao: "erro", produtoId: achado.id, antes,
+          erro: `o Bling respondeu 200 mas o nome continua "${virou}"`,
+        });
+        continue;
+      }
+      linhas.push({
+        sku, nome, situacao: "gravado", produtoId: achado.id, antes,
+        ...(custoDepois !== null ? { custoDepois } : {}),
+      });
+    } catch (err) {
+      linhas.push({
+        sku, nome, situacao: "erro",
+        erro: err instanceof Error ? err.message : "falha ao gravar",
+      });
+    }
+    aoAndar?.(i + 1, pares.length);
+  }
+  return { simulacao, linhas };
+}

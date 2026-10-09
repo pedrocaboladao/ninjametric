@@ -44,6 +44,7 @@ import {
   criarNoErpOqueFalta,
   gravarGtin,
   gravarPreco,
+  gravarNome,
   definirSituacaoProdutos,
   lerCustos,
   gravarCusto,
@@ -1032,6 +1033,27 @@ fabricaBlingRouter.get("/produtos/preco", (_req, res) => {
 // chamadas por SKU (procurar, ler, gravar, reler), entao roda solto como o preco.
 let custoJob: { estado: string; feitos: number; total: number; erro: string | null; resultado: unknown } | null =
   null;
+
+// Nome do produto no ERP. Sincrono: a padronizacao de nome anda em punhado,
+// nao em carga de mil igual preco e custo.
+fabricaBlingRouter.post("/produtos/nome", async (req, res) => {
+  const b = req.body ?? {};
+  const pares = Array.isArray(b.pares)
+    ? b.pares
+        .map((p: { sku?: unknown; nome?: unknown }) => ({
+          sku: String(p.sku ?? "").trim(),
+          nome: String(p.nome ?? "").trim(),
+        }))
+        .filter((p: { sku: string; nome: string }) => p.sku && p.nome)
+    : [];
+  if (!pares.length) return res.status(400).json({ error: "Mande os pares { sku, nome }." });
+  if (pares.length > 100) return res.status(400).json({ error: "No máximo 100 por vez." });
+  try {
+    res.json(await gravarNome(pares, b.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao gravar o nome.");
+  }
+});
 
 fabricaBlingRouter.post("/produtos/custo", (req, res) => {
   if (custoJob && custoJob.estado === "rodando") {
