@@ -1360,3 +1360,87 @@ export async function gravarNome(
   }
   return { simulacao, linhas };
 }
+
+export interface LinhaTrocaPai {
+  sku: string;
+  produtoId: number | null;
+  paiAntes: number | null;
+  paiDepois: number | null;
+  paiAlvo: number | null;
+  situacao: "movido" | "já estava nesse pai" | "não achei no ERP" | "erro";
+  /** custo relido DEPOIS de mover: denuncia relacao derrubada */
+  custoDepois?: number;
+  erro?: string;
+}
+
+// Troca o pai de uma variacao.
+//
+// As cores de uma mesma familia estao espalhadas em pais diferentes: em
+// 09/10/2026, 68 cores de 12 familias penduravam no pai errado. BRILHACOR-16L
+// tinha 4 cores em cada um de tres pais, e o INGAFLEXPISO-EMBORRACHADO-3.6
+// tinha 9 cores num pai que a planilha nao reconhece e 2 no certo. Cada pai
+// carrega o seu preco, e por isso o mesmo produto aparece com tres precos.
+//
+// Quem manda e a PLANILHA OFICIAL FABRICA: o pai que fica e aquele cujo codigo
+// casa com a linha de titulo da familia.
+//
+// Corpo minimo — ver o comentario em gravarPreco. Devolver o produto inteiro
+// levaria o `fornecedor` junto e apagaria o custo.
+export async function trocarPaiDaVariacao(
+  sku: string,
+  paiSku: string,
+  simulacao: boolean
+): Promise<LinhaTrocaPai> {
+  const achado = await acharPorCodigo(sku);
+  if (!achado) return { sku, produtoId: null, paiAntes: null, paiDepois: null, paiAlvo: null,
+    situacao: "não achei no ERP" };
+  const pai = await acharPorCodigo(paiSku);
+  if (!pai) return { sku, produtoId: achado.id, paiAntes: null, paiDepois: null, paiAlvo: null,
+    situacao: "erro", erro: `pai não encontrado: ${paiSku}` };
+  if (String(pai.formato ?? "") !== "V") {
+    return { sku, produtoId: achado.id, paiAntes: null, paiDepois: null, paiAlvo: pai.id,
+      situacao: "erro", erro: `${paiSku} não é pai de variação (formato ${pai.formato})` };
+  }
+
+  const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+  const v = (inteiro.data as { variacao?: { nome?: string; ordem?: number; produtoPai?: { id?: number } } })
+    .variacao;
+  const antes = v?.produtoPai?.id ?? null;
+  if (!v) {
+    return { sku, produtoId: achado.id, paiAntes: null, paiDepois: null, paiAlvo: pai.id,
+      situacao: "erro", erro: "o produto não é variação: não tem bloco `variacao`" };
+  }
+  if (antes === pai.id) {
+    return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: antes, paiAlvo: pai.id,
+      situacao: "já estava nesse pai" };
+  }
+  if (simulacao) {
+    return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: null, paiAlvo: pai.id,
+      situacao: "movido" };
+  }
+
+  await chamar("put", `/produtos/${achado.id}`, undefined, {
+    nome: inteiro.data.nome,
+    codigo: inteiro.data.codigo,
+    preco: (inteiro.data as { preco?: unknown }).preco,
+    tipo: inteiro.data.tipo,
+    situacao: (inteiro.data as { situacao?: unknown }).situacao,
+    formato: inteiro.data.formato,
+    // o nome e a ordem da variacao voltam como estavam: so o pai muda
+    variacao: { nome: v.nome, ordem: v.ordem, produtoPai: { id: pai.id } },
+  });
+
+  // Rele: o 200 do Bling nunca provou nada. Aqui interessam duas coisas —
+  // se o pai mudou mesmo, e se o custo sobreviveu.
+  const conf = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+  const vd = (conf.data as { variacao?: { produtoPai?: { id?: number } } }).variacao;
+  const depois = vd?.produtoPai?.id ?? null;
+  const custoDepois = custoDoProduto(conf.data as Record<string, unknown>);
+  if (depois !== pai.id) {
+    return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: depois, paiAlvo: pai.id,
+      situacao: "erro", erro: `o Bling aceitou o PUT mas o pai continua ${depois}`,
+      ...(custoDepois !== null ? { custoDepois } : {}) };
+  }
+  return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: depois, paiAlvo: pai.id,
+    situacao: "movido", ...(custoDepois !== null ? { custoDepois } : {}) };
+}
