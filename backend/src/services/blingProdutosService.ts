@@ -1367,7 +1367,9 @@ export interface LinhaTrocaPai {
   paiAntes: number | null;
   paiDepois: number | null;
   paiAlvo: number | null;
-  situacao: "movido" | "já estava nesse pai" | "não achei no ERP" | "erro";
+  situacao: "movido" | "anexado" | "já estava nesse pai" | "não achei no ERP" | "erro";
+  /** o rotulo da variacao, quando foi preciso inventar um ao anexar */
+  nomeVariacao?: string;
   /** custo relido DEPOIS de mover: denuncia relacao derrubada */
   custoDepois?: number;
   erro?: string;
@@ -1389,7 +1391,16 @@ export interface LinhaTrocaPai {
 export async function trocarPaiDaVariacao(
   sku: string,
   paiSku: string,
-  simulacao: boolean
+  simulacao: boolean,
+  /**
+   * Deixa anexar produto SOLTO como variacao nova do pai.
+   *
+   * Produto solto nao tem bloco `variacao`: ele existe por conta propria, com
+   * estoque e historico seus. Anexar nao e mover — e criar a ligacao do zero,
+   * e por isso precisa ser pedido de propósito. Sem isso a rota recusa, que e
+   * o que se quer no uso normal.
+   */
+  anexar = false
 ): Promise<LinhaTrocaPai> {
   const achado = await acharPorCodigo(sku);
   if (!achado) return { sku, produtoId: null, paiAntes: null, paiDepois: null, paiAlvo: null,
@@ -1406,17 +1417,31 @@ export async function trocarPaiDaVariacao(
   const v = (inteiro.data as { variacao?: { nome?: string; ordem?: number; produtoPai?: { id?: number } } })
     .variacao;
   const antes = v?.produtoPai?.id ?? null;
-  if (!v) {
+  if (!v && !anexar) {
     return { sku, produtoId: achado.id, paiAntes: null, paiDepois: null, paiAlvo: pai.id,
       situacao: "erro", erro: "o produto não é variação: não tem bloco `variacao`" };
   }
+
+  // Nome da variacao: o Bling mostra isso na loja como o rotulo da opcao.
+  // Produto solto ja costuma trazer no proprio nome ("RECICLADA 18L COR: BRANCO");
+  // quando nao traz, vale o ultimo pedaco do codigo.
+  const nomeVariacao = (() => {
+    if (v?.nome) return v.nome;
+    const m = /COR:\s*(.+)$/i.exec(String(inteiro.data.nome ?? ""));
+    if (m) return `COR:${m[1].trim()}`;
+    const ult = String(inteiro.data.codigo ?? "").split("-").pop() ?? "";
+    return ult ? `COR:${ult}` : "VARIACAO";
+  })();
+  // Ordem: no fim da lista. Nao da pra saber quantos irmaos existem sem varrer
+  // o catalogo, e ordem repetida o Bling aceita — so muda a vitrine.
+  const ordemVariacao = v?.ordem ?? 99;
   if (antes === pai.id) {
     return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: antes, paiAlvo: pai.id,
       situacao: "já estava nesse pai" };
   }
   if (simulacao) {
     return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: null, paiAlvo: pai.id,
-      situacao: "movido" };
+      situacao: antes === null ? "anexado" : "movido", nomeVariacao };
   }
 
   await chamar("put", `/produtos/${achado.id}`, undefined, {
@@ -1427,7 +1452,7 @@ export async function trocarPaiDaVariacao(
     situacao: (inteiro.data as { situacao?: unknown }).situacao,
     formato: inteiro.data.formato,
     // o nome e a ordem da variacao voltam como estavam: so o pai muda
-    variacao: { nome: v.nome, ordem: v.ordem, produtoPai: { id: pai.id } },
+    variacao: { nome: nomeVariacao, ordem: ordemVariacao, produtoPai: { id: pai.id } },
   });
 
   // Rele: o 200 do Bling nunca provou nada. Aqui interessam duas coisas —
@@ -1442,5 +1467,6 @@ export async function trocarPaiDaVariacao(
       ...(custoDepois !== null ? { custoDepois } : {}) };
   }
   return { sku, produtoId: achado.id, paiAntes: antes, paiDepois: depois, paiAlvo: pai.id,
-    situacao: "movido", ...(custoDepois !== null ? { custoDepois } : {}) };
+    situacao: antes === null ? "anexado" : "movido", nomeVariacao,
+    ...(custoDepois !== null ? { custoDepois } : {}) };
 }

@@ -1113,7 +1113,7 @@ fabricaBlingRouter.post("/produtos/trocar-pai", async (req, res) => {
   const pai = String(b.pai ?? "").trim();
   if (!sku || !pai) return res.status(400).json({ error: "Informe sku e pai." });
   try {
-    res.json(await trocarPaiDaVariacao(sku, pai, b.simular !== false));
+    res.json(await trocarPaiDaVariacao(sku, pai, b.simular !== false, b.anexar === true));
   } catch (err) {
     erro(res, err, "Falha ao trocar o pai da variação.");
   }
