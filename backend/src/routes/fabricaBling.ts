@@ -45,6 +45,7 @@ import {
   gravarGtin,
   gravarPreco,
   gravarNome,
+  trocarPaiDaVariacao,
   definirSituacaoProdutos,
   lerCustos,
   gravarCusto,
@@ -1104,6 +1105,20 @@ fabricaBlingRouter.post("/produtos/custo", (req, res) => {
 // produtos fabricados nao tem nenhuma. Um por vez de proposito: e teste de
 // mecanismo, nao carga — a carga so depois de provar que o CMV do DRE le
 // este campo, o que exige nota fiscal emitida.
+// Troca o pai de uma variacao. Um SKU por chamada, de proposito: isso mexe na
+// arvore do ERP e em 09/10/2026 um engano com pai derrubou 121 cores.
+fabricaBlingRouter.post("/produtos/trocar-pai", async (req, res) => {
+  const b = req.body ?? {};
+  const sku = String(b.sku ?? "").trim();
+  const pai = String(b.pai ?? "").trim();
+  if (!sku || !pai) return res.status(400).json({ error: "Informe sku e pai." });
+  try {
+    res.json(await trocarPaiDaVariacao(sku, pai, b.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao trocar o pai da variação.");
+  }
+});
+
 fabricaBlingRouter.post("/produtos/custo-relacao", async (req, res) => {
   const b = req.body ?? {};
   const sku = typeof b.sku === "string" ? b.sku.trim() : "";
