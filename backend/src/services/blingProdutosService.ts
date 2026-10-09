@@ -1470,3 +1470,85 @@ export async function trocarPaiDaVariacao(
     situacao: antes === null ? "anexado" : "movido", nomeVariacao,
     ...(custoDepois !== null ? { custoDepois } : {}) };
 }
+
+export interface LinhaSoltar {
+  sku: string;
+  produtoId: number | null;
+  paiAntes: number | null;
+  formatoAntes: string | null;
+  formatoDepois: string | null;
+  paiDepois: number | null;
+  situacao: "solto" | "virou simples" | "já estava solto" | "não achei no ERP" | "erro";
+  custoDepois?: number;
+  erro?: string;
+}
+
+// Solta uma variacao do pai, deixando o produto por conta propria.
+//
+// O contrario de trocarPaiDaVariacao, e existe porque nem toda familia tem pai
+// no Bling — na verdade a maioria nao tem: em 09/10/2026 eram 416 familias na
+// PLANILHA OFICIAL FABRICA contra 107 pais no ERP.
+//
+// O caso que motivou: a familia INGAFLEX-18KG-30M-BROXA tinha como pai a
+// propria INGAFLEX-16KG-30M-BROXA-INCOLOR, que e uma das 15 cores (vem em
+// 16kg em vez de 18kg, e e a faixa mais barata). Produto `formato: V` nao
+// vende no Bling — so a variacao vende — e por isso a INCOLOR estava com zero
+// venda enquanto as irmas vendiam. As familias irmas (18KG-50M, 45KG-50M,
+// 45KG-60M) nao tem pai nenhum, e funcionam.
+//
+// Ordem importa: soltar os filhos ANTES de converter o pai. O Bling recusa
+// com codigo 93 atualizar um `formato: V` sem informar as variacoes, e essa
+// recusa e a protecao que impede derrubar cor por engano.
+export async function soltarDoPai(
+  sku: string,
+  simulacao: boolean,
+  /** converte `formato: V` em `S`. So faz sentido no pai, e so depois que ele ficou sem filho. */
+  virarSimples = false
+): Promise<LinhaSoltar> {
+  const achado = await acharPorCodigo(sku);
+  if (!achado) {
+    return { sku, produtoId: null, paiAntes: null, formatoAntes: null, formatoDepois: null,
+      paiDepois: null, situacao: "não achei no ERP" };
+  }
+  const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+  const v = (inteiro.data as { variacao?: { produtoPai?: { id?: number } } }).variacao;
+  const paiAntes = v?.produtoPai?.id ?? null;
+  const fmtAntes = String(inteiro.data.formato ?? "");
+
+  if (!paiAntes && !(virarSimples && fmtAntes === "V")) {
+    return { sku, produtoId: achado.id, paiAntes: null, formatoAntes: fmtAntes,
+      formatoDepois: fmtAntes, paiDepois: null, situacao: "já estava solto" };
+  }
+  if (simulacao) {
+    return { sku, produtoId: achado.id, paiAntes, formatoAntes: fmtAntes,
+      formatoDepois: virarSimples ? "S" : fmtAntes, paiDepois: null,
+      situacao: virarSimples && fmtAntes === "V" ? "virou simples" : "solto" };
+  }
+
+  // Corpo minimo — ver gravarPreco. `variacao: null` e o que solta; mandar o
+  // produto inteiro levaria o `fornecedor` junto e apagaria o custo.
+  await chamar("put", `/produtos/${achado.id}`, undefined, {
+    nome: inteiro.data.nome,
+    codigo: inteiro.data.codigo,
+    preco: (inteiro.data as { preco?: unknown }).preco,
+    tipo: inteiro.data.tipo,
+    situacao: (inteiro.data as { situacao?: unknown }).situacao,
+    formato: virarSimples ? "S" : fmtAntes,
+    variacao: null,
+  });
+
+  const conf = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+  const vd = (conf.data as { variacao?: { produtoPai?: { id?: number } } }).variacao;
+  const paiDepois = vd?.produtoPai?.id ?? null;
+  const fmtDepois = String(conf.data.formato ?? "");
+  const custoDepois = custoDoProduto(conf.data as Record<string, unknown>);
+  if (paiDepois !== null || (virarSimples && fmtDepois !== "S")) {
+    return { sku, produtoId: achado.id, paiAntes, formatoAntes: fmtAntes, formatoDepois: fmtDepois,
+      paiDepois, situacao: "erro",
+      erro: `o Bling aceitou o PUT mas ficou pai=${paiDepois} formato=${fmtDepois}`,
+      ...(custoDepois !== null ? { custoDepois } : {}) };
+  }
+  return { sku, produtoId: achado.id, paiAntes, formatoAntes: fmtAntes, formatoDepois: fmtDepois,
+    paiDepois, situacao: virarSimples && fmtAntes === "V" ? "virou simples" : "solto",
+    ...(custoDepois !== null ? { custoDepois } : {}) };
+}
