@@ -520,6 +520,8 @@ export interface LinhaInativacao {
     | "não achei no ERP"
     | "erro";
   produtoId?: number;
+  /** custo relido DEPOIS de mudar a situacao: denuncia relacao derrubada */
+  custoDepois?: number;
   erro?: string;
 }
 
@@ -553,17 +555,33 @@ export async function definirSituacaoProdutos(
         });
         continue;
       }
+      let custoDepois: number | null = null;
       if (!simulacao) {
-        // leitura e devolucao: so a situacao muda, o resto volta como veio
+        // Corpo MINIMO, nao o produto inteiro. Devolver `...inteiro.data` leva
+        // junto o bloco `fornecedor`, e o Bling trata isso como ordem de
+        // regravar a relacao produto<->fornecedor — que e onde mora o custo.
+        //
+        // Em 09/10/2026 isso zerou o custo de 106 produtos de uma vez: um ciclo
+        // de inativar e reativar 121 cores apagou a relacao de todas. O mesmo
+        // defeito que gravarPreco e padronizarCodigos ja tinham tido.
         await chamar("put", `/produtos/${achado.id}`, undefined, {
-          ...inteiro.data,
+          nome: inteiro.data.nome,
+          codigo: inteiro.data.codigo,
+          preco: inteiro.data.preco,
+          tipo: inteiro.data.tipo,
+          formato: inteiro.data.formato,
           situacao,
         });
+        // Rele: o 200 do Bling nunca provou que gravou, e aqui ainda interessa
+        // saber se o custo sobreviveu.
+        const conf = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
+        custoDepois = custoDoProduto(conf.data as Record<string, unknown>);
       }
       linhas.push({
         sku,
         situacao: situacao === "I" ? "inativado" : "reativado",
         produtoId: achado.id,
+        ...(custoDepois !== null ? { custoDepois } : {}),
       });
     } catch (err) {
       linhas.push({
