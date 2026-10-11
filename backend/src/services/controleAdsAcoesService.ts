@@ -66,15 +66,63 @@ function construirContexto(contas: ContaAds[], campanhas: CampanhaRanking[]): st
   return `=== SUAS 4 LOJAS — visão geral do período ===\n${linhasContas}\n\n=== CAMPANHAS QUE PEDEM DECISÃO (sangria ou motor) ===\n${linhasCampanhas}`;
 }
 
+const TIPOS_VALIDOS = ["pausar", "reduzir", "escalar", "revisar", "cadastrar"] as const;
+type TipoAcao = (typeof TIPOS_VALIDOS)[number];
+
 const PERSONA = `Você é um especialista em tráfego pago (Mercado Ads) olhando o Controle de Ads pessoal do dono — só as 4 lojas dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua), nada do resto do grupo.
 
-Responda SOMENTE com uma lista numerada de ações concretas a tomar agora. Nada de diagnóstico, nada de introdução, nada de conclusão — direto para as ações. Cada ação em no máximo 2 linhas, citando o número real que a justifica (loja, campanha quando fizer sentido, ROAS ou margem). As situações mais graves (sangria) vêm primeiro; o que já está saudável (motor) pode ganhar uma ação curta de "manter/escalar" por último. O dono pensa em ROAS, não ACOS — toda ação lidera com ROAS, nunca com ACOS.
+Responda SOMENTE com um JSON válido, sem markdown, sem \`\`\`, sem nenhum texto antes ou depois — só o array. Formato: um array de objetos, cada um:
+{"tipo": "pausar" | "reduzir" | "escalar" | "revisar" | "cadastrar", "loja": "nome da loja, ou \\"Geral\\" se não for de uma loja só", "titulo": "ação no imperativo, até 10 palavras", "detalhe": "até 2 linhas, com os números reais que justificam"}
 
-Se não houver nenhuma campanha pedindo ação (tudo em atenção ou sem dado), diga isso em uma linha só, sem inventar uma ação que os números não sustentam.`;
+Critério de "tipo":
+- "pausar": campanha claramente perdendo dinheiro, sem salvação óbvia.
+- "reduzir": perdendo dinheiro mas vale só cortar orçamento, não desligar de vez.
+- "revisar": precisa de uma decisão humana antes de agir (preço, frete, orçamento zerado sem motivo claro).
+- "cadastrar": falta custo de produto cadastrado, bloqueando a decisão.
+- "escalar": campanha ou loja saudável, vale aumentar orçamento.
+
+No máximo 10 itens, os mais importantes primeiro (sangria antes de atenção, "escalar" por último). Agrupe campanhas pequenas e parecidas num item só em vez de repetir uma por uma. O dono pensa em ROAS, não ACOS — todo "detalhe" cita ROAS, nunca ACOS. Se não houver nada que peça ação, devolva um array com um único item tipo "revisar", loja "Geral", avisando isso — nunca invente uma ação que os números não sustentam.`;
+
+export interface AcaoControleAds {
+  tipo: TipoAcao;
+  loja: string;
+  titulo: string;
+  detalhe: string;
+}
 
 export interface PlanoDeAcaoControleAds {
   pensamento: string | null;
-  resposta: string;
+  acoes: AcaoControleAds[];
+}
+
+// O modelo às vezes embrulha o JSON em ```json apesar da instrução — tira a
+// cerca antes de tentar parsear, em vez de falhar por um detalhe cosmético.
+function extrairAcoes(texto: string): AcaoControleAds[] {
+  const limpo = texto
+    .trim()
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/i, "")
+    .trim();
+
+  let bruto: unknown;
+  try {
+    bruto = JSON.parse(limpo);
+  } catch {
+    throw new Error("A IA não respondeu num formato que eu consegui ler. Tenta gerar de novo.");
+  }
+  if (!Array.isArray(bruto)) {
+    throw new Error("A IA não respondeu num formato que eu consegui ler. Tenta gerar de novo.");
+  }
+
+  return bruto
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((item) => ({
+      tipo: (TIPOS_VALIDOS as readonly string[]).includes(String(item.tipo)) ? (item.tipo as TipoAcao) : "revisar",
+      loja: typeof item.loja === "string" && item.loja.trim() ? item.loja.trim() : "Geral",
+      titulo: typeof item.titulo === "string" ? item.titulo.trim() : "",
+      detalhe: typeof item.detalhe === "string" ? item.detalhe.trim() : "",
+    }))
+    .filter((a) => a.titulo.length > 0);
 }
 
 export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): Promise<PlanoDeAcaoControleAds> {
@@ -106,5 +154,5 @@ export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): 
   );
 
   const { pensamento, texto } = extrairRespostaEPensamento(resposta);
-  return { pensamento, resposta: texto };
+  return { pensamento, acoes: extrairAcoes(texto) };
 }

@@ -581,24 +581,44 @@
   flex-wrap: wrap;
 }
 
-.pbi-plano-resposta {
-  font-size: 0.9rem;
-  line-height: 1.5;
+.pbi-acoes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
 }
 
-.pbi-plano-resposta ol,
-.pbi-plano-resposta ul {
-  padding-left: 20px;
+.pbi-acao-card {
+  background: var(--pbi-card-alt);
+  border: 1px solid var(--pbi-borda);
+  border-left: 4px solid var(--pbi-borda);
+  border-radius: 12px;
+  padding: 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
-.pbi-plano-resposta p {
-  margin: 0 0 8px;
+.pbi-acao-topo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pbi-acao-titulo {
+  font-weight: 700;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+
+.pbi-acao-detalhe {
+  font-size: 0.8rem;
+  color: var(--pbi-muted);
+  line-height: 1.4;
 }
 
 .pbi-plano-pensamento {
+  grid-column: 1 / -1;
   margin-bottom: 10px;
   font-size: 0.8rem;
   color: var(--pbi-muted);

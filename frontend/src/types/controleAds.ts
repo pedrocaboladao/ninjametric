@@ -50,9 +50,18 @@ export interface CampanhaControleAds {
   nivel: NivelControleAds;
 }
 
+export type TipoAcaoControleAds = "pausar" | "reduzir" | "escalar" | "revisar" | "cadastrar";
+
+export interface AcaoControleAds {
+  tipo: TipoAcaoControleAds;
+  loja: string;
+  titulo: string;
+  detalhe: string;
+}
+
 export interface PlanoDeAcaoControleAds {
   pensamento: string | null;
-  resposta: string;
+  acoes: AcaoControleAds[];
 }
 
 export interface PainelControleAds {

@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import type {
   CampanhaControleAds,
   ContaControleAds,
@@ -8,6 +6,8 @@ import type {
   MetaControleAds,
   NivelControleAds,
   PainelControleAds,
+  PlanoDeAcaoControleAds,
+  TipoAcaoControleAds,
 } from "../types/controleAds";
 import { fetchPainelControleAds, salvarMetaControleAds, gerarPlanoDeAcaoControleAds } from "../api/controleAds";
 import { Dispersao, LinhaDiaria, MiniArea, Rosca, Velocimetro, COR_NIVEL, type PontoDispersao } from "./ControleAdsGraficos";
@@ -210,12 +210,20 @@ function ListaCampanhas({
   );
 }
 
-// "Diretor de Ads", só que enxuto: em vez de um chat, uma lista curta de
-// ações a tomar agora, gerada a partir dos MESMOS números que a tela já
+const TIPO_ACAO_INFO: Record<TipoAcaoControleAds, { label: string; cor: string }> = {
+  pausar: { label: "PAUSAR", cor: "var(--pbi-vermelho)" },
+  reduzir: { label: "REDUZIR", cor: "var(--pbi-vermelho)" },
+  revisar: { label: "REVISAR", cor: "var(--pbi-ambar)" },
+  cadastrar: { label: "CADASTRAR", cor: "var(--pbi-ambar)" },
+  escalar: { label: "ESCALAR", cor: "var(--pbi-verde)" },
+};
+
+// "Diretor de Ads", só que enxuto: em vez de um chat, cards curtos com a
+// ação a tomar agora, gerados a partir dos MESMOS números que a tela já
 // calculou (nenhuma busca nova no Mercado Livre). Sempre sob demanda — tem
 // custo real de IA por chamada, nunca dispara sozinho nem no auto-refresh.
 function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
-  const [plano, setPlano] = useState<{ pensamento: string | null; resposta: string } | null>(null);
+  const [plano, setPlano] = useState<PlanoDeAcaoControleAds | null>(null);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -250,14 +258,27 @@ function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
       </div>
       {erro && <div className="pbi-erro">{erro}</div>}
       {plano && (
-        <div className="pbi-plano-resposta">
+        <div className="pbi-acoes">
           {plano.pensamento && (
             <details className="pbi-plano-pensamento">
               <summary>🧠 Pensando…</summary>
               <p>{plano.pensamento}</p>
             </details>
           )}
-          <Markdown remarkPlugins={[remarkGfm]}>{plano.resposta}</Markdown>
+          {plano.acoes.length === 0 && <div className="pbi-muted">Nenhuma ação sugerida.</div>}
+          {plano.acoes.map((a, i) => {
+            const info = TIPO_ACAO_INFO[a.tipo];
+            return (
+              <div key={i} className="pbi-acao-card" style={{ borderLeftColor: info.cor }}>
+                <div className="pbi-acao-topo">
+                  <span className="pbi-pill" style={{ background: info.cor }}>{info.label}</span>
+                  <span className="pbi-tag">{a.loja}</span>
+                </div>
+                <div className="pbi-acao-titulo">{a.titulo}</div>
+                {a.detalhe && <div className="pbi-acao-detalhe">{a.detalhe}</div>}
+              </div>
+            );
+          })}
         </div>
       )}
     </section>
