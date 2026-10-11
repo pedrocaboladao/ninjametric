@@ -274,22 +274,32 @@ function TabelaAcao({
 // partir dos MESMOS números que a tela já calculou (nenhuma busca nova no
 // Mercado Livre). Sempre sob demanda — tem custo real de IA por chamada,
 // nunca dispara sozinho nem no auto-refresh.
-function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
+function PlanoDeAcao({
+  inicio,
+  fim,
+  lojaFiltro,
+  lojaNome,
+}: {
+  inicio: string;
+  fim: string;
+  lojaFiltro: "todas" | number;
+  lojaNome: string | null;
+}) {
   const [plano, setPlano] = useState<PlanoDeAcaoControleAds | null>(null);
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  // Período mudou: o plano antigo não vale mais pros números novos.
+  // Período ou loja mudou: o plano antigo não vale mais pros números novos.
   useEffect(() => {
     setPlano(null);
     setErro(null);
-  }, [inicio, fim]);
+  }, [inicio, fim, lojaFiltro]);
 
   async function gerar() {
     setGerando(true);
     setErro(null);
     try {
-      setPlano(await gerarPlanoDeAcaoControleAds(inicio, fim));
+      setPlano(await gerarPlanoDeAcaoControleAds(inicio, fim, lojaFiltro === "todas" ? undefined : lojaFiltro));
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao gerar o plano de ação.");
     } finally {
@@ -302,7 +312,10 @@ function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
       <div className="pbi-plano-topo">
         <div>
           <div className="pbi-card-titulo">Plano de ação</div>
-          <div className="pbi-muted">Plano operacional por campanha, com ação quantificada — gerado por IA, sob demanda.</div>
+          <div className="pbi-muted">
+            Plano operacional por campanha, com ação quantificada — gerado por IA, sob demanda.{" "}
+            {lojaNome ? `Só da ${lojaNome}.` : "Das suas 4 lojas."}
+          </div>
         </div>
         <button type="button" className="pbi-botao" onClick={gerar} disabled={gerando}>
           {gerando ? "Gerando..." : plano ? "Gerar de novo" : "Gerar plano de ação"}
@@ -591,7 +604,12 @@ export function ControleAds() {
             />
           </div>
 
-          <PlanoDeAcao inicio={dataInicio} fim={dataFim} />
+          <PlanoDeAcao
+            inicio={dataInicio}
+            fim={dataFim}
+            lojaFiltro={lojaFiltro}
+            lojaNome={lojaFiltro === "todas" ? null : (dados?.contas.find((c) => c.lojaId === lojaFiltro)?.lojaNome ?? null)}
+          />
 
           <div className="pbi-grade-2">
             <section className="pbi-card">

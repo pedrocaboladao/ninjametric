@@ -188,7 +188,14 @@ function montarGovernanca(contas: ContaAds[]): LinhaGovernancaAds[] {
     .map((c) => ({ loja: c.lojaNome, vendasSemCusto: c.vendasSemCusto, skus: c.skusSemCusto }));
 }
 
-export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): Promise<PlanoDeAcaoControleAds> {
+// `lojaId` opcional restringe o plano a uma loja só (filtro da tela) — sem
+// ele, cruza as 4. Filtra o resultado JÁ CALCULADO do painel (mesmo cache),
+// não refaz a busca por loja.
+export async function gerarPlanoDeAcaoControleAds(
+  inicio: string,
+  fim: string,
+  lojaId?: number
+): Promise<PlanoDeAcaoControleAds> {
   const client = obterClienteAnthropic();
   if (!client) {
     throw new Error("IA não configurada neste ambiente (falta ANTHROPIC_API_KEY).");
@@ -198,7 +205,9 @@ export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): 
   // plano de ação não dispara nenhuma busca nova no Mercado Livre além da
   // que a tela já fez.
   const painel = await obterPainelAds(inicio, fim);
-  const contexto = construirContexto(painel.contas, painel.campanhas);
+  const contas = lojaId === undefined ? painel.contas : painel.contas.filter((c) => c.lojaId === lojaId);
+  const campanhas = lojaId === undefined ? painel.campanhas : painel.campanhas.filter((c) => c.lojaId === lojaId);
+  const contexto = construirContexto(contas, campanhas);
 
   const resposta = await client.beta.messages
     .stream({
@@ -218,5 +227,5 @@ export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): 
 
   const { pensamento, texto } = extrairRespostaEPensamento(resposta);
   const plano = extrairPlano(texto);
-  return { pensamento, ...plano, governanca: montarGovernanca(painel.contas) };
+  return { pensamento, ...plano, governanca: montarGovernanca(contas) };
 }

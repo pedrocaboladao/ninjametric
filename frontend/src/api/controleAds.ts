@@ -17,12 +17,16 @@ export async function fetchPainelControleAds(inicio: string, fim: string, atuali
   return tratarResposta<PainelControleAds>(res);
 }
 
-export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): Promise<PlanoDeAcaoControleAds> {
+export async function gerarPlanoDeAcaoControleAds(
+  inicio: string,
+  fim: string,
+  lojaId?: number
+): Promise<PlanoDeAcaoControleAds> {
   const res = await fetch(`${API_BASE}/api/controle-ads/plano-de-acao`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ inicio, fim }),
+    body: JSON.stringify({ inicio, fim, lojaId }),
   });
   return tratarResposta<PlanoDeAcaoControleAds>(res);
 }

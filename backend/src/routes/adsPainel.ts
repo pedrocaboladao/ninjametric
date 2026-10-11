@@ -39,8 +39,14 @@ adsPainelRouter.post("/plano-de-acao", async (req, res) => {
     res.status(400).json({ error: "Informe inicio e fim no formato AAAA-MM-DD." });
     return;
   }
+  const lojaIdBruto = req.body?.lojaId;
+  if (lojaIdBruto !== undefined && (!Number.isInteger(lojaIdBruto) || !LOJAS_DO_DONO.includes(lojaIdBruto))) {
+    res.status(400).json({ error: "Loja fora do painel." });
+    return;
+  }
+  const lojaId: number | undefined = lojaIdBruto === undefined ? undefined : lojaIdBruto;
   try {
-    res.json(await gerarPlanoDeAcaoControleAds(inicio, fim));
+    res.json(await gerarPlanoDeAcaoControleAds(inicio, fim, lojaId));
   } catch (err) {
     console.error("Falha ao gerar o plano de ação do Controle de Ads:", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao gerar o plano de ação." });
