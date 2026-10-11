@@ -14,12 +14,15 @@ function obterClienteAnthropic(): Anthropic | null {
 }
 
 const MODELO = "claude-opus-5";
-// Bem menor que o Growth Hacker/Consultor (64000/48000) de propósito: aqui a
-// resposta é só uma lista curta de ações, não um diagnóstico — gasto menor,
-// na prática, sem perder a profundidade do raciocínio (thinking adaptativo
-// continua em xhigh, só a RESPOSTA final é enxuta).
-const MAX_TOKENS = 16000;
-const TASK_BUDGET = 10000;
+// task_budget.total tem um mínimo de 20000 tokens pra esse modelo (erro real
+// ao vivo com 10000: "must be at least 20,000 tokens for this model") — não
+// dá pra ir mais barato que isso independente de a resposta ser curta.
+// max_tokens continua sendo só a rede de segurança (corte duro), acima do
+// task_budget de propósito, mesmo espírito do Growth Hacker/Consultor
+// (64000/48000) só que num teto bem menor, já que a resposta aqui é uma
+// lista curta de ações, não um diagnóstico — gasto real menor na prática.
+const MAX_TOKENS = 24000;
+const TASK_BUDGET = 20000;
 
 // Monta o contexto a partir do que o Controle de Ads JÁ calculou (mesmo
 // obterPainelAds que a tela usa, com o mesmo cache) — não refaz nenhuma
