@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type {
   CampanhaControleAds,
   ContaControleAds,
@@ -7,7 +9,7 @@ import type {
   NivelControleAds,
   PainelControleAds,
 } from "../types/controleAds";
-import { fetchPainelControleAds, salvarMetaControleAds } from "../api/controleAds";
+import { fetchPainelControleAds, salvarMetaControleAds, gerarPlanoDeAcaoControleAds } from "../api/controleAds";
 import { Dispersao, LinhaDiaria, MiniArea, Rosca, Velocimetro, COR_NIVEL, type PontoDispersao } from "./ControleAdsGraficos";
 import "./ControleAds.css";
 
@@ -205,6 +207,60 @@ function ListaCampanhas({
       ))}
       {itens.length > 12 && <div className="pbi-muted">+ {itens.length - 12} campanhas</div>}
     </div>
+  );
+}
+
+// "Diretor de Ads", só que enxuto: em vez de um chat, uma lista curta de
+// ações a tomar agora, gerada a partir dos MESMOS números que a tela já
+// calculou (nenhuma busca nova no Mercado Livre). Sempre sob demanda — tem
+// custo real de IA por chamada, nunca dispara sozinho nem no auto-refresh.
+function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
+  const [plano, setPlano] = useState<{ pensamento: string | null; resposta: string } | null>(null);
+  const [gerando, setGerando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  // Período mudou: o plano antigo não vale mais pros números novos.
+  useEffect(() => {
+    setPlano(null);
+    setErro(null);
+  }, [inicio, fim]);
+
+  async function gerar() {
+    setGerando(true);
+    setErro(null);
+    try {
+      setPlano(await gerarPlanoDeAcaoControleAds(inicio, fim));
+    } catch (err) {
+      setErro(err instanceof Error ? err.message : "Falha ao gerar o plano de ação.");
+    } finally {
+      setGerando(false);
+    }
+  }
+
+  return (
+    <section className="pbi-card">
+      <div className="pbi-plano-topo">
+        <div>
+          <div className="pbi-card-titulo">Plano de ação</div>
+          <div className="pbi-muted">Só as ações a tomar agora, na mesma linha do Diretor de Ads — gerado por IA, sob demanda.</div>
+        </div>
+        <button type="button" className="pbi-botao" onClick={gerar} disabled={gerando}>
+          {gerando ? "Gerando..." : plano ? "Gerar de novo" : "Gerar plano de ação"}
+        </button>
+      </div>
+      {erro && <div className="pbi-erro">{erro}</div>}
+      {plano && (
+        <div className="pbi-plano-resposta">
+          {plano.pensamento && (
+            <details className="pbi-plano-pensamento">
+              <summary>🧠 Pensando…</summary>
+              <p>{plano.pensamento}</p>
+            </details>
+          )}
+          <Markdown remarkPlugins={[remarkGfm]}>{plano.resposta}</Markdown>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -436,6 +492,8 @@ export function ControleAds() {
               cor={COR_NIVEL.atencao}
             />
           </div>
+
+          <PlanoDeAcao inicio={dataInicio} fim={dataFim} />
 
           <div className="pbi-grade-2">
             <section className="pbi-card">

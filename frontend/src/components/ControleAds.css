@@ -573,6 +573,41 @@
   font-weight: 800;
 }
 
+.pbi-plano-topo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.pbi-plano-resposta {
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.pbi-plano-resposta ol,
+.pbi-plano-resposta ul {
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pbi-plano-resposta p {
+  margin: 0 0 8px;
+}
+
+.pbi-plano-pensamento {
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--pbi-muted);
+}
+
+.pbi-plano-pensamento summary {
+  cursor: pointer;
+}
+
 .pbi-rodape {
   font-size: 0.74rem;
   color: var(--pbi-muted);

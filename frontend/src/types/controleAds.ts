@@ -50,6 +50,11 @@ export interface CampanhaControleAds {
   nivel: NivelControleAds;
 }
 
+export interface PlanoDeAcaoControleAds {
+  pensamento: string | null;
+  resposta: string;
+}
+
 export interface PainelControleAds {
   inicio: string;
   fim: string;

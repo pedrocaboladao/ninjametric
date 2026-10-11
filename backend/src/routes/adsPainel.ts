@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { obterPainelAds, salvarMeta, MARGEM_MOTOR_PADRAO, MARGEM_ATENCAO_PADRAO, LOJAS_DO_DONO } from "../services/adsPainelService";
+import { gerarPlanoDeAcaoControleAds } from "../services/controleAdsAcoesService";
 
 export const adsPainelRouter = Router();
 
@@ -26,6 +27,23 @@ adsPainelRouter.get("/", async (req, res) => {
   } catch (err) {
     console.error("Falha ao montar o controle de Ads:", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao montar o controle de Ads." });
+  }
+});
+
+// Plano de ação por IA, sob demanda (botão na tela) — nunca automático nem
+// no auto-refresh, porque cada chamada tem custo real (Opus + thinking).
+adsPainelRouter.post("/plano-de-acao", async (req, res) => {
+  const inicio = typeof req.body?.inicio === "string" ? req.body.inicio : "";
+  const fim = typeof req.body?.fim === "string" ? req.body.fim : "";
+  if (!REGEX_DATA.test(inicio) || !REGEX_DATA.test(fim)) {
+    res.status(400).json({ error: "Informe inicio e fim no formato AAAA-MM-DD." });
+    return;
+  }
+  try {
+    res.json(await gerarPlanoDeAcaoControleAds(inicio, fim));
+  } catch (err) {
+    console.error("Falha ao gerar o plano de ação do Controle de Ads:", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao gerar o plano de ação." });
   }
 });
 
