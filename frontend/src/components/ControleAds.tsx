@@ -3,11 +3,11 @@ import type {
   CampanhaControleAds,
   ContaControleAds,
   DiaControleAds,
+  LinhaAcaoCampanha,
   MetaControleAds,
   NivelControleAds,
   PainelControleAds,
   PlanoDeAcaoControleAds,
-  TipoAcaoControleAds,
 } from "../types/controleAds";
 import { fetchPainelControleAds, salvarMetaControleAds, gerarPlanoDeAcaoControleAds } from "../api/controleAds";
 import { Dispersao, LinhaDiaria, MiniArea, Rosca, Velocimetro, COR_NIVEL, type PontoDispersao } from "./ControleAdsGraficos";
@@ -210,18 +210,70 @@ function ListaCampanhas({
   );
 }
 
-const TIPO_ACAO_INFO: Record<TipoAcaoControleAds, { label: string; cor: string }> = {
-  pausar: { label: "PAUSAR", cor: "var(--pbi-vermelho)" },
-  reduzir: { label: "REDUZIR", cor: "var(--pbi-vermelho)" },
-  revisar: { label: "REVISAR", cor: "var(--pbi-ambar)" },
-  cadastrar: { label: "CADASTRAR", cor: "var(--pbi-ambar)" },
-  escalar: { label: "ESCALAR", cor: "var(--pbi-verde)" },
-};
+// Uma fase do plano (Cortar/Escalar/Preço e margem) — tabela por campanha,
+// igual ao plano operacional de referência: ROAS atual x ROAS mínimo e uma
+// ação com número exato, nunca "revisar" sozinho.
+function TabelaAcao({
+  titulo,
+  subtitulo,
+  cor,
+  linhas,
+  colunaResultado,
+}: {
+  titulo: string;
+  subtitulo: string;
+  cor: "vermelho" | "verde" | "ambar";
+  linhas: LinhaAcaoCampanha[];
+  colunaResultado: boolean;
+}) {
+  if (linhas.length === 0) return null;
+  return (
+    <div className="pbi-plano-secao">
+      <div className={`pbi-plano-secao-titulo pbi-plano-secao-${cor}`}>
+        <span>{titulo}</span>
+        <span className="pbi-plano-secao-sub">{subtitulo}</span>
+      </div>
+      <div className="pbi-plano-tabela-wrap">
+        <table className="pbi-plano-tabela">
+          <thead>
+            <tr>
+              <th>Campanha</th>
+              <th>Loja</th>
+              <th>ROAS</th>
+              <th>ROAS mín.</th>
+              <th>{colunaResultado ? "Resultado" : "Gasto"}</th>
+              <th>Ação</th>
+            </tr>
+          </thead>
+          <tbody>
+            {linhas.map((l, i) => (
+              <tr key={`${l.campanha}-${i}`}>
+                <td>{l.campanha}</td>
+                <td><span className="pbi-tag">{l.loja}</span></td>
+                <td>{l.roas === null ? "sem venda" : `${l.roas.toFixed(2)}x`}</td>
+                <td>{l.roasMinimo === null ? "—" : `${l.roasMinimo.toFixed(2)}x`}</td>
+                {colunaResultado ? (
+                  <td className={l.resultado !== null && l.resultado < 0 ? "pbi-ruim" : "pbi-bom"}>
+                    {l.resultado === null ? "—" : moeda.format(l.resultado)}
+                  </td>
+                ) : (
+                  <td>{l.gasto === null ? "—" : moedaCompacta.format(l.gasto)}</td>
+                )}
+                <td className="pbi-plano-acao-celula">{l.acao}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
-// "Diretor de Ads", só que enxuto: em vez de um chat, cards curtos com a
-// ação a tomar agora, gerados a partir dos MESMOS números que a tela já
-// calculou (nenhuma busca nova no Mercado Livre). Sempre sob demanda — tem
-// custo real de IA por chamada, nunca dispara sozinho nem no auto-refresh.
+// "Diretor de Ads", só que no formato de plano operacional que o dono já usa
+// fora do painel: tabela por campanha, ação com número exato — gerado a
+// partir dos MESMOS números que a tela já calculou (nenhuma busca nova no
+// Mercado Livre). Sempre sob demanda — tem custo real de IA por chamada,
+// nunca dispara sozinho nem no auto-refresh.
 function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
   const [plano, setPlano] = useState<PlanoDeAcaoControleAds | null>(null);
   const [gerando, setGerando] = useState(false);
@@ -250,7 +302,7 @@ function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
       <div className="pbi-plano-topo">
         <div>
           <div className="pbi-card-titulo">Plano de ação</div>
-          <div className="pbi-muted">Só as ações a tomar agora, na mesma linha do Diretor de Ads — gerado por IA, sob demanda.</div>
+          <div className="pbi-muted">Plano operacional por campanha, com ação quantificada — gerado por IA, sob demanda.</div>
         </div>
         <button type="button" className="pbi-botao" onClick={gerar} disabled={gerando}>
           {gerando ? "Gerando..." : plano ? "Gerar de novo" : "Gerar plano de ação"}
@@ -258,27 +310,52 @@ function PlanoDeAcao({ inicio, fim }: { inicio: string; fim: string }) {
       </div>
       {erro && <div className="pbi-erro">{erro}</div>}
       {plano && (
-        <div className="pbi-acoes">
+        <div className="pbi-plano">
           {plano.pensamento && (
             <details className="pbi-plano-pensamento">
               <summary>🧠 Pensando…</summary>
               <p>{plano.pensamento}</p>
             </details>
           )}
-          {plano.acoes.length === 0 && <div className="pbi-muted">Nenhuma ação sugerida.</div>}
-          {plano.acoes.map((a, i) => {
-            const info = TIPO_ACAO_INFO[a.tipo];
-            return (
-              <div key={i} className="pbi-acao-card" style={{ borderLeftColor: info.cor }}>
-                <div className="pbi-acao-topo">
-                  <span className="pbi-pill" style={{ background: info.cor }}>{info.label}</span>
-                  <span className="pbi-tag">{a.loja}</span>
-                </div>
-                <div className="pbi-acao-titulo">{a.titulo}</div>
-                {a.detalhe && <div className="pbi-acao-detalhe">{a.detalhe}</div>}
+          {plano.resumo && <p className="pbi-plano-resumo">{plano.resumo}</p>}
+
+          <TabelaAcao
+            titulo="CORTAR E PAUSAR"
+            subtitulo="ROAS abaixo do mínimo sustentável da loja"
+            cor="vermelho"
+            linhas={plano.cortar}
+            colunaResultado={false}
+          />
+          <TabelaAcao
+            titulo="ESCALAR"
+            subtitulo="ROAS acima do mínimo — comprar mais volume onde há folga"
+            cor="verde"
+            linhas={plano.escalar}
+            colunaResultado={false}
+          />
+          <TabelaAcao
+            titulo="PREÇO E MARGEM"
+            subtitulo="ROAS parece bom, mas o lucro real é negativo"
+            cor="ambar"
+            linhas={plano.margem}
+            colunaResultado
+          />
+
+          {plano.governanca.length > 0 && (
+            <div className="pbi-plano-secao">
+              <div className="pbi-plano-secao-titulo pbi-plano-secao-roxo">
+                <span>CADASTRAR CUSTO</span>
+                <span className="pbi-plano-secao-sub">Sem custo, o ROAS mínimo dessas vendas é desconhecido</span>
               </div>
-            );
-          })}
+              {plano.governanca.map((g) => (
+                <div key={g.loja} className="pbi-plano-governanca-linha">
+                  <b>{g.loja}</b>: {g.vendasSemCusto} venda{g.vendasSemCusto > 1 ? "s" : ""} sem custo — {g.skus.join(", ")}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {plano.regraDaSemana && <div className="pbi-plano-regra">REGRA DA SEMANA: {plano.regraDaSemana}</div>}
         </div>
       )}
     </section>

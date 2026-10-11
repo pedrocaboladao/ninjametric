@@ -14,15 +14,13 @@ function obterClienteAnthropic(): Anthropic | null {
 }
 
 const MODELO = "claude-opus-5";
-// task_budget.total tem um mínimo de 20000 tokens pra esse modelo (erro real
-// ao vivo com 10000: "must be at least 20,000 tokens for this model") — não
-// dá pra ir mais barato que isso independente de a resposta ser curta.
-// max_tokens continua sendo só a rede de segurança (corte duro), acima do
-// task_budget de propósito, mesmo espírito do Growth Hacker/Consultor
-// (64000/48000) só que num teto bem menor, já que a resposta aqui é uma
-// lista curta de ações, não um diagnóstico — gasto real menor na prática.
-const MAX_TOKENS = 24000;
-const TASK_BUDGET = 20000;
+// Formato igual ao plano de ação manual que o dono já usa fora do painel
+// (tabela por campanha, ação com número exato) — lista TODA campanha
+// relevante, não um resumo de 10 itens, então o teto precisa do mesmo
+// tamanho do Growth Hacker/Consultor (64000/48000), não do teto enxuto da
+// versão anterior desse recurso.
+const MAX_TOKENS = 64000;
+const TASK_BUDGET = 48000;
 
 // Monta o contexto a partir do que o Controle de Ads JÁ calculou (mesmo
 // obterPainelAds que a tela usa, com o mesmo cache) — não refaz nenhuma
@@ -43,61 +41,120 @@ function construirContexto(contas: ContaAds[], campanhas: CampanhaRanking[]): st
     )
     .join("\n");
 
-  // Só as campanhas que pedem decisão (sangria ou motor) — atenção e sem
-  // dado não mudam a ação a tomar, só inflariam o contexto à toa.
-  const relevantes = campanhas.filter((c) => c.nivel === "sangria" || c.nivel === "motor");
+  // Campanhas com gasto relevante (já filtrado por obterPainelAds) — manda
+  // TODAS, não só sangria/motor: a IA precisa ver "atencao" e "sem_dados"
+  // também pra decidir entre cortar/escalar/revisar/cadastrar com precisão,
+  // igual o plano de referência do dono separa isso em passos diferentes.
   const linhasCampanhas =
-    relevantes.length === 0
-      ? "Nenhuma campanha em sangria ou motor com gasto relevante no período."
-      : relevantes
+    campanhas.length === 0
+      ? "Nenhuma campanha com gasto relevante no período."
+      : campanhas
           .map((c) =>
             [
               `loja="${c.lojaNome}"`,
               `campanha="${c.nome}"`,
-              `nivel=${c.nivel.toUpperCase()}`,
+              `status=${c.status}`,
               `gasto=${formatCurrency(c.gasto)}`,
               `receita=${formatCurrency(c.receita)}`,
               `roas=${c.roas === null ? "sem venda" : `${c.roas.toFixed(2)}x`}`,
               `margem_pos_ads=${c.margemPosAds === null ? "sem dado" : `${c.margemPosAds.toFixed(1)}%`}`,
+              `lucro_apos_ads=${c.lucroAposAds === null ? "sem dado (falta custo cadastrado)" : formatCurrency(c.lucroAposAds)}`,
+              `itens_sem_custo=${c.itensSemCusto}`,
             ].join(", ")
           )
           .join("\n");
 
-  return `=== SUAS 4 LOJAS — visão geral do período ===\n${linhasContas}\n\n=== CAMPANHAS QUE PEDEM DECISÃO (sangria ou motor) ===\n${linhasCampanhas}`;
+  return `=== SUAS 4 LOJAS — visão geral do período (roas_equilibrio é o ROAS mínimo sustentável da loja) ===\n${linhasContas}\n\n=== CAMPANHAS COM GASTO RELEVANTE NO PERÍODO ===\n${linhasCampanhas}`;
 }
 
-const TIPOS_VALIDOS = ["pausar", "reduzir", "escalar", "revisar", "cadastrar"] as const;
-type TipoAcao = (typeof TIPOS_VALIDOS)[number];
+const PERSONA = `Você é um especialista em tráfego pago (Mercado Ads) montando o plano operacional de Ads do dono — só as 4 lojas pessoais dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua), nada do resto do grupo. O formato é o de um plano operacional "mão na massa": tabela por campanha, cada linha com uma ação com NÚMERO EXATO, nunca uma recomendação vaga.
 
-const PERSONA = `Você é um especialista em tráfego pago (Mercado Ads) olhando o Controle de Ads pessoal do dono — só as 4 lojas dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua), nada do resto do grupo.
+Responda SOMENTE com um JSON válido, sem markdown, sem \`\`\`, sem nenhum texto antes ou depois — só o objeto. Formato exato:
+{
+  "resumo": "1-2 frases dizendo o estado geral da conta (ex.: piorou, estável, melhorou) e qual é a prioridade agora — mesmo tom de um resumo executivo, cita o ROAS geral.",
+  "regraDaSemana": "1 frase, a regra principal a seguir essa semana (ex.: não aumentar investimento total, só realocar).",
+  "cortar": [ { "campanha": "...", "loja": "...", "roas": número ou null se sem venda, "roasMinimo": número ou null, "gasto": número, "acao": "..." } ],
+  "escalar": [ { "campanha": "...", "loja": "...", "roas": número, "roasMinimo": número ou null, "gasto": número, "acao": "..." } ],
+  "margem": [ { "campanha": "...", "loja": "...", "roas": número, "roasMinimo": número ou null, "resultado": número (lucro/prejuízo estimado, negativo se prejuízo), "acao": "..." } ]
+}
 
-Responda SOMENTE com um JSON válido, sem markdown, sem \`\`\`, sem nenhum texto antes ou depois — só o array. Formato: um array de objetos, cada um:
-{"tipo": "pausar" | "reduzir" | "escalar" | "revisar" | "cadastrar", "loja": "nome da loja, ou \\"Geral\\" se não for de uma loja só", "titulo": "ação no imperativo, até 10 palavras", "detalhe": "até 2 linhas, com os números reais que justificam"}
+CRITÉRIO DE CADA TABELA:
+- "cortar": campanhas com ROAS abaixo do ROAS mínimo da loja (roas_equilibrio), ou sem nenhuma venda no período. Toda campanha nessa situação entra, uma linha por campanha — não resuma nem agrupe.
+- "escalar": campanhas com ROAS igual ou acima do mínimo E lucro_apos_ads positivo ou sem dado de custo. Toda campanha saudável entra.
+- "margem": campanhas com ROAS igual ou acima do mínimo MAS lucro_apos_ads negativo — o ROAS parece bom mas o produto está dando prejuízo depois do custo real. Essas NÃO entram em "escalar".
 
-Critério de "tipo":
-- "pausar": campanha claramente perdendo dinheiro, sem salvação óbvia.
-- "reduzir": perdendo dinheiro mas vale só cortar orçamento, não desligar de vez.
-- "revisar": precisa de uma decisão humana antes de agir (preço, frete, orçamento zerado sem motivo claro).
-- "cadastrar": falta custo de produto cadastrado, bloqueando a decisão.
-- "escalar": campanha ou loja saudável, vale aumentar orçamento.
+REGRA PRA ESCREVER O CAMPO "acao" (sempre uma instrução curta e quantificada, no padrão abaixo — nunca "revisar" ou "ajustar" sozinho, sempre com o número):
+- Em "cortar": calcule a razão = roas ÷ roasMinimo (quando os dois existirem).
+  - Sem venda nenhuma (roas null) → "PAUSAR".
+  - razão ≤ 0,3 → "PAUSAR" (ou "Cortar lance 70%" se o dono parecer estar testando algo novo).
+  - razão entre 0,3 e 0,55 → "Cortar lance 60%" ou "Cortar 50%".
+  - razão entre 0,55 e 0,75 → "Cortar 40%" ou "Cortar 45%".
+  - razão entre 0,75 e 1,0 → "Cortar 25%" ou "Cortar 30%".
+  - roasMinimo sem dado (loja sem custo cadastrado) → "PAUSAR — sem custo cadastrado, ROAS mínimo desconhecido".
+- Em "escalar": calcule a razão = roas ÷ roasMinimo.
+  - razão entre 1x e 2x → "Lance +20%" ou "Lance +30%".
+  - razão entre 2x e 5x → "Lance +30% agora; repetir +30% a cada 48h se ROAS continuar acima de 2x o mínimo".
+  - razão acima de 5x com gasto baixo (ROAS gigante, pouco volume) → "Lance +50%; alvo de gasto R$X/semana" (X = algo entre 3x e 6x o gasto atual) — explique que ROAS deve CAIR ao escalar, o que importa é o lucro em reais, não manter o ROAS alto.
+- Em "margem": "Congelar gasto. Revisar preço/custo/frete antes de mexer no lance" quando o prejuízo for grande; "Subir preço 3%-5%. Não escalar até corrigir a margem" quando for pequeno e perto de zero.
 
-No máximo 10 itens, os mais importantes primeiro (sangria antes de atenção, "escalar" por último). Agrupe campanhas pequenas e parecidas num item só em vez de repetir uma por uma. O dono pensa em ROAS, não ACOS — todo "detalhe" cita ROAS, nunca ACOS. Se não houver nada que peça ação, devolva um array com um único item tipo "revisar", loja "Geral", avisando isso — nunca invente uma ação que os números não sustentam.`;
+O dono pensa em ROAS, não ACOS — nunca cite ACOS. Seja honesto: se uma tabela ficar vazia, devolva array vazio nela, não invente linha.`;
 
-export interface AcaoControleAds {
-  tipo: TipoAcao;
+export interface LinhaAcaoCampanha {
+  campanha: string;
   loja: string;
-  titulo: string;
-  detalhe: string;
+  roas: number | null;
+  roasMinimo: number | null;
+  gasto: number | null;
+  resultado: number | null;
+  acao: string;
+}
+
+export interface LinhaGovernancaAds {
+  loja: string;
+  vendasSemCusto: number;
+  skus: string[];
 }
 
 export interface PlanoDeAcaoControleAds {
   pensamento: string | null;
-  acoes: AcaoControleAds[];
+  resumo: string;
+  regraDaSemana: string;
+  cortar: LinhaAcaoCampanha[];
+  escalar: LinhaAcaoCampanha[];
+  margem: LinhaAcaoCampanha[];
+  // Única fase que NÃO vem da IA: monta direto dos dados reais (SKUs sem
+  // custo cadastrado, ver ContaAds.skusSemCusto) — não tem por que arriscar
+  // a IA inventar ou esquecer um SKU que já sabemos exatamente quais são.
+  governanca: LinhaGovernancaAds[];
+}
+
+function numeroOuNull(v: unknown): number | null {
+  return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function textoOuVazio(v: unknown): string {
+  return typeof v === "string" ? v.trim() : "";
+}
+
+function extrairLinhas(v: unknown): LinhaAcaoCampanha[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+    .map((item) => ({
+      campanha: textoOuVazio(item.campanha),
+      loja: textoOuVazio(item.loja) || "—",
+      roas: numeroOuNull(item.roas),
+      roasMinimo: numeroOuNull(item.roasMinimo),
+      gasto: numeroOuNull(item.gasto),
+      resultado: numeroOuNull(item.resultado),
+      acao: textoOuVazio(item.acao),
+    }))
+    .filter((l) => l.campanha.length > 0 && l.acao.length > 0);
 }
 
 // O modelo às vezes embrulha o JSON em ```json apesar da instrução — tira a
 // cerca antes de tentar parsear, em vez de falhar por um detalhe cosmético.
-function extrairAcoes(texto: string): AcaoControleAds[] {
+function extrairPlano(texto: string): Omit<PlanoDeAcaoControleAds, "pensamento" | "governanca"> {
   const limpo = texto
     .trim()
     .replace(/^```(?:json)?\s*/i, "")
@@ -110,19 +167,25 @@ function extrairAcoes(texto: string): AcaoControleAds[] {
   } catch {
     throw new Error("A IA não respondeu num formato que eu consegui ler. Tenta gerar de novo.");
   }
-  if (!Array.isArray(bruto)) {
+  if (!bruto || typeof bruto !== "object") {
     throw new Error("A IA não respondeu num formato que eu consegui ler. Tenta gerar de novo.");
   }
+  const obj = bruto as Record<string, unknown>;
+  return {
+    resumo: textoOuVazio(obj.resumo) || "Sem resumo.",
+    regraDaSemana: textoOuVazio(obj.regraDaSemana),
+    cortar: extrairLinhas(obj.cortar),
+    escalar: extrairLinhas(obj.escalar),
+    margem: extrairLinhas(obj.margem),
+  };
+}
 
-  return bruto
-    .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-    .map((item) => ({
-      tipo: (TIPOS_VALIDOS as readonly string[]).includes(String(item.tipo)) ? (item.tipo as TipoAcao) : "revisar",
-      loja: typeof item.loja === "string" && item.loja.trim() ? item.loja.trim() : "Geral",
-      titulo: typeof item.titulo === "string" ? item.titulo.trim() : "",
-      detalhe: typeof item.detalhe === "string" ? item.detalhe.trim() : "",
-    }))
-    .filter((a) => a.titulo.length > 0);
+// Monta a fase de governança direto dos dados reais (sem IA) — cada loja com
+// venda sem custo cadastrado vira uma linha com os SKUs exatos a cadastrar.
+function montarGovernanca(contas: ContaAds[]): LinhaGovernancaAds[] {
+  return contas
+    .filter((c) => c.vendasSemCusto > 0)
+    .map((c) => ({ loja: c.lojaNome, vendasSemCusto: c.vendasSemCusto, skus: c.skusSemCusto }));
 }
 
 export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): Promise<PlanoDeAcaoControleAds> {
@@ -145,7 +208,7 @@ export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): 
       output_config: { effort: "xhigh", task_budget: { type: "tokens", total: TASK_BUDGET } },
       betas: ["task-budgets-2026-03-13"],
       system: PERSONA,
-      messages: [{ role: "user", content: `${contexto}\n\nLista as ações a tomar agora.` }],
+      messages: [{ role: "user", content: `${contexto}\n\nMonta o plano operacional.` }],
     })
     .finalMessage();
 
@@ -154,5 +217,6 @@ export async function gerarPlanoDeAcaoControleAds(inicio: string, fim: string): 
   );
 
   const { pensamento, texto } = extrairRespostaEPensamento(resposta);
-  return { pensamento, acoes: extrairAcoes(texto) };
+  const plano = extrairPlano(texto);
+  return { pensamento, ...plano, governanca: montarGovernanca(painel.contas) };
 }

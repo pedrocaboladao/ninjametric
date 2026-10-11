@@ -50,18 +50,30 @@ export interface CampanhaControleAds {
   nivel: NivelControleAds;
 }
 
-export type TipoAcaoControleAds = "pausar" | "reduzir" | "escalar" | "revisar" | "cadastrar";
-
-export interface AcaoControleAds {
-  tipo: TipoAcaoControleAds;
+export interface LinhaAcaoCampanha {
+  campanha: string;
   loja: string;
-  titulo: string;
-  detalhe: string;
+  roas: number | null;
+  roasMinimo: number | null;
+  gasto: number | null;
+  resultado: number | null;
+  acao: string;
+}
+
+export interface LinhaGovernancaAds {
+  loja: string;
+  vendasSemCusto: number;
+  skus: string[];
 }
 
 export interface PlanoDeAcaoControleAds {
   pensamento: string | null;
-  acoes: AcaoControleAds[];
+  resumo: string;
+  regraDaSemana: string;
+  cortar: LinhaAcaoCampanha[];
+  escalar: LinhaAcaoCampanha[];
+  margem: LinhaAcaoCampanha[];
+  governanca: LinhaGovernancaAds[];
 }
 
 export interface PainelControleAds {

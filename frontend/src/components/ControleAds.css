@@ -12,6 +12,7 @@
   --pbi-ambar: #ffb547;
   --pbi-azul: #4cc9f0;
   --pbi-trilho: #22314d;
+  --pbi-roxo: #9b7bea;
 
   background: var(--pbi-bg);
   color: var(--pbi-texto);
@@ -581,45 +582,117 @@
   flex-wrap: wrap;
 }
 
-.pbi-acoes {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 10px;
-}
-
-.pbi-acao-card {
-  background: var(--pbi-card-alt);
-  border: 1px solid var(--pbi-borda);
-  border-left: 4px solid var(--pbi-borda);
-  border-radius: 12px;
-  padding: 12px;
+.pbi-plano {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 16px;
 }
 
-.pbi-acao-topo {
+.pbi-plano-resumo {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.pbi-plano-secao {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 8px;
+}
+
+.pbi-plano-secao-titulo {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   flex-wrap: wrap;
+  padding: 8px 12px;
+  border-radius: 8px;
+  color: #06121f;
+  font-weight: 800;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
 }
 
-.pbi-acao-titulo {
-  font-weight: 700;
-  font-size: 0.92rem;
-  line-height: 1.3;
+.pbi-plano-secao-sub {
+  font-weight: 500;
+  font-size: 0.74rem;
+  opacity: 0.85;
 }
 
-.pbi-acao-detalhe {
+.pbi-plano-secao-vermelho {
+  background: var(--pbi-vermelho);
+}
+
+.pbi-plano-secao-verde {
+  background: var(--pbi-verde);
+}
+
+.pbi-plano-secao-ambar {
+  background: var(--pbi-ambar);
+}
+
+.pbi-plano-secao-roxo {
+  background: var(--pbi-roxo);
+}
+
+.pbi-plano-tabela-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--pbi-borda);
+  border-radius: 10px;
+}
+
+.pbi-plano-tabela {
+  width: 100%;
+  border-collapse: collapse;
   font-size: 0.8rem;
+}
+
+.pbi-plano-tabela th {
+  text-align: left;
+  padding: 6px 10px;
   color: var(--pbi-muted);
-  line-height: 1.4;
+  font-weight: 700;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  border-bottom: 1px solid var(--pbi-borda);
+  white-space: nowrap;
+  background: var(--pbi-card-alt);
+}
+
+.pbi-plano-tabela td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--pbi-borda);
+  vertical-align: top;
+}
+
+.pbi-plano-tabela tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.pbi-plano-acao-celula {
+  font-weight: 600;
+  min-width: 220px;
+}
+
+.pbi-plano-governanca-linha {
+  font-size: 0.82rem;
+  padding: 8px 10px;
+  background: var(--pbi-card-alt);
+  border: 1px solid var(--pbi-borda);
+  border-radius: 8px;
+}
+
+.pbi-plano-regra {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--pbi-trilho);
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 
 .pbi-plano-pensamento {
-  grid-column: 1 / -1;
-  margin-bottom: 10px;
+  margin-bottom: 4px;
   font-size: 0.8rem;
   color: var(--pbi-muted);
 }
