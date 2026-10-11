@@ -336,8 +336,14 @@ export async function obterPainelAds(inicio: string, fim: string, forcar = false
   const anteriorInicio = addDias(inicio, -n);
   const anteriorFim = addDias(inicio, -1);
 
-  const atual = await calcularPeriodo(inicio, fim, lojas, metas, forcar);
-  const anterior = await calcularPeriodo(anteriorInicio, anteriorFim, lojas, metas, forcar);
+  // Os dois períodos são independentes — buscar em paralelo corta o tempo de
+  // carregamento quase pela metade. O anterior é sempre dado FECHADO (já
+  // passou e não muda mais), então nunca força a API ao vivo: forçar só faz
+  // sentido pro período atual, que pode incluir hoje.
+  const [atual, anterior] = await Promise.all([
+    calcularPeriodo(inicio, fim, lojas, metas, forcar),
+    calcularPeriodo(anteriorInicio, anteriorFim, lojas, metas, false),
+  ]);
 
   const contas = atual.contas.map((conta): ContaAds => {
     const ant = anterior.contas.find((c) => c.lojaId === conta.lojaId);

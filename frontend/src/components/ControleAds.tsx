@@ -226,12 +226,15 @@ export function ControleAds() {
     niveisAnteriores.current = null;
   }, [dataInicio, dataFim]);
 
-  // Atualização automática a cada 5 min, só com a aba visível. Força a busca
-  // no Mercado Livre, porque o cache de 15 min seria maior que o intervalo.
+  // Atualização automática a cada 5 min, só com a aba visível. NÃO força o
+  // backend a ignorar o cache (isso ficou só pro botão Atualizar) — forçar
+  // aqui tornava toda atualização automática tão lenta quanto a primeira
+  // carga, a cada 5 minutos, sem necessidade: o cache de 15 min já garante
+  // que os dados nunca ficam velhos por muito tempo, e essa chamada "normal"
+  // é rápida sempre que o cache ainda está quente.
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      forcarAtualizacao.current = true;
       setRecarregar((n) => n + 1);
     }, INTERVALO_ATUALIZACAO_MS);
     return () => clearInterval(id);
