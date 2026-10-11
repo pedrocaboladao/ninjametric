@@ -137,7 +137,12 @@ function LojaTile({
       <Velocimetro valor={conta.margemPosAds} min={MARGEM_MIN} max={MARGEM_MAX} atencao={conta.meta.atencaoMinimo} motor={conta.meta.motorMinimo} />
       <div className="pbi-loja-metricas">
         <div><span>ROAS</span><b>{formatarRoas(conta.roas)}</b></div>
-        <div><span>Equilíbrio</span><b>{conta.roasEquilibrio === null ? "—" : `${conta.roasEquilibrio.toFixed(2)}x`}</b></div>
+        <div>
+          <span>Equilíbrio</span>
+          <b title={conta.roasEquilibrioAproximado ? "Estimado só com as vendas que já têm custo cadastrado — a loja tem venda sem custo." : undefined}>
+            {conta.roasEquilibrio === null ? "—" : `${conta.roasEquilibrio.toFixed(2)}x${conta.roasEquilibrioAproximado ? " (aprox.)" : ""}`}
+          </b>
+        </div>
         <div><span>Lucro após Ads</span><b className={conta.lucroAposAds === null ? "" : conta.lucroAposAds >= 0 ? "pbi-bom" : "pbi-ruim"}>{formatarMoeda(conta.lucroAposAds)}</b></div>
         <div><span>Sem venda</span><b className="pbi-ruim">{moedaCompacta.format(conta.gastoSemVenda)}</b></div>
       </div>

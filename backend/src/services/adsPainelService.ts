@@ -65,6 +65,13 @@ export interface ContaAds extends Indicadores {
   lucroAposAds: number | null;
   // ROAS mínimo pra não dar prejuízo, a partir da margem bruta da loja.
   roasEquilibrio: number | null;
+  // true quando roasEquilibrio saiu só das vendas COM custo cadastrado,
+  // porque a loja tem alguma venda sem custo (ver vendasSemCusto) — um
+  // indicativo, não o número exato. Sem essa válvula, uma única venda sem
+  // custo zerava o ROAS mínimo da loja inteira, até pra campanhas 100%
+  // cadastradas (achado real: Inga Collors com 9 vendas sem custo escondia
+  // o equilíbrio de todas as campanhas, inclusive as com custo completo).
+  roasEquilibrioAproximado: boolean;
   anterior: Indicadores;
   diario: DiaAds[];
 }
@@ -235,8 +242,15 @@ async function calcularPeriodo(
     const gasto = gastoPorLoja.get(loja.id) ?? 0;
     const lucroAposAds = margemTotal === null ? null : arred2(margemTotal - gasto);
     const margemPosAds = lucroAposAds === null || faturamento <= 0 ? null : arred1((lucroAposAds / faturamento) * 100);
-    const roasEquilibrio =
-      margemTotal !== null && faturamento > 0 && margemTotal > 0 ? arred2(faturamento / margemTotal) : null;
+
+    // roas_equilibrio é uma RAZÃO (receita ÷ margem), não um total — dá pra
+    // estimar só com as vendas que JÁ têm custo, sem esperar a loja inteira
+    // fechar 100%. Fica marcado como aproximado quando sobra alguma venda
+    // sem custo, mas continua mostrando um número em vez de sumir.
+    const vendasComCusto = vendas.filter((v) => v.margemContribuicao !== null);
+    const receitaComCusto = vendasComCusto.reduce((s, v) => s + v.receitaTotal, 0);
+    const margemComCusto = vendasComCusto.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
+    const roasEquilibrio = receitaComCusto > 0 && margemComCusto > 0 ? arred2(receitaComCusto / margemComCusto) : null;
 
     // ROAS atribuído: só campanhas vivas, porque o ML não devolve receita de
     // campanha excluída. Gasto de excluída fica só no total acima.
@@ -311,6 +325,7 @@ async function calcularPeriodo(
       ].slice(0, 30),
       lucroAposAds,
       roasEquilibrio,
+      roasEquilibrioAproximado: vendasSemCusto > 0,
       anterior: { gasto: 0, faturamento: 0, roas: null, margemPosAds: null },
       diario: dias.map((d) => ({
         data: d,

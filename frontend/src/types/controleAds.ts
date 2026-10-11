@@ -31,6 +31,7 @@ export interface ContaControleAds extends IndicadoresControleAds {
   skusSemCusto: string[];
   lucroAposAds: number | null;
   roasEquilibrio: number | null;
+  roasEquilibrioAproximado: boolean;
   anterior: IndicadoresControleAds;
   diario: DiaControleAds[];
 }

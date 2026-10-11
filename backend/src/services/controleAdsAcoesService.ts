@@ -33,7 +33,11 @@ function construirContexto(contas: ContaAds[], campanhas: CampanhaRanking[]): st
         `nivel=${c.nivel.toUpperCase()}`,
         `margem_pos_ads=${c.margemPosAds === null ? "sem dado" : `${c.margemPosAds.toFixed(1)}%`}`,
         `roas=${c.roas === null ? "sem dado" : `${c.roas.toFixed(2)}x`}`,
-        `roas_equilibrio=${c.roasEquilibrio === null ? "sem dado" : `${c.roasEquilibrio.toFixed(2)}x`}`,
+        `roas_equilibrio=${
+          c.roasEquilibrio === null
+            ? "sem dado"
+            : `${c.roasEquilibrio.toFixed(2)}x${c.roasEquilibrioAproximado ? " (aproximado — loja com venda sem custo cadastrado)" : ""}`
+        }`,
         `gasto=${formatCurrency(c.gasto)}`,
         `lucro_apos_ads=${c.lucroAposAds === null ? "sem dado (falta custo cadastrado)" : formatCurrency(c.lucroAposAds)}`,
         `gasto_sem_venda=${formatCurrency(c.gastoSemVenda)}`,
