@@ -323,8 +323,7 @@ async function calcularPeriodo(
   return { contas, campanhas };
 }
 
-// `forcar` ignora o cache de 15 min e busca de novo no Mercado Livre (botão Atualizar).
-export async function obterPainelAds(inicio: string, fim: string, forcar = false): Promise<PainelAds> {
+async function montarPainelAds(inicio: string, fim: string, forcar: boolean): Promise<PainelAds> {
   const lojas: LojaPainel[] = (await listLojas())
     .filter((l) => l.ml_user_id !== null && LOJAS_DO_DONO.includes(l.id))
     .map((l) => ({ id: l.id, nome: l.nome }));
@@ -365,4 +364,44 @@ export async function obterPainelAds(inicio: string, fim: string, forcar = false
     contas,
     campanhas: atual.campanhas,
   };
+}
+
+// Montar o painel do zero cruza vendas + campanhas + anúncios das 4 lojas em
+// DOIS períodos — caro o bastante pra já ter estourado o timeout do proxy
+// numa carga a frio (mesmo motivo do 502 que a criação de campanha grande
+// já tinha dado, ver promocoesService). Cache do RESULTADO MONTADO inteiro
+// (não só das chamadas de API por baixo, que já tinham cache próprio de 15
+// min) — um pouco menor que o intervalo de atualização automática do front
+// (5 min), pra toda carga comum vir do cache em vez de recalcular do zero.
+// `forcar` (botão Atualizar) sempre ignora esse cache também.
+const CACHE_PAINEL_MS = 4 * 60 * 1000;
+const cachePainel = new Map<string, { data: PainelAds; expiraEm: number }>();
+
+export async function obterPainelAds(inicio: string, fim: string, forcar = false): Promise<PainelAds> {
+  const chave = `${inicio}|${fim}`;
+  if (!forcar) {
+    const emCache = cachePainel.get(chave);
+    if (emCache && emCache.expiraEm > Date.now()) return emCache.data;
+  }
+  const resultado = await montarPainelAds(inicio, fim, forcar);
+  cachePainel.set(chave, { data: resultado, expiraEm: Date.now() + CACHE_PAINEL_MS });
+  return resultado;
+}
+
+// Pré-aquece o painel de "hoje" (o período padrão que a tela abre) em
+// segundo plano, desde a inicialização do servidor — mesmo espírito do
+// pré-aquecimento do diagnóstico de promoções (ver promoPrewarm.ts): assim,
+// a carga pesada quase nunca acontece dentro do request de um usuário de
+// verdade, e sim num timer que não tem prazo de resposta pra estourar.
+export function iniciarPrewarmControleAds(): void {
+  async function aquecer() {
+    const hoje = dataISOBR(new Date());
+    try {
+      await obterPainelAds(hoje, hoje, false);
+    } catch (err) {
+      console.error("Falha ao pré-aquecer o Controle de Ads:", err);
+    }
+  }
+  aquecer();
+  setInterval(aquecer, CACHE_PAINEL_MS);
 }

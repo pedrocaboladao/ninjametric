@@ -50,6 +50,7 @@ import { requireAuth, requirePermissao, requireAdmin } from "./middleware/requir
 import { iniciarPrewarmPromocoes } from "./services/promoPrewarm";
 import { iniciarSnapshotAds } from "./services/adsService";
 import { iniciarSincronizacaoPromocoes, marcarProcessamentosInterrompidos } from "./services/promocoesService";
+import { iniciarPrewarmControleAds } from "./services/adsPainelService";
 import { iniciarBuscaOportunidades } from "./services/promocoesOportunidadesService";
 import { agendarPorHorario } from "./services/dateUtils";
 import { iniciarSincronizacaoVendas } from "./services/fabricaSincAutomaticaService";
@@ -172,6 +173,7 @@ server.headersTimeout = 360_000;
 server.requestTimeout = 360_000;
 
 iniciarPrewarmPromocoes();
+iniciarPrewarmControleAds();
 iniciarSnapshotAds();
 marcarProcessamentosInterrompidos().catch((err) => console.error("Falha ao marcar criações interrompidas:", err));
 iniciarSincronizacaoPromocoes();
