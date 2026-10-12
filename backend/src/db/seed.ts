@@ -46,6 +46,16 @@ async function seed() {
   );
   console.log("Usuário administrador base garantido.");
 
+  // Único módulo liberado por padrão pra TODO mundo (pedido explícito do
+  // dono) — todos os outros continuam exigindo concessão manual em
+  // Usuários. Roda em todo deploy, então cobre também quem entrar depois.
+  await pool.query(
+    `INSERT INTO usuarios_permissoes (usuario_id, modulo)
+     SELECT id, 'jogo' FROM usuarios
+     ON CONFLICT DO NOTHING`
+  );
+  console.log("Permissão do Jogo da Semana garantida pra todo usuário.");
+
   await pool.end();
 }
 
