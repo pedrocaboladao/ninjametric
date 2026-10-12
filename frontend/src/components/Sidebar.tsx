@@ -26,6 +26,7 @@ import {
   IconX,
   IconMessage,
   IconCalendar,
+  IconCrown,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -42,6 +43,7 @@ export type View =
   | "ads"
   | "ads_shopee"
   | "controle_ads"
+  | "jogo"
   | "tarefas"
   | "funcionarios"
   | "usuarios"
@@ -98,6 +100,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
   const podeAds = temPermissao(usuario, "ads");
   const podeAdsShopee = temPermissao(usuario, "ads_shopee");
   const podeControleAds = temPermissao(usuario, "controle_ads");
+  const podeJogo = temPermissao(usuario, "jogo");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeAgenda = temPermissao(usuario, "agenda");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
@@ -262,6 +265,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
             >
               <IconChart size={16} />
               <span>Controle de Ads</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeJogo && (
+          <>
+            <button
+              className={`sidebar-item ${view === "jogo" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("jogo")}
+            >
+              <IconCrown size={16} />
+              <span>Jogo da Semana</span>
             </button>
             <div className="sidebar-divider" />
           </>

@@ -2155,3 +2155,20 @@ CREATE TABLE IF NOT EXISTS fabrica_sinc_automatica (
 
 CREATE INDEX IF NOT EXISTS fabrica_sinc_automatica_dia
   ON fabrica_sinc_automatica (dia DESC, id DESC);
+
+-- Jogo da Semana: mini-game leve (Flappy Ninja) pra brincadeira interna do
+-- time, com ranking semanal. Cada tentativa vira uma linha; o limite de "2
+-- por semana" é aplicado no service (jogoService.ts), contando linhas entre
+-- segunda e domingo (mesma semanaDe de agendaOcorrencias.ts). `dia` é
+-- calculado em JS via dataISOBR(new Date()) antes do INSERT — não usa
+-- CURRENT_DATE do Postgres, que seguiria o fuso do servidor, não o de
+-- Maringá (mesmo gotcha de fuso já documentado no resto do projeto).
+CREATE TABLE IF NOT EXISTS jogo_tentativas (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  pontuacao INTEGER NOT NULL,
+  dia DATE NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_jogo_tentativas_usuario_dia ON jogo_tentativas (usuario_id, dia);
+CREATE INDEX IF NOT EXISTS idx_jogo_tentativas_dia ON jogo_tentativas (dia);
