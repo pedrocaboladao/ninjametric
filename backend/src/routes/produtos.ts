@@ -5,9 +5,16 @@ import { listarItensAtivos, getItemsBasicInfo } from "../services/mercadoLivreAp
 
 export const produtosRouter = Router();
 
-produtosRouter.get("/", async (_req, res) => {
+// `?atualizar=1` ignora o cache de 1 hora e rele a planilha do Google Sheets.
+//
+// Existe porque a MASTER e editada por gente, e o cache escondia o trabalho
+// recem-feito: em 09/10/2026, conferir se o editor tinha aplicado uma correcao
+// virava esperar o cache vencer ou adivinhar. Sem o passe, a leitura continua
+// cacheada — a tela nao precisa buscar 5 mil linhas a cada carregamento.
+produtosRouter.get("/", async (req, res) => {
+  const atualizar = req.query.atualizar === "1" || req.query.atualizar === "true";
   try {
-    const produtos = await listarProdutos();
+    const produtos = await listarProdutos(atualizar);
     res.json({ produtos });
   } catch (err) {
     console.error("Erro ao listar produtos:", err);
