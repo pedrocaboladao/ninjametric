@@ -175,6 +175,20 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
           </>
         )}
 
+        {podeAgenda && (
+          <>
+            <button
+              className={`sidebar-item ${view === "agenda" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("agenda")}
+            >
+              <IconCalendar size={16} />
+              <span>Agenda</span>
+              {agendaPendentes > 0 && <span className="sidebar-badge">{agendaPendentes}</span>}
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
         {mostrarFinanceiroLojas && (
           <>
             <button
@@ -413,20 +427,6 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
               </span>
               <span>Chat</span>
               {mensagensNaoLidas > 0 && <span className="sidebar-badge">{mensagensNaoLidas}</span>}
-            </button>
-            <div className="sidebar-divider" />
-          </>
-        )}
-
-        {podeAgenda && (
-          <>
-            <button
-              className={`sidebar-item ${view === "agenda" ? "sidebar-item-ativo" : ""}`}
-              onClick={() => trocarView("agenda")}
-            >
-              <IconCalendar size={16} />
-              <span>Agenda</span>
-              {agendaPendentes > 0 && <span className="sidebar-badge">{agendaPendentes}</span>}
             </button>
             <div className="sidebar-divider" />
           </>
