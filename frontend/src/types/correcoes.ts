@@ -4,6 +4,7 @@ export interface SkuSemCusto {
   sku: string | null;
   itemId: string;
   titulo: string;
+  permalink: string | null;
   ocorrencias: number;
   receitaAfetada: number;
   primeiraOcorrencia: string;

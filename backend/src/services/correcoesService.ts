@@ -1,5 +1,6 @@
 import { listarVendasFinanceiras, normalizarSku } from "./financeiroService";
 import { listarProdutos } from "./produtosService";
+import { getItemsBasicInfo } from "./mercadoLivreApi";
 
 export interface SkuSemCusto {
   lojaId: number;
@@ -7,6 +8,10 @@ export interface SkuSemCusto {
   sku: string | null;
   itemId: string;
   titulo: string;
+  // Link direto do anúncio no Mercado Livre — null só se a busca do item
+  // falhar (loja fora do ar na hora, por exemplo); o itemId (MLB) continua
+  // disponível de qualquer forma, já que não depende dessa chamada extra.
+  permalink: string | null;
   ocorrencias: number;
   receitaAfetada: number;
   primeiraOcorrencia: string;
@@ -104,6 +109,7 @@ export async function listarSkusSemCusto(
         sku: v.sku,
         itemId: v.itemId,
         titulo: v.titulo,
+        permalink: null,
         ocorrencias: 1,
         receitaAfetada: v.receitaTotal,
         primeiraOcorrencia: v.dataCriacao,
@@ -118,5 +124,31 @@ export async function listarSkusSemCusto(
     }
   }
 
-  return Array.from(porChave.values()).sort((a, b) => b.receitaAfetada - a.receitaAfetada);
+  const resultado = Array.from(porChave.values());
+
+  // Link direto do anúncio (permalink) — agrupado por loja pra reaproveitar
+  // o multiget de getItemsBasicInfo (até 20 ids por chamada) em vez de uma
+  // chamada por SKU pendente. Loja que falhar não derruba a lista inteira,
+  // só fica sem link nela (itemId/MLB continua aparecendo do mesmo jeito).
+  const idsPorLoja = new Map<number, Set<string>>();
+  for (const r of resultado) {
+    const set = idsPorLoja.get(r.lojaId) ?? new Set<string>();
+    set.add(r.itemId);
+    idsPorLoja.set(r.lojaId, set);
+  }
+  const itensPorLoja = new Map<number, Awaited<ReturnType<typeof getItemsBasicInfo>>>();
+  await Promise.all(
+    Array.from(idsPorLoja.entries()).map(async ([lojaId, ids]) => {
+      try {
+        itensPorLoja.set(lojaId, await getItemsBasicInfo(lojaId, Array.from(ids)));
+      } catch (err) {
+        console.error(`Correções: falha ao buscar o link dos anúncios da loja ${lojaId}:`, err);
+      }
+    })
+  );
+  for (const r of resultado) {
+    r.permalink = itensPorLoja.get(r.lojaId)?.get(r.itemId)?.permalink ?? null;
+  }
+
+  return resultado.sort((a, b) => b.receitaAfetada - a.receitaAfetada);
 }

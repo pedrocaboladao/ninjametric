@@ -103,7 +103,14 @@ export function Correcoes() {
               {itens.map((item) => (
                 <tr key={`${item.lojaId}-${item.sku ?? item.itemId}`}>
                   <td className="financeiro-td-titulo" title={item.titulo}>
-                    {item.titulo}
+                    {item.permalink ? (
+                      <a href={item.permalink} target="_blank" rel="noopener noreferrer" className="agenda-relatorio-link">
+                        {item.titulo}
+                      </a>
+                    ) : (
+                      item.titulo
+                    )}
+                    <div className="financeiro-td-mudo">{item.itemId}</div>
                   </td>
                   <td className="financeiro-td-sku">
                     {item.sku ?? (
