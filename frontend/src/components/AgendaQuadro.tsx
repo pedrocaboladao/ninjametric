@@ -6,6 +6,7 @@ import type {
   ColunaQuadroAgenda,
   DadosCardQuadroAgenda,
   LojaParaAgenda,
+  UrgenciaCardAgenda,
   UsuarioParaAtribuir,
 } from "../types/agenda";
 import {
@@ -31,6 +32,12 @@ function nomeCurtoDaLoja(nome: string): string {
   return nome === "Catedral Impermeabilizantes" ? "Catedral" : nome;
 }
 
+const ROTULO_URGENCIA: Record<UrgenciaCardAgenda, string> = {
+  baixa: "Baixa",
+  media: "Média",
+  alta: "Alta",
+};
+
 interface CardProps {
   card: CardQuadroAgenda;
   onAbrir: (card: CardQuadroAgenda) => void;
@@ -46,9 +53,9 @@ function CardItem({ card, onAbrir, onAlternarConcluido }: CardProps) {
       style={estilo}
       {...listeners}
       {...attributes}
-      className={`agenda-quadro-card ${isDragging ? "agenda-quadro-card-arrastando" : ""} ${
-        card.concluido ? "agenda-quadro-card-concluido" : ""
-      }`}
+      className={`agenda-quadro-card agenda-quadro-card-urgencia-${card.urgencia} ${
+        isDragging ? "agenda-quadro-card-arrastando" : ""
+      } ${card.concluido ? "agenda-quadro-card-concluido" : ""}`}
       onClick={() => onAbrir(card)}
     >
       {card.capaAnexoId && <img className="agenda-quadro-capa" src={urlAnexoCardAgenda(card.capaAnexoId)} alt="" />}
@@ -71,6 +78,11 @@ function CardItem({ card, onAbrir, onAlternarConcluido }: CardProps) {
       <div className="agenda-ocorrencia-meta">
         <span>{card.atribuidoANome ?? "Sem responsável"}</span>
         {card.lojaNome && <span className="agenda-loja-tag">{nomeCurtoDaLoja(card.lojaNome)}</span>}
+        {card.urgencia !== "media" && (
+          <span className={`agenda-quadro-urgencia-tag agenda-quadro-urgencia-tag-${card.urgencia}`}>
+            {ROTULO_URGENCIA[card.urgencia]}
+          </span>
+        )}
         {card.totalAnexos > 0 && <span className="financeiro-td-mudo">📎 {card.totalAnexos}</span>}
       </div>
     </div>
@@ -252,6 +264,7 @@ function CardModal({ card, colunas, colunaAtualId, usuarios, lojas, onSalvar, on
     card?.atribuidoAUsuarioId != null ? String(card.atribuidoAUsuarioId) : ""
   );
   const [lojaId, setLojaId] = useState(card?.lojaId != null ? String(card.lojaId) : "");
+  const [urgencia, setUrgencia] = useState<UrgenciaCardAgenda>(card?.urgencia ?? "media");
 
   function submeter(e: React.FormEvent) {
     e.preventDefault();
@@ -261,6 +274,7 @@ function CardModal({ card, colunas, colunaAtualId, usuarios, lojas, onSalvar, on
       descricao: descricao.trim() || null,
       atribuidoAUsuarioId: atribuidoAUsuarioId ? Number(atribuidoAUsuarioId) : null,
       lojaId: lojaId ? Number(lojaId) : null,
+      urgencia,
     });
   }
 
@@ -313,6 +327,18 @@ function CardModal({ card, colunas, colunaAtualId, usuarios, lojas, onSalvar, on
                 {l.nome}
               </option>
             ))}
+          </select>
+        </label>
+        <label>
+          Urgência
+          <select
+            className="clonar-input"
+            value={urgencia}
+            onChange={(e) => setUrgencia(e.target.value as UrgenciaCardAgenda)}
+          >
+            <option value="baixa">Baixa</option>
+            <option value="media">Média</option>
+            <option value="alta">Alta</option>
           </select>
         </label>
       </form>

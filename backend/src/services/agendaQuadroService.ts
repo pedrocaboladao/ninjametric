@@ -1,5 +1,9 @@
 import { pool } from "../db/pool";
 
+export const URGENCIAS_VALIDAS = ["baixa", "media", "alta"] as const;
+export type UrgenciaCard = (typeof URGENCIAS_VALIDAS)[number];
+const URGENCIA_PADRAO: UrgenciaCard = "media";
+
 export interface AnexoCard {
   id: number;
   nome: string;
@@ -20,6 +24,7 @@ export interface CardQuadro {
   capaAnexoId: number | null;
   totalAnexos: number;
   concluido: boolean;
+  urgencia: UrgenciaCard;
 }
 
 export interface ColunaQuadro {
@@ -55,9 +60,10 @@ export async function listarQuadro(): Promise<ColunaQuadro[]> {
     capa_anexo_id: number | null;
     total_anexos: number;
     concluido: boolean;
+    urgencia: UrgenciaCard;
   }>(
     `SELECT c.id, c.coluna_id, c.titulo, c.descricao, c.atribuido_a_usuario_id, u.nome AS atribuido_a_nome,
-            c.loja_id, loja.nome AS loja_nome, c.concluido,
+            c.loja_id, loja.nome AS loja_nome, c.concluido, c.urgencia,
             (SELECT a.id FROM agenda_quadro_anexos a WHERE a.card_id = c.id AND a.capa LIMIT 1) AS capa_anexo_id,
             (SELECT COUNT(*)::int FROM agenda_quadro_anexos a WHERE a.card_id = c.id) AS total_anexos
      FROM agenda_quadro_cards c
@@ -81,6 +87,7 @@ export async function listarQuadro(): Promise<ColunaQuadro[]> {
         capaAnexoId: c.capa_anexo_id,
         totalAnexos: c.total_anexos,
         concluido: c.concluido,
+        urgencia: c.urgencia,
       })),
   }));
 }
@@ -110,11 +117,17 @@ export async function excluirColuna(id: number): Promise<void> {
 export async function criarCard(
   criadoPorUsuarioId: number,
   colunaId: number,
-  dados: { titulo: string; descricao?: string | null; atribuidoAUsuarioId?: number | null; lojaId?: number | null }
+  dados: {
+    titulo: string;
+    descricao?: string | null;
+    atribuidoAUsuarioId?: number | null;
+    lojaId?: number | null;
+    urgencia?: UrgenciaCard;
+  }
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO agenda_quadro_cards (coluna_id, titulo, descricao, atribuido_a_usuario_id, loja_id, criado_por_usuario_id, ordem)
-     VALUES ($1, $2, $3, $4, $5, $6,
+    `INSERT INTO agenda_quadro_cards (coluna_id, titulo, descricao, atribuido_a_usuario_id, loja_id, criado_por_usuario_id, urgencia, ordem)
+     VALUES ($1, $2, $3, $4, $5, $6, $7,
        (SELECT COALESCE(MAX(ordem), -1) + 1 FROM agenda_quadro_cards WHERE coluna_id = $1))`,
     [
       colunaId,
@@ -123,6 +136,7 @@ export async function criarCard(
       dados.atribuidoAUsuarioId ?? null,
       dados.lojaId ?? null,
       criadoPorUsuarioId,
+      dados.urgencia ?? URGENCIA_PADRAO,
     ]
   );
 }
@@ -135,6 +149,7 @@ export async function atualizarCard(
     atribuidoAUsuarioId: number | null;
     lojaId: number | null;
     concluido: boolean;
+    urgencia: UrgenciaCard;
   }>
 ): Promise<void> {
   const campos: string[] = [];
@@ -148,6 +163,7 @@ export async function atualizarCard(
   if (dados.atribuidoAUsuarioId !== undefined) set("atribuido_a_usuario_id", dados.atribuidoAUsuarioId);
   if (dados.lojaId !== undefined) set("loja_id", dados.lojaId);
   if (dados.concluido !== undefined) set("concluido", dados.concluido);
+  if (dados.urgencia !== undefined) set("urgencia", dados.urgencia);
   if (campos.length === 0) return;
   campos.push("atualizado_em = now()");
   valores.push(id);
@@ -219,8 +235,8 @@ export async function clonarCard(cardId: number, colunaId: number, usuarioId: nu
   try {
     await client.query("BEGIN");
     const { rows } = await client.query<{ id: number }>(
-      `INSERT INTO agenda_quadro_cards (coluna_id, titulo, descricao, atribuido_a_usuario_id, loja_id, criado_por_usuario_id, ordem)
-       SELECT $2, titulo, descricao, atribuido_a_usuario_id, loja_id, $3,
+      `INSERT INTO agenda_quadro_cards (coluna_id, titulo, descricao, atribuido_a_usuario_id, loja_id, criado_por_usuario_id, urgencia, ordem)
+       SELECT $2, titulo, descricao, atribuido_a_usuario_id, loja_id, $3, urgencia,
          (SELECT COALESCE(MAX(ordem), -1) + 1 FROM agenda_quadro_cards WHERE coluna_id = $2)
        FROM agenda_quadro_cards WHERE id = $1
        RETURNING id`,

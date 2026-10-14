@@ -7238,6 +7238,36 @@ button.contas-cartao:hover {
   opacity: 0.6;
 }
 
+.agenda-quadro-card-urgencia-alta {
+  border-left: 3px solid var(--critical-text);
+}
+
+.agenda-quadro-card-urgencia-media {
+  border-left: 3px solid #fbbf24;
+}
+
+.agenda-quadro-card-urgencia-baixa {
+  border-left: 3px solid var(--good-text);
+}
+
+.agenda-quadro-urgencia-tag {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  border-radius: 999px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.agenda-quadro-urgencia-tag-alta {
+  background: var(--critical-bg);
+  color: var(--critical-text);
+}
+
+.agenda-quadro-urgencia-tag-baixa {
+  background: var(--good-bg);
+  color: var(--good-text);
+}
+
 .agenda-quadro-card-topo {
   display: flex;
   align-items: flex-start;

@@ -15,7 +15,13 @@ import {
   apagarAnexoDoCard,
   definirCapaDoCard,
   clonarCard,
+  URGENCIAS_VALIDAS,
+  type UrgenciaCard,
 } from "../services/agendaQuadroService";
+
+function urgenciaValida(v: unknown): v is UrgenciaCard {
+  return typeof v === "string" && (URGENCIAS_VALIDAS as readonly string[]).includes(v);
+}
 
 const uploadAnexo = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 import {
@@ -319,9 +325,13 @@ agendaRouter.delete("/quadro/colunas/:id", async (req, res) => {
 });
 
 agendaRouter.post("/quadro/cards", async (req, res) => {
-  const { colunaId, titulo, descricao, atribuidoAUsuarioId, lojaId } = req.body ?? {};
+  const { colunaId, titulo, descricao, atribuidoAUsuarioId, lojaId, urgencia } = req.body ?? {};
   if (!Number.isInteger(colunaId) || typeof titulo !== "string" || !titulo.trim()) {
     res.status(400).json({ error: "Informe a coluna e o título do card." });
+    return;
+  }
+  if (urgencia !== undefined && !urgenciaValida(urgencia)) {
+    res.status(400).json({ error: "Urgência inválida." });
     return;
   }
   try {
@@ -330,6 +340,7 @@ agendaRouter.post("/quadro/cards", async (req, res) => {
       descricao: typeof descricao === "string" && descricao.trim() ? descricao.trim() : null,
       atribuidoAUsuarioId: Number.isInteger(atribuidoAUsuarioId) ? atribuidoAUsuarioId : null,
       lojaId: Number.isInteger(lojaId) ? lojaId : null,
+      urgencia: urgenciaValida(urgencia) ? urgencia : undefined,
     });
     res.json({ ok: true });
   } catch (err) {
@@ -339,7 +350,7 @@ agendaRouter.post("/quadro/cards", async (req, res) => {
 
 agendaRouter.patch("/quadro/cards/:id", async (req, res) => {
   const id = Number(req.params.id);
-  const { titulo, descricao, atribuidoAUsuarioId, lojaId, concluido } = req.body ?? {};
+  const { titulo, descricao, atribuidoAUsuarioId, lojaId, concluido, urgencia } = req.body ?? {};
   if (!Number.isInteger(id)) {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
@@ -352,6 +363,10 @@ agendaRouter.patch("/quadro/cards/:id", async (req, res) => {
     res.status(400).json({ error: "Parâmetros inválidos." });
     return;
   }
+  if (urgencia !== undefined && !urgenciaValida(urgencia)) {
+    res.status(400).json({ error: "Urgência inválida." });
+    return;
+  }
   try {
     await atualizarCard(id, {
       titulo: titulo !== undefined ? titulo.trim() : undefined,
@@ -359,6 +374,7 @@ agendaRouter.patch("/quadro/cards/:id", async (req, res) => {
       atribuidoAUsuarioId: atribuidoAUsuarioId !== undefined ? (Number.isInteger(atribuidoAUsuarioId) ? atribuidoAUsuarioId : null) : undefined,
       lojaId: lojaId !== undefined ? (Number.isInteger(lojaId) ? lojaId : null) : undefined,
       concluido,
+      urgencia,
     });
     res.json({ ok: true });
   } catch (err) {

@@ -2081,6 +2081,9 @@ CREATE INDEX IF NOT EXISTS idx_agenda_quadro_cards_coluna ON agenda_quadro_cards
 -- está — o quadro tem colunas personalizadas (nem sempre existe uma
 -- "Feito"), então marcar concluído não pode depender de mover o card.
 ALTER TABLE agenda_quadro_cards ADD COLUMN IF NOT EXISTS concluido BOOLEAN NOT NULL DEFAULT false;
+-- Grau de urgência do card: 'baixa' | 'media' | 'alta'. Não é enum do
+-- Postgres de propósito — mudar as opções não exigiria migração de tipo.
+ALTER TABLE agenda_quadro_cards ADD COLUMN IF NOT EXISTS urgencia TEXT NOT NULL DEFAULT 'media';
 
 -- Anexos dos cards do quadro. O arquivo mora no banco (mesma convenção de
 -- fabrica_conta_anexos: o deploy reconstrói o container, disco sumiria).

@@ -93,7 +93,10 @@ export interface CardQuadroAgenda {
   capaAnexoId: number | null;
   totalAnexos: number;
   concluido: boolean;
+  urgencia: UrgenciaCardAgenda;
 }
+
+export type UrgenciaCardAgenda = "baixa" | "media" | "alta";
 
 export interface AnexoCardAgenda {
   id: number;
@@ -116,6 +119,7 @@ export interface DadosCardQuadroAgenda {
   atribuidoAUsuarioId?: number | null;
   lojaId?: number | null;
   concluido?: boolean;
+  urgencia?: UrgenciaCardAgenda;
 }
 
 export interface AvisoAgenda {
