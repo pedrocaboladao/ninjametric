@@ -2,15 +2,23 @@ import { pool } from "../db/pool";
 import { dataISOBR } from "./dateUtils";
 import { semanaDe } from "./agendaOcorrencias";
 
-// Só pra brincadeira interna do time — 2 tentativas por usuário por semana
-// (segunda a domingo, mesma semana da Agenda), vale a MAIOR pontuação da
-// semana, não a soma.
-export const TENTATIVAS_POR_SEMANA = 2;
+// Só pra brincadeira interna do time — 2 tentativas por usuário POR DIA (dia
+// do calendário de Maringá). O ranking continua semanal (segunda a domingo,
+// mesma semana da Agenda) e vale a MAIOR pontuação da semana, não a soma.
+export const TENTATIVAS_POR_DIA = 2;
 
 export interface LinhaRankingJogo {
   usuarioId: number;
   nome: string;
   pontuacao: number;
+  eu: boolean;
+}
+
+export interface RecordeJogo {
+  usuarioId: number;
+  nome: string;
+  pontuacao: number;
+  dia: string;
   eu: boolean;
 }
 
@@ -20,6 +28,9 @@ export interface SemanaJogo {
   tentativasUsadas: number;
   tentativasMaximas: number;
   ranking: LinhaRankingJogo[];
+  // Maior pontuação de todos os tempos (não só da semana) — null se ninguém
+  // jogou ainda. Empate: vale quem chegou nessa pontuação primeiro.
+  recorde: RecordeJogo | null;
 }
 
 function semanaAtual(): { inicioSemana: string; fimSemana: string } {
@@ -27,13 +38,18 @@ function semanaAtual(): { inicioSemana: string; fimSemana: string } {
   return semanaDe(hoje);
 }
 
+async function contarTentativasDeHoje(usuarioId: number): Promise<number> {
+  const { rows } = await pool.query<{ total: number }>(
+    "SELECT COUNT(*)::int AS total FROM jogo_tentativas WHERE usuario_id = $1 AND dia = $2",
+    [usuarioId, dataISOBR(new Date())]
+  );
+  return rows[0].total;
+}
+
 export async function obterSemanaJogo(usuarioId: number): Promise<SemanaJogo> {
   const { inicioSemana, fimSemana } = semanaAtual();
 
-  const { rows: usadasRows } = await pool.query<{ total: number }>(
-    "SELECT COUNT(*)::int AS total FROM jogo_tentativas WHERE usuario_id = $1 AND dia BETWEEN $2 AND $3",
-    [usuarioId, inicioSemana, fimSemana]
-  );
+  const tentativasUsadas = await contarTentativasDeHoje(usuarioId);
 
   const { rows: rankingRows } = await pool.query<{ usuario_id: number; nome: string; pontuacao: number }>(
     `SELECT t.usuario_id, u.nome, MAX(t.pontuacao) AS pontuacao
@@ -46,11 +62,34 @@ export async function obterSemanaJogo(usuarioId: number): Promise<SemanaJogo> {
     [inicioSemana, fimSemana]
   );
 
+  const { rows: recordeRows } = await pool.query<{
+    usuario_id: number;
+    nome: string;
+    pontuacao: number;
+    dia: string;
+  }>(
+    `SELECT t.usuario_id, u.nome, t.pontuacao, to_char(t.dia, 'YYYY-MM-DD') AS dia
+     FROM jogo_tentativas t
+     JOIN usuarios u ON u.id = t.usuario_id
+     ORDER BY t.pontuacao DESC, t.dia ASC, t.id ASC
+     LIMIT 1`
+  );
+  const recorde = recordeRows[0]
+    ? {
+        usuarioId: recordeRows[0].usuario_id,
+        nome: recordeRows[0].nome,
+        pontuacao: recordeRows[0].pontuacao,
+        dia: recordeRows[0].dia,
+        eu: recordeRows[0].usuario_id === usuarioId,
+      }
+    : null;
+
   return {
     inicioSemana,
     fimSemana,
-    tentativasUsadas: usadasRows[0].total,
-    tentativasMaximas: TENTATIVAS_POR_SEMANA,
+    recorde,
+    tentativasUsadas,
+    tentativasMaximas: TENTATIVAS_POR_DIA,
     ranking: rankingRows.map((r) => ({
       usuarioId: r.usuario_id,
       nome: r.nome,
@@ -64,14 +103,8 @@ export async function registrarTentativaJogo(usuarioId: number, pontuacao: numbe
   if (!Number.isInteger(pontuacao) || pontuacao < 0 || pontuacao > 100000) {
     throw new Error("Pontuação inválida.");
   }
-  const { inicioSemana, fimSemana } = semanaAtual();
-
-  const { rows: usadasRows } = await pool.query<{ total: number }>(
-    "SELECT COUNT(*)::int AS total FROM jogo_tentativas WHERE usuario_id = $1 AND dia BETWEEN $2 AND $3",
-    [usuarioId, inicioSemana, fimSemana]
-  );
-  if (usadasRows[0].total >= TENTATIVAS_POR_SEMANA) {
-    throw new Error("Suas tentativas dessa semana já acabaram.");
+  if ((await contarTentativasDeHoje(usuarioId)) >= TENTATIVAS_POR_DIA) {
+    throw new Error("Suas tentativas de hoje já acabaram. Volta amanhã!");
   }
 
   await pool.query("INSERT INTO jogo_tentativas (usuario_id, pontuacao, dia) VALUES ($1, $2, $3)", [

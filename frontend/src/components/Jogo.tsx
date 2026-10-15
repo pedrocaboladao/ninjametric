@@ -29,7 +29,13 @@ interface EstadoJogo {
   rafId: number | null;
 }
 
-type Fase = "carregando" | "jogando" | "parado";
+type Fase = "carregando" | "contagem" | "jogando" | "parado";
+
+// "YYYY-MM-DD" -> "DD/MM/YYYY" por string, sem passar por Date (fuso).
+function formatarDia(dia: string): string {
+  const [a, m, d] = dia.split("-");
+  return `${d}/${m}/${a}`;
+}
 
 // Flappy Ninja: 1 botão (clique/espaço) pra voar entre os obstáculos.
 // Pontuação = obstáculos passados. Loop do jogo roda fora do ciclo de render
@@ -38,7 +44,9 @@ type Fase = "carregando" | "jogando" | "parado";
 export function Jogo() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const estadoRef = useRef<EstadoJogo | null>(null);
+  const timerContagemRef = useRef<number | null>(null);
 
+  const [contagem, setContagem] = useState<number | null>(null);
   const [semana, setSemana] = useState<SemanaJogo | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [fase, setFase] = useState<Fase>("carregando");
@@ -64,6 +72,7 @@ export function Jogo() {
       if (estadoRef.current?.rafId !== null && estadoRef.current?.rafId !== undefined) {
         cancelAnimationFrame(estadoRef.current.rafId);
       }
+      if (timerContagemRef.current !== null) window.clearInterval(timerContagemRef.current);
     },
     []
   );
@@ -163,6 +172,37 @@ export function Jogo() {
     e.rafId = requestAnimationFrame(loop);
   }
 
+  // Contagem 3, 2, 1 antes de soltar o jogo — durante ela o passarinho já
+  // aparece parado no canvas e o espaço/clique não faz nada (flap() só age
+  // com o jogo rodando).
+  function iniciarContagem() {
+    if (!semana || semana.tentativasUsadas >= semana.tentativasMaximas) return;
+    if (timerContagemRef.current !== null) return;
+    setPontuacaoFinal(null);
+    setErro(null);
+
+    const ctx = canvasRef.current?.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, LARGURA, ALTURA);
+      desenharBird(ctx, { x: 70, y: ALTURA / 2, vy: 0, raio: 11 });
+    }
+
+    let restante = 3;
+    setContagem(restante);
+    setFase("contagem");
+    timerContagemRef.current = window.setInterval(() => {
+      restante--;
+      if (restante > 0) {
+        setContagem(restante);
+        return;
+      }
+      if (timerContagemRef.current !== null) window.clearInterval(timerContagemRef.current);
+      timerContagemRef.current = null;
+      setContagem(null);
+      iniciarJogo();
+    }, 1000);
+  }
+
   function iniciarJogo() {
     if (!semana || semana.tentativasUsadas >= semana.tentativasMaximas) return;
     estadoRef.current = {
@@ -211,7 +251,7 @@ export function Jogo() {
         </h1>
         <p className="painel-sub">
           Clique ou aperte espaço pra voar entre os obstáculos.
-          {semana && !esgotado ? ` ${semana.tentativasMaximas - semana.tentativasUsadas} tentativa(s) restante(s) essa semana.` : ""}
+          {semana && !esgotado ? ` ${semana.tentativasMaximas - semana.tentativasUsadas} tentativa(s) restante(s) hoje.` : ""}
         </p>
       </div>
 
@@ -228,6 +268,14 @@ export function Jogo() {
               className="jogo-canvas"
               onClick={() => (fase === "jogando" ? flap() : undefined)}
             />
+            {fase === "contagem" && contagem !== null && (
+              <div className="jogo-overlay jogo-overlay-contagem">
+                <div key={contagem} className="jogo-contagem-numero">
+                  {contagem}
+                </div>
+                <div className="jogo-overlay-texto">Prepare-se...</div>
+              </div>
+            )}
             {fase === "parado" && (
               <div className="jogo-overlay">
                 {esgotado ? (
@@ -235,16 +283,16 @@ export function Jogo() {
                     <div className="jogo-overlay-titulo">
                       {pontuacaoFinal !== null ? `Pontuação: ${pontuacaoFinal}` : "Sem tentativas"}
                     </div>
-                    <div className="jogo-overlay-texto">Tentativas da semana acabaram. Volta semana que vem pra tentar de novo.</div>
+                    <div className="jogo-overlay-texto">As {semana.tentativasMaximas} tentativas de hoje acabaram. Volta amanhã pra tentar de novo.</div>
                   </>
                 ) : pontuacaoFinal !== null ? (
                   <>
                     <div className="jogo-overlay-titulo">Pontuação: {pontuacaoFinal}</div>
                     <div className="jogo-overlay-texto">
-                      {enviando ? "Registrando..." : `Ainda sobrou ${semana.tentativasMaximas - semana.tentativasUsadas} tentativa(s) essa semana.`}
+                      {enviando ? "Registrando..." : `Ainda sobrou ${semana.tentativasMaximas - semana.tentativasUsadas} tentativa(s) hoje.`}
                     </div>
                     {!enviando && (
-                      <button type="button" className="btn-responder" onClick={iniciarJogo}>
+                      <button type="button" className="btn-responder" onClick={iniciarContagem}>
                         Jogar de novo
                       </button>
                     )}
@@ -252,8 +300,10 @@ export function Jogo() {
                 ) : (
                   <>
                     <div className="jogo-overlay-titulo">Pronto pra tentar?</div>
-                    <div className="jogo-overlay-texto">Clique no jogo ou aperte espaço pra começar a voar.</div>
-                    <button type="button" className="btn-responder" onClick={iniciarJogo}>
+                    <div className="jogo-overlay-texto">
+                      Clique em Jogar: vai ter uma contagem de 3, 2, 1 e aí é só clicar ou apertar espaço pra voar.
+                    </div>
+                    <button type="button" className="btn-responder" onClick={iniciarContagem}>
                       Jogar
                     </button>
                   </>
@@ -262,19 +312,47 @@ export function Jogo() {
             )}
           </div>
 
-          <div className="jogo-ranking">
-            <div className="jogo-ranking-topo">
-              <IconCrown size={16} />
-              <span>Ranking da semana</span>
-            </div>
-            {ranking.length === 0 && <div className="financeiro-td-mudo">Ninguém jogou essa semana ainda.</div>}
-            {ranking.map((r, i) => (
-              <div key={r.usuarioId} className={`jogo-ranking-linha ${r.eu ? "jogo-ranking-linha-eu" : ""}`}>
-                <span className="jogo-ranking-posicao">{i + 1}º</span>
-                <span className="jogo-ranking-nome">{r.nome}</span>
-                <span className="jogo-ranking-pontos">{r.pontuacao}</span>
+          <div className="jogo-lateral">
+            <div className="jogo-recorde">
+              <div className="jogo-recorde-topo">
+                <IconCrown size={18} />
+                <span>Recordista de todos os tempos</span>
               </div>
-            ))}
+              {semana.recorde ? (
+                <>
+                  <div className="jogo-recorde-pontos">{semana.recorde.pontuacao}</div>
+                  <div className="jogo-recorde-nome">
+                    {semana.recorde.nome}
+                    {semana.recorde.eu ? " (você!)" : ""}
+                  </div>
+                  <div className="jogo-recorde-data">em {formatarDia(semana.recorde.dia)}</div>
+                </>
+              ) : (
+                <div className="jogo-overlay-texto">Ninguém jogou ainda. O recorde está livre!</div>
+              )}
+            </div>
+
+            <div className="jogo-ranking">
+              <div className="jogo-ranking-topo">
+                <IconCrown size={16} />
+                <span>Ranking da semana</span>
+              </div>
+              {ranking.length === 0 && <div className="financeiro-td-mudo">Ninguém jogou essa semana ainda.</div>}
+              {ranking.map((r, i) => (
+                <div key={r.usuarioId} className={`jogo-ranking-linha ${r.eu ? "jogo-ranking-linha-eu" : ""}`}>
+                  <span className="jogo-ranking-posicao">{i + 1}º</span>
+                  <span className="jogo-ranking-nome">
+                    {r.nome}
+                    {semana.recorde?.usuarioId === r.usuarioId && (
+                      <span className="jogo-ranking-coroa" title="Dono do recorde geral">
+                        <IconCrown size={13} />
+                      </span>
+                    )}
+                  </span>
+                  <span className="jogo-ranking-pontos">{r.pontuacao}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -2161,8 +2161,8 @@ CREATE INDEX IF NOT EXISTS fabrica_sinc_automatica_dia
 
 -- Jogo da Semana: mini-game leve (Flappy Ninja) pra brincadeira interna do
 -- time, com ranking semanal. Cada tentativa vira uma linha; o limite de "2
--- por semana" é aplicado no service (jogoService.ts), contando linhas entre
--- segunda e domingo (mesma semanaDe de agendaOcorrencias.ts). `dia` é
+-- por dia" é aplicado no service (jogoService.ts), contando as linhas do dia
+-- de hoje; o ranking pega a maior da semana (mesma semanaDe de agendaOcorrencias.ts). `dia` é
 -- calculado em JS via dataISOBR(new Date()) antes do INSERT — não usa
 -- CURRENT_DATE do Postgres, que seguiria o fuso do servidor, não o de
 -- Maringá (mesmo gotcha de fuso já documentado no resto do projeto).
