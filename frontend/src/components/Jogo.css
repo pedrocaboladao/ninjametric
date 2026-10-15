@@ -32,6 +32,8 @@
   border: 1px solid var(--border);
   background: var(--bg-panel-alt);
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
 }
 
 .jogo-overlay {

@@ -57,7 +57,7 @@ export function Jogo() {
     try {
       const s = await fetchSemanaJogo();
       setSemana(s);
-      setFase("parado");
+      setFase((f) => (f === "carregando" ? "parado" : f));
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao carregar o jogo.");
     }
@@ -110,15 +110,20 @@ export function Jogo() {
     ctx.strokeRect(p.x, p.base, LARGURA_CANO, ALTURA - p.base);
   }
 
+  // Conta a tentativa na tela NA HORA (o botão de jogar de novo aparece sem
+  // esperar o servidor) e depois troca pelo número real que ele devolver. Se
+  // o envio falhar, recarrega do servidor pra não ficar contando errado.
   async function finalizar(score: number) {
     setPontuacaoFinal(score);
     setFase("parado");
+    setSemana((s) => (s ? { ...s, tentativasUsadas: s.tentativasUsadas + 1 } : s));
     setEnviando(true);
     setErro(null);
     try {
       setSemana(await registrarTentativaJogo(score));
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao registrar a tentativa.");
+      carregar();
     } finally {
       setEnviando(false);
     }
@@ -266,7 +271,11 @@ export function Jogo() {
               width={LARGURA}
               height={ALTURA}
               className="jogo-canvas"
-              onClick={() => (fase === "jogando" ? flap() : undefined)}
+              onPointerDown={(ev) => {
+                if (fase !== "jogando") return;
+                ev.preventDefault();
+                flap();
+              }}
             />
             {fase === "contagem" && contagem !== null && (
               <div className="jogo-overlay jogo-overlay-contagem">
@@ -289,13 +298,12 @@ export function Jogo() {
                   <>
                     <div className="jogo-overlay-titulo">Pontuação: {pontuacaoFinal}</div>
                     <div className="jogo-overlay-texto">
-                      {enviando ? "Registrando..." : `Ainda sobrou ${semana.tentativasMaximas - semana.tentativasUsadas} tentativa(s) hoje.`}
+                      Ainda sobrou {semana.tentativasMaximas - semana.tentativasUsadas} tentativa(s) hoje.
+                      {enviando ? " (salvando...)" : ""}
                     </div>
-                    {!enviando && (
-                      <button type="button" className="btn-responder" onClick={iniciarContagem}>
-                        Jogar de novo
-                      </button>
-                    )}
+                    <button type="button" className="btn-responder" onClick={iniciarContagem}>
+                      Jogar de novo
+                    </button>
                   </>
                 ) : (
                   <>
