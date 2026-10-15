@@ -100,11 +100,14 @@ interface ColunaProps {
 
 function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard, onAlternarConcluido }: ColunaProps) {
   const { setNodeRef, isOver } = useDroppable({ id: `coluna-${coluna.id}` });
+  // Concluído sai do quadro na hora — fica só o que ainda precisa ser feito.
+  // O card não some de verdade, só vai pra aba "Concluídos" (ver AgendaQuadro).
+  const cardsPendentes = coluna.cards.filter((c) => !c.concluido);
   return (
     <div className={`agenda-quadro-coluna ${isOver ? "agenda-quadro-coluna-sobre" : ""}`}>
       <div className="agenda-quadro-coluna-topo">
         <span className="agenda-quadro-coluna-nome">{coluna.nome}</span>
-        <span className="financeiro-td-mudo">{coluna.cards.length}</span>
+        <span className="financeiro-td-mudo">{cardsPendentes.length}</span>
         <div className="agenda-quadro-coluna-acoes">
           <button type="button" className="agenda-relatorio-excluir" onClick={() => onRenomear(coluna)} title="Renomear">
             ✎
@@ -115,13 +118,64 @@ function ColunaItem({ coluna, onNovoCard, onRenomear, onExcluir, onAbrirCard, on
         </div>
       </div>
       <div ref={setNodeRef} className="agenda-quadro-coluna-corpo">
-        {coluna.cards.map((card) => (
+        {cardsPendentes.map((card) => (
           <CardItem key={card.id} card={card} onAbrir={onAbrirCard} onAlternarConcluido={onAlternarConcluido} />
         ))}
       </div>
       <button type="button" className="agenda-quadro-novo-card" onClick={() => onNovoCard(coluna.id)}>
         <IconPlus size={12} /> Novo card
       </button>
+    </div>
+  );
+}
+
+interface CardConcluido extends CardQuadroAgenda {
+  colunaNome: string;
+}
+
+interface ListaConcluidosProps {
+  cards: CardConcluido[];
+  onAbrirCard: (card: CardQuadroAgenda) => void;
+  onDesfazer: (card: CardQuadroAgenda) => void;
+}
+
+function ListaConcluidos({ cards, onAbrirCard, onDesfazer }: ListaConcluidosProps) {
+  if (cards.length === 0) {
+    return <div className="state-message">Nenhum card concluído ainda.</div>;
+  }
+  return (
+    <div className="financeiro-tabela-wrap">
+      <table className="financeiro-tabela">
+        <thead>
+          <tr>
+            <th>Título</th>
+            <th>Coluna</th>
+            <th>Responsável</th>
+            <th>Loja</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {cards.map((card) => (
+            <tr key={card.id}>
+              <td className="financeiro-td-titulo">{card.titulo}</td>
+              <td className="financeiro-td-mudo">{card.colunaNome}</td>
+              <td>{card.atribuidoANome ?? "Sem responsável"}</td>
+              <td>{card.lojaNome ? <span className="agenda-loja-tag">{nomeCurtoDaLoja(card.lojaNome)}</span> : "—"}</td>
+              <td>
+                <div className="tarefa-novo-cartao-acoes">
+                  <button type="button" className="btn-responder" onClick={() => onAbrirCard(card)}>
+                    Abrir
+                  </button>
+                  <button type="button" className="btn-excluir" onClick={() => onDesfazer(card)}>
+                    Desfazer
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -373,6 +427,7 @@ interface Props {
 
 export function AgendaQuadro({ usuarios, lojas }: Props) {
   const [colunas, setColunas] = useState<ColunaQuadroAgenda[] | null>(null);
+  const [aba, setAba] = useState<"quadro" | "concluidos">("quadro");
   const [erro, setErro] = useState<string | null>(null);
   const [cardModal, setCardModal] = useState<{ card: CardQuadroAgenda | null; colunaId: number | null } | null>(null);
   const [erroModal, setErroModal] = useState<string | null>(null);
@@ -452,6 +507,10 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
     await executar(() => atualizarCardQuadroAgenda(card.id, { concluido: !card.concluido }));
   }
 
+  const cardsConcluidos: CardConcluido[] = (colunas ?? []).flatMap((coluna) =>
+    coluna.cards.filter((c) => c.concluido).map((c) => ({ ...c, colunaNome: coluna.nome }))
+  );
+
   async function excluirCardAtual() {
     if (!cardModal?.card) return;
     if (!window.confirm(`Excluir o card "${cardModal.card.titulo}"?`)) return;
@@ -468,15 +527,26 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
     <div className="agenda-quadro">
       <div className="agenda-quadro-topo">
         <span className="painel-eyebrow">Quadro</span>
-        <button type="button" className="btn-responder" onClick={novaColuna}>
-          <IconPlus size={14} /> Nova coluna
-        </button>
+        <div className="tarefas-abas">
+          <button className={`tarefas-aba ${aba === "quadro" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("quadro")}>
+            Quadro
+          </button>
+          <button className={`tarefas-aba ${aba === "concluidos" ? "tarefas-aba-ativa" : ""}`} onClick={() => setAba("concluidos")}>
+            Concluídos
+            {cardsConcluidos.length > 0 && <span className="agenda-mural-badge">{cardsConcluidos.length}</span>}
+          </button>
+        </div>
+        {aba === "quadro" && (
+          <button type="button" className="btn-responder" onClick={novaColuna}>
+            <IconPlus size={14} /> Nova coluna
+          </button>
+        )}
       </div>
 
       {erro && <div className="clonar-erro">{erro}</div>}
       {!colunas && !erro && <div className="state-message">Carregando quadro...</div>}
 
-      {colunas && (
+      {colunas && aba === "quadro" && (
         <DndContext sensors={sensors} onDragEnd={aoSoltar}>
           <div className="agenda-quadro-colunas">
             {colunas.map((coluna) => (
@@ -492,6 +562,14 @@ export function AgendaQuadro({ usuarios, lojas }: Props) {
             ))}
           </div>
         </DndContext>
+      )}
+
+      {colunas && aba === "concluidos" && (
+        <ListaConcluidos
+          cards={cardsConcluidos}
+          onAbrirCard={(card) => setCardModal({ card, colunaId: null })}
+          onDesfazer={alternarConcluido}
+        />
       )}
 
       {cardModal && (
