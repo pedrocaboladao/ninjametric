@@ -7,7 +7,10 @@ export interface MlOrderItem {
   item: {
     id: string;
     title: string;
+    // SKU como estava no anúncio NO MOMENTO DA VENDA — corrigir o SKU depois no
+    // anúncio não muda isso nos pedidos antigos (ver financeiroService).
     seller_sku?: string;
+    variation_id?: number | null;
   };
   quantity: number;
   unit_price: number;
@@ -663,7 +666,11 @@ export interface MlItemBasicInfo {
   // cada variação (cor/tamanho) separadamente, enquanto a descoberta
   // automática de promoções conta por item pai só (ver diagnóstico em
   // promocoesService.descobrirCampanhasNaLoja).
-  variations?: Array<{ id: number }>;
+  variations?: Array<{
+    id: number;
+    seller_custom_field?: string | null;
+    attributes?: Array<{ id: string; value_name?: string | null }>;
+  }>;
 }
 
 export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Promise<Map<string, MlItemBasicInfo>> {

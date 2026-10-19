@@ -204,6 +204,12 @@ export async function listarVendasFinanceiras(
     itemIdsPorLoja.set(loja.lojaId, set);
   }
   const thumbnailPorItem = new Map<string, string | null>();
+  // SKU ATUAL do anúncio (e de cada variação). O pedido guarda o SKU de quando
+  // a venda foi feita; se o SKU estava errado/vazio e foi corrigido depois, o
+  // pedido antigo continuaria "sem custo" pra sempre. Já temos o item na mão
+  // (mesma busca da miniatura), então usamos o SKU atual como segunda chance.
+  const skuAtualPorItem = new Map<string, string>();
+  const skuAtualPorVariacao = new Map<string, string>();
 
   const [fretesPorPedido] = await Promise.all([
     comConcorrenciaLimitada(pedidosValidos, 15, async ({ loja, order }) => {
@@ -218,6 +224,12 @@ export async function listarVendasFinanceiras(
         // aceita https normalmente, só troca o protocolo.
         for (const [itemId, i] of info) {
           thumbnailPorItem.set(itemId, i.thumbnail ? i.thumbnail.replace(/^http:/, "https:") : null);
+          if (i.seller_custom_field) skuAtualPorItem.set(itemId, i.seller_custom_field);
+          for (const v of i.variations ?? []) {
+            const skuVariacao =
+              v.attributes?.find((a) => a.id === "SELLER_SKU")?.value_name ?? v.seller_custom_field ?? null;
+            if (skuVariacao) skuAtualPorVariacao.set(`${itemId}:${v.id}`, skuVariacao);
+          }
         }
       })
     ),
@@ -244,10 +256,22 @@ export async function listarVendasFinanceiras(
         : null;
 
     for (const item of order.order_items) {
-      const sku = item.item.seller_sku ?? null;
-      const custoUnitario =
+      let sku = item.item.seller_sku ?? null;
+      let custoUnitario =
         CUSTO_MANUAL_TEMP_POR_PEDIDO[order.id] ??
         (sku !== null ? custoPorSku.get(normalizarSku(sku)) ?? null : null);
+      if (custoUnitario === null) {
+        // Só entra aqui quando o SKU do pedido não achou custo (vazio, errado ou
+        // fora da planilha) — venda que já tinha custo nunca é alterada.
+        const skuAtual =
+          (item.item.variation_id ? skuAtualPorVariacao.get(`${item.item.id}:${item.item.variation_id}`) : undefined) ??
+          skuAtualPorItem.get(item.item.id);
+        const custoDoSkuAtual = skuAtual ? custoPorSku.get(normalizarSku(skuAtual)) : undefined;
+        if (skuAtual && custoDoSkuAtual !== undefined && custoDoSkuAtual !== null) {
+          sku = skuAtual;
+          custoUnitario = custoDoSkuAtual;
+        }
+      }
       const receitaTotal = item.unit_price * item.quantity;
       const taxaMlTotal = (item.sale_fee ?? 0) * item.quantity;
       const custoTotal = custoUnitario !== null ? custoUnitario * item.quantity : null;
