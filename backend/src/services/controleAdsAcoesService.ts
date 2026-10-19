@@ -68,10 +68,10 @@ function construirContexto(contas: ContaAds[], campanhas: CampanhaRanking[]): st
           )
           .join("\n");
 
-  return `=== SUAS 4 LOJAS — visão geral do período (roas_equilibrio é o ROAS mínimo sustentável da loja) ===\n${linhasContas}\n\n=== CAMPANHAS COM GASTO RELEVANTE NO PERÍODO ===\n${linhasCampanhas}`;
+  return `=== SUAS LOJAS — visão geral do período (roas_equilibrio é o ROAS mínimo sustentável da loja) ===\n${linhasContas}\n\n=== CAMPANHAS COM GASTO RELEVANTE NO PERÍODO ===\n${linhasCampanhas}`;
 }
 
-const PERSONA = `Você é um especialista em tráfego pago (Mercado Ads) montando o plano operacional de Ads do dono — só as 4 lojas pessoais dele (Hangar, Catedral Impermeabilizantes, Inga Collors, Perpétua), nada do resto do grupo. O formato é o de um plano operacional "mão na massa": tabela por campanha, cada linha com uma ação com NÚMERO EXATO, nunca uma recomendação vaga.
+const PERSONA = `Você é um especialista em tráfego pago (Mercado Ads) montando o plano operacional de Ads do usuário — só as lojas que aparecem nos dados abaixo, nada além delas. O formato é o de um plano operacional "mão na massa": tabela por campanha, cada linha com uma ação com NÚMERO EXATO, nunca uma recomendação vaga.
 
 Responda SOMENTE com um JSON válido, sem markdown, sem \`\`\`, sem nenhum texto antes ou depois — só o objeto. Formato exato:
 {
@@ -90,7 +90,7 @@ CRITÉRIO DE CADA TABELA:
 REGRA PRA ESCREVER O CAMPO "acao" (sempre uma instrução curta e quantificada, no padrão abaixo — nunca "revisar" ou "ajustar" sozinho, sempre com o número):
 - Em "cortar": calcule a razão = roas ÷ roasMinimo (quando os dois existirem).
   - Sem venda nenhuma (roas null) → "PAUSAR".
-  - razão ≤ 0,3 → "PAUSAR" (ou "Cortar lance 70%" se o dono parecer estar testando algo novo).
+  - razão ≤ 0,3 → "PAUSAR" (ou "Cortar lance 70%" se o usuário parecer estar testando algo novo).
   - razão entre 0,3 e 0,55 → "Cortar lance 60%" ou "Cortar 50%".
   - razão entre 0,55 e 0,75 → "Cortar 40%" ou "Cortar 45%".
   - razão entre 0,75 e 1,0 → "Cortar 25%" ou "Cortar 30%".
@@ -101,7 +101,7 @@ REGRA PRA ESCREVER O CAMPO "acao" (sempre uma instrução curta e quantificada, 
   - razão acima de 5x com gasto baixo (ROAS gigante, pouco volume) → "Lance +50%; alvo de gasto R$X/semana" (X = algo entre 3x e 6x o gasto atual) — explique que ROAS deve CAIR ao escalar, o que importa é o lucro em reais, não manter o ROAS alto.
 - Em "margem": "Congelar gasto. Revisar preço/custo/frete antes de mexer no lance" quando o prejuízo for grande; "Subir preço 3%-5%. Não escalar até corrigir a margem" quando for pequeno e perto de zero.
 
-O dono pensa em ROAS, não ACOS — nunca cite ACOS. Seja honesto: se uma tabela ficar vazia, devolva array vazio nela, não invente linha.`;
+O usuário pensa em ROAS, não ACOS — nunca cite ACOS. Seja honesto: se uma tabela ficar vazia, devolva array vazio nela, não invente linha.`;
 
 export interface LinhaAcaoCampanha {
   campanha: string;
@@ -193,11 +193,12 @@ function montarGovernanca(contas: ContaAds[]): LinhaGovernancaAds[] {
 }
 
 // `lojaId` opcional restringe o plano a uma loja só (filtro da tela) — sem
-// ele, cruza as 4. Filtra o resultado JÁ CALCULADO do painel (mesmo cache),
+// ele, cruza todas as lojas dele. Filtra o resultado JÁ CALCULADO do painel (mesmo cache),
 // não refaz a busca por loja.
 export async function gerarPlanoDeAcaoControleAds(
   inicio: string,
   fim: string,
+  lojaIds: number[],
   lojaId?: number
 ): Promise<PlanoDeAcaoControleAds> {
   const client = obterClienteAnthropic();
@@ -208,7 +209,7 @@ export async function gerarPlanoDeAcaoControleAds(
   // Reaproveita o cache do próprio painel (ver adsPainelService) — gerar o
   // plano de ação não dispara nenhuma busca nova no Mercado Livre além da
   // que a tela já fez.
-  const painel = await obterPainelAds(inicio, fim);
+  const painel = await obterPainelAds(inicio, fim, lojaIds);
   const contas = lojaId === undefined ? painel.contas : painel.contas.filter((c) => c.lojaId === lojaId);
   const campanhas = lojaId === undefined ? painel.campanhas : painel.campanhas.filter((c) => c.lojaId === lojaId);
   const contexto = construirContexto(contas, campanhas);

@@ -3,11 +3,20 @@ import { listLojas } from "./tokenStore";
 import { listarCampanhasAds, obterGastoAdsHistoricoPorLoja } from "./adsService";
 import { listarVendasFinanceiras } from "./financeiroService";
 import { dataISOBR } from "./dateUtils";
+import { listarUsuarios } from "./usuariosService";
 import { getAdvertiserId, getAnunciosAds, MlAnuncioAds, comRetentativa } from "./mercadoLivreApi";
 
-// As 4 lojas do dono (mesmos ids de agendaService.ts). Este painel é pessoal:
-// mostra só essas, mesmo que existam outras lojas ML cadastradas.
+// As 4 lojas do dono (mesmos ids de agendaService.ts). Cada usuário vê só as
+// lojas vinculadas a ele; quem não tem vínculo próprio mas é admin (ou tem
+// "todas as lojas") cai neste conjunto, em vez de abrir as 16+ lojas do grupo.
 export const LOJAS_DO_DONO = [1, 2, 3, 4];
+
+// Lojas que este usuário enxerga no painel de Ads (ids ordenados).
+export function lojasDoPainel(usuario: { admin: boolean; todasLojas: boolean; lojas: number[] }): number[] {
+  const proprias = usuario.lojas;
+  if (proprias.length > 0) return [...proprias].sort((a, b) => a - b);
+  return usuario.admin || usuario.todasLojas ? [...LOJAS_DO_DONO] : [];
+}
 
 // Classificação pela MARGEM PÓS ADS: (margem de contribuição − gasto com Ads)
 // ÷ faturamento. Padrão quando a loja não tem meta própria: motor a partir de
@@ -151,7 +160,6 @@ export async function listarMetas(): Promise<Map<number, MetaLoja>> {
 }
 
 export async function salvarMeta(lojaId: number, motorMinimo: number, atencaoMinimo: number): Promise<void> {
-  if (!LOJAS_DO_DONO.includes(lojaId)) throw new Error("Esta loja não faz parte do painel.");
   if (!(motorMinimo > atencaoMinimo && motorMinimo <= 100 && atencaoMinimo >= -100)) {
     throw new Error("A margem mínima de motor precisa ser maior que a de atenção (que pode ser negativa), e no máximo 100%.");
   }
@@ -338,9 +346,9 @@ async function calcularPeriodo(
   return { contas, campanhas };
 }
 
-async function montarPainelAds(inicio: string, fim: string, forcar: boolean): Promise<PainelAds> {
+async function montarPainelAds(inicio: string, fim: string, lojaIds: number[], forcar: boolean): Promise<PainelAds> {
   const lojas: LojaPainel[] = (await listLojas())
-    .filter((l) => l.ml_user_id !== null && LOJAS_DO_DONO.includes(l.id))
+    .filter((l) => l.ml_user_id !== null && lojaIds.includes(l.id))
     .map((l) => ({ id: l.id, nome: l.nome }));
   const metas = await listarMetas();
 
@@ -392,19 +400,29 @@ async function montarPainelAds(inicio: string, fim: string, forcar: boolean): Pr
 const CACHE_PAINEL_MS = 4 * 60 * 1000;
 const cachePainel = new Map<string, { data: PainelAds; expiraEm: number }>();
 
-export async function obterPainelAds(inicio: string, fim: string, forcar = false): Promise<PainelAds> {
-  const chave = `${inicio}|${fim}`;
+export async function obterPainelAds(
+  inicio: string,
+  fim: string,
+  lojaIds: number[],
+  forcar = false
+): Promise<PainelAds> {
+  if (lojaIds.length === 0) {
+    const anteriorInicio = addDias(inicio, -diasEntre(inicio, fim).length);
+    return { inicio, fim, anterior: { inicio: anteriorInicio, fim: addDias(inicio, -1) }, contas: [], campanhas: [] };
+  }
+  const chave = `${inicio}|${fim}|${[...lojaIds].sort((a, b) => a - b).join(",")}`;
   if (!forcar) {
     const emCache = cachePainel.get(chave);
     if (emCache && emCache.expiraEm > Date.now()) return emCache.data;
   }
-  const resultado = await montarPainelAds(inicio, fim, forcar);
+  const resultado = await montarPainelAds(inicio, fim, lojaIds, forcar);
   cachePainel.set(chave, { data: resultado, expiraEm: Date.now() + CACHE_PAINEL_MS });
   return resultado;
 }
 
 // Pré-aquece o painel de "hoje" (o período padrão que a tela abre) em
-// segundo plano, desde a inicialização do servidor — mesmo espírito do
+// segundo plano — pro conjunto padrão do dono e pra cada subconjunto único de
+// lojas dos usuários com acesso ao módulo — desde a inicialização do servidor — mesmo espírito do
 // pré-aquecimento do diagnóstico de promoções (ver promoPrewarm.ts): assim,
 // a carga pesada quase nunca acontece dentro do request de um usuário de
 // verdade, e sim num timer que não tem prazo de resposta pra estourar.
@@ -412,7 +430,16 @@ export function iniciarPrewarmControleAds(): void {
   async function aquecer() {
     const hoje = dataISOBR(new Date());
     try {
-      await obterPainelAds(hoje, hoje, false);
+      const conjuntos = new Map<string, number[]>();
+      conjuntos.set(LOJAS_DO_DONO.join(","), LOJAS_DO_DONO);
+      for (const u of await listarUsuarios()) {
+        if (!u.admin && !u.permissoes.includes("controle_ads")) continue;
+        const lojasU = lojasDoPainel(u);
+        if (lojasU.length > 0) conjuntos.set(lojasU.join(","), lojasU);
+      }
+      for (const lojasU of conjuntos.values()) {
+        await obterPainelAds(hoje, hoje, lojasU, false);
+      }
     } catch (err) {
       console.error("Falha ao pré-aquecer o Controle de Ads:", err);
     }

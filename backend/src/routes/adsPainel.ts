@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { obterPainelAds, salvarMeta, MARGEM_MOTOR_PADRAO, MARGEM_ATENCAO_PADRAO, LOJAS_DO_DONO } from "../services/adsPainelService";
+import { obterPainelAds, salvarMeta, MARGEM_MOTOR_PADRAO, MARGEM_ATENCAO_PADRAO, lojasDoPainel } from "../services/adsPainelService";
 import { gerarPlanoDeAcaoControleAds } from "../services/controleAdsAcoesService";
 
 export const adsPainelRouter = Router();
@@ -22,7 +22,7 @@ adsPainelRouter.get("/", async (req, res) => {
   try {
     res.json({
       metaPadrao: { motorMinimo: MARGEM_MOTOR_PADRAO, atencaoMinimo: MARGEM_ATENCAO_PADRAO },
-      ...(await obterPainelAds(inicio, fim, req.query.atualizar === "1")),
+      ...(await obterPainelAds(inicio, fim, lojasDoPainel(req.usuario!), req.query.atualizar === "1")),
     });
   } catch (err) {
     console.error("Falha ao montar o controle de Ads:", err);
@@ -40,13 +40,13 @@ adsPainelRouter.post("/plano-de-acao", async (req, res) => {
     return;
   }
   const lojaIdBruto = req.body?.lojaId;
-  if (lojaIdBruto !== undefined && (!Number.isInteger(lojaIdBruto) || !LOJAS_DO_DONO.includes(lojaIdBruto))) {
+  if (lojaIdBruto !== undefined && (!Number.isInteger(lojaIdBruto) || !lojasDoPainel(req.usuario!).includes(lojaIdBruto))) {
     res.status(400).json({ error: "Loja fora do painel." });
     return;
   }
   const lojaId: number | undefined = lojaIdBruto === undefined ? undefined : lojaIdBruto;
   try {
-    res.json(await gerarPlanoDeAcaoControleAds(inicio, fim, lojaId));
+    res.json(await gerarPlanoDeAcaoControleAds(inicio, fim, lojasDoPainel(req.usuario!), lojaId));
   } catch (err) {
     console.error("Falha ao gerar o plano de ação do Controle de Ads:", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao gerar o plano de ação." });
@@ -57,7 +57,7 @@ adsPainelRouter.put("/metas/:lojaId", async (req, res) => {
   const lojaId = Number(req.params.lojaId);
   const motorMinimo = Number(req.body?.motorMinimo);
   const atencaoMinimo = Number(req.body?.atencaoMinimo);
-  if (!Number.isInteger(lojaId) || !LOJAS_DO_DONO.includes(lojaId)) {
+  if (!Number.isInteger(lojaId) || !lojasDoPainel(req.usuario!).includes(lojaId)) {
     res.status(400).json({ error: "Loja fora do painel." });
     return;
   }

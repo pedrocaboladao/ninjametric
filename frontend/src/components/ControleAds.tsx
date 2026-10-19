@@ -319,7 +319,7 @@ function PlanoDeAcao({
           <div className="pbi-card-titulo">Plano de ação</div>
           <div className="pbi-muted">
             Plano operacional por campanha, com ação quantificada — gerado por IA, sob demanda.{" "}
-            {lojaNome ? `Só da ${lojaNome}.` : "Das suas 4 lojas."}
+            {lojaNome ? `Só da ${lojaNome}.` : "Das suas lojas."}
           </div>
         </div>
         <button type="button" className="pbi-botao" onClick={gerar} disabled={gerando}>
