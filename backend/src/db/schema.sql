@@ -2137,6 +2137,23 @@ CREATE TABLE IF NOT EXISTS controle_ads_metas (
   atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Plano de ação por IA do Controle de Ads (custo real de Opus por chamada).
+-- Cada linha é uma geração: serve pra limitar a 1 por semana por usuário
+-- (semana de segunda a domingo, dia no fuso de Maringá) e guarda o plano pra
+-- ele rever depois sem gastar de novo. plano fica NULL enquanto a IA ainda
+-- está gerando (reserva a vaga) e a linha some se a geração falhar.
+CREATE TABLE IF NOT EXISTS controle_ads_planos (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  dia DATE NOT NULL,
+  periodo_inicio DATE NOT NULL,
+  periodo_fim DATE NOT NULL,
+  loja_id INTEGER,
+  plano JSONB,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_controle_ads_planos_usuario_dia ON controle_ads_planos (usuario_id, dia);
+
 -- Histórico da sincronização automática de vendas (6h de Maringá).
 --
 -- Antes o resultado vivia só em memória: todo deploy zerava, e a tela voltava a

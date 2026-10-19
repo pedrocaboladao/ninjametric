@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { obterPainelAds, salvarMeta, MARGEM_MOTOR_PADRAO, MARGEM_ATENCAO_PADRAO, lojasDoPainel } from "../services/adsPainelService";
 import { gerarPlanoDeAcaoControleAds } from "../services/controleAdsAcoesService";
+import {
+  obterStatusPlano,
+  reservarPlano,
+  concluirReserva,
+  cancelarReserva,
+} from "../services/controleAdsLimiteService";
 
 export const adsPainelRouter = Router();
 
@@ -32,6 +38,15 @@ adsPainelRouter.get("/", async (req, res) => {
 
 // Plano de ação por IA, sob demanda (botão na tela) — nunca automático nem
 // no auto-refresh, porque cada chamada tem custo real (Opus + thinking).
+adsPainelRouter.get("/plano-de-acao/status", async (req, res) => {
+  try {
+    res.json(await obterStatusPlano(req.usuario!));
+  } catch (err) {
+    console.error("Falha ao consultar o limite do plano de ação:", err);
+    res.status(500).json({ error: "Falha ao consultar o limite do plano de ação." });
+  }
+});
+
 adsPainelRouter.post("/plano-de-acao", async (req, res) => {
   const inicio = typeof req.body?.inicio === "string" ? req.body.inicio : "";
   const fim = typeof req.body?.fim === "string" ? req.body.fim : "";
@@ -45,9 +60,19 @@ adsPainelRouter.post("/plano-de-acao", async (req, res) => {
     return;
   }
   const lojaId: number | undefined = lojaIdBruto === undefined ? undefined : lojaIdBruto;
+  let reservaId: number | null = null;
   try {
-    res.json(await gerarPlanoDeAcaoControleAds(inicio, fim, lojasDoPainel(req.usuario!), lojaId));
+    const reserva = await reservarPlano(req.usuario!, inicio, fim, lojaId);
+    if (!reserva.liberado) {
+      res.status(429).json({ error: "Você já gerou o plano de ação desta semana. Libera de novo na segunda-feira." });
+      return;
+    }
+    reservaId = reserva.id;
+    const plano = await gerarPlanoDeAcaoControleAds(inicio, fim, lojasDoPainel(req.usuario!), lojaId);
+    await concluirReserva(reservaId, plano);
+    res.json(plano);
   } catch (err) {
+    await cancelarReserva(reservaId);
     console.error("Falha ao gerar o plano de ação do Controle de Ads:", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao gerar o plano de ação." });
   }

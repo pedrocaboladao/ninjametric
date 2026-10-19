@@ -77,6 +77,13 @@ export interface PlanoDeAcaoControleAds {
   governanca: LinhaGovernancaAds[];
 }
 
+export interface StatusPlanoControleAds {
+  ilimitado: boolean;
+  usado: boolean;
+  liberaEm: string | null;
+  ultimo: { plano: PlanoDeAcaoControleAds; inicio: string; fim: string; lojaId: number | null; geradoEm: string } | null;
+}
+
 export interface PainelControleAds {
   inicio: string;
   fim: string;

@@ -1,4 +1,4 @@
-import type { MetaControleAds, PainelControleAds, PlanoDeAcaoControleAds } from "../types/controleAds";
+import type { MetaControleAds, PainelControleAds, PlanoDeAcaoControleAds, StatusPlanoControleAds } from "../types/controleAds";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -15,6 +15,11 @@ export async function fetchPainelControleAds(inicio: string, fim: string, atuali
   if (atualizar) params.set("atualizar", "1");
   const res = await fetch(`${API_BASE}/api/controle-ads?${params}`, { credentials: "include" });
   return tratarResposta<PainelControleAds>(res);
+}
+
+export async function fetchStatusPlanoControleAds(): Promise<StatusPlanoControleAds> {
+  const res = await fetch(`${API_BASE}/api/controle-ads/plano-de-acao/status`, { credentials: "include" });
+  return tratarResposta<StatusPlanoControleAds>(res);
 }
 
 export async function gerarPlanoDeAcaoControleAds(
