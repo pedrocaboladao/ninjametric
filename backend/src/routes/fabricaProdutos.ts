@@ -5,6 +5,7 @@ import {
   obterProduto,
   criarProduto,
   sincronizarCatalogoOuro,
+  recadastrarCatalogoOuro,
   lerPlanilhaOuro,
   atualizarProduto,
   excluirProduto,
@@ -300,6 +301,24 @@ fabricaProdutosRouter.post("/sincronizar-ouro", uploadOuro.single("arquivo"), as
     res.json(await sincronizarCatalogoOuro(linhas, simulacao));
   } catch (err) {
     erro(res, err, "Falha ao sincronizar com a planilha ouro.");
+  }
+});
+
+// Cadastro novo, não remendo: cada SKU da planilha entra como registro novo.
+// Em simulação a transação é desfeita no fim, então os números são os de
+// verdade e nada fica gravado.
+fabricaProdutosRouter.post("/recadastrar-ouro", uploadOuro.single("arquivo"), async (req, res) => {
+  const arquivo = (req as Request & { file?: { buffer: Buffer } }).file;
+  if (!arquivo) return res.status(400).json({ error: "Mande a planilha no campo 'arquivo'." });
+  const simulacao = String(req.body?.simular ?? "") !== "false";
+  try {
+    const linhas = await lerPlanilhaOuro(arquivo.buffer);
+    if (!linhas.length) {
+      return res.status(400).json({ error: "Nao achei nenhuma linha de produto na planilha." });
+    }
+    res.json(await recadastrarCatalogoOuro(linhas, simulacao));
+  } catch (err) {
+    erro(res, err, "Falha ao recadastrar pela planilha ouro.");
   }
 });
 
