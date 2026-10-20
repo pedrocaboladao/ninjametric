@@ -1759,9 +1759,13 @@ async function acertarNomeECusto(
     // relação ao produto de origem e responde 273, "Produto inválido para o
     // fornecedor", quando se tenta apontar ela pra outro. E criar exige um
     // contato de verdade — contato 0 é recusado com `idContato` obrigatório.
-    const corpoRel = {
+    //
+    // E os dois lados querem o contato com NOME DIFERENTE: criar aceita
+    // `fornecedor: { id }` e recusa `contato: { id }` dizendo que falta
+    // `idContato`; atualizar e o contrario. Descoberto testando os dois no
+    // CAMADEFRANGO-20KG.
+    const base = {
       produto: { id: produtoId },
-      contato: { id: fornecedorId },
       codigo: "",
       precoCusto: item.cmv,
       precoCompra: 0,
@@ -1772,9 +1776,15 @@ async function acertarNomeECusto(
         (antes.data.fornecedor as { id?: unknown } | undefined)?.id ?? 0
       );
       if (jaTem > 0) {
-        await chamar("put", `/produtos/fornecedores/${jaTem}`, undefined, corpoRel);
+        await chamar("put", `/produtos/fornecedores/${jaTem}`, undefined, {
+          ...base,
+          contato: { id: fornecedorId },
+        });
       } else {
-        await chamar("post", "/produtos/fornecedores", undefined, corpoRel);
+        await chamar("post", "/produtos/fornecedores", undefined, {
+          ...base,
+          fornecedor: { id: fornecedorId },
+        });
       }
     }
     const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${produtoId}`);
