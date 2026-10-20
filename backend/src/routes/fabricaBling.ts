@@ -1045,9 +1045,10 @@ fabricaBlingRouter.post("/produtos/nome", async (req, res) => {
   const b = req.body ?? {};
   const pares = Array.isArray(b.pares)
     ? b.pares
-        .map((p: { sku?: unknown; nome?: unknown }) => ({
+        .map((p: { sku?: unknown; nome?: unknown; custo?: unknown }) => ({
           sku: String(p.sku ?? "").trim(),
           nome: String(p.nome ?? "").trim(),
+          ...(Number.isFinite(Number(p.custo)) ? { custo: Number(p.custo) } : {}),
         }))
         .filter((p: { sku: string; nome: string }) => p.sku && p.nome)
     : [];
