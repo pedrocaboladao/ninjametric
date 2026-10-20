@@ -1922,8 +1922,19 @@ export async function recadastrarNoBling(
               variacao: { nome: `${bloco.pai}:${rotuloDaVariacao(bloco.pai, item.sku)}`, ordem: ordem + 1 },
             })),
           });
+          // A resposta do POST nao traz as filhas com id. O pai traz: uma
+          // leitura a mais por bloco, e os ids vem completos.
           for (const v of r.data?.variacoes ?? []) {
             if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
+          }
+          if (idPorSku.size < bloco.itens.length && r.data?.id) {
+            const pai = await chamar<{ data?: { variacoes?: Array<{ id?: number; codigo?: string }> } }>(
+              "get",
+              `/produtos/${r.data.id}`
+            );
+            for (const v of pai.data?.variacoes ?? []) {
+              if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
+            }
           }
         }
       }
