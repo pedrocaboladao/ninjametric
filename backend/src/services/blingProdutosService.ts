@@ -564,12 +564,26 @@ export async function definirSituacaoProdutos(
         // Em 09/10/2026 isso zerou o custo de 106 produtos de uma vez: um ciclo
         // de inativar e reativar 121 cores apagou a relacao de todas. O mesmo
         // defeito que gravarPreco e padronizarCodigos ja tinham tido.
+        // Pai de variacao vazio nao se deixa gravar como "V": o Bling recusa
+        // com "Obrigatorio informar as variacoes do produto" (code 93), porque
+        // formato V exige a lista junto e esse produto nao tem nenhuma.
+        //
+        // Em 20/10/2026 isso barrou 101 de 4.967 na inativacao em massa. Sao
+        // cascas: as cores que pareciam filhas (BRILHACOR-16L-MARROM e cia)
+        // estao como produto simples, sem pai. Entao o pai vazio desce pra "S"
+        // e grava. So quando a lista vem vazia — pai com variacao de verdade
+        // continua V, que mexer nisso desligaria as filhas.
+        const variacoes = inteiro.data.variacoes;
+        const paiVazio =
+          String(inteiro.data.formato ?? "").toUpperCase() === "V" &&
+          Array.isArray(variacoes) &&
+          variacoes.length === 0;
         await chamar("put", `/produtos/${achado.id}`, undefined, {
           nome: inteiro.data.nome,
           codigo: inteiro.data.codigo,
           preco: inteiro.data.preco,
           tipo: inteiro.data.tipo,
-          formato: inteiro.data.formato,
+          formato: paiVazio ? "S" : inteiro.data.formato,
           situacao,
         });
         // Rele: o 200 do Bling nunca provou que gravou, e aqui ainda interessa
