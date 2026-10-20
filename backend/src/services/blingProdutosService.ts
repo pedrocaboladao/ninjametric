@@ -1313,13 +1313,13 @@ export interface LinhaNome {
 // grafia velha, "GESSOEMPO/2UN-2KG". Nome torto nao quebra o casamento de
 // venda — mas e o que sai impresso na nota fiscal.
 export async function gravarNome(
-  pares: Array<{ sku: string; nome: string }>,
+  pares: Array<{ sku: string; nome: string; custo?: number }>,
   simulacao: boolean,
   aoAndar?: (feitos: number, total: number) => void
 ): Promise<{ simulacao: boolean; linhas: LinhaNome[] }> {
   const linhas: LinhaNome[] = [];
   for (let i = 0; i < pares.length; i++) {
-    const { sku, nome } = pares[i];
+    const { sku, nome, custo } = pares[i];
     try {
       const achado = await acharPorCodigo(sku);
       if (!achado) {
@@ -1328,7 +1328,10 @@ export async function gravarNome(
       }
       const inteiro = await chamar<{ data: ProdutoBling }>("get", `/produtos/${achado.id}`);
       const antes = String(inteiro.data.nome ?? "");
-      if (antes.trim() === nome.trim()) {
+      const custoAntes = custoDoProduto(inteiro.data as Record<string, unknown>);
+      const custoJaBate =
+        custo === undefined || (custoAntes !== null && Math.abs(custoAntes - custo) < 0.005);
+      if (antes.trim() === nome.trim() && custoJaBate) {
         linhas.push({ sku, nome, situacao: "já era esse", produtoId: achado.id, antes });
         continue;
       }
@@ -1336,6 +1339,12 @@ export async function gravarNome(
         // Corpo MINIMO — ver o comentario em gravarPreco: devolver
         // `...inteiro.data` leva o bloco `fornecedor` junto e o Bling derruba a
         // relacao que guarda o custo.
+        // O custo entra aqui junto, quando pedido. A relacao de fornecedor
+        // nao pode ser CRIADA pela API (ela exige `idContato`, e o produto
+        // novo nasce sem nenhum), mas o PUT do produto escreve o bloco
+        // `fornecedor` — e foi exatamente assim que 106 produtos perderam o
+        // custo em 09/10, mandando o bloco vazio. O mesmo caminho, de
+        // proposito e com valor, devolve o custo.
         await chamar("put", `/produtos/${achado.id}`, undefined, {
           nome,
           codigo: inteiro.data.codigo,
@@ -1343,6 +1352,7 @@ export async function gravarNome(
           tipo: inteiro.data.tipo,
           situacao: inteiro.data.situacao,
           formato: inteiro.data.formato,
+          ...(custo === undefined ? {} : { fornecedor: { precoCusto: custo } }),
         });
       }
       // Rele: o 200 do Bling nunca provou que gravou.
