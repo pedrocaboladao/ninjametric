@@ -1705,14 +1705,38 @@ async function liberarCodigo(p: ProdutoBling): Promise<number | null> {
   } catch {
     // produto sem relação, ou leitura recusada: segue sem herdar nada
   }
-  await chamar("put", `/produtos/${p.id}`, undefined, {
+  const corpo: Record<string, unknown> = {
     nome: p.nome,
     codigo: `${p.codigo}#ANTIGO`,
     preco: p.preco ?? 0,
     tipo: p.tipo ?? "P",
     formato: p.formato ?? "S",
     situacao: "I",
-  });
+  };
+  try {
+    await chamar("put", `/produtos/${p.id}`, undefined, corpo);
+  } catch (err) {
+    // Codigo 93, "Obrigatorio informar as variacoes do produto": pai de
+    // variacao nao aceita PUT de corpo minimo. Relê as filhas e manda elas
+    // junto — sem o bloco `fornecedor`, que e o que derruba o custo.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!/\"code\":\s*93|Obrigat.rio informar as varia/i.test(msg)) throw err;
+    const inteiro = await chamar<{ data: { variacoes?: Array<Record<string, unknown>> } }>(
+      "get",
+      `/produtos/${p.id}`
+    );
+    const filhas = (inteiro.data.variacoes ?? []).map((v) => ({
+      id: v.id,
+      nome: v.nome,
+      codigo: v.codigo,
+      preco: v.preco,
+      tipo: v.tipo ?? "P",
+      situacao: v.situacao ?? "I",
+      formato: "S",
+      variacao: v.variacao,
+    }));
+    await chamar("put", `/produtos/${p.id}`, undefined, { ...corpo, variacoes: filhas });
+  }
   return relId;
 }
 
