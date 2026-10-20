@@ -1047,7 +1047,13 @@ export async function criarCustoPelaRelacao(
   // melhor — nao inventa vinculo comercial que nao existe.
   const formatos: Array<{ nome: string; corpo: Record<string, unknown> }> = [];
   const base = { produto: { id: achado.id }, precoCusto: custo, precoCompra: 0, padrao: true };
+  // `contato`, nao `fornecedor`. O PUT que atualiza a relacao sempre mandou
+  // `contato: { id }` e funciona; a criacao mandava `fornecedor: { id }` e o
+  // Bling respondia que faltava `idContato` — era o nome do campo. E o id 0
+  // vale: os produtos antigos tem exatamente isso, contato "Nao definido".
+  formatos.push({ nome: "contato zero", corpo: { ...base, contato: { id: 0 } } });
   if (contatoId && contatoId > 0) {
+    formatos.push({ nome: "contato real", corpo: { ...base, contato: { id: contatoId } } });
     formatos.push({ nome: "com contato", corpo: { ...base, fornecedor: { id: contatoId } } });
   }
   formatos.push({ nome: "sem fornecedor", corpo: { ...base } });
