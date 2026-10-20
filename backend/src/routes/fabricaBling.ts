@@ -1557,6 +1557,10 @@ fabricaBlingRouter.post(
     const arquivo = (req as Request & { file?: { buffer: Buffer } }).file;
     if (!arquivo) return res.status(400).json({ error: "Mande a planilha no campo 'arquivo'." });
     const simulacao = String(req.body?.simular ?? "") !== "false";
+    // O custo so cabe numa relacao produto<->fornecedor, e criar uma exige um
+    // contato de verdade. O Hudson escolheu o REVCOLLOR pra todos: "depois eu
+    // ajusto".
+    const fornecedorId = Number(req.body?.fornecedor ?? 0) || 0;
     const abas = String(req.body?.abas ?? "")
       .split(",")
       .map((x) => x.trim().toUpperCase())
@@ -1570,7 +1574,7 @@ fabricaBlingRouter.post(
       recadBling = job;
       void (async () => {
         try {
-          const r = await recadastrarNoBling(blocos, simulacao, (f, t) => {
+          const r = await recadastrarNoBling(blocos, simulacao, fornecedorId, (f, t) => {
             job.feitos = f;
             job.total = t;
           });

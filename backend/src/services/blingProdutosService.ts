@@ -1722,7 +1722,8 @@ async function liberarCodigo(p: ProdutoBling): Promise<number | null> {
 async function acertarNomeECusto(
   produtoId: number,
   item: ItemOuroBling,
-  relId: number | null
+  relId: number | null,
+  fornecedorId: number
 ): Promise<{ nomeOk: boolean; custoOk: boolean; erro?: string }> {
   let nomeOk = false;
   let custoOk = false;
@@ -1736,15 +1737,21 @@ async function acertarNomeECusto(
       situacao: "A",
       formato: antes.data.formato ?? "S",
     });
+    // A relação herdada do produto antigo é reapontada; quem não tem nenhuma
+    // ganha uma nova no fornecedor pedido. Criar exige um contato de verdade
+    // — contato 0 é recusado —, e é por isso que o fornecedor entra aqui.
+    const corpoRel = {
+      produto: { id: produtoId },
+      contato: { id: fornecedorId },
+      codigo: "",
+      precoCusto: item.cmv,
+      precoCompra: 0,
+      padrao: true,
+    };
     if (relId) {
-      await chamar("put", `/produtos/fornecedores/${relId}`, undefined, {
-        produto: { id: produtoId },
-        contato: { id: 0 },
-        codigo: "",
-        precoCusto: item.cmv,
-        precoCompra: 0,
-        padrao: true,
-      });
+      await chamar("put", `/produtos/fornecedores/${relId}`, undefined, corpoRel);
+    } else if (fornecedorId > 0) {
+      await chamar("post", "/produtos/fornecedores", undefined, corpoRel);
     }
     const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${produtoId}`);
     nomeOk = String(depois.data.nome ?? "").trim() === (item.nome || item.sku).trim();
@@ -1772,6 +1779,7 @@ function rotuloDaVariacao(pai: string, sku: string): string {
 export async function recadastrarNoBling(
   blocos: BlocoOuroBling[],
   simulacao: boolean,
+  fornecedorId: number,
   aoAndar?: (feitos: number, total: number) => void
 ): Promise<ResultadoRecadastroBling> {
   // O índice de uma vez só, em vez de `acharPorCodigo` por item.
@@ -1904,7 +1912,8 @@ export async function recadastrarNoBling(
           const r = await acertarNomeECusto(
             id,
             item,
-            relacaoHerdada.get(normalizarSku(item.sku)) ?? null
+            relacaoHerdada.get(normalizarSku(item.sku)) ?? null,
+            fornecedorId
           );
           if (r.nomeOk) linha.nomeGravado += 1;
           if (r.custoOk) linha.custoGravado += 1;
