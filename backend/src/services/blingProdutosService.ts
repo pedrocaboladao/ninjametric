@@ -1698,16 +1698,7 @@ async function garantirCategorias(
 // antigos têm uma, com contato "Não definido", herdada de importação pela
 // tela. Essa relação pode ser REAPONTADA pro produto novo, e aí aceita o
 // contato 0 sem reclamar.
-async function liberarCodigo(p: ProdutoBling, novoCodigo: string): Promise<number | null> {
-  let relId: number | null = null;
-  try {
-    const inteiro = await chamar<{ data: Record<string, unknown> }>("get", `/produtos/${p.id}`);
-    const forn = inteiro.data.fornecedor as { id?: unknown } | undefined;
-    const n = Number(forn?.id ?? 0);
-    if (Number.isFinite(n) && n > 0) relId = n;
-  } catch {
-    // produto sem relação, ou leitura recusada: segue sem herdar nada
-  }
+async function liberarCodigo(p: ProdutoBling, novoCodigo: string): Promise<void> {
   const corpo: Record<string, unknown> = {
     nome: p.nome,
     codigo: novoCodigo,
@@ -1740,7 +1731,6 @@ async function liberarCodigo(p: ProdutoBling, novoCodigo: string): Promise<numbe
     }));
     await chamar("put", `/produtos/${p.id}`, undefined, { ...corpo, variacoes: filhas });
   }
-  return relId;
 }
 
 // Grava nome e custo no produto recém-nascido. São duas coisas que o cadastro
@@ -1749,7 +1739,6 @@ async function liberarCodigo(p: ProdutoBling, novoCodigo: string): Promise<numbe
 async function acertarNomeECusto(
   produtoId: number,
   item: ItemOuroBling,
-  relId: number | null,
   fornecedorId: number
 ): Promise<{ nomeOk: boolean; custoOk: boolean; erro?: string }> {
   let nomeOk = false;
@@ -1764,9 +1753,12 @@ async function acertarNomeECusto(
       situacao: "A",
       formato: antes.data.formato ?? "S",
     });
-    // A relação herdada do produto antigo é reapontada; quem não tem nenhuma
-    // ganha uma nova no fornecedor pedido. Criar exige um contato de verdade
-    // — contato 0 é recusado —, e é por isso que o fornecedor entra aqui.
+    // A relação de custo é sempre NOVA, no fornecedor pedido.
+    //
+    // Reaproveitar a relação do produto antigo não funciona: o Bling amarra a
+    // relação ao produto de origem e responde 273, "Produto inválido para o
+    // fornecedor", quando se tenta apontar ela pra outro. E criar exige um
+    // contato de verdade — contato 0 é recusado com `idContato` obrigatório.
     const corpoRel = {
       produto: { id: produtoId },
       contato: { id: fornecedorId },
@@ -1775,10 +1767,15 @@ async function acertarNomeECusto(
       precoCompra: 0,
       padrao: true,
     };
-    if (relId) {
-      await chamar("put", `/produtos/fornecedores/${relId}`, undefined, corpoRel);
-    } else if (fornecedorId > 0) {
-      await chamar("post", "/produtos/fornecedores", undefined, corpoRel);
+    if (fornecedorId > 0) {
+      const jaTem = Number(
+        (antes.data.fornecedor as { id?: unknown } | undefined)?.id ?? 0
+      );
+      if (jaTem > 0) {
+        await chamar("put", `/produtos/fornecedores/${jaTem}`, undefined, corpoRel);
+      } else {
+        await chamar("post", "/produtos/fornecedores", undefined, corpoRel);
+      }
     }
     const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${produtoId}`);
     nomeOk = String(depois.data.nome ?? "").trim() === (item.nome || item.sku).trim();
@@ -1878,7 +1875,6 @@ export async function recadastrarNoBling(
         : paiHerdado
           ? bloco.itens.map((x) => x.sku)
           : [bloco.pai, ...bloco.itens.map((x) => x.sku)];
-      const relacaoHerdada = new Map<string, number>();
       for (const codigo of ocupantes) {
         const existe = porCodigo.get(chaveCodigo(codigo));
         if (!existe) continue;
@@ -1889,8 +1885,7 @@ export async function recadastrarNoBling(
           let novo = `${existe.codigo}${SUFIXO_ANTIGO}`;
           let n = 2;
           while (porCodigo.has(chaveCodigo(novo))) novo = `${existe.codigo}${SUFIXO_ANTIGO}${n++}`;
-          const rel = await liberarCodigo(existe, novo);
-          if (rel) relacaoHerdada.set(chaveCodigo(codigo), rel);
+          await liberarCodigo(existe, novo);
           porCodigo.delete(chaveCodigo(codigo));
           porCodigo.set(chaveCodigo(novo), { ...existe, codigo: novo });
         }
@@ -2024,12 +2019,7 @@ export async function recadastrarNoBling(
             if (linha.errosItens.length < 5) linha.errosItens.push(`${item.sku}: nao peguei o id`);
             continue;
           }
-          const r = await acertarNomeECusto(
-            id,
-            item,
-            relacaoHerdada.get(chaveCodigo(item.sku)) ?? null,
-            fornecedorId
-          );
+          const r = await acertarNomeECusto(id, item, fornecedorId);
           if (r.nomeOk) linha.nomeGravado += 1;
           if (r.custoOk) linha.custoGravado += 1;
           else linha.semCusto.push(item.sku);
