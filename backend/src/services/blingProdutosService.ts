@@ -1617,6 +1617,8 @@ export interface LinhaRecadastroBling {
   renomeados: number;
   criados: number;
   custoGravado: number;
+  nomeGravado: number;
+  semCusto: string[];
   erro?: string;
 }
 
@@ -1629,6 +1631,9 @@ export interface ResultadoRecadastroBling {
   renomeados: number;
   criados: number;
   custoGravado: number;
+  nomeGravado: number;
+  semCusto: string[];
+  semCustoTotal: number;
   comErro: number;
   aviso: string | null;
   linhas: LinhaRecadastroBling[];
@@ -1684,7 +1689,22 @@ async function garantirCategorias(
 // o corpo vai mínimo de propósito — PUT com o produto inteiro reenvia o
 // fornecedor e zera o custo (foi assim que 106 produtos perderam o custo
 // em 09/10).
-async function liberarCodigo(p: ProdutoBling): Promise<void> {
+// Devolve o id da relação de fornecedor do produto antigo, que é o único
+// lugar onde o custo cabe. A API não cria essa relação: pedir POST sem
+// `idContato` é recusado, e `contato: { id: 0 }` também — mas os produtos
+// antigos têm uma, com contato "Não definido", herdada de importação pela
+// tela. Essa relação pode ser REAPONTADA pro produto novo, e aí aceita o
+// contato 0 sem reclamar.
+async function liberarCodigo(p: ProdutoBling): Promise<number | null> {
+  let relId: number | null = null;
+  try {
+    const inteiro = await chamar<{ data: Record<string, unknown> }>("get", `/produtos/${p.id}`);
+    const forn = inteiro.data.fornecedor as { id?: unknown } | undefined;
+    const n = Number(forn?.id ?? 0);
+    if (Number.isFinite(n) && n > 0) relId = n;
+  } catch {
+    // produto sem relação, ou leitura recusada: segue sem herdar nada
+  }
   await chamar("put", `/produtos/${p.id}`, undefined, {
     nome: p.nome,
     codigo: `${p.codigo}#ANTIGO`,
@@ -1693,6 +1713,47 @@ async function liberarCodigo(p: ProdutoBling): Promise<void> {
     formato: p.formato ?? "S",
     situacao: "I",
   });
+  return relId;
+}
+
+// Grava nome e custo no produto recém-nascido. São duas coisas que o cadastro
+// não consegue deixar prontas: o Bling reescreve o nome da variação como
+// "<pai> <rótulo>", e ignora o `precoCusto` do POST.
+async function acertarNomeECusto(
+  produtoId: number,
+  item: ItemOuroBling,
+  relId: number | null
+): Promise<{ nomeOk: boolean; custoOk: boolean; erro?: string }> {
+  let nomeOk = false;
+  let custoOk = false;
+  try {
+    const antes = await chamar<{ data: ProdutoBling }>("get", `/produtos/${produtoId}`);
+    await chamar("put", `/produtos/${produtoId}`, undefined, {
+      nome: item.nome || item.sku,
+      codigo: item.sku,
+      preco: item.rev,
+      tipo: antes.data.tipo ?? "P",
+      situacao: "A",
+      formato: antes.data.formato ?? "S",
+    });
+    if (relId) {
+      await chamar("put", `/produtos/fornecedores/${relId}`, undefined, {
+        produto: { id: produtoId },
+        contato: { id: 0 },
+        codigo: "",
+        precoCusto: item.cmv,
+        precoCompra: 0,
+        padrao: true,
+      });
+    }
+    const depois = await chamar<{ data: ProdutoBling }>("get", `/produtos/${produtoId}`);
+    nomeOk = String(depois.data.nome ?? "").trim() === (item.nome || item.sku).trim();
+    const c = custoDoProduto(depois.data as Record<string, unknown>);
+    custoOk = c !== null && Math.abs(c - item.cmv) < 0.005;
+    return { nomeOk, custoOk };
+  } catch (err) {
+    return { nomeOk, custoOk, erro: (err instanceof Error ? err.message : String(err)).slice(0, 300) };
+  }
 }
 
 // O rótulo da variação. Quando o SKU começa pelo código do pai, o que sobra
@@ -1758,45 +1819,51 @@ export async function recadastrarNoBling(
       renomeados: 0,
       criados: 0,
       custoGravado: 0,
+      nomeGravado: 0,
+      semCusto: [],
     };
     const categoria = categorias.get(bloco.aba.trim().toUpperCase());
 
     try {
       // 1. tirar da frente quem já ocupa os códigos (o do pai inclusive)
       const ocupantes = individual ? bloco.itens.map((x) => x.sku) : [bloco.pai, ...bloco.itens.map((x) => x.sku)];
+      const relacaoHerdada = new Map<string, number>();
       for (const codigo of ocupantes) {
         const existe = porCodigo.get(normalizarSku(codigo));
         if (!existe) continue;
         linha.renomeados += 1;
         if (!simulacao) {
-          await liberarCodigo(existe);
+          const rel = await liberarCodigo(existe);
+          if (rel) relacaoHerdada.set(normalizarSku(codigo), rel);
           porCodigo.delete(normalizarSku(codigo));
         }
       }
 
-      // 2. cadastrar
+      // 2. cadastrar. Guarda o id de cada um: o nome e o custo so entram
+      // depois, num PUT, e sem o id seria outra busca por codigo.
+      const idPorSku = new Map<string, number>();
       if (individual) {
         individuais += bloco.itens.length;
         for (const item of bloco.itens) {
           linha.criados += 1;
           if (simulacao) continue;
-          await chamar("post", "/produtos", undefined, {
+          const r = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
             nome: item.nome || item.sku,
             codigo: item.sku,
             preco: item.rev,
-            precoCusto: item.cmv,
             tipo: "P",
             situacao: "A",
             formato: "S",
             unidade: "UN",
             ...(categoria ? { categoria: { id: categoria } } : {}),
           });
+          if (r.data?.id) idPorSku.set(normalizarSku(item.sku), r.data.id);
         }
       } else {
         pais += 1;
         linha.criados += bloco.itens.length;
         if (!simulacao) {
-          await chamar("post", "/produtos", undefined, {
+          const r = await chamar<{ data?: { id?: number; variacoes?: Array<{ id?: number; codigo?: string }> } }>("post", "/produtos", undefined, {
             nome: bloco.pai,
             codigo: bloco.pai,
             preco: bloco.itens[0]?.rev ?? 0,
@@ -1809,7 +1876,6 @@ export async function recadastrarNoBling(
               nome: item.nome || item.sku,
               codigo: item.sku,
               preco: item.rev,
-              precoCusto: item.cmv,
               tipo: "P",
               situacao: "A",
               formato: "S",
@@ -1817,13 +1883,34 @@ export async function recadastrarNoBling(
               variacao: { nome: `${bloco.pai}:${rotuloDaVariacao(bloco.pai, item.sku)}`, ordem: ordem + 1 },
             })),
           });
+          for (const v of r.data?.variacoes ?? []) {
+            if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
+          }
         }
       }
 
-      // o custo vai junto no POST (`precoCusto`); a conferência é no fim, de
-      // uma vez só, relendo o catálogo — ler produto a produto custaria outras
-      // 5.742 chamadas
-      linha.custoGravado = bloco.itens.length;
+      // 3. o nome e o custo, que o cadastro não deixa prontos: o Bling
+      // reescreve o nome da variação e ignora o custo do POST.
+      if (simulacao) {
+        linha.custoGravado = bloco.itens.length;
+        linha.nomeGravado = bloco.itens.length;
+      } else {
+        for (const item of bloco.itens) {
+          const id = idPorSku.get(normalizarSku(item.sku));
+          if (!id) {
+            linha.semCusto.push(item.sku);
+            continue;
+          }
+          const r = await acertarNomeECusto(
+            id,
+            item,
+            relacaoHerdada.get(normalizarSku(item.sku)) ?? null
+          );
+          if (r.nomeOk) linha.nomeGravado += 1;
+          if (r.custoOk) linha.custoGravado += 1;
+          else linha.semCusto.push(item.sku);
+        }
+      }
     } catch (err) {
       linha.erro = (err instanceof Error ? err.message : String(err)).slice(0, 400);
     }
@@ -1835,32 +1922,10 @@ export async function recadastrarNoBling(
     if (aoAndar) aoAndar(i + 1, blocos.length);
   }
 
-  // Conferência no fim: relê o catálogo e vê o que de fato ficou gravado. Se o
-  // Bling tiver engolido o `precoCusto` do POST, o custo sai pela relação
-  // produto<->fornecedor, que agora é rápida — o produto nasceu ativo, e a
-  // busca por código acha ativo de primeira.
-  const semCusto: string[] = [];
-  if (!simulacao) {
-    const depois = await listarProdutos();
-    const agora = new Map(depois.map((p) => [normalizarSku(String(p.codigo ?? "")), p]));
-    custoGravado = 0;
-    for (const bloco of blocos) {
-      for (const item of bloco.itens) {
-        const p = agora.get(normalizarSku(item.sku));
-        const c = p ? custoDoProduto(p as unknown as Record<string, unknown>) : null;
-        if (c !== null && Math.abs(c - item.cmv) < 0.005) custoGravado += 1;
-        else semCusto.push(item.sku);
-      }
-    }
-    if (semCusto.length) {
-      const pares = blocos
-        .flatMap((b) => b.itens)
-        .filter((i) => semCusto.includes(i.sku))
-        .map((i) => ({ sku: i.sku, custo: i.cmv }));
-      const r = await gravarCusto(pares, false);
-      custoGravado += r.linhas.filter((l) => l.situacao === "gravado").length;
-    }
-  }
+  // Cada item já foi relido no acerto de nome e custo, um por um, então a
+  // conta aqui é só somatório — não tem o que reconferir em bloco.
+  const semCusto = linhas.flatMap((l) => l.semCusto);
+  const nomeGravado = linhas.reduce((t, l) => t + l.nomeGravado, 0);
 
   return {
     simulacao,
@@ -1871,6 +1936,9 @@ export async function recadastrarNoBling(
     renomeados,
     criados,
     custoGravado,
+    nomeGravado,
+    semCusto: semCusto.slice(0, 100),
+    semCustoTotal: semCusto.length,
     comErro: linhas.filter((l) => l.erro).length,
     aviso: cat.aviso,
     linhas,
