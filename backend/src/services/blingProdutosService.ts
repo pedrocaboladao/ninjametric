@@ -1677,6 +1677,28 @@ export async function recadastrarNoBling(
   simulacao: boolean,
   aoAndar?: (feitos: number, total: number) => void
 ): Promise<ResultadoRecadastroBling> {
+  // O índice de uma vez só, em vez de `acharPorCodigo` por item.
+  //
+  // Com o catálogo inteiro inativo, `acharPorCodigo` não acha pelas buscas
+  // normais (nenhuma delas devolve inativo) e cai na varredura de última
+  // instância: ~52 páginas por consulta, 18 segundos cada. Pros 5.742 itens
+  // daria mais de um dia. A listagem completa custa ~104 chamadas uma vez só.
+  const catalogo = await listarProdutos();
+  const porCodigo = new Map<string, { id: number; codigo: string; nome: string; preco: number; tipo?: string; formato?: string }>();
+  for (const p of catalogo) {
+    const c = normalizarSku(String(p.codigo ?? ""));
+    if (c && !porCodigo.has(c)) {
+      porCodigo.set(c, {
+        id: p.id,
+        codigo: String(p.codigo ?? ""),
+        nome: String(p.nome ?? ""),
+        preco: Number(p.preco ?? 0),
+        tipo: p.tipo,
+        formato: p.formato,
+      });
+    }
+  }
+
   const categorias = simulacao
     ? new Map<string, number>()
     : await garantirCategorias([...new Set(blocos.map((b) => b.aba))]);
@@ -1706,10 +1728,13 @@ export async function recadastrarNoBling(
       // 1. tirar da frente quem já ocupa os códigos (o do pai inclusive)
       const ocupantes = individual ? bloco.itens.map((x) => x.sku) : [bloco.pai, ...bloco.itens.map((x) => x.sku)];
       for (const codigo of ocupantes) {
-        const existe = await acharPorCodigo(codigo);
+        const existe = porCodigo.get(normalizarSku(codigo));
         if (!existe) continue;
         linha.renomeados += 1;
-        if (!simulacao) await liberarCodigo(existe);
+        if (!simulacao) {
+          await liberarCodigo(existe);
+          porCodigo.delete(normalizarSku(codigo));
+        }
       }
 
       // 2. cadastrar
@@ -1722,6 +1747,7 @@ export async function recadastrarNoBling(
             nome: item.nome || item.sku,
             codigo: item.sku,
             preco: item.rev,
+            precoCusto: item.cmv,
             tipo: "P",
             situacao: "A",
             formato: "S",
@@ -1746,6 +1772,7 @@ export async function recadastrarNoBling(
               nome: item.nome || item.sku,
               codigo: item.sku,
               preco: item.rev,
+              precoCusto: item.cmv,
               tipo: "P",
               situacao: "A",
               formato: "S",
@@ -1756,16 +1783,10 @@ export async function recadastrarNoBling(
         }
       }
 
-      // 3. o custo mora na relação produto<->fornecedor, uma chamada por item
-      if (!simulacao) {
-        const r = await gravarCusto(
-          bloco.itens.map((x) => ({ sku: x.sku, custo: x.cmv })),
-          false
-        );
-        linha.custoGravado = r.linhas.filter((l) => l.situacao === "gravado").length;
-      } else {
-        linha.custoGravado = bloco.itens.length;
-      }
+      // o custo vai junto no POST (`precoCusto`); a conferência é no fim, de
+      // uma vez só, relendo o catálogo — ler produto a produto custaria outras
+      // 5.742 chamadas
+      linha.custoGravado = bloco.itens.length;
     } catch (err) {
       linha.erro = (err instanceof Error ? err.message : String(err)).slice(0, 400);
     }
@@ -1775,6 +1796,33 @@ export async function recadastrarNoBling(
     custoGravado += linha.custoGravado;
     linhas.push(linha);
     if (aoAndar) aoAndar(i + 1, blocos.length);
+  }
+
+  // Conferência no fim: relê o catálogo e vê o que de fato ficou gravado. Se o
+  // Bling tiver engolido o `precoCusto` do POST, o custo sai pela relação
+  // produto<->fornecedor, que agora é rápida — o produto nasceu ativo, e a
+  // busca por código acha ativo de primeira.
+  const semCusto: string[] = [];
+  if (!simulacao) {
+    const depois = await listarProdutos();
+    const agora = new Map(depois.map((p) => [normalizarSku(String(p.codigo ?? "")), p]));
+    custoGravado = 0;
+    for (const bloco of blocos) {
+      for (const item of bloco.itens) {
+        const p = agora.get(normalizarSku(item.sku));
+        const c = p ? custoDoProduto(p as unknown as Record<string, unknown>) : null;
+        if (c !== null && Math.abs(c - item.cmv) < 0.005) custoGravado += 1;
+        else semCusto.push(item.sku);
+      }
+    }
+    if (semCusto.length) {
+      const pares = blocos
+        .flatMap((b) => b.itens)
+        .filter((i) => semCusto.includes(i.sku))
+        .map((i) => ({ sku: i.sku, custo: i.cmv }));
+      const r = await gravarCusto(pares, false);
+      custoGravado += r.linhas.filter((l) => l.situacao === "gravado").length;
+    }
   }
 
   return {
