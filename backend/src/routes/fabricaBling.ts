@@ -58,7 +58,10 @@ import {
   listarDepositos,
   saldoDoProduto,
   produtoCru,
+  recadastrarNoBling,
 } from "../services/blingProdutosService";
+import { lerBlocosOuro } from "../services/fabricaProdutosService";
+import multer from "multer";
 import { conferirPlanilhaVendas } from "../services/fabricaVendasPlanilhaService";
 import { skusFaltando, clientesFaltando } from "../services/fabricaImportarVendasService";
 
@@ -1528,4 +1531,65 @@ fabricaBlingRouter.post("/produtos/variacoes", async (req, res) => {
   } catch (err) {
     erro(res, err, "Falha ao criar as variações no ERP.");
   }
+});
+
+// Recadastro do ERP pela planilha ouro: o bloco vira pai, as linhas dele viram
+// variações. `abas` roda só as abas pedidas, que é como dá pra testar um bloco
+// antes de soltar os 5.742. Roda em segundo plano porque são horas de chamada.
+const uploadBling = multer({ storage: multer.memoryStorage(), limits: { fileSize: 30 * 1024 * 1024 } });
+
+let recadBling: {
+  estado: "rodando" | "pronto" | "erro";
+  feitos: number;
+  total: number;
+  erro: string | null;
+  resultado: unknown;
+} | null = null;
+
+fabricaBlingRouter.post(
+  "/produtos/recadastrar",
+  uploadBling.single("arquivo"),
+  async (req, res) => {
+    if (recadBling?.estado === "rodando") {
+      return res.status(409).json({ error: "Já tem um recadastro rodando.", ...recadBling });
+    }
+    const arquivo = (req as Request & { file?: { buffer: Buffer } }).file;
+    if (!arquivo) return res.status(400).json({ error: "Mande a planilha no campo 'arquivo'." });
+    const simulacao = String(req.body?.simular ?? "") !== "false";
+    const abas = String(req.body?.abas ?? "")
+      .split(",")
+      .map((x) => x.trim().toUpperCase())
+      .filter(Boolean);
+    try {
+      let blocos = await lerBlocosOuro(arquivo.buffer);
+      if (abas.length) blocos = blocos.filter((b) => abas.includes(b.aba.trim().toUpperCase()));
+      if (!blocos.length) return res.status(400).json({ error: "Nenhum bloco pra cadastrar." });
+
+      const job = { estado: "rodando" as const, feitos: 0, total: blocos.length, erro: null as string | null, resultado: null as unknown };
+      recadBling = job;
+      void (async () => {
+        try {
+          const r = await recadastrarNoBling(blocos, simulacao, (f, t) => {
+            job.feitos = f;
+            job.total = t;
+          });
+          recadBling = { estado: "pronto", feitos: r.blocos, total: r.blocos, erro: null, resultado: r };
+        } catch (err) {
+          console.error("[fabrica-bling] recadastrar", err);
+          recadBling = {
+            estado: "erro", feitos: job.feitos, total: job.total,
+            erro: err instanceof Error ? err.message : "falha no recadastro", resultado: null,
+          };
+        }
+      })();
+      res.status(202).json({ estado: "rodando", simulacao, blocos: blocos.length });
+    } catch (err) {
+      erro(res, err, "Falha ao ler a planilha pro recadastro do ERP.");
+    }
+  }
+);
+
+fabricaBlingRouter.get("/produtos/recadastrar", (_req, res) => {
+  if (!recadBling) return res.json({ estado: "nenhuma" });
+  res.json(recadBling);
 });

@@ -877,6 +877,49 @@ export async function sincronizarCatalogoOuro(
   };
 }
 
+// A mesma planilha, lida com os blocos. A linha de bloco tem nome na coluna A
+// e o CMV vazio: é ela que no ERP vira o produto pai, e as linhas abaixo dela,
+// até o próximo bloco, viram as variações dele.
+export interface BlocoOuro {
+  aba: string;
+  pai: string;
+  itens: LinhaOuro[];
+}
+
+export async function lerBlocosOuro(arquivo: Buffer): Promise<BlocoOuro[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(arquivo as unknown as ArrayBuffer);
+  const blocos: BlocoOuro[] = [];
+  wb.eachSheet((aba) => {
+    if (ABAS_FORA.has(aba.name.trim().toUpperCase())) return;
+    let atual: BlocoOuro | null = null;
+    for (let i = 3; i <= aba.rowCount; i++) {
+      const linha = aba.getRow(i);
+      const sku = String(linha.getCell(1).value ?? "").trim();
+      if (!sku) continue;
+      const cmv = Number(linha.getCell(2).value);
+      if (!Number.isFinite(cmv) || cmv <= 0) {
+        atual = { aba: aba.name.trim(), pai: sku, itens: [] };
+        blocos.push(atual);
+        continue;
+      }
+      if (!atual) {
+        atual = { aba: aba.name.trim(), pai: sku, itens: [] };
+        blocos.push(atual);
+      }
+      const rev = Number(linha.getCell(3).value);
+      atual.itens.push({
+        sku,
+        nome: String(linha.getCell(16).value ?? "").trim(),
+        cmv: Number(cmv.toFixed(2)),
+        rev: Number.isFinite(rev) ? Number(rev.toFixed(2)) : 0,
+        aba: aba.name.trim(),
+      });
+    }
+  });
+  return blocos.filter((b) => b.itens.length > 0);
+}
+
 // ---------------------------------------------------------------------------
 // Recadastro do zero
 //
