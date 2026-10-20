@@ -895,9 +895,16 @@ export async function sincronizarCatalogoOuro(
 //      inativo. Ele passa a existir só pra segurar a venda antiga, e o SKU
 //      de verdade fica livre.
 //   3. insere os SKU da planilha do zero: id novo, nenhum vínculo.
-//   4. reaponta os apelidos pro registro novo de mesmo SKU. Sem isso a venda
-//      que chega com a grafia do Bling cairia no registro antigo, que agora
-//      está inativo — e o importador ignora produto inativo.
+//
+// O que está fora da planilha segue a mesma régua, menos o de fabricação, que
+// não está lá porque a planilha é só revenda: produto de revenda fora do
+// catálogo que nunca vendeu sai, e o que vendeu fica inativo como estava.
+//
+// Apelido NÃO é levado pro registro novo. O Hudson cortou o reapontamento:
+// muita grafia estava casando no produto errado e sujando o DRE. Os apelidos
+// ficam no passado, apontando pro registro antigo — que está inativo, então
+// não casam com nada. Grafia errada passa a entrar sem produto, e a correção
+// é no pedido do Bling.
 //
 // Código de barras e tipo (REVENDA/INSUMO) não existem na planilha. São
 // atributo do produto, não vínculo, e vêm pelo SKU: sem isso o cadastro novo
@@ -911,11 +918,14 @@ export interface ResultadoRecadastroOuro {
   criados: number;
   removidos: number;
   arquivados: number;
-  apelidosReapontados: number;
+  foraRemovidos: number;
+  foraInativos: number;
+  apelidosPerdidos: number;
   intocados: number;
   eanHerdado: number;
   semEan: number;
   arquivadosAmostra: string[];
+  foraInativosAmostra: string[];
 }
 
 export async function recadastrarCatalogoOuro(
@@ -939,7 +949,8 @@ export async function recadastrarCatalogoOuro(
       sku: string;
       ean: string | null;
       tipo: string;
-    }>(`SELECT id, sku, ean, tipo FROM fabrica_produtos`);
+      origem: string;
+    }>(`SELECT id, sku, ean, tipo, origem FROM fabrica_produtos`);
 
     const { rows: comUso } = await cliente.query<{ produto_id: number }>(
       `SELECT produto_id FROM fabrica_pedido_itens
@@ -951,26 +962,37 @@ export async function recadastrarCatalogoOuro(
     const alvos = atuais.filter((a) => unicos.has(a.sku.trim().toUpperCase()));
     const velhoPorSku = new Map(alvos.map((a) => [a.sku.trim().toUpperCase(), a]));
 
-    // os apelidos têm que sair daqui antes: quem sai do cadastro leva os seus
-    const apelidos = alvos.length
-      ? (
-          await cliente.query<{ apelido: string; chave: string; sku: string }>(
-            `SELECT a.apelido, a.chave, p.sku
-               FROM fabrica_produto_apelidos a
-               JOIN fabrica_produtos p ON p.id = a.produto_id
-              WHERE a.produto_id = ANY($1::int[])`,
-            [alvos.map((a) => a.id)]
-          )
-        ).rows
-      : [];
-
     const sair = alvos.filter((a) => !temHistorico.has(a.id));
     const arquivar = alvos.filter((a) => temHistorico.has(a.id));
 
-    if (sair.length) {
-      await cliente.query(`DELETE FROM fabrica_produtos WHERE id = ANY($1::int[])`, [
-        sair.map((a) => a.id),
-      ]);
+    // revenda fora do catálogo: a planilha não tem, então não existe mais.
+    // Quem nunca vendeu sai; quem vendeu fica inativo com o SKU dele.
+    const fora = atuais.filter(
+      (a) => !unicos.has(a.sku.trim().toUpperCase()) && a.origem === "DISTRIBUIDORA"
+    );
+    const foraSair = fora.filter((a) => !temHistorico.has(a.id));
+    const foraFicam = fora.filter((a) => temHistorico.has(a.id));
+
+    const removerIds = [...sair, ...foraSair].map((a) => a.id);
+
+    // apelido some junto com o produto dele (CASCADE); contar antes de remover
+    const { rows: perdidos } = removerIds.length
+      ? await cliente.query<{ n: string }>(
+          `SELECT count(*)::text AS n
+             FROM fabrica_produto_apelidos
+            WHERE produto_id = ANY($1::int[])`,
+          [removerIds]
+        )
+      : { rows: [{ n: "0" }] };
+
+    if (removerIds.length) {
+      await cliente.query(`DELETE FROM fabrica_produtos WHERE id = ANY($1::int[])`, [removerIds]);
+    }
+    if (foraFicam.length) {
+      await cliente.query(
+        `UPDATE fabrica_produtos SET ativo = FALSE WHERE id = ANY($1::int[])`,
+        [foraFicam.map((a) => a.id)]
+      );
     }
 
     const ocupados = new Set(atuais.map((a) => a.sku.trim().toUpperCase()));
@@ -1005,19 +1027,6 @@ export async function recadastrarCatalogoOuro(
       );
     }
 
-    let apelidosReapontados = 0;
-    for (const ap of apelidos) {
-      const r = await cliente.query(
-        `INSERT INTO fabrica_produto_apelidos (produto_id, apelido, chave)
-         SELECT p.id, $2, $3
-           FROM fabrica_produtos p
-          WHERE upper(p.sku) = $1
-         ON CONFLICT (chave) DO UPDATE SET produto_id = EXCLUDED.produto_id`,
-        [ap.sku.trim().toUpperCase(), ap.apelido, ap.chave]
-      );
-      apelidosReapontados += r.rowCount ?? 0;
-    }
-
     if (simulacao) await cliente.query("ROLLBACK");
     else await cliente.query("COMMIT");
 
@@ -1028,11 +1037,14 @@ export async function recadastrarCatalogoOuro(
       criados: itens.length,
       removidos: sair.length,
       arquivados: arquivar.length,
-      apelidosReapontados,
-      intocados: atuais.length - alvos.length,
+      foraRemovidos: foraSair.length,
+      foraInativos: foraFicam.length,
+      apelidosPerdidos: Number(perdidos[0]?.n ?? 0),
+      intocados: atuais.length - alvos.length - fora.length,
       eanHerdado,
       semEan: itens.length - eanHerdado,
       arquivadosAmostra: arquivar.slice(0, 15).map((a) => a.sku),
+      foraInativosAmostra: foraFicam.slice(0, 15).map((a) => a.sku),
     };
   } catch (err) {
     await cliente.query("ROLLBACK");
