@@ -1566,3 +1566,227 @@ export async function soltarDoPai(
     paiDepois, situacao: virarSimples && fmtAntes === "V" ? "virou simples" : "solto",
     ...(custoDepois !== null ? { custoDepois } : {}) };
 }
+
+// ---------------------------------------------------------------------------
+// Recadastro do Bling pela planilha ouro
+//
+// Mesma ideia do site: o cadastro antigo sai da frente e o SKU nasce de novo.
+// Aqui o código também é único, então quem ocupa o código é renomeado com
+// sufixo e fica inativo — nada é apagado, porque apagar no Bling leva junto o
+// que o pedido antigo mostra.
+//
+// A estrutura vem dos blocos da planilha: o bloco vira o produto pai, as
+// linhas dele viram variações. Bloco de uma linha só e as abas que o Hudson
+// marcou como individuais entram como produto solto — pai de uma variação só
+// é trabalho sem ganho.
+const ABAS_INDIVIDUAIS = new Set(["MANTA ESTRUTURAL", "RECICLADO", "FERRAMENTAS PARA KIT"]);
+
+export interface ItemOuroBling {
+  sku: string;
+  nome: string;
+  cmv: number;
+  rev: number;
+}
+
+export interface BlocoOuroBling {
+  aba: string;
+  pai: string;
+  itens: ItemOuroBling[];
+}
+
+export interface LinhaRecadastroBling {
+  bloco: string;
+  aba: string;
+  modo: "pai+variacao" | "individual";
+  renomeados: number;
+  criados: number;
+  custoGravado: number;
+  erro?: string;
+}
+
+export interface ResultadoRecadastroBling {
+  simulacao: boolean;
+  blocos: number;
+  itens: number;
+  pais: number;
+  individuais: number;
+  renomeados: number;
+  criados: number;
+  custoGravado: number;
+  comErro: number;
+  linhas: LinhaRecadastroBling[];
+}
+
+// O Bling guarda a categoria por id. Procura pelo nome e cria o que falta,
+// uma vez só por execução.
+async function garantirCategorias(nomes: string[]): Promise<Map<string, number>> {
+  const mapa = new Map<string, number>();
+  for (let pagina = 1; pagina <= 20; pagina++) {
+    const r = await chamar<{ data?: Array<{ id?: number; descricao?: string }> }>(
+      "get",
+      "/categorias/produtos",
+      { pagina, limite: 100 }
+    );
+    const lista = r.data ?? [];
+    for (const c of lista) {
+      if (c.descricao && c.id) mapa.set(c.descricao.trim().toUpperCase(), c.id);
+    }
+    if (lista.length < 100) break;
+  }
+  for (const nome of nomes) {
+    const chave = nome.trim().toUpperCase();
+    if (mapa.has(chave)) continue;
+    const r = await chamar<{ data?: { id?: number } }>("post", "/categorias/produtos", undefined, {
+      descricao: nome.trim(),
+    });
+    if (r.data?.id) mapa.set(chave, r.data.id);
+  }
+  return mapa;
+}
+
+// Tira o código da frente: o Bling recusa dois produtos com o mesmo código, e
+// o corpo vai mínimo de propósito — PUT com o produto inteiro reenvia o
+// fornecedor e zera o custo (foi assim que 106 produtos perderam o custo
+// em 09/10).
+async function liberarCodigo(p: ProdutoBling): Promise<void> {
+  await chamar("put", `/produtos/${p.id}`, undefined, {
+    nome: p.nome,
+    codigo: `${p.codigo}#ANTIGO`,
+    preco: p.preco ?? 0,
+    tipo: p.tipo ?? "P",
+    formato: p.formato ?? "S",
+    situacao: "I",
+  });
+}
+
+// O rótulo da variação. Quando o SKU começa pelo código do pai, o que sobra
+// já é a diferença (a cor, a gramatura, o tamanho). Quando não começa — kit
+// com prefixo próprio, por exemplo — usa o SKU inteiro, que é único.
+function rotuloDaVariacao(pai: string, sku: string): string {
+  const p = pai.trim().toUpperCase();
+  const s = sku.trim();
+  if (s.toUpperCase().startsWith(p)) {
+    const resto = s.slice(p.length).replace(/^[-/\s]+/, "").trim();
+    if (resto) return resto;
+  }
+  return s;
+}
+
+export async function recadastrarNoBling(
+  blocos: BlocoOuroBling[],
+  simulacao: boolean,
+  aoAndar?: (feitos: number, total: number) => void
+): Promise<ResultadoRecadastroBling> {
+  const categorias = simulacao
+    ? new Map<string, number>()
+    : await garantirCategorias([...new Set(blocos.map((b) => b.aba))]);
+
+  const linhas: LinhaRecadastroBling[] = [];
+  let pais = 0;
+  let individuais = 0;
+  let renomeados = 0;
+  let criados = 0;
+  let custoGravado = 0;
+
+  for (let i = 0; i < blocos.length; i++) {
+    const bloco = blocos[i];
+    const individual =
+      ABAS_INDIVIDUAIS.has(bloco.aba.trim().toUpperCase()) || bloco.itens.length === 1;
+    const linha: LinhaRecadastroBling = {
+      bloco: bloco.pai,
+      aba: bloco.aba,
+      modo: individual ? "individual" : "pai+variacao",
+      renomeados: 0,
+      criados: 0,
+      custoGravado: 0,
+    };
+    const categoria = categorias.get(bloco.aba.trim().toUpperCase());
+
+    try {
+      // 1. tirar da frente quem já ocupa os códigos (o do pai inclusive)
+      const ocupantes = individual ? bloco.itens.map((x) => x.sku) : [bloco.pai, ...bloco.itens.map((x) => x.sku)];
+      for (const codigo of ocupantes) {
+        const existe = await acharPorCodigo(codigo);
+        if (!existe) continue;
+        linha.renomeados += 1;
+        if (!simulacao) await liberarCodigo(existe);
+      }
+
+      // 2. cadastrar
+      if (individual) {
+        individuais += bloco.itens.length;
+        for (const item of bloco.itens) {
+          linha.criados += 1;
+          if (simulacao) continue;
+          await chamar("post", "/produtos", undefined, {
+            nome: item.nome || item.sku,
+            codigo: item.sku,
+            preco: item.rev,
+            tipo: "P",
+            situacao: "A",
+            formato: "S",
+            unidade: "UN",
+            ...(categoria ? { categoria: { id: categoria } } : {}),
+          });
+        }
+      } else {
+        pais += 1;
+        linha.criados += bloco.itens.length;
+        if (!simulacao) {
+          await chamar("post", "/produtos", undefined, {
+            nome: bloco.pai,
+            codigo: bloco.pai,
+            preco: bloco.itens[0]?.rev ?? 0,
+            tipo: "P",
+            situacao: "A",
+            formato: "V",
+            unidade: "UN",
+            ...(categoria ? { categoria: { id: categoria } } : {}),
+            variacoes: bloco.itens.map((item, ordem) => ({
+              nome: item.nome || item.sku,
+              codigo: item.sku,
+              preco: item.rev,
+              tipo: "P",
+              situacao: "A",
+              formato: "S",
+              unidade: "UN",
+              variacao: { nome: `${bloco.pai}:${rotuloDaVariacao(bloco.pai, item.sku)}`, ordem: ordem + 1 },
+            })),
+          });
+        }
+      }
+
+      // 3. o custo mora na relação produto<->fornecedor, uma chamada por item
+      if (!simulacao) {
+        const r = await gravarCusto(
+          bloco.itens.map((x) => ({ sku: x.sku, custo: x.cmv })),
+          false
+        );
+        linha.custoGravado = r.linhas.filter((l) => l.situacao === "gravado").length;
+      } else {
+        linha.custoGravado = bloco.itens.length;
+      }
+    } catch (err) {
+      linha.erro = (err instanceof Error ? err.message : String(err)).slice(0, 400);
+    }
+
+    renomeados += linha.renomeados;
+    criados += linha.criados;
+    custoGravado += linha.custoGravado;
+    linhas.push(linha);
+    if (aoAndar) aoAndar(i + 1, blocos.length);
+  }
+
+  return {
+    simulacao,
+    blocos: blocos.length,
+    itens: blocos.reduce((s, b) => s + b.itens.length, 0),
+    pais,
+    individuais,
+    renomeados,
+    criados,
+    custoGravado,
+    comErro: linhas.filter((l) => l.erro).length,
+    linhas,
+  };
+}
