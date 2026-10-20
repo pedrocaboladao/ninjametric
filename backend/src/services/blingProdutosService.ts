@@ -1595,6 +1595,7 @@ export async function soltarDoPai(
 // linhas dele viram variações. Bloco de uma linha só e as abas que o Hudson
 // marcou como individuais entram como produto solto — pai de uma variação só
 // é trabalho sem ganho.
+const SUFIXO_ANTIGO = "#ANTIGO";
 const ABAS_INDIVIDUAIS = new Set(["MANTA ESTRUTURAL", "RECICLADO", "FERRAMENTAS PARA KIT"]);
 
 export interface ItemOuroBling {
@@ -1695,7 +1696,7 @@ async function garantirCategorias(
 // antigos têm uma, com contato "Não definido", herdada de importação pela
 // tela. Essa relação pode ser REAPONTADA pro produto novo, e aí aceita o
 // contato 0 sem reclamar.
-async function liberarCodigo(p: ProdutoBling): Promise<number | null> {
+async function liberarCodigo(p: ProdutoBling, novoCodigo: string): Promise<number | null> {
   let relId: number | null = null;
   try {
     const inteiro = await chamar<{ data: Record<string, unknown> }>("get", `/produtos/${p.id}`);
@@ -1707,7 +1708,7 @@ async function liberarCodigo(p: ProdutoBling): Promise<number | null> {
   }
   const corpo: Record<string, unknown> = {
     nome: p.nome,
-    codigo: `${p.codigo}#ANTIGO`,
+    codigo: novoCodigo,
     preco: p.preco ?? 0,
     tipo: p.tipo ?? "P",
     formato: p.formato ?? "S",
@@ -1865,9 +1866,15 @@ export async function recadastrarNoBling(
         if (!existe) continue;
         linha.renomeados += 1;
         if (!simulacao) {
-          const rel = await liberarCodigo(existe);
+          // O sufixo pode ja estar ocupado quando o recadastro roda de novo
+          // sobre o mesmo bloco: o Bling recusa codigo repetido.
+          let novo = `${existe.codigo}${SUFIXO_ANTIGO}`;
+          let n = 2;
+          while (porCodigo.has(normalizarSku(novo))) novo = `${existe.codigo}${SUFIXO_ANTIGO}${n++}`;
+          const rel = await liberarCodigo(existe, novo);
           if (rel) relacaoHerdada.set(normalizarSku(codigo), rel);
           porCodigo.delete(normalizarSku(codigo));
+          porCodigo.set(normalizarSku(novo), { ...existe, codigo: novo });
         }
       }
 
