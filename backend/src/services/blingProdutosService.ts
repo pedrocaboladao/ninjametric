@@ -1614,34 +1614,54 @@ export interface ResultadoRecadastroBling {
   criados: number;
   custoGravado: number;
   comErro: number;
+  aviso: string | null;
   linhas: LinhaRecadastroBling[];
 }
 
 // O Bling guarda a categoria por id. Procura pelo nome e cria o que falta,
 // uma vez só por execução.
-async function garantirCategorias(nomes: string[]): Promise<Map<string, number>> {
+// Categoria é bônus, não requisito: o app não tem o escopo de categoria de
+// produto, e pedir 403 não pode derrubar o cadastro inteiro. Quando faltar,
+// o produto nasce sem categoria e o recadastro segue — depois que o escopo
+// entrar, dá pra carimbar a categoria em uma passada só.
+async function garantirCategorias(
+  nomes: string[]
+): Promise<{ mapa: Map<string, number>; aviso: string | null }> {
   const mapa = new Map<string, number>();
-  for (let pagina = 1; pagina <= 20; pagina++) {
-    const r = await chamar<{ data?: Array<{ id?: number; descricao?: string }> }>(
-      "get",
-      "/categorias/produtos",
-      { pagina, limite: 100 }
-    );
-    const lista = r.data ?? [];
-    for (const c of lista) {
-      if (c.descricao && c.id) mapa.set(c.descricao.trim().toUpperCase(), c.id);
+  try {
+    for (let pagina = 1; pagina <= 20; pagina++) {
+      const r = await chamar<{ data?: Array<{ id?: number; descricao?: string }> }>(
+        "get",
+        "/categorias/produtos",
+        { pagina, limite: 100 }
+      );
+      const lista = r.data ?? [];
+      for (const c of lista) {
+        if (c.descricao && c.id) mapa.set(c.descricao.trim().toUpperCase(), c.id);
+      }
+      if (lista.length < 100) break;
     }
-    if (lista.length < 100) break;
+    for (const nome of nomes) {
+      const chave = nome.trim().toUpperCase();
+      if (mapa.has(chave)) continue;
+      const r = await chamar<{ data?: { id?: number } }>(
+        "post",
+        "/categorias/produtos",
+        undefined,
+        { descricao: nome.trim() }
+      );
+      if (r.data?.id) mapa.set(chave, r.data.id);
+    }
+    return { mapa, aviso: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return {
+      mapa,
+      aviso: /insufficient_scope|403/.test(msg)
+        ? "O app do Bling não tem o escopo de categoria de produto: os produtos nascem sem categoria."
+        : `Categoria não foi aplicada: ${msg.slice(0, 200)}`,
+    };
   }
-  for (const nome of nomes) {
-    const chave = nome.trim().toUpperCase();
-    if (mapa.has(chave)) continue;
-    const r = await chamar<{ data?: { id?: number } }>("post", "/categorias/produtos", undefined, {
-      descricao: nome.trim(),
-    });
-    if (r.data?.id) mapa.set(chave, r.data.id);
-  }
-  return mapa;
 }
 
 // Tira o código da frente: o Bling recusa dois produtos com o mesmo código, e
@@ -1699,9 +1719,10 @@ export async function recadastrarNoBling(
     }
   }
 
-  const categorias = simulacao
-    ? new Map<string, number>()
+  const cat = simulacao
+    ? { mapa: new Map<string, number>(), aviso: null as string | null }
     : await garantirCategorias([...new Set(blocos.map((b) => b.aba))]);
+  const categorias = cat.mapa;
 
   const linhas: LinhaRecadastroBling[] = [];
   let pais = 0;
@@ -1835,6 +1856,7 @@ export async function recadastrarNoBling(
     criados,
     custoGravado,
     comErro: linhas.filter((l) => l.erro).length,
+    aviso: cat.aviso,
     linhas,
   };
 }
