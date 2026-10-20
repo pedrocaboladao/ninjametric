@@ -1,3 +1,4 @@
+import ExcelJS from "exceljs";
 import { pool } from "../db/pool";
 import { listarFormulas } from "./fabricacaoService";
 import { chaveApelidoSku } from "./fabricaProdutoApelidosService";
@@ -712,4 +713,166 @@ export async function ajustarCustoHistorico(
     [rows.map((r) => r.id), custo]
   );
   return resumo;
+}
+
+// --- sincronizar com a planilha ouro ----------------------------------------
+//
+// A PLANILHA OFICIAL FABRICA é a fonte única de SKU, CMV, revenda e descrição —
+// decidido pelo Hudson em 20/10/2026, depois de ele refazer SKU por SKU a
+// partir da MASTER antiga. Quando o site discorda dela, quem está errado é o
+// site.
+//
+// A planilha chega por upload, do próprio arquivo que o Hudson mantém. Foi a
+// saída depois de dois becos: o Chrome bloqueia a página HTTPS de ler arquivo
+// local e de falar com servidor local (PNA), e commitar o extrato no repo o
+// deixaria velho a cada edição dele. Subindo o arquivo, ele repete isso sozinho
+// quando quiser — sem PR e sem deploy.
+export interface LinhaOuro {
+  sku: string;
+  nome: string;
+  cmv: number;
+  rev: number;
+  aba: string;
+}
+
+export interface ResultadoSincronizacaoOuro {
+  simulacao: boolean;
+  naPlanilha: number;
+  criados: number;
+  atualizados: number;
+  jaIguais: number;
+  foraDaPlanilha: number;
+  mudancas: { sku: string; campo: string; de: unknown; para: unknown }[];
+  criadosSkus: string[];
+}
+
+// As abas de controle não são família de produto.
+const ABAS_FORA = new Set(["CONSOLIDADO", "FAMILIAS", "ABAIXO DE 12%", "ALTERADOS"]);
+
+// Lê a planilha como ela é hoje: uma aba por família, linha 1 e 2 de cabeçalho,
+// e a partir da 3 as linhas de produto. A linha de faixa (o bloco, que no ERP
+// vira o produto pai) tem o nome na coluna A e o CMV vazio — é assim que se
+// distingue dela.
+//
+//   A  SKU        B  CMV        C  revenda        P  descrição
+export async function lerPlanilhaOuro(arquivo: Buffer): Promise<LinhaOuro[]> {
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(arquivo as unknown as ArrayBuffer);
+  const linhas: LinhaOuro[] = [];
+  wb.eachSheet((aba) => {
+    if (ABAS_FORA.has(aba.name.trim().toUpperCase())) return;
+    for (let i = 3; i <= aba.rowCount; i++) {
+      const linha = aba.getRow(i);
+      const sku = String(linha.getCell(1).value ?? "").trim();
+      const cmv = Number(linha.getCell(2).value);
+      const rev = Number(linha.getCell(3).value);
+      if (!sku || !Number.isFinite(cmv) || cmv <= 0) continue;
+      linhas.push({
+        sku,
+        nome: String(linha.getCell(16).value ?? "").trim(),
+        cmv: Number(cmv.toFixed(2)),
+        rev: Number.isFinite(rev) ? Number(rev.toFixed(2)) : 0,
+        aba: aba.name.trim(),
+      });
+    }
+  });
+  return linhas;
+}
+
+export async function sincronizarCatalogoOuro(
+  ouro: LinhaOuro[],
+  simulacao: boolean
+): Promise<ResultadoSincronizacaoOuro> {
+  const { rows } = await pool.query<{
+    id: number;
+    sku: string;
+    nome: string;
+    preco_venda: string;
+    custo_compra: string | null;
+    ativo: boolean;
+    origem: string;
+    familia: string | null;
+  }>(
+    `SELECT id, sku, nome, preco_venda, custo_compra, ativo, origem, familia
+       FROM fabrica_produtos`
+  );
+  const porSku = new Map(rows.map((r) => [r.sku.trim().toUpperCase(), r]));
+
+  const mudancas: ResultadoSincronizacaoOuro["mudancas"] = [];
+  const criadosSkus: string[] = [];
+  let criados = 0;
+  let atualizados = 0;
+  let jaIguais = 0;
+
+  const cliente = await pool.connect();
+  try {
+    if (!simulacao) await cliente.query("BEGIN");
+    for (const item of ouro) {
+      const atual = porSku.get(item.sku.trim().toUpperCase());
+      if (!atual) {
+        criados += 1;
+        criadosSkus.push(item.sku);
+        if (!simulacao) {
+          await cliente.query(
+            `INSERT INTO fabrica_produtos
+               (sku, nome, origem, tipo, familia, custo_compra, preco_venda, ativo)
+             VALUES ($1, $2, 'DISTRIBUIDORA', 'REVENDA', $3, $4, $5, TRUE)`,
+            [item.sku, item.nome, item.aba, item.cmv, item.rev]
+          );
+        }
+        continue;
+      }
+      const difs: { campo: string; de: unknown; para: unknown }[] = [];
+      if (atual.nome.trim() !== item.nome.trim())
+        difs.push({ campo: "nome", de: atual.nome, para: item.nome });
+      // produto de fábrica tira o custo da fórmula; sobrescrever apagaria isso
+      const custoAtual = atual.custo_compra === null ? null : Number(atual.custo_compra);
+      if (atual.origem === "DISTRIBUIDORA" && Math.abs((custoAtual ?? -1) - item.cmv) >= 0.005)
+        difs.push({ campo: "cmv", de: custoAtual, para: item.cmv });
+      if (Math.abs(Number(atual.preco_venda) - item.rev) >= 0.005)
+        difs.push({ campo: "revenda", de: Number(atual.preco_venda), para: item.rev });
+      if (!atual.ativo) difs.push({ campo: "ativo", de: false, para: true });
+      if ((atual.familia ?? "") !== item.aba)
+        difs.push({ campo: "familia", de: atual.familia, para: item.aba });
+
+      if (!difs.length) {
+        jaIguais += 1;
+        continue;
+      }
+      atualizados += 1;
+      for (const d of difs) mudancas.push({ sku: item.sku, ...d });
+      if (!simulacao) {
+        await cliente.query(
+          `UPDATE fabrica_produtos
+              SET nome = $2,
+                  preco_venda = $3,
+                  ativo = TRUE,
+                  familia = $4,
+                  custo_compra = CASE WHEN origem = 'DISTRIBUIDORA' THEN $5 ELSE custo_compra END
+            WHERE id = $1`,
+          [atual.id, item.nome, item.rev, item.aba, item.cmv]
+        );
+      }
+    }
+    if (!simulacao) await cliente.query("COMMIT");
+  } catch (err) {
+    if (!simulacao) await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+
+  const naOuro = new Set(ouro.map((o) => o.sku.trim().toUpperCase()));
+  const foraDaPlanilha = rows.filter((r) => !naOuro.has(r.sku.trim().toUpperCase())).length;
+
+  return {
+    simulacao,
+    naPlanilha: ouro.length,
+    criados,
+    atualizados,
+    jaIguais,
+    foraDaPlanilha,
+    mudancas: mudancas.slice(0, 500),
+    criadosSkus: criadosSkus.slice(0, 500),
+  };
 }

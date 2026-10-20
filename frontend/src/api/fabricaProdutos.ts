@@ -114,3 +114,31 @@ export async function baixarCatalogo(
   // o revoke imediato cancela o download em alguns navegadores
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+// Sincroniza o cadastro com a PLANILHA OFICIAL FABRICA, que o usuário sobe na
+// hora. Sem `aplicar`, é simulação: conta e lista o que mudaria sem gravar.
+export interface SincronizacaoOuro {
+  simulacao: boolean;
+  naPlanilha: number;
+  criados: number;
+  atualizados: number;
+  jaIguais: number;
+  foraDaPlanilha: number;
+  mudancas: { sku: string; campo: string; de: unknown; para: unknown }[];
+  criadosSkus: string[];
+}
+
+export async function sincronizarOuro(
+  arquivo: File,
+  aplicar: boolean
+): Promise<SincronizacaoOuro> {
+  const corpo = new FormData();
+  corpo.append("arquivo", arquivo);
+  corpo.append("simular", aplicar ? "false" : "true");
+  const res = await fetch(`${API_BASE}/api/fabrica-produtos/sincronizar-ouro`, {
+    method: "POST",
+    credentials: "include",
+    body: corpo,
+  });
+  return tratarResposta<SincronizacaoOuro>(res);
+}
