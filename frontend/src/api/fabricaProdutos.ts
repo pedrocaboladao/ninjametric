@@ -142,3 +142,34 @@ export async function sincronizarOuro(
   });
   return tratarResposta<SincronizacaoOuro>(res);
 }
+
+// Recadastro do zero: cada SKU da planilha entra como registro novo. O registro
+// antigo sai do cadastro quando nunca vendeu, e fica inativo quando vendeu.
+export interface RecadastroOuro {
+  simulacao: boolean;
+  naPlanilha: number;
+  duplicadosNaPlanilha: number;
+  criados: number;
+  removidos: number;
+  arquivados: number;
+  foraRemovidos: number;
+  foraInativos: number;
+  apelidosPerdidos: number;
+  intocados: number;
+  eanHerdado: number;
+  semEan: number;
+  arquivadosAmostra: string[];
+  foraInativosAmostra: string[];
+}
+
+export async function recadastrarOuro(arquivo: File, aplicar: boolean): Promise<RecadastroOuro> {
+  const corpo = new FormData();
+  corpo.append("arquivo", arquivo);
+  corpo.append("simular", aplicar ? "false" : "true");
+  const res = await fetch(`${API_BASE}/api/fabrica-produtos/recadastrar-ouro`, {
+    method: "POST",
+    credentials: "include",
+    body: corpo,
+  });
+  return tratarResposta<RecadastroOuro>(res);
+}

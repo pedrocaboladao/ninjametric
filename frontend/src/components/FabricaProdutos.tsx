@@ -6,7 +6,9 @@ import {
   excluirFabricaProduto,
   importarCatalogo,
   sincronizarOuro,
+  recadastrarOuro,
   type SincronizacaoOuro,
+  type RecadastroOuro,
   baixarCatalogo,
   conferirPrecos,
   aplicarPrecos,
@@ -228,6 +230,7 @@ export function FabricaProdutos() {
   // clique — são 5.742 linhas de uma vez.
   const [arquivoOuro, setArquivoOuro] = useState<File | null>(null);
   const [previaOuro, setPreviaOuro] = useState<SincronizacaoOuro | null>(null);
+  const [previaRecad, setPreviaRecad] = useState<RecadastroOuro | null>(null);
   const [sincronizandoOuro, setSincronizandoOuro] = useState(false);
 
   async function rodarOuro(aplicar: boolean) {
@@ -243,6 +246,22 @@ export function FabricaProdutos() {
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao sincronizar com a planilha.");
+    } finally {
+      setSincronizandoOuro(false);
+    }
+  }
+
+  async function rodarRecadastro(aplicar: boolean) {
+    if (!arquivoOuro) return;
+    setSincronizandoOuro(true);
+    setErro(null);
+    try {
+      const r = await recadastrarOuro(arquivoOuro, aplicar);
+      setPreviaRecad(r);
+      setPreviaOuro(null);
+      if (aplicar) await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao recadastrar pela planilha.");
     } finally {
       setSincronizandoOuro(false);
     }
@@ -603,6 +622,7 @@ export function FabricaProdutos() {
             onChange={(e) => {
               setArquivoOuro(e.target.files?.[0] ?? null);
               setPreviaOuro(null);
+              setPreviaRecad(null);
             }}
           />
         </label>
@@ -614,6 +634,17 @@ export function FabricaProdutos() {
             disabled={sincronizandoOuro}
           >
             {sincronizandoOuro ? "Conferindo…" : "Conferir planilha"}
+          </button>
+        )}
+        {arquivoOuro && (
+          <button
+            type="button"
+            className="btn-excluir"
+            onClick={() => void rodarRecadastro(false)}
+            disabled={sincronizandoOuro}
+            title="Cadastro do zero: cada SKU da planilha entra como registro novo, sem apelido e sem vínculo. O registro antigo sai do cadastro quando nunca vendeu, e fica inativo quando vendeu. Mostra os números antes de gravar."
+          >
+            {sincronizandoOuro ? "Conferindo…" : "Conferir recadastro do zero"}
           </button>
         )}
         {porOrigem.DISTRIBUIDORA > 0 && (
@@ -659,6 +690,52 @@ export function FabricaProdutos() {
             <p>
               <strong>Aplicado.</strong> {previaOuro.criados} criados e{" "}
               {previaOuro.atualizados} corrigidos.
+            </p>
+          )}
+        </div>
+      )}
+
+      {previaRecad && (
+        <div className="financeiro-aviso">
+          <p>
+            <strong>Recadastro do zero:</strong> {previaRecad.criados} SKU da planilha entram como
+            registro novo, sem apelido e sem vínculo.
+          </p>
+          <ul>
+            <li>
+              <strong>{previaRecad.removidos}</strong> registros antigos de SKU da planilha saem do
+              cadastro (nunca venderam) — o SKU volta novo
+            </li>
+            <li>
+              <strong>{previaRecad.arquivados}</strong> viram <code>#ANTIGO</code> inativos (já
+              venderam; ficam só pra segurar a venda antiga)
+            </li>
+            <li>
+              fora da planilha: <strong>{previaRecad.foraRemovidos}</strong> saem e{" "}
+              <strong>{previaRecad.foraInativos}</strong> ficam inativos
+            </li>
+            <li>
+              <strong>{previaRecad.intocados}</strong> de fabricação, intocados ·{" "}
+              {previaRecad.apelidosPerdidos} apelidos somem com o produto deles
+            </li>
+            <li>
+              código de barras: {previaRecad.eanHerdado} herdam pelo SKU,{" "}
+              <strong>{previaRecad.semEan}</strong> nascem sem
+            </li>
+          </ul>
+          {previaRecad.simulacao ? (
+            <button
+              type="button"
+              className="btn-excluir"
+              onClick={() => void rodarRecadastro(true)}
+              disabled={sincronizandoOuro}
+              title="Grava. É uma transação só: ou entram todos, ou não entra nenhum."
+            >
+              {sincronizandoOuro ? "Cadastrando…" : "Cadastrar do zero agora"}
+            </button>
+          ) : (
+            <p>
+              <strong>Pronto.</strong> {previaRecad.criados} cadastrados do zero.
             </p>
           )}
         </div>
