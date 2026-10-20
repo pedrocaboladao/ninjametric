@@ -1,8 +1,11 @@
+import multer from "multer";
 import { Router, Request, Response } from "express";
 import {
   listarProdutos,
   obterProduto,
   criarProduto,
+  sincronizarCatalogoOuro,
+  lerPlanilhaOuro,
   atualizarProduto,
   excluirProduto,
   type ProdutoEntrada,
@@ -273,6 +276,33 @@ fabricaProdutosRouter.post("/importar-catalogo", async (_req, res) => {
 
 // O que mudou de preço na planilha desde a última vez. Só mostra — aplicar é
 // outra chamada, porque preço de venda não pode mudar sem ninguém ver.
+// Alinha o cadastro do site com a PLANILHA OFICIAL FABRICA — a planilha ouro,
+// que chega por upload. Cria o que falta, corrige nome, CMV, revenda e familia
+// do que existe, e reativa.
+//
+// `simular` vem como texto porque o corpo e multipart: so "false" grava, e
+// qualquer outra coisa (inclusive nao mandar nada) e simulacao. O padrao
+// seguro importa aqui — sao 5.742 linhas de uma vez.
+const uploadOuro = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 30 * 1024 * 1024 },
+});
+
+fabricaProdutosRouter.post("/sincronizar-ouro", uploadOuro.single("arquivo"), async (req, res) => {
+  const arquivo = (req as Request & { file?: { buffer: Buffer } }).file;
+  if (!arquivo) return res.status(400).json({ error: "Mande a planilha no campo 'arquivo'." });
+  const simulacao = String(req.body?.simular ?? "") !== "false";
+  try {
+    const linhas = await lerPlanilhaOuro(arquivo.buffer);
+    if (!linhas.length) {
+      return res.status(400).json({ error: "Nao achei nenhuma linha de produto na planilha." });
+    }
+    res.json(await sincronizarCatalogoOuro(linhas, simulacao));
+  } catch (err) {
+    erro(res, err, "Falha ao sincronizar com a planilha ouro.");
+  }
+});
+
 fabricaProdutosRouter.get("/conferir-precos", async (_req, res) => {
   try {
     res.json(await conferirPrecosCatalogo());

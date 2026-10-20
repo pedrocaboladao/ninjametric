@@ -5,6 +5,8 @@ import {
   atualizarFabricaProduto,
   excluirFabricaProduto,
   importarCatalogo,
+  sincronizarOuro,
+  type SincronizacaoOuro,
   baixarCatalogo,
   conferirPrecos,
   aplicarPrecos,
@@ -218,6 +220,31 @@ export function FabricaProdutos() {
       setErro(err instanceof Error ? err.message : "Falha ao exportar o catálogo.");
     } finally {
       setExportando(false);
+    }
+  }
+
+  // Sobe a PLANILHA OFICIAL FABRICA e alinha o cadastro por ela. Duas etapas de
+  // propósito: a primeira só mostra o que mudaria, e nada grava sem o segundo
+  // clique — são 5.742 linhas de uma vez.
+  const [arquivoOuro, setArquivoOuro] = useState<File | null>(null);
+  const [previaOuro, setPreviaOuro] = useState<SincronizacaoOuro | null>(null);
+  const [sincronizandoOuro, setSincronizandoOuro] = useState(false);
+
+  async function rodarOuro(aplicar: boolean) {
+    if (!arquivoOuro) return;
+    setSincronizandoOuro(true);
+    setErro(null);
+    try {
+      const r = await sincronizarOuro(arquivoOuro, aplicar);
+      setPreviaOuro(r);
+      if (aplicar) {
+        setArquivoOuro(null);
+        await carregar();
+      }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao sincronizar com a planilha.");
+    } finally {
+      setSincronizandoOuro(false);
     }
   }
 
@@ -567,6 +594,28 @@ export function FabricaProdutos() {
         >
           {importando ? "Importando…" : "Importar catálogo"}
         </button>
+        <label className="btn-excluir" style={{ cursor: "pointer" }} title="Sobe a PLANILHA OFICIAL FABRICA e alinha o cadastro por ela: SKU, CMV, revenda e descrição. Mostra o que mudaria antes de gravar.">
+          {arquivoOuro ? arquivoOuro.name : "Planilha ouro…"}
+          <input
+            type="file"
+            accept=".xlsx"
+            style={{ display: "none" }}
+            onChange={(e) => {
+              setArquivoOuro(e.target.files?.[0] ?? null);
+              setPreviaOuro(null);
+            }}
+          />
+        </label>
+        {arquivoOuro && (
+          <button
+            type="button"
+            className="btn-excluir"
+            onClick={() => void rodarOuro(false)}
+            disabled={sincronizandoOuro}
+          >
+            {sincronizandoOuro ? "Conferindo…" : "Conferir planilha"}
+          </button>
+        )}
         {porOrigem.DISTRIBUIDORA > 0 && (
           <button
             type="button"
@@ -579,6 +628,41 @@ export function FabricaProdutos() {
           </button>
         )}
       </div>
+
+      {previaOuro && (
+        <div className="financeiro-aviso">
+          <p>
+            <strong>Planilha ouro:</strong> {previaOuro.naPlanilha} linhas ·{" "}
+            <strong>{previaOuro.criados}</strong> a criar ·{" "}
+            <strong>{previaOuro.atualizados}</strong> a corrigir ·{" "}
+            {previaOuro.jaIguais} já iguais · {previaOuro.foraDaPlanilha} no site fora da planilha.
+          </p>
+          {previaOuro.mudancas.length > 0 && (
+            <ul>
+              {previaOuro.mudancas.slice(0, 15).map((m, i) => (
+                <li key={i}>
+                  {m.sku} · {m.campo}: {String(m.de)} → {String(m.para)}
+                </li>
+              ))}
+            </ul>
+          )}
+          {previaOuro.simulacao ? (
+            <button
+              type="button"
+              className="btn-excluir"
+              onClick={() => void rodarOuro(true)}
+              disabled={sincronizandoOuro}
+            >
+              {sincronizandoOuro ? "Aplicando…" : "Aplicar no cadastro"}
+            </button>
+          ) : (
+            <p>
+              <strong>Aplicado.</strong> {previaOuro.criados} criados e{" "}
+              {previaOuro.atualizados} corrigidos.
+            </p>
+          )}
+        </div>
+      )}
 
       {busca.trim() && (
         <p className="financeiro-td-mudo">
