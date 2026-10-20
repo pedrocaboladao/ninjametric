@@ -1620,6 +1620,7 @@ export interface LinhaRecadastroBling {
   custoGravado: number;
   nomeGravado: number;
   semCusto: string[];
+  errosItens: string[];
   erro?: string;
 }
 
@@ -1854,6 +1855,7 @@ export async function recadastrarNoBling(
       custoGravado: 0,
       nomeGravado: 0,
       semCusto: [],
+      errosItens: [],
     };
     const categoria = categorias.get(bloco.aba.trim().toUpperCase());
 
@@ -1927,10 +1929,14 @@ export async function recadastrarNoBling(
           for (const v of r.data?.variacoes ?? []) {
             if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
           }
-          if (idPorSku.size < bloco.itens.length && r.data?.id) {
+          if (idPorSku.size < bloco.itens.length) {
+            // O POST as vezes volta sem id nenhum. O pai acabou de nascer
+            // ATIVO, entao a busca por codigo acha ele na primeira tentativa.
+            const paiId = r.data?.id ?? (await acharPorCodigo(bloco.pai))?.id;
+            if (!paiId) throw new Error(`nao achei o pai ${bloco.pai} depois de criar`);
             const pai = await chamar<{ data?: { variacoes?: Array<{ id?: number; codigo?: string }> } }>(
               "get",
-              `/produtos/${r.data.id}`
+              `/produtos/${paiId}`
             );
             for (const v of pai.data?.variacoes ?? []) {
               if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
@@ -1949,6 +1955,7 @@ export async function recadastrarNoBling(
           const id = idPorSku.get(normalizarSku(item.sku));
           if (!id) {
             linha.semCusto.push(item.sku);
+            if (linha.errosItens.length < 5) linha.errosItens.push(`${item.sku}: nao peguei o id`);
             continue;
           }
           const r = await acertarNomeECusto(
@@ -1960,6 +1967,7 @@ export async function recadastrarNoBling(
           if (r.nomeOk) linha.nomeGravado += 1;
           if (r.custoOk) linha.custoGravado += 1;
           else linha.semCusto.push(item.sku);
+          if (r.erro && linha.errosItens.length < 5) linha.errosItens.push(`${item.sku}: ${r.erro}`);
         }
       }
     } catch (err) {
