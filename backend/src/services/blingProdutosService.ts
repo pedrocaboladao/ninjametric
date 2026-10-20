@@ -1621,6 +1621,7 @@ export interface LinhaRecadastroBling {
   nomeGravado: number;
   semCusto: string[];
   errosItens: string[];
+  paiReaproveitado?: boolean;
   erro?: string;
 }
 
@@ -1815,9 +1816,14 @@ export async function recadastrarNoBling(
   // instância: ~52 páginas por consulta, 18 segundos cada. Pros 5.742 itens
   // daria mais de um dia. A listagem completa custa ~104 chamadas uma vez só.
   const catalogo = await listarProdutos();
+  // Codigo EXATO, nao normalizado: o Bling so recusa codigo repetido letra por
+  // letra. `PEDRAINGA-5KG-` e `PEDRAINGA-5KG` convivem — sao strings
+  // diferentes —, e tratar os dois como o mesmo fazia o recadastro tentar
+  // renomear uma carcaca de pai que ele nem precisava tocar.
+  const chaveCodigo = (c: string) => String(c ?? "").trim().toUpperCase();
   const porCodigo = new Map<string, { id: number; codigo: string; nome: string; preco: number; tipo?: string; formato?: string }>();
   for (const p of catalogo) {
-    const c = normalizarSku(String(p.codigo ?? ""));
+    const c = chaveCodigo(String(p.codigo ?? ""));
     if (c && !porCodigo.has(c)) {
       porCodigo.set(c, {
         id: p.id,
@@ -1861,10 +1867,20 @@ export async function recadastrarNoBling(
 
     try {
       // 1. tirar da frente quem já ocupa os códigos (o do pai inclusive)
-      const ocupantes = individual ? bloco.itens.map((x) => x.sku) : [bloco.pai, ...bloco.itens.map((x) => x.sku)];
+      // Pai que ja existe como produto de variacao e REAPROVEITADO, nao
+      // renomeado: o Bling nao deixa alterar pai de variacao vazio (codigo
+      // 93), e essas carcacas sao exatamente o pai que eu ia criar. As filhas
+      // novas nascem penduradas nele.
+      const ocupaPai = individual ? undefined : porCodigo.get(chaveCodigo(bloco.pai));
+      const paiHerdado = ocupaPai && (ocupaPai.formato ?? "") === "V" ? ocupaPai.id : null;
+      const ocupantes = individual
+        ? bloco.itens.map((x) => x.sku)
+        : paiHerdado
+          ? bloco.itens.map((x) => x.sku)
+          : [bloco.pai, ...bloco.itens.map((x) => x.sku)];
       const relacaoHerdada = new Map<string, number>();
       for (const codigo of ocupantes) {
-        const existe = porCodigo.get(normalizarSku(codigo));
+        const existe = porCodigo.get(chaveCodigo(codigo));
         if (!existe) continue;
         linha.renomeados += 1;
         if (!simulacao) {
@@ -1872,11 +1888,11 @@ export async function recadastrarNoBling(
           // sobre o mesmo bloco: o Bling recusa codigo repetido.
           let novo = `${existe.codigo}${SUFIXO_ANTIGO}`;
           let n = 2;
-          while (porCodigo.has(normalizarSku(novo))) novo = `${existe.codigo}${SUFIXO_ANTIGO}${n++}`;
+          while (porCodigo.has(chaveCodigo(novo))) novo = `${existe.codigo}${SUFIXO_ANTIGO}${n++}`;
           const rel = await liberarCodigo(existe, novo);
-          if (rel) relacaoHerdada.set(normalizarSku(codigo), rel);
-          porCodigo.delete(normalizarSku(codigo));
-          porCodigo.set(normalizarSku(novo), { ...existe, codigo: novo });
+          if (rel) relacaoHerdada.set(chaveCodigo(codigo), rel);
+          porCodigo.delete(chaveCodigo(codigo));
+          porCodigo.set(chaveCodigo(novo), { ...existe, codigo: novo });
         }
       }
 
@@ -1898,7 +1914,57 @@ export async function recadastrarNoBling(
             unidade: "UN",
             ...(categoria ? { categoria: { id: categoria } } : {}),
           });
-          if (r.data?.id) idPorSku.set(normalizarSku(item.sku), r.data.id);
+          if (r.data?.id) idPorSku.set(chaveCodigo(item.sku), r.data.id);
+        }
+      } else if (paiHerdado) {
+        // Pai ja existe: cada filha entra sozinha, apontando pra ele.
+        pais += 1;
+        linha.criados += bloco.itens.length;
+        linha.paiReaproveitado = true;
+        if (!simulacao) {
+          for (let ordem = 0; ordem < bloco.itens.length; ordem++) {
+            const item = bloco.itens[ordem];
+            const r = await chamar<{ data?: { id?: number } }>("post", "/produtos", undefined, {
+              nome: item.nome || item.sku,
+              codigo: item.sku,
+              preco: item.rev,
+              tipo: "P",
+              situacao: "A",
+              formato: "S",
+              unidade: "UN",
+              ...(categoria ? { categoria: { id: categoria } } : {}),
+              variacao: {
+                nome: `${bloco.pai}:${rotuloDaVariacao(bloco.pai, item.sku)}`,
+                ordem: ordem + 1,
+                produtoPai: { id: paiHerdado },
+              },
+            });
+            if (r.data?.id) idPorSku.set(chaveCodigo(item.sku), r.data.id);
+          }
+          // o pai esta inativo e com o nome velho; pai inativo esconde as
+          // filhas. Agora que ele tem variacoes, o PUT passa na validacao.
+          const inteiro = await chamar<{ data: { variacoes?: Array<Record<string, unknown>> } }>(
+            "get",
+            `/produtos/${paiHerdado}`
+          );
+          await chamar("put", `/produtos/${paiHerdado}`, undefined, {
+            nome: bloco.pai,
+            codigo: bloco.pai,
+            preco: bloco.itens[0]?.rev ?? 0,
+            tipo: "P",
+            situacao: "A",
+            formato: "V",
+            variacoes: (inteiro.data.variacoes ?? []).map((v) => ({
+              id: v.id,
+              nome: v.nome,
+              codigo: v.codigo,
+              preco: v.preco,
+              tipo: v.tipo ?? "P",
+              situacao: v.situacao ?? "A",
+              formato: "S",
+              variacao: v.variacao,
+            })),
+          });
         }
       } else {
         pais += 1;
@@ -1927,7 +1993,7 @@ export async function recadastrarNoBling(
           // A resposta do POST nao traz as filhas com id. O pai traz: uma
           // leitura a mais por bloco, e os ids vem completos.
           for (const v of r.data?.variacoes ?? []) {
-            if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
+            if (v.id && v.codigo) idPorSku.set(chaveCodigo(v.codigo), v.id);
           }
           if (idPorSku.size < bloco.itens.length) {
             // O POST as vezes volta sem id nenhum. O pai acabou de nascer
@@ -1939,7 +2005,7 @@ export async function recadastrarNoBling(
               `/produtos/${paiId}`
             );
             for (const v of pai.data?.variacoes ?? []) {
-              if (v.id && v.codigo) idPorSku.set(normalizarSku(v.codigo), v.id);
+              if (v.id && v.codigo) idPorSku.set(chaveCodigo(v.codigo), v.id);
             }
           }
         }
@@ -1952,7 +2018,7 @@ export async function recadastrarNoBling(
         linha.nomeGravado = bloco.itens.length;
       } else {
         for (const item of bloco.itens) {
-          const id = idPorSku.get(normalizarSku(item.sku));
+          const id = idPorSku.get(chaveCodigo(item.sku));
           if (!id) {
             linha.semCusto.push(item.sku);
             if (linha.errosItens.length < 5) linha.errosItens.push(`${item.sku}: nao peguei o id`);
@@ -1961,7 +2027,7 @@ export async function recadastrarNoBling(
           const r = await acertarNomeECusto(
             id,
             item,
-            relacaoHerdada.get(normalizarSku(item.sku)) ?? null,
+            relacaoHerdada.get(chaveCodigo(item.sku)) ?? null,
             fornecedorId
           );
           if (r.nomeOk) linha.nomeGravado += 1;
