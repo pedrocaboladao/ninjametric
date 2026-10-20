@@ -876,3 +876,168 @@ export async function sincronizarCatalogoOuro(
     criadosSkus: criadosSkus.slice(0, 500),
   };
 }
+
+// ---------------------------------------------------------------------------
+// Recadastro do zero
+//
+// O Hudson não quer o cadastro antigo remendado: quer cada SKU da planilha
+// como registro novo, sem vínculo nenhum com o que existia antes. No Postgres
+// isso não é só "apaga e insere" — `sku` é UNIQUE, e a venda aponta pro
+// produto com ON DELETE RESTRICT, então produto que já vendeu não pode ser
+// removido. Remover também levaria embora (CASCADE) os apelidos e os ajustes
+// de custo daquele produto.
+//
+// O caminho que entrega cadastro novo sem perder o histórico:
+//
+//   1. produto antigo que nunca vendeu, nunca foi devolvido e nunca teve
+//      entrada de estoque: sai do cadastro.
+//   2. produto antigo com histórico: renomeia o SKU com sufixo e fica
+//      inativo. Ele passa a existir só pra segurar a venda antiga, e o SKU
+//      de verdade fica livre.
+//   3. insere os SKU da planilha do zero: id novo, nenhum vínculo.
+//   4. reaponta os apelidos pro registro novo de mesmo SKU. Sem isso a venda
+//      que chega com a grafia do Bling cairia no registro antigo, que agora
+//      está inativo — e o importador ignora produto inativo.
+//
+// Código de barras e tipo (REVENDA/INSUMO) não existem na planilha. São
+// atributo do produto, não vínculo, e vêm pelo SKU: sem isso o cadastro novo
+// nasceria sem EAN nenhum.
+const SUFIXO_ANTIGO = "#ANTIGO";
+
+export interface ResultadoRecadastroOuro {
+  simulacao: boolean;
+  naPlanilha: number;
+  duplicadosNaPlanilha: number;
+  criados: number;
+  removidos: number;
+  arquivados: number;
+  apelidosReapontados: number;
+  intocados: number;
+  eanHerdado: number;
+  semEan: number;
+  arquivadosAmostra: string[];
+}
+
+export async function recadastrarCatalogoOuro(
+  ouro: LinhaOuro[],
+  simulacao: boolean
+): Promise<ResultadoRecadastroOuro> {
+  // a planilha é a fonte, mas o banco não aceita o mesmo SKU duas vezes
+  const unicos = new Map<string, LinhaOuro>();
+  for (const item of ouro) {
+    const chave = item.sku.trim().toUpperCase();
+    if (!unicos.has(chave)) unicos.set(chave, item);
+  }
+  const itens = [...unicos.values()];
+
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+
+    const { rows: atuais } = await cliente.query<{
+      id: number;
+      sku: string;
+      ean: string | null;
+      tipo: string;
+    }>(`SELECT id, sku, ean, tipo FROM fabrica_produtos`);
+
+    const { rows: comUso } = await cliente.query<{ produto_id: number }>(
+      `SELECT produto_id FROM fabrica_pedido_itens
+        UNION SELECT produto_id FROM fabrica_devolucoes
+        UNION SELECT produto_id FROM fabrica_entrada_itens`
+    );
+    const temHistorico = new Set(comUso.map((r) => r.produto_id));
+
+    const alvos = atuais.filter((a) => unicos.has(a.sku.trim().toUpperCase()));
+    const velhoPorSku = new Map(alvos.map((a) => [a.sku.trim().toUpperCase(), a]));
+
+    // os apelidos têm que sair daqui antes: quem sai do cadastro leva os seus
+    const apelidos = alvos.length
+      ? (
+          await cliente.query<{ apelido: string; chave: string; sku: string }>(
+            `SELECT a.apelido, a.chave, p.sku
+               FROM fabrica_produto_apelidos a
+               JOIN fabrica_produtos p ON p.id = a.produto_id
+              WHERE a.produto_id = ANY($1::int[])`,
+            [alvos.map((a) => a.id)]
+          )
+        ).rows
+      : [];
+
+    const sair = alvos.filter((a) => !temHistorico.has(a.id));
+    const arquivar = alvos.filter((a) => temHistorico.has(a.id));
+
+    if (sair.length) {
+      await cliente.query(`DELETE FROM fabrica_produtos WHERE id = ANY($1::int[])`, [
+        sair.map((a) => a.id),
+      ]);
+    }
+
+    const ocupados = new Set(atuais.map((a) => a.sku.trim().toUpperCase()));
+    for (const a of arquivar) {
+      let novo = `${a.sku}${SUFIXO_ANTIGO}`;
+      let n = 2;
+      while (ocupados.has(novo.toUpperCase())) novo = `${a.sku}${SUFIXO_ANTIGO}${n++}`;
+      ocupados.add(novo.toUpperCase());
+      await cliente.query(`UPDATE fabrica_produtos SET sku = $2, ativo = FALSE WHERE id = $1`, [
+        a.id,
+        novo,
+      ]);
+    }
+
+    let eanHerdado = 0;
+    for (const item of itens) {
+      const velho = velhoPorSku.get(item.sku.trim().toUpperCase());
+      if (velho?.ean) eanHerdado += 1;
+      await cliente.query(
+        `INSERT INTO fabrica_produtos
+           (sku, nome, origem, tipo, familia, custo_compra, preco_venda, ean, ativo)
+         VALUES ($1, $2, 'DISTRIBUIDORA', $3, $4, $5, $6, $7, TRUE)`,
+        [
+          item.sku,
+          item.nome,
+          velho?.tipo ?? "REVENDA",
+          item.aba,
+          item.cmv,
+          item.rev,
+          velho?.ean ?? null,
+        ]
+      );
+    }
+
+    let apelidosReapontados = 0;
+    for (const ap of apelidos) {
+      const r = await cliente.query(
+        `INSERT INTO fabrica_produto_apelidos (produto_id, apelido, chave)
+         SELECT p.id, $2, $3
+           FROM fabrica_produtos p
+          WHERE upper(p.sku) = $1
+         ON CONFLICT (chave) DO UPDATE SET produto_id = EXCLUDED.produto_id`,
+        [ap.sku.trim().toUpperCase(), ap.apelido, ap.chave]
+      );
+      apelidosReapontados += r.rowCount ?? 0;
+    }
+
+    if (simulacao) await cliente.query("ROLLBACK");
+    else await cliente.query("COMMIT");
+
+    return {
+      simulacao,
+      naPlanilha: ouro.length,
+      duplicadosNaPlanilha: ouro.length - itens.length,
+      criados: itens.length,
+      removidos: sair.length,
+      arquivados: arquivar.length,
+      apelidosReapontados,
+      intocados: atuais.length - alvos.length,
+      eanHerdado,
+      semEan: itens.length - eanHerdado,
+      arquivadosAmostra: arquivar.slice(0, 15).map((a) => a.sku),
+    };
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
