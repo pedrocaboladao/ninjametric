@@ -1,12 +1,7 @@
 import { Router } from "express";
 import { obterPainelAds, salvarMeta, MARGEM_MOTOR_PADRAO, MARGEM_ATENCAO_PADRAO, lojasDoPainel } from "../services/adsPainelService";
 import { gerarPlanoDeAcaoControleAds } from "../services/controleAdsAcoesService";
-import {
-  obterStatusPlano,
-  reservarPlano,
-  concluirReserva,
-  cancelarReserva,
-} from "../services/controleAdsLimiteService";
+import { obterStatusPlano, planoSemLimite } from "../services/controleAdsLimiteService";
 
 export const adsPainelRouter = Router();
 
@@ -48,6 +43,10 @@ adsPainelRouter.get("/plano-de-acao/status", async (req, res) => {
 });
 
 adsPainelRouter.post("/plano-de-acao", async (req, res) => {
+  if (!planoSemLimite(req.usuario!)) {
+    res.status(403).json({ error: "Só o dono pode gerar o plano de ação." });
+    return;
+  }
   const inicio = typeof req.body?.inicio === "string" ? req.body.inicio : "";
   const fim = typeof req.body?.fim === "string" ? req.body.fim : "";
   if (!REGEX_DATA.test(inicio) || !REGEX_DATA.test(fim)) {
@@ -60,19 +59,10 @@ adsPainelRouter.post("/plano-de-acao", async (req, res) => {
     return;
   }
   const lojaId: number | undefined = lojaIdBruto === undefined ? undefined : lojaIdBruto;
-  let reservaId: number | null = null;
   try {
-    const reserva = await reservarPlano(req.usuario!, inicio, fim, lojaId);
-    if (!reserva.liberado) {
-      res.status(429).json({ error: "Você já gerou o plano de ação desta semana. Libera de novo na segunda-feira." });
-      return;
-    }
-    reservaId = reserva.id;
     const plano = await gerarPlanoDeAcaoControleAds(inicio, fim, lojasDoPainel(req.usuario!), lojaId);
-    await concluirReserva(reservaId, plano);
     res.json(plano);
   } catch (err) {
-    await cancelarReserva(reservaId);
     console.error("Falha ao gerar o plano de ação do Controle de Ads:", err);
     res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao gerar o plano de ação." });
   }

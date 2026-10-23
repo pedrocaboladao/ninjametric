@@ -285,12 +285,6 @@ function TabelaAcao({
 // partir dos MESMOS números que a tela já calculou (nenhuma busca nova no
 // Mercado Livre). Sempre sob demanda — tem custo real de IA por chamada,
 // nunca dispara sozinho nem no auto-refresh.
-function formatarDataCurta(iso: string | null): string {
-  if (!iso) return "";
-  const [, m, d] = iso.split("-");
-  return `${d}/${m}`;
-}
-
 function PlanoDeAcao({
   inicio,
   fim,
@@ -307,8 +301,7 @@ function PlanoDeAcao({
   const [erro, setErro] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusPlanoControleAds | null>(null);
 
-  // Quem tem limite semanal (todo mundo menos o dono) revê aqui o plano que já
-  // gerou nesta semana, em vez de perdê-lo ao recarregar a página.
+  // Só o dono pode gerar o plano de ação. Todo o resto nem vê esta seção.
   useEffect(() => {
     fetchStatusPlanoControleAds().then(setStatus).catch(() => setStatus(null));
   }, []);
@@ -319,16 +312,13 @@ function PlanoDeAcao({
     setErro(null);
   }, [inicio, fim, lojaFiltro]);
 
-  const limitado = status !== null && !status.ilimitado;
-  const bloqueado = limitado && status.usado;
-  const planoExibido = plano ?? (limitado ? (status.ultimo?.plano ?? null) : null);
+  if (!status?.permitido) return null;
 
   async function gerar() {
     setGerando(true);
     setErro(null);
     try {
       setPlano(await gerarPlanoDeAcaoControleAds(inicio, fim, lojaFiltro === "todas" ? undefined : lojaFiltro));
-      fetchStatusPlanoControleAds().then(setStatus).catch(() => undefined);
     } catch (err) {
       setErro(err instanceof Error ? err.message : "Falha ao gerar o plano de ação.");
     } finally {
@@ -346,59 +336,50 @@ function PlanoDeAcao({
             {lojaNome ? `Só da ${lojaNome}.` : "Das suas lojas."}
           </div>
         </div>
-        <button type="button" className="pbi-botao" onClick={gerar} disabled={gerando || bloqueado}>
-          {gerando ? "Gerando..." : bloqueado ? "Já gerado nesta semana" : plano ? "Gerar de novo" : "Gerar plano de ação"}
+        <button type="button" className="pbi-botao" onClick={gerar} disabled={gerando}>
+          {gerando ? "Gerando..." : plano ? "Gerar de novo" : "Gerar plano de ação"}
         </button>
       </div>
-      {limitado && (
-        <div className="pbi-muted">
-          {bloqueado
-            ? `Você tem 1 plano por semana e já usou o desta semana${
-                status.ultimo ? ` (período ${status.ultimo.inicio} a ${status.ultimo.fim})` : ""
-              }. Libera de novo na segunda, ${formatarDataCurta(status.liberaEm)}.`
-            : "Você tem 1 plano de ação por semana — escolha bem o período e a loja antes de gerar."}
-        </div>
-      )}
       {erro && <div className="pbi-erro">{erro}</div>}
-      {planoExibido && (
+      {plano && (
         <div className="pbi-plano">
-          {planoExibido.pensamento && (
+          {plano.pensamento && (
             <details className="pbi-plano-pensamento">
               <summary>🧠 Pensando…</summary>
-              <p>{planoExibido.pensamento}</p>
+              <p>{plano.pensamento}</p>
             </details>
           )}
-          {planoExibido.resumo && <p className="pbi-plano-resumo">{planoExibido.resumo}</p>}
+          {plano.resumo && <p className="pbi-plano-resumo">{plano.resumo}</p>}
 
           <TabelaAcao
             titulo="CORTAR E PAUSAR"
             subtitulo="ROAS abaixo do mínimo sustentável da loja"
             cor="vermelho"
-            linhas={planoExibido.cortar}
+            linhas={plano.cortar}
             colunaResultado={false}
           />
           <TabelaAcao
             titulo="ESCALAR"
             subtitulo="ROAS acima do mínimo — comprar mais volume onde há folga"
             cor="verde"
-            linhas={planoExibido.escalar}
+            linhas={plano.escalar}
             colunaResultado={false}
           />
           <TabelaAcao
             titulo="PREÇO E MARGEM"
             subtitulo="ROAS parece bom, mas o lucro real é negativo"
             cor="ambar"
-            linhas={planoExibido.margem}
+            linhas={plano.margem}
             colunaResultado
           />
 
-          {planoExibido.governanca.length > 0 && (
+          {plano.governanca.length > 0 && (
             <div className="pbi-plano-secao">
               <div className="pbi-plano-secao-titulo pbi-plano-secao-roxo">
                 <span>CADASTRAR CUSTO</span>
                 <span className="pbi-plano-secao-sub">Sem custo, o ROAS mínimo dessas vendas é desconhecido</span>
               </div>
-              {planoExibido.governanca.map((g) => (
+              {plano.governanca.map((g) => (
                 <div key={g.loja} className="pbi-plano-governanca-linha">
                   <b>{g.loja}</b>: {g.vendasSemCusto} venda{g.vendasSemCusto > 1 ? "s" : ""} sem custo — {g.skus.join(", ")}
                 </div>
@@ -406,7 +387,7 @@ function PlanoDeAcao({
             </div>
           )}
 
-          {planoExibido.regraDaSemana && <div className="pbi-plano-regra">REGRA DA SEMANA: {planoExibido.regraDaSemana}</div>}
+          {plano.regraDaSemana && <div className="pbi-plano-regra">REGRA DA SEMANA: {plano.regraDaSemana}</div>}
         </div>
       )}
     </section>

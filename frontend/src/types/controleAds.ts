@@ -78,10 +78,7 @@ export interface PlanoDeAcaoControleAds {
 }
 
 export interface StatusPlanoControleAds {
-  ilimitado: boolean;
-  usado: boolean;
-  liberaEm: string | null;
-  ultimo: { plano: PlanoDeAcaoControleAds; inicio: string; fim: string; lojaId: number | null; geradoEm: string } | null;
+  permitido: boolean;
 }
 
 export interface PainelControleAds {
