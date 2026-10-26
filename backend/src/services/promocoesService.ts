@@ -12,6 +12,8 @@ import {
   type MlItemCampanha,
 } from "./mercadoLivreApi";
 import { normalizarSku } from "./financeiroService";
+import { LOJAS_DO_DONO } from "./adsPainelService";
+import { dataISOBR } from "./dateUtils";
 
 export interface ResultadoItemCampanha {
   itemId: string;
@@ -838,12 +840,64 @@ export async function marcarProcessamentosInterrompidos(): Promise<void> {
   );
 }
 
-export function iniciarSincronizacaoPromocoes(): void {
-  sincronizarStatusCampanhas().catch((err) => console.error("Erro na sincronização inicial de promoções:", err));
-  setInterval(
-    () => {
-      sincronizarStatusCampanhas().catch((err) => console.error("Erro na sincronização de promoções:", err));
-    },
-    4 * 60 * 60 * 1000
+// Dias de antecedência pra renovar sozinho, antes da promoção acabar de
+// verdade — pedido explícito do dono pra parar de deixar passar e ficar
+// sem promoção ativa até notar manualmente.
+const DIAS_ANTES_DE_RENOVAR_AUTOMATICO = 2;
+
+// Renova automaticamente a Promoção Geral das 4 lojas do dono (LOJAS_DO_DONO
+// — Catedral, Hangar, Inga Collors e Perpétua) quando falta pouco pra acabar.
+// Só essas lojas: é uma automação de "não deixar passar", não um recriar em
+// massa pra qualquer loja do grupo. Reaproveita o recriarCampanha já usado
+// pelo botão manual — mesma lógica, mesmos itens, preço recalculado na hora.
+//
+// Guarda contra renovar a mesma campanha duas vezes: só entra quem ainda não
+// tem uma campanha mais nova apontando pra ela (campanha_anterior_id) — se a
+// criação falhar, não sobra linha nenhuma e a campanha tenta de novo sozinha
+// no próximo ciclo (4h).
+//
+// Risco ainda não testado ao vivo: a campanha nova é criada enquanto a
+// antiga ainda está ativa (até 2 dias de sobreposição), e não se sabe se o
+// Mercado Livre deixa um item participar de duas SELLER_CAMPAIGN da mesma
+// loja ao mesmo tempo. Se não deixar, o item falha individualmente (fica
+// registrado em falhas_itens, sem travar os outros) e só entra de fato
+// quando a campanha antiga expirar — vale observar a primeira renovação real
+// pra confirmar.
+async function renovarCampanhasProximasDoFim(): Promise<void> {
+  const hoje = dataISOBR(new Date());
+  const { rows } = await pool.query<{ id: number; loja_id: number; nome: string; data_fim: string }>(
+    `SELECT c.id, c.loja_id, c.nome, c.data_fim::text AS data_fim
+     FROM promocoes_campanhas c
+     WHERE c.loja_id = ANY($1)
+       AND c.status != 'finished'
+       AND c.processamento = 'concluido'
+       AND c.data_fim <= ($2::date + $3::int)
+       AND NOT EXISTS (SELECT 1 FROM promocoes_campanhas seguinte WHERE seguinte.campanha_anterior_id = c.id)`,
+    [LOJAS_DO_DONO, hoje, DIAS_ANTES_DE_RENOVAR_AUTOMATICO]
   );
+  for (const r of rows) {
+    try {
+      await recriarCampanha(r.id);
+      console.log(`Promoção "${r.nome}" (loja ${r.loja_id}) renovada automaticamente — vencia em ${r.data_fim}.`);
+    } catch (err) {
+      console.error(`Falha ao renovar automaticamente a campanha ${r.id} (${r.nome}):`, err);
+    }
+  }
+}
+
+export function iniciarSincronizacaoPromocoes(): void {
+  async function ciclo() {
+    try {
+      await sincronizarStatusCampanhas();
+    } catch (err) {
+      console.error("Erro na sincronização de promoções:", err);
+    }
+    try {
+      await renovarCampanhasProximasDoFim();
+    } catch (err) {
+      console.error("Erro na renovação automática de promoções:", err);
+    }
+  }
+  ciclo();
+  setInterval(ciclo, 4 * 60 * 60 * 1000);
 }
