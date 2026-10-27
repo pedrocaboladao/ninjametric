@@ -72,6 +72,7 @@ import {
 import {
   conferirContasPagar,
   listarContasBling,
+  listarReceberBling,
   baixarContaPagar,
   procurarContatos,
   espiarContas,
@@ -373,6 +374,48 @@ fabricaBlingRouter.post("/contas/:id/baixar", async (req, res) => {
     res.json({ ok: true, id, ...(await baixarContaPagar(id, data)) });
   } catch (err) {
     erro(res, err, "Falha ao dar baixa na conta.");
+  }
+});
+
+// O que as lojas ainda devem no ERP, titulo por titulo.
+//
+// Faltava uma leitura simples disso. A conferencia de fechamento compara uma
+// linha por loja contra o previsto do site, o que responde "o total bate?" —
+// mas nao responde "o que exatamente continua aberto?". Sao perguntas
+// diferentes, e a segunda e a que decide o que dar baixa.
+//
+// `saldo` e o que falta receber; `valor` e a face do titulo. A listagem do
+// Bling omite `saldo`, entao ele so e confiavel aqui porque `listarReceberBling`
+// abre cada titulo um a um — e por isso mesmo e lenta, nao serve pra tela.
+fabricaBlingRouter.get("/contas/receber/listar", async (req, res) => {
+  const de = String(req.query.de ?? "");
+  const ate = String(req.query.ate ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(de) || !/^\d{4}-\d{2}-\d{2}$/.test(ate)) {
+    return res.status(400).json({ error: "Informe de e ate no formato AAAA-MM-DD." });
+  }
+  try {
+    const contas = await listarReceberBling(de, ate);
+    const linhas = contas.map((c) => ({
+      id: c.id,
+      contatoId: c.contato?.id ?? null,
+      contato: c.contato?.nome ?? "",
+      vencimento: c.vencimento,
+      valor: Number(c.valor ?? 0),
+      saldo: Number(c.saldo ?? c.valor ?? 0),
+      situacao: c.situacao,
+      historico: c.historico ?? "",
+      numeroDocumento: c.numeroDocumento ?? "",
+    }));
+    res.json({
+      de,
+      ate,
+      total: linhas.length,
+      emAberto: Number(linhas.reduce((s, l) => s + l.saldo, 0).toFixed(2)),
+      linhas,
+    });
+  } catch (err) {
+    console.error("[bling-receber-listar]", err);
+    res.status(400).json({ error: err instanceof Error ? err.message : "Falha ao listar." });
   }
 });
 
