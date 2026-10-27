@@ -1496,6 +1496,9 @@ export function FabricaPedidos() {
           (r.pagamentosAdotados
             ? ` ${r.pagamentosAdotados} já estavam lançados na mão e foram amarrados ao PIX em vez de duplicar.`
             : "") +
+          (r.bonificacoes
+            ? ` ${r.bonificacoes} bonificação(ões) de 3,5% geradas, ${formatCurrency(r.valorBonificado)}.`
+            : "") +
           (r.pendentes ? ` ${r.pendentes} continuam sem origem apontada.` : "")
       );
       await carregar();
