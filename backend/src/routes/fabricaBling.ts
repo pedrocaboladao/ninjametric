@@ -384,9 +384,18 @@ fabricaBlingRouter.post("/contas/:id/baixar", async (req, res) => {
 // mas nao responde "o que exatamente continua aberto?". Sao perguntas
 // diferentes, e a segunda e a que decide o que dar baixa.
 //
-// `saldo` e o que falta receber; `valor` e a face do titulo. A listagem do
-// Bling omite `saldo`, entao ele so e confiavel aqui porque `listarReceberBling`
-// abre cada titulo um a um — e por isso mesmo e lenta, nao serve pra tela.
+// **Quem diz se o titulo esta aberto e a SITUACAO, nao o saldo.** O Bling so
+// manda `saldo` as vezes; onde ele falta, `saldo ?? valor` devolve a face do
+// titulo e um titulo ja quitado aparece com a divida inteira em aberto. Foi
+// assim que, em 27/10/2026, 201 titulos pagos somaram R$ 13 milhoes de falsa
+// divida e quase viraram 201 baixas indevidas — so nao viraram porque a trava
+// de `baixarContaReceber` conferiu o saldo real antes de gravar.
+//
+// Entao: `aberto` vem da situacao (1 = em aberto) e `saldo` so e preenchido
+// quando o Bling realmente mandou. Quando nao mandou, vem null — nulo e
+// honesto, numero inventado nao e.
+//
+// A rota abre cada titulo um a um, por isso e lenta e nao serve pra tela.
 fabricaBlingRouter.get("/contas/receber/listar", async (req, res) => {
   const de = String(req.query.de ?? "");
   const ate = String(req.query.ate ?? "");
@@ -401,16 +410,23 @@ fabricaBlingRouter.get("/contas/receber/listar", async (req, res) => {
       contato: c.contato?.nome ?? "",
       vencimento: c.vencimento,
       valor: Number(c.valor ?? 0),
-      saldo: Number(c.saldo ?? c.valor ?? 0),
+      // null quando o Bling nao mandou: nunca cair na face do titulo
+      saldo: c.saldo === undefined || c.saldo === null ? null : Number(c.saldo),
       situacao: c.situacao,
+      aberto: Number(c.situacao) === 1,
       historico: c.historico ?? "",
       numeroDocumento: c.numeroDocumento ?? "",
     }));
+    const abertos = linhas.filter((l) => l.aberto);
     res.json({
       de,
       ate,
       total: linhas.length,
-      emAberto: Number(linhas.reduce((s, l) => s + l.saldo, 0).toFixed(2)),
+      abertos: abertos.length,
+      // soma so do que esta em aberto, e pelo saldo quando ele existe
+      emAberto: Number(
+        abertos.reduce((s, l) => s + (l.saldo ?? l.valor), 0).toFixed(2)
+      ),
       linhas,
     });
   } catch (err) {
