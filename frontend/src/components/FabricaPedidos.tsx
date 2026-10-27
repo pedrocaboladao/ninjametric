@@ -18,6 +18,8 @@ import {
   lancarAntecipacao,
   lancarCredito,
   definirPercentualBonificacao,
+  fetchBonificacaoMes,
+  fecharBonificacaoMes,
   excluirCredito,
   excluirProvisorios,
   fetchExtrato,
@@ -73,6 +75,7 @@ import type {
   Credito,
   SaldoCredito,
   AlertaProvisorio,
+  BonificacaoMes,
   Pagamento,
   LinhaExtrato,
   Devolucao,
@@ -211,6 +214,11 @@ export function FabricaPedidos() {
   const [antValor, setAntValor] = useState("");
   const [antData, setAntData] = useState("");
   const [antObs, setAntObs] = useState("");
+
+  // fechamento dos 3,5%: abre no mes corrente, que e o que ele vai fechar
+  const [bonMes, setBonMes] = useState(() => new Date().toISOString().slice(0, 7));
+  const [bonPrevia, setBonPrevia] = useState<BonificacaoMes | null>(null);
+  const [bonOcupado, setBonOcupado] = useState(false);
 
   // divida carregada: o que a loja ja devia quando o sistema comecou
   const [divCliente, setDivCliente] = useState("");
@@ -867,6 +875,56 @@ export function FabricaPedidos() {
     }
   }
 
+  async function verBonificacao(mes: string) {
+    setBonOcupado(true);
+    try {
+      setBonPrevia(await fetchBonificacaoMes(mes));
+      setErro(null);
+    } catch (e) {
+      setBonPrevia(null);
+      setErro(e instanceof Error ? e.message : "Falha ao calcular a bonificação do mês.");
+    } finally {
+      setBonOcupado(false);
+    }
+  }
+
+  // O aviso é longo de propósito. Fechar apaga as bonificações do mês e grava
+  // de novo — é seguro, mas quem clica precisa saber que está substituindo, e
+  // não somando, senão o número que ele já mostrou pro lojista muda sem ele ver.
+  async function fecharBonificacao() {
+    if (!bonPrevia) return;
+    const refaz = bonPrevia.jaLancado > 0;
+    if (
+      !window.confirm(
+        `Lançar ${formatCurrency(bonPrevia.bonus)} de bonificação em ${bonPrevia.linhas.length} loja(s), ` +
+          `com data de ${bonPrevia.ultimoDia}?` +
+          (refaz
+            ? `\n\nAs ${formatCurrency(bonPrevia.jaLancado)} que já estão lançadas neste mês serão APAGADAS e regravadas. ` +
+              `O total não soma: fica ${formatCurrency(bonPrevia.bonus)}.`
+            : "") +
+          (bonPrevia.mesAberto
+            ? `\n\nO mês ainda não acabou. O que a loja pagar depois de hoje fica de fora até você fechar de novo.`
+            : "")
+      )
+    )
+      return;
+    setBonOcupado(true);
+    try {
+      const r = await fecharBonificacaoMes(bonPrevia.mes);
+      setErro(null);
+      setAviso(
+        `${r.criados} bonificação(ões) lançadas em ${r.ultimoDia}, ${formatCurrency(r.total)}.` +
+          (r.apagados ? ` ${r.apagados} lançamento(s) anteriores do mês foram substituídos.` : "")
+      );
+      await carregar();
+      await verBonificacao(bonPrevia.mes);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao fechar a bonificação do mês.");
+    } finally {
+      setBonOcupado(false);
+    }
+  }
+
   async function apagarCredito(c: Credito) {
     if (!window.confirm(`Excluir o crédito de ${formatCurrency(c.valor)} de ${c.clienteNome}?`))
       return;
@@ -1495,6 +1553,9 @@ export function FabricaPedidos() {
         `${r.pagamentosCriados} pagamento(s) lançado(s), ${formatCurrency(r.valorLancado)}.` +
           (r.pagamentosAdotados
             ? ` ${r.pagamentosAdotados} já estavam lançados na mão e foram amarrados ao PIX em vez de duplicar.`
+            : "") +
+          (r.bonificacoes
+            ? ` ${r.bonificacoes} bonificação(ões) de 3,5% geradas, ${formatCurrency(r.valorBonificado)}.`
             : "") +
           (r.pendentes ? ` ${r.pendentes} continuam sem origem apontada.` : "")
       );
@@ -3101,13 +3162,13 @@ export function FabricaPedidos() {
               <h2>Crédito das lojas</h2>
               <p className="financeiro-td-mudo">
                 Duas coisas viram crédito: a loja <strong>antecipar</strong> dinheiro antes de
-                comprar, e <strong>pagar</strong>, que rende {percentual}% sobre o valor pago.
-                Pagou 90 de 100 e já leva os {percentual}% dos 90 — mas como{" "}
-                <strong>provisório</strong>, e provisório <strong>não abate nada</strong>: fica
-                guardado até ela quitar. Quitou, vira dela e passa a abater. Virou o mês devendo?
-                O alerta acende e o crédito pode ser excluído — mas se você esquecer de clicar,
-                ela também não leva. Nada disso é desconto sobre a venda: a venda saiu pelo valor
-                cheio, o crédito só muda de onde vem o dinheiro da próxima.
+                comprar, e <strong>pagar</strong>, que rende {percentual}% sobre o valor pago. O
+                prêmio é <strong>por pagar, não por quitar</strong> e nem por comprar: a base é o
+                dinheiro que entrou no mês, e só ele. Comprou 500 mil e pagou 300 mil, leva{" "}
+                {percentual}% de 300 mil; comprou 300 mil e pagou 500 mil, leva {percentual}% de
+                500 mil. Sai <strong>uma vez por mês</strong>, no último dia, pelo fechamento
+                aqui embaixo. Nada disso é desconto sobre a venda: a venda saiu pelo valor cheio,
+                o crédito só muda de onde vem o dinheiro da próxima.
               </p>
             </div>
             <div>
@@ -3120,6 +3181,142 @@ export function FabricaPedidos() {
               )}
             </div>
           </div>
+
+          <div className="financeiro-filtros">
+            <span className="financeiro-stat-label">FECHAR OS {percentual}% DO MÊS</span>
+            <input
+              className="clonar-input fabricacao-input-pequeno"
+              type="month"
+              value={bonMes}
+              onChange={(e) => {
+                setBonMes(e.target.value);
+                setBonPrevia(null);
+              }}
+            />
+            <button
+              type="button"
+              className="btn-excluir"
+              onClick={() => void verBonificacao(bonMes)}
+              disabled={bonOcupado || !/^\d{4}-\d{2}$/.test(bonMes)}
+            >
+              {bonOcupado ? "Calculando…" : "Ver o mês"}
+            </button>
+          </div>
+          <p className="financeiro-td-mudo">
+            Os {percentual}% saem <strong>uma vez só, no último dia do mês</strong>, sobre tudo
+            que a loja pagou — não sobre o que ela comprou. Pagou mais do que devia? Os{" "}
+            {percentual}% são sobre tudo que pagou do mesmo jeito. Confira loja por loja antes de
+            lançar: esse número vai pra conversa com o lojista.
+          </p>
+
+          {bonPrevia && (
+            <>
+              <div className="financeiro-topo">
+                <div>
+                  <h3>
+                    {bonPrevia.mes} — lança em {bonPrevia.ultimoDia}
+                  </h3>
+                  <p className="financeiro-td-mudo">
+                    {bonPrevia.linhas.length} loja(s) pagaram{" "}
+                    {formatCurrency(bonPrevia.pago)} no mês.
+                    {bonPrevia.jaLancado > 0 && (
+                      <>
+                        {" "}
+                        Já há {formatCurrency(bonPrevia.jaLancado)} de bonificação lançada neste
+                        mês — fechar <strong>substitui</strong>, não soma.
+                      </>
+                    )}
+                    {bonPrevia.mesAberto && (
+                      <>
+                        {" "}
+                        <strong>O mês ainda não acabou</strong>: o que entrar depois de hoje só
+                        conta se você fechar de novo.
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div>
+                  <div className="financeiro-stat-label">BONIFICAÇÃO DO MÊS</div>
+                  <div className="financeiro-stat-valor">{formatCurrency(bonPrevia.bonus)}</div>
+                  <button
+                    type="button"
+                    className="btn-excluir"
+                    onClick={() => void fecharBonificacao()}
+                    disabled={bonOcupado || bonPrevia.bonus <= 0}
+                  >
+                    {bonOcupado ? "Lançando…" : "Fechar o mês"}
+                  </button>
+                </div>
+              </div>
+
+              <div className="financeiro-tabela-wrap">
+                <table className="financeiro-tabela">
+                  <thead>
+                    <tr>
+                      <th>LOJA</th>
+                      <th className="financeiro-th-numero">PAGAMENTOS</th>
+                      <th className="financeiro-th-numero">PAGOU NO MÊS</th>
+                      <th className="financeiro-th-numero">{percentual}%</th>
+                      <th className="financeiro-th-numero">JÁ LANÇADO</th>
+                      <th className="financeiro-th-numero">DIFERENÇA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bonPrevia.linhas.map((l) => (
+                      <tr key={l.clienteId}>
+                        <td>
+                          {l.clienteNome}
+                          {l.antecipado > 0 && (
+                            <span className="financeiro-td-mudo">
+                              {" "}
+                              · {formatCurrency(l.antecipado)} antecipado
+                            </span>
+                          )}
+                        </td>
+                        <td className="financeiro-td-numero">{l.pagamentos}</td>
+                        <td className="financeiro-td-numero">{formatCurrency(l.pago)}</td>
+                        <td className="financeiro-td-numero">
+                          <strong>{formatCurrency(l.bonus)}</strong>
+                        </td>
+                        <td className="financeiro-td-numero financeiro-td-mudo">
+                          {formatCurrency(l.jaLancado)}
+                        </td>
+                        <td className="financeiro-td-numero">
+                          {Math.abs(l.diferenca) < 0.01 ? (
+                            <span className="financeiro-td-mudo">—</span>
+                          ) : (
+                            formatCurrency(l.diferenca)
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                    <tr>
+                      <td>
+                        <strong>TOTAL</strong>
+                      </td>
+                      <td className="financeiro-td-numero" />
+                      <td className="financeiro-td-numero">
+                        <strong>{formatCurrency(bonPrevia.pago)}</strong>
+                      </td>
+                      <td className="financeiro-td-numero">
+                        <strong>{formatCurrency(bonPrevia.bonus)}</strong>
+                      </td>
+                      <td className="financeiro-td-numero financeiro-td-mudo">
+                        {formatCurrency(bonPrevia.jaLancado)}
+                      </td>
+                      <td className="financeiro-td-numero">
+                        <strong>
+                          {formatCurrency(
+                            Number((bonPrevia.bonus - bonPrevia.jaLancado).toFixed(2))
+                          )}
+                        </strong>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
 
           {alertasCredito.length > 0 && (
             <div className="credito-alerta">

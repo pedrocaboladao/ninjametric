@@ -211,6 +211,31 @@ export interface AlertaProvisorio {
   venceu: boolean;
 }
 
+// Uma linha da prévia dos 3,5% do mês. `jaLancado` é o que já existe de
+// bonificação naquele mês, venha de onde vier — é ele que diz se o fechamento
+// vai acrescentar ou só reorganizar o que está espalhado.
+export interface LinhaBonificacaoMes {
+  clienteId: number;
+  clienteNome: string;
+  pagamentos: number;
+  antecipado: number;
+  pago: number;
+  bonus: number;
+  jaLancado: number;
+  diferenca: number;
+}
+
+export interface BonificacaoMes {
+  mes: string;
+  ultimoDia: string;
+  percentual: number;
+  mesAberto: boolean;
+  linhas: LinhaBonificacaoMes[];
+  pago: number;
+  bonus: number;
+  jaLancado: number;
+}
+
 export interface SaldoCredito {
   clienteId: number;
   clienteNome: string;
@@ -380,6 +405,8 @@ export interface ResultadoPix {
   registrados: number;
   jaImportados: number;
   pendentes: number;
+  bonificacoes: number;
+  valorBonificado: number;
 }
 
 // --- entrada de mercadoria comprada ---

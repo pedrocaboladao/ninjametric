@@ -12,6 +12,7 @@ import type {
   Credito,
   SaldoCredito,
   AlertaProvisorio,
+  BonificacaoMes,
   OrigemCredito,
   Pagamento,
   LinhaExtrato,
@@ -389,6 +390,33 @@ export async function lancarCredito(entrada: {
     body: JSON.stringify(entrada),
   });
   return tratarResposta<{ id: number }>(res);
+}
+
+// Os 3,5% do mês: ver e lançar são duas chamadas de propósito. Esse número vai
+// pra conversa com o lojista, então ninguém lança sem olhar loja por loja.
+export async function fetchBonificacaoMes(mes: string): Promise<BonificacaoMes> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos/bonificacao/${mes}`, {
+    credentials: "include",
+  });
+  return tratarResposta<BonificacaoMes>(res);
+}
+
+export async function fecharBonificacaoMes(mes: string): Promise<{
+  apagados: number;
+  criados: number;
+  total: number;
+  ultimoDia: string;
+}> {
+  const res = await fetch(`${API_BASE}/api/fabrica-creditos/bonificacao/${mes}`, {
+    method: "POST",
+    credentials: "include",
+  });
+  return tratarResposta<{
+    apagados: number;
+    criados: number;
+    total: number;
+    ultimoDia: string;
+  }>(res);
 }
 
 export async function definirPercentualBonificacao(percentual: number): Promise<void> {

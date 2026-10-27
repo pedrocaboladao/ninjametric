@@ -1,5 +1,7 @@
 import ExcelJS from "exceljs";
 import { pool } from "../db/pool";
+import { bonificarPagamento } from "./fabricaCreditosService";
+import { listarContaCorrente } from "./fabricaPagamentosService";
 
 // Conciliação do PIX recebido.
 //
@@ -75,7 +77,15 @@ export interface ResultadoPix {
   registrados: number;
   jaImportados: number;
   pendentes: number;
+  bonificacoes: number;
+  valorBonificado: number;
 }
+
+// PIX conciliado com data daqui pra frente ganha os 3,5%; mais antigo, não.
+// Outubro/2026 é o mês em que o extrato virou rotina de conciliação — antes
+// disso o importador era ferramenta de mutirão, e bonificar o que ele trouxe
+// seria inventar crédito retroativo.
+const BONIFICA_A_PARTIR_DE = "2026-10-01";
 
 // Nome do pagador vira chave: sem acento, sem pontuação, sem espaço dobrado.
 // "Modaltintas Ltda" e "MODALTINTAS LTDA" caem no mesmo lugar; empresas com
@@ -406,12 +416,31 @@ export async function conferirPix(linhas: LinhaPix[], lidas: number, ignoradas: 
 // deixariam a conta corrente de todo mundo errada, e descobrir qual metade
 // entrou seria pior do que refazer.
 //
-// Não gera a bonificação de 3,5% aqui, de propósito. Este importador serve
-// pra trazer o que já aconteceu — julho e agosto —, e a bonificação é regra
-// que vale daqui pra frente. Gerar retroativo criaria crédito que ninguém
-// combinou. Pagamento novo, lançado na tela, continua bonificando normal.
+// Bonifica desde 27/10/2026, a pedido do Hudson. Antes não bonificava: o
+// importador servia pra trazer julho e agosto, e crédito retroativo criaria
+// prêmio que ninguém combinou. Só que o extrato virou rotina, e em outubro 22
+// PIX entraram por aqui — R$ 893.521,58 de pagamento sem os 3,5%, quase tudo
+// da Catedral Impermeabilizantes, que pagou meio milhão e não ganhou nada. A
+// loja não tem como saber por qual porta o dinheiro dela entrou.
+//
+// Por isso a regra antiga virou a data de corte, em vez de sumir: reimportar
+// um mês velho continua não bonificando.
 export async function importarPix(linhas: LinhaPix[]): Promise<ResultadoPix> {
   const res = await resolver(linhas);
+
+  // Saldo do GRUPO que paga junto, igual ao caminho da tela: a Truck 3 não tem
+  // dívida própria e, olhando só ela, o PIX sairia sem prêmio. Lido antes do
+  // BEGIN — dentro da transação esta consulta usaria outra conexão e não
+  // enxergaria os pagamentos que acabaram de entrar.
+  const contas = await listarContaCorrente();
+  const grupoDe = new Map<number, number>();
+  const saldoDoGrupo = new Map<number, number>();
+  for (const c of contas) {
+    const g = c.paganteId ?? c.clienteId;
+    grupoDe.set(c.clienteId, g);
+    saldoDoGrupo.set(g, (saldoDoGrupo.get(g) ?? 0) + c.saldo);
+  }
+
   const cliente = await pool.connect();
   let criados = 0;
   let adotados = 0;
@@ -419,6 +448,8 @@ export async function importarPix(linhas: LinhaPix[]): Promise<ResultadoPix> {
   let registrados = 0;
   let jaImportados = 0;
   let pendentes = 0;
+  let bonificados = 0;
+  let valorBonificado = 0;
 
   try {
     await cliente.query("BEGIN");
@@ -456,6 +487,26 @@ export async function importarPix(linhas: LinhaPix[]): Promise<ResultadoPix> {
           );
           pagamentoId = Number(rows[0].id);
           criados++;
+
+          if (r.data >= BONIFICA_A_PARTIR_DE) {
+            const g = grupoDe.get(r.clienteId) ?? r.clienteId;
+            const saldoAntes = saldoDoGrupo.get(g) ?? 0;
+            const b = await bonificarPagamento(
+              cliente,
+              r.clienteId,
+              pagamentoId,
+              r.valor,
+              r.data,
+              saldoAntes
+            );
+            if (b.bonus > 0) {
+              bonificados++;
+              valorBonificado += b.bonus;
+            }
+            // o grupo acabou de pagar: o próximo PIX dele vê o saldo já menor,
+            // senão dois PIX do mesmo dia seriam julgados pelo mesmo saldo
+            saldoDoGrupo.set(g, saldoAntes - r.valor - b.bonus);
+          }
         }
         valorLancado += r.valor;
       }
@@ -497,6 +548,8 @@ export async function importarPix(linhas: LinhaPix[]): Promise<ResultadoPix> {
     registrados,
     jaImportados,
     pendentes,
+    bonificacoes: bonificados,
+    valorBonificado: Number(valorBonificado.toFixed(2)),
   };
 }
 
