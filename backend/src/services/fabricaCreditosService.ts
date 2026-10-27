@@ -362,3 +362,191 @@ export async function excluirProvisorios(clienteId: number): Promise<number> {
   );
   return r.rowCount ?? 0;
 }
+
+// ---------------------------------------------------------------------------
+// Fechamento do mês: os 3,5% de uma vez só, no último dia.
+//
+// A regra, nas palavras do Hudson em 27/10/2026: "se comprar 500 mil e pagar
+// 300 mil, recebe 3,5% em cima de 300 mil; se comprou 300 mil e pagou 500 mil,
+// é pago 3,5% em cima de 500 mil. Ele sempre vai receber, somente quando
+// pagar." Ou seja: a base é o dinheiro que entrou no mês, e só ele. O que ela
+// comprou não entra na conta, nem pra mais nem pra menos.
+//
+// Isso derruba duas coisas que o código fazia:
+//
+//   - a trava de saldo em bonificarPagamento ("não devia nada, então não
+//     bonifica"). Pagar mais do que devia passou a valer prêmio igual.
+//   - o crédito nascendo colado em cada pagamento. Espalhado em 69 linhas no
+//     mês, ninguém confere; e quem entrou pelo extrato ficava de fora sem que
+//     a loja tivesse como saber por qual porta o dinheiro dela passou.
+//
+// A base soma os dois jeitos de o dinheiro entrar, e só esses dois: pagamento
+// e antecipação. Não existe dupla contagem entre eles — a antecipação lançada
+// pela tela vive em fabrica_creditos, e o adiantamento que vem do extrato Pix
+// vive em fabrica_pagamentos.
+
+export interface LinhaBonificacaoMes {
+  clienteId: number;
+  clienteNome: string;
+  pagamentos: number;
+  antecipado: number;
+  pago: number;
+  bonus: number;
+  // o que já existe de BONIFICACAO lançado nesse mês, venha de onde vier
+  jaLancado: number;
+  diferenca: number;
+}
+
+export interface BonificacaoMes {
+  mes: string;
+  ultimoDia: string;
+  percentual: number;
+  // o mês ainda está correndo: fechar agora deixa de fora o que entrar depois
+  mesAberto: boolean;
+  linhas: LinhaBonificacaoMes[];
+  pago: number;
+  bonus: number;
+  jaLancado: number;
+}
+
+function limitesDoMes(mes: string): { primeiro: string; ultimo: string } {
+  const m = /^(\d{4})-(\d{2})$/.exec(mes);
+  if (!m) throw new Error("Mês inválido. Use AAAA-MM.");
+  const ano = Number(m[1]);
+  const num = Number(m[2]);
+  if (num < 1 || num > 12) throw new Error("Mês inválido. Use AAAA-MM.");
+  // dia 0 do mês seguinte é o último dia deste, e acerta fevereiro sozinho
+  const fim = new Date(Date.UTC(ano, num, 0));
+  return { primeiro: `${mes}-01`, ultimo: fim.toISOString().slice(0, 10) };
+}
+
+export async function previaBonificacaoMes(mes: string): Promise<BonificacaoMes> {
+  const { primeiro, ultimo } = limitesDoMes(mes);
+  const percentual = await percentualBonificacao();
+
+  const { rows } = await pool.query<{
+    cliente_id: number;
+    cliente_nome: string;
+    pagamentos: string;
+    pago: string;
+    antecipado: string;
+    ja_lancado: string;
+  }>(
+    `WITH pag AS (
+       SELECT cliente_id, COUNT(*) AS pagamentos, SUM(valor) AS pago
+         FROM fabrica_pagamentos
+        WHERE data BETWEEN $1::date AND $2::date
+        GROUP BY cliente_id
+     ),
+     ant AS (
+       SELECT cliente_id, SUM(valor) AS antecipado
+         FROM fabrica_creditos
+        WHERE origem = 'ANTECIPACAO' AND data BETWEEN $1::date AND $2::date
+        GROUP BY cliente_id
+     ),
+     bon AS (
+       SELECT cliente_id, SUM(valor) AS ja_lancado
+         FROM fabrica_creditos
+        WHERE origem = 'BONIFICACAO' AND data BETWEEN $1::date AND $2::date
+        GROUP BY cliente_id
+     )
+     SELECT c.id AS cliente_id,
+            c.nome AS cliente_nome,
+            COALESCE(pag.pagamentos, 0) AS pagamentos,
+            COALESCE(pag.pago, 0) AS pago,
+            COALESCE(ant.antecipado, 0) AS antecipado,
+            COALESCE(bon.ja_lancado, 0) AS ja_lancado
+       FROM fabrica_clientes c
+       LEFT JOIN pag ON pag.cliente_id = c.id
+       LEFT JOIN ant ON ant.cliente_id = c.id
+       LEFT JOIN bon ON bon.cliente_id = c.id
+      WHERE COALESCE(pag.pago, 0) <> 0
+         OR COALESCE(ant.antecipado, 0) <> 0
+         OR COALESCE(bon.ja_lancado, 0) <> 0
+      ORDER BY COALESCE(pag.pago, 0) + COALESCE(ant.antecipado, 0) DESC`,
+    [primeiro, ultimo]
+  );
+
+  const linhas: LinhaBonificacaoMes[] = rows.map((r) => {
+    const pago = Number(r.pago) + Number(r.antecipado);
+    const bonus = Number(((pago * percentual) / 100).toFixed(2));
+    const jaLancado = Number(r.ja_lancado);
+    return {
+      clienteId: r.cliente_id,
+      clienteNome: r.cliente_nome,
+      pagamentos: Number(r.pagamentos),
+      antecipado: Number(r.antecipado),
+      pago,
+      bonus,
+      jaLancado,
+      diferenca: Number((bonus - jaLancado).toFixed(2)),
+    };
+  });
+
+  const soma = (f: (l: LinhaBonificacaoMes) => number) =>
+    Number(linhas.reduce((s, l) => s + f(l), 0).toFixed(2));
+
+  return {
+    mes,
+    ultimoDia: ultimo,
+    percentual,
+    mesAberto: new Date().toISOString().slice(0, 10) < ultimo,
+    linhas,
+    pago: soma((l) => l.pago),
+    bonus: soma((l) => l.bonus),
+    jaLancado: soma((l) => l.jaLancado),
+  };
+}
+
+// Fecha o mês: apaga o que havia de BONIFICACAO naquele mês e grava uma linha
+// por loja, no último dia.
+//
+// Apagar antes de gravar é o que torna seguro rodar duas vezes. Sem isso, o
+// segundo clique dobraria o prêmio de todo mundo — e foi exatamente assim que
+// 14 bonificações apareceram de surpresa em 26/10/2026. Só mexe em linhas
+// BONIFICACAO dentro do mês pedido: antecipação, ajuste e saldo anterior do
+// mesmo período ficam onde estão.
+export async function fecharBonificacaoMes(
+  mes: string
+): Promise<{ apagados: number; criados: number; total: number; ultimoDia: string }> {
+  const previa = await previaBonificacaoMes(mes);
+  const { primeiro, ultimo } = limitesDoMes(mes);
+
+  const cliente = await pool.connect();
+  let apagados = 0;
+  let criados = 0;
+  let total = 0;
+  try {
+    await cliente.query("BEGIN");
+    const del = await cliente.query(
+      `DELETE FROM fabrica_creditos
+        WHERE origem = 'BONIFICACAO' AND data BETWEEN $1::date AND $2::date`,
+      [primeiro, ultimo]
+    );
+    apagados = del.rowCount ?? 0;
+
+    for (const l of previa.linhas) {
+      if (l.bonus <= 0) continue;
+      await cliente.query(
+        `INSERT INTO fabrica_creditos
+           (cliente_id, data, origem, valor, observacao, provisorio)
+         VALUES ($1, $2::date, 'BONIFICACAO', $3, $4, FALSE)`,
+        [
+          l.clienteId,
+          ultimo,
+          l.bonus,
+          `${previa.percentual}% sobre R$ ${l.pago.toFixed(2)} pagos em ${mes}`,
+        ]
+      );
+      criados++;
+      total += l.bonus;
+    }
+    await cliente.query("COMMIT");
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+  return { apagados, criados, total: Number(total.toFixed(2)), ultimoDia: ultimo };
+}

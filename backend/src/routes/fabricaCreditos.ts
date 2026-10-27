@@ -10,6 +10,8 @@ import {
   definirPercentualBonificacao,
   alertasProvisorios,
   excluirProvisorios,
+  previaBonificacaoMes,
+  fecharBonificacaoMes,
   type OrigemCredito,
 } from "../services/fabricaCreditosService";
 import { devendoPorCliente } from "../services/fabricaPagamentosService";
@@ -111,6 +113,25 @@ fabricaCreditosRouter.post("/", async (req: Request, res: Response) => {
     );
   } catch (err) {
     erro(res, err, "Falha ao lançar o crédito.");
+  }
+});
+
+// Os 3,5% do mês: um GET mostra, um POST lança. Ficam separados de propósito
+// — o GET é pra conferir loja por loja antes, porque esse número vai pra
+// conversa com o lojista e sair errado custa confiança, não só dinheiro.
+fabricaCreditosRouter.get("/bonificacao/:mes", async (req, res) => {
+  try {
+    res.json(await previaBonificacaoMes(String(req.params.mes)));
+  } catch (err) {
+    erro(res, err, "Falha ao calcular a bonificação do mês.");
+  }
+});
+
+fabricaCreditosRouter.post("/bonificacao/:mes", async (req, res) => {
+  try {
+    res.status(201).json(await fecharBonificacaoMes(String(req.params.mes)));
+  } catch (err) {
+    erro(res, err, "Falha ao fechar a bonificação do mês.");
   }
 });
 
