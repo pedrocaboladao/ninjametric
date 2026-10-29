@@ -873,16 +873,21 @@ export async function iniciarDescobertaCampanhas(lojaIdFiltro?: number, lojasPer
   );
 
   (async () => {
-    try {
-      for (const loja of lojas) {
+    // Cada loja isolada na própria tentativa — uma loja com erro (token
+    // vencido, API fora do ar, etc.) não pode derrubar a varredura das
+    // outras. Achado ao vivo: um 500 numa única loja travava a descoberta
+    // logo na segunda loja, deixando o resto do grupo nunca verificado.
+    for (const loja of lojas) {
+      try {
         await descobrirCampanhasNaLoja(loja.id, loja.nome, loja.ml_user_id as number);
+      } catch (err) {
+        const mensagem = err instanceof Error ? err.message : "Falha desconhecida.";
+        progressoDescoberta.diagnosticos.push(`${loja.nome}: falhou — ${mensagem}`);
+        console.error(`Falha na descoberta da loja ${loja.nome}:`, err);
       }
-    } catch (err) {
-      progressoDescoberta.erro = err instanceof Error ? err.message : "Falha na descoberta.";
-    } finally {
-      progressoDescoberta.emAndamento = false;
-      progressoDescoberta.lojaAtual = null;
     }
+    progressoDescoberta.emAndamento = false;
+    progressoDescoberta.lojaAtual = null;
   })();
 }
 
