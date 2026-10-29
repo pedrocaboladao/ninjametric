@@ -106,8 +106,15 @@ function montar(r: Linha): Conta {
     documento: r.documento,
     provisao: r.provisao,
     competencia: dataIsoOuNulo(r.competencia) ?? vencimento,
-    // conta paga ou cancelada não atrasa, por mais antiga que seja
-    atrasada: status === "pendente" && diasParaVencer < 0,
+    // conta paga ou cancelada não atrasa, por mais antiga que seja.
+    //
+    // Provisão também não: ninguém vai pagar um boleto de 13º. A linha de
+    // "PROVISÃO (SEM PAGAMENTO)" existe pra reconhecer o custo no mês em que o
+    // direito nasce — o pagamento de verdade entra depois, como lançamento
+    // próprio no nome do funcionário. O `resumo` já tinha essa trava; a marca
+    // de cada conta não, e por isso a tela contava 13 atrasadas e mostrava o
+    // valor de 11: o contador usa `atrasada` e o valor usa `resumo.atrasado`.
+    atrasada: status === "pendente" && !r.provisao && diasParaVencer < 0,
     diasParaVencer,
   };
 }
