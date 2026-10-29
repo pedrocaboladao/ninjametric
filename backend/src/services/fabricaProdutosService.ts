@@ -632,6 +632,8 @@ export interface AjusteCustoHistorico {
   simulacao: boolean;
   sku: string;
   custoAtual: number;
+  // null = todas as vendas do SKU; preenchido = so a venda desse pedido
+  pedidoId: number | null;
   linhas: AjusteCustoLinha[];
   unidades: number;
   faltando: number;
@@ -651,10 +653,21 @@ export interface AjusteCustoHistorico {
 //
 // So mexe no custo. Quantidade, preco de venda e data ficam como estao — o que
 // o cliente pagou nao muda, so o que a fabrica gastou pra entregar.
+//
+// `pedidoId` mira numa venda so. Serve pro caso da cor que saiu de linha: a
+// venda entra no SKU que sobrou, mas com o CMV da cor antiga, e as outras
+// vendas do mesmo SKU continuam com o custo do cadastro. Sem o filtro, corrigir
+// uma venda estragaria todas as outras — foi o que travou o ajuste das 12
+// unidades de RESIFLEXPISO-EMBORRACHADO-16L-VERDE da IMPETRUS em 23/10/2026.
+//
+// O id e o do PEDIDO NO SITE, nao o numero do Bling: e o mesmo que a simulacao
+// sem filtro ja devolve em `linhas[].pedidoId`. O caminho e simular sem filtro,
+// ver de qual pedido e a linha, e repetir com o id.
 export async function ajustarCustoHistorico(
   sku: string,
   custoNovo: number | null,
-  simulacao = true
+  simulacao = true,
+  pedidoId: number | null = null
 ): Promise<AjusteCustoHistorico> {
   const { rows: achados } = await pool.query<{ id: number; sku: string; custo_compra: string | null }>(
     "SELECT id, sku, custo_compra FROM fabrica_produtos WHERE UPPER(TRIM(sku)) = UPPER(TRIM($1))",
@@ -669,6 +682,8 @@ export async function ajustarCustoHistorico(
     throw new Error(`Custo invalido para ${produto.sku}: informe o custo ou preencha o cadastro.`);
   }
 
+  const params: unknown[] = [produto.id, custo];
+  if (pedidoId !== null) params.push(pedidoId);
   const { rows } = await pool.query<{
     id: number;
     pedido_id: number;
@@ -682,8 +697,9 @@ export async function ajustarCustoHistorico(
       WHERE i.produto_id = $1
         AND p.status <> 'CANCELADO'
         AND ROUND(i.custo_unitario::numeric, 2) <> ROUND($2::numeric, 2)
+        ${pedidoId !== null ? "AND p.id = $3" : ""}
       ORDER BY p.data, i.id`,
-    [produto.id, custo]
+    params
   );
 
   const linhas: AjusteCustoLinha[] = rows.map((r) => {
@@ -702,6 +718,7 @@ export async function ajustarCustoHistorico(
     simulacao,
     sku: produto.sku,
     custoAtual: custo,
+    pedidoId,
     linhas,
     unidades: linhas.reduce((a, l) => a + l.quantidade, 0),
     faltando: Number(linhas.reduce((a, l) => a + l.diferenca, 0).toFixed(2)),
