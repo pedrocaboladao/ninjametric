@@ -457,6 +457,31 @@ fabricaPedidosRouter.post("/titulos/:blingId/baixar", async (req, res) => {
   }
 });
 
+// Corrige o VALOR de um titulo a receber, um so.
+//
+// Existe porque a unica forma de mexer no valor era o `espelhar-bling`, e ele
+// reescreve o titulo inteiro com o previsto do fechamento — que inclui divida
+// carregada e credito em conta. Em 29/10/2026 a previa desse espelho queria
+// levar o titulo da Hangar de R$ 171.221,87 para R$ 886.600,44 e o da Catedral
+// para um valor negativo. Pra ajustar centavos de uma correcao de preco isso
+// nao serve.
+//
+// `atualizarContaReceber` ja manda so os campos documentados e confere lendo
+// de volta; aqui so falta a porta.
+fabricaPedidosRouter.put("/titulos/:blingId/valor", async (req, res) => {
+  const blingId = Number(req.params.blingId);
+  const valor = Number((req.body ?? {}).valor);
+  if (!Number.isInteger(blingId) || blingId <= 0)
+    return res.status(400).json({ error: "Id do título inválido." });
+  if (!Number.isFinite(valor) || valor <= 0)
+    return res.status(400).json({ error: "Valor inválido." });
+  try {
+    res.json({ blingId, valor, ...(await atualizarContaReceber(blingId, valor)) });
+  } catch (err) {
+    erro(res, err, "Falha ao corrigir o valor do título.");
+  }
+});
+
 // Resolve o contato do Bling de cada loja pelo CNPJ, uma vez so.
 //
 // E a chave que liga os dois lados: a conferencia procura o titulo por contato
