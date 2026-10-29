@@ -4,6 +4,7 @@ import { listLojas } from "./tokenStore";
 import {
   criarCampanhaVendedor,
   adicionarItemCampanha,
+  removerItemCampanha,
   obterDetalhesCampanha,
   getItemsBasicInfo,
   listarItensAtivos,
@@ -12,7 +13,6 @@ import {
   type MlItemCampanha,
 } from "./mercadoLivreApi";
 import { normalizarSku } from "./financeiroService";
-import { LOJAS_DO_DONO } from "./adsPainelService";
 import { dataISOBR } from "./dateUtils";
 
 export interface ResultadoItemCampanha {
@@ -93,7 +93,11 @@ export async function criarCampanha(
   lojaId: number,
   nome: string,
   itens: ItemComPercentual[],
-  campanhaAnteriorId: number | null = null
+  campanhaAnteriorId: number | null = null,
+  // promotion_id (do Mercado Livre) da campanha que esta substitui — só vem
+  // preenchido numa renovação (ver recriarCampanha). Usado pra desbloquear
+  // item travado nela (ver tentarAdicionarComDesbloqueio).
+  promotionIdAntiga: string | null = null
 ): Promise<ResultadoCriarCampanha> {
   if (itens.length === 0) {
     throw new Error("Informe ao menos um item.");
@@ -155,7 +159,7 @@ export async function criarCampanha(
   // Adicionar item a item leva minutos numa campanha grande — passa de longe
   // do limite de espera do proxy, então roda em segundo plano e a tela acompanha
   // pelo progresso gravado na própria linha da campanha.
-  processarItensCampanha(campanhaId, lojaId, campanhaMl.id, itens).catch((err) => {
+  processarItensCampanha(campanhaId, lojaId, campanhaMl.id, itens, promotionIdAntiga).catch((err) => {
     console.error(`Falha no processamento da campanha ${campanhaId}:`, err);
   });
 
@@ -168,7 +172,8 @@ async function processarItensCampanha(
   campanhaId: number,
   lojaId: number,
   promotionId: string,
-  itens: ItemComPercentual[]
+  itens: ItemComPercentual[],
+  promotionIdAntiga: string | null = null
 ): Promise<void> {
   try {
     const precos = await getItemsBasicInfo(
@@ -177,7 +182,9 @@ async function processarItensCampanha(
     );
     for (let i = 0; i < itens.length; i += ITENS_EM_PARALELO) {
       const lote = itens.slice(i, i + ITENS_EM_PARALELO);
-      await Promise.all(lote.map((item) => processarUmItemCampanha(campanhaId, lojaId, promotionId, item, precos)));
+      await Promise.all(
+        lote.map((item) => processarUmItemCampanha(campanhaId, lojaId, promotionId, item, precos, promotionIdAntiga))
+      );
     }
     await pool.query("UPDATE promocoes_campanhas SET processamento = 'concluido' WHERE id = $1", [campanhaId]);
   } catch (err) {
@@ -189,12 +196,60 @@ async function processarItensCampanha(
   }
 }
 
+function mensagemErro(err: unknown): string {
+  return (
+    (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+    "Falha ao adicionar item — provavelmente não elegível (reputação, condição ou exposição do anúncio)."
+  );
+}
+
+// "Locked"/"LockedEntityException" é o Mercado Livre recusando o item porque
+// ele ainda está preso numa promoção antiga ativa (achado ao vivo renovando
+// campanha 2 dias antes dela vencer, com a antiga ainda rodando). Em vez de
+// desistir do item, tira ele da campanha antiga (libera o cadeado) e tenta
+// de novo uma vez — só nesse caso específico; qualquer outro motivo de falha
+// (revisão, percentual fora da faixa) não mexe na campanha antiga.
+function ehErroDeTravamento(mensagem: string): boolean {
+  return /locked/i.test(mensagem);
+}
+
+async function tentarAdicionarComDesbloqueio(
+  lojaId: number,
+  itemId: string,
+  promotionId: string,
+  dealPrice: number,
+  promotionIdAntiga: string | null
+): Promise<string | null> {
+  try {
+    await adicionarItemCampanha(lojaId, itemId, promotionId, "SELLER_CAMPAIGN", dealPrice);
+    return null;
+  } catch (err) {
+    const mensagem = mensagemErro(err);
+    if (!promotionIdAntiga || !ehErroDeTravamento(mensagem)) {
+      return mensagem;
+    }
+    try {
+      await removerItemCampanha(lojaId, itemId, promotionIdAntiga, "SELLER_CAMPAIGN");
+    } catch {
+      // Segue tentando mesmo sem conseguir tirar da antiga — ela pode já ter
+      // vencido ou o item já ter saído sozinho nesse meio tempo.
+    }
+    try {
+      await adicionarItemCampanha(lojaId, itemId, promotionId, "SELLER_CAMPAIGN", dealPrice);
+      return null;
+    } catch (err2) {
+      return mensagemErro(err2);
+    }
+  }
+}
+
 async function processarUmItemCampanha(
   campanhaId: number,
   lojaId: number,
   promotionId: string,
   { itemId, percentual }: ItemComPercentual,
-  precos: Map<string, { price: number; title?: string }>
+  precos: Map<string, { price: number; title?: string }>,
+  promotionIdAntiga: string | null = null
 ): Promise<void> {
   const info = precos.get(itemId);
   let falha: string | null = null;
@@ -207,13 +262,7 @@ async function processarUmItemCampanha(
     falha = `Percentual (${percentual.toFixed(1)}%) fora da faixa aceita pelo ML (${PERCENTUAL_MINIMO}-${PERCENTUAL_MAXIMO}%).`;
   } else {
     dealPrice = arredondarCentavos(info.price * (1 - percentual / 100));
-    try {
-      await adicionarItemCampanha(lojaId, itemId, promotionId, "SELLER_CAMPAIGN", dealPrice);
-    } catch (err) {
-      falha =
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
-        "Falha ao adicionar item — provavelmente não elegível (reputação, condição ou exposição do anúncio).";
-    }
+    falha = await tentarAdicionarComDesbloqueio(lojaId, itemId, promotionId, dealPrice, promotionIdAntiga);
   }
 
   if (falha === null && info) {
@@ -400,7 +449,8 @@ export async function recriarCampanha(campanhaAntigaId: number): Promise<Resulta
   const { rows } = await pool.query<{
     loja_id: number;
     nome: string;
-  }>("SELECT loja_id, nome FROM promocoes_campanhas WHERE id = $1", [campanhaAntigaId]);
+    promotion_id: string;
+  }>("SELECT loja_id, nome, promotion_id FROM promocoes_campanhas WHERE id = $1", [campanhaAntigaId]);
   if (rows.length === 0) throw new Error("Campanha não encontrada.");
 
   const { rows: itensRows } = await pool.query<{
@@ -432,7 +482,11 @@ export async function recriarCampanha(campanhaAntigaId: number): Promise<Resulta
   const MAX_NOME_CAMPANHA = 22;
   const sufixo = ` ${dataISO(new Date()).split("-").reverse().slice(0, 2).join("")}`;
   const nomeBase = rows[0].nome.slice(0, Math.max(0, MAX_NOME_CAMPANHA - sufixo.length)).trimEnd();
-  return criarCampanha(rows[0].loja_id, nomeBase + sufixo, itens, campanhaAntigaId);
+  // Placeholder de campanha registrada manualmente sem ID real (ver
+  // registrarCampanhaExistente) — não existe no Mercado Livre, não adianta
+  // tentar desbloquear item nela.
+  const promotionIdAntiga = rows[0].promotion_id.startsWith("EXTERNA-") ? null : rows[0].promotion_id;
+  return criarCampanha(rows[0].loja_id, nomeBase + sufixo, itens, campanhaAntigaId, promotionIdAntiga);
 }
 
 export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<Campanha[]> {
@@ -845,26 +899,23 @@ export async function marcarProcessamentosInterrompidos(): Promise<void> {
 // sem promoção ativa até notar manualmente.
 const DIAS_ANTES_DE_RENOVAR_AUTOMATICO = 2;
 
-// Renova automaticamente a Promoção Geral das 4 lojas do dono (LOJAS_DO_DONO
-// — Catedral, Hangar, Inga Collors e Perpétua) quando falta pouco pra acabar.
-// Só essas lojas: é uma automação de "não deixar passar", não um recriar em
-// massa pra qualquer loja do grupo. Reaproveita o recriarCampanha já usado
-// pelo botão manual — mesma lógica, mesmos itens, preço recalculado na hora.
+// Renova automaticamente a Promoção Geral de TODAS as lojas do grupo
+// conectadas ao Mercado Livre (não só as 4 pessoais do dono — pedido
+// explícito pra cobrir todas as contas do sistema) quando falta pouco pra
+// acabar. Reaproveita o recriarCampanha já usado pelo botão manual — mesma
+// lógica, mesmos itens, preço recalculado na hora, e agora com a tentativa
+// de desbloqueio (ver tentarAdicionarComDesbloqueio) pra item que ainda
+// estiver preso na campanha antiga.
 //
 // Guarda contra renovar a mesma campanha duas vezes: só entra quem ainda não
 // tem uma campanha mais nova apontando pra ela (campanha_anterior_id) — se a
 // criação falhar, não sobra linha nenhuma e a campanha tenta de novo sozinha
 // no próximo ciclo (4h).
-//
-// Risco ainda não testado ao vivo: a campanha nova é criada enquanto a
-// antiga ainda está ativa (até 2 dias de sobreposição), e não se sabe se o
-// Mercado Livre deixa um item participar de duas SELLER_CAMPAIGN da mesma
-// loja ao mesmo tempo. Se não deixar, o item falha individualmente (fica
-// registrado em falhas_itens, sem travar os outros) e só entra de fato
-// quando a campanha antiga expirar — vale observar a primeira renovação real
-// pra confirmar.
 async function renovarCampanhasProximasDoFim(): Promise<void> {
   const hoje = dataISOBR(new Date());
+  const lojaIds = (await listLojas()).filter((l) => l.ml_user_id !== null).map((l) => l.id);
+  if (lojaIds.length === 0) return;
+
   const { rows } = await pool.query<{ id: number; loja_id: number; nome: string; data_fim: string }>(
     `SELECT c.id, c.loja_id, c.nome, c.data_fim::text AS data_fim
      FROM promocoes_campanhas c
@@ -873,7 +924,7 @@ async function renovarCampanhasProximasDoFim(): Promise<void> {
        AND c.processamento = 'concluido'
        AND c.data_fim <= ($2::date + $3::int)
        AND NOT EXISTS (SELECT 1 FROM promocoes_campanhas seguinte WHERE seguinte.campanha_anterior_id = c.id)`,
-    [LOJAS_DO_DONO, hoje, DIAS_ANTES_DE_RENOVAR_AUTOMATICO]
+    [lojaIds, hoje, DIAS_ANTES_DE_RENOVAR_AUTOMATICO]
   );
   for (const r of rows) {
     try {
