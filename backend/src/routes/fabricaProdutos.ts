@@ -244,8 +244,17 @@ fabricaProdutosRouter.post("/ajustar-custo-historico", async (req, res) => {
   if (custo !== null && (!Number.isFinite(custo) || custo <= 0)) {
     return res.status(400).json({ error: "Custo invalido." });
   }
+  // pedidoId mira numa venda so: cor que saiu de linha entra no SKU que sobrou
+  // com o CMV da cor antiga, e as outras vendas do mesmo SKU ficam como estao
+  const bp = req.body?.pedidoId;
+  const pedidoId = bp === undefined || bp === null || bp === "" ? null : Number(bp);
+  if (pedidoId !== null && (!Number.isInteger(pedidoId) || pedidoId <= 0)) {
+    return res.status(400).json({ error: "pedidoId invalido." });
+  }
   try {
-    res.json(await ajustarCustoHistorico(sku, custo, req.body?.simular !== false));
+    res.json(
+      await ajustarCustoHistorico(sku, custo, req.body?.simular !== false, pedidoId)
+    );
   } catch (err) {
     erro(res, err, "Falha ao ajustar o custo historico.");
   }
