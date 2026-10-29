@@ -21,6 +21,7 @@ import {
   paraTexto,
   pedidoCru,
   criarPedidoVenda,
+  ajustarPrecoDoPedido,
 } from "../services/blingPedidosService";
 import {
   puxarContatos,
@@ -1214,6 +1215,32 @@ fabricaBlingRouter.get("/pedidos/por-numero/:numero", async (req, res) => {
   if (!Number.isInteger(n) || n <= 0) return res.status(400).json({ error: "Número inválido." });
   try { res.json(await pedidoPorNumero(n)); }
   catch (err) { erro(res, err, "Falha ao achar o pedido."); }
+});
+
+// Corrige o preco unitario de itens de um pedido ja lancado.
+//
+// `simular: true` e o padrao, como em todo lugar que escreve no Bling: a
+// primeira chamada mostra de quanto pra quanto cada linha vai, e so a segunda
+// grava. O id aqui e o do Bling, nao o numero do pedido — pegue em
+// `/pedidos/por-numero/:numero`.
+fabricaBlingRouter.post("/pedidos/:id/precos", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Id inválido." });
+  const b = req.body ?? {};
+  const ajustes = Array.isArray(b.ajustes)
+    ? b.ajustes
+        .map((a: { codigo?: unknown; valor?: unknown }) => ({
+          codigo: String(a.codigo ?? "").trim(),
+          valor: Number(a.valor),
+        }))
+        .filter((a: { codigo: string; valor: number }) => a.codigo && Number.isFinite(a.valor))
+    : [];
+  if (!ajustes.length) return res.status(400).json({ error: "Mande os ajustes { codigo, valor }." });
+  try {
+    res.json(await ajustarPrecoDoPedido(id, ajustes, b.simular !== false));
+  } catch (err) {
+    erro(res, err, "Falha ao ajustar o preço do pedido.");
+  }
 });
 
 // Lanca ou estorna a saida de estoque de um pedido. E dessa saida que sai o CMV.

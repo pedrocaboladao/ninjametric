@@ -251,13 +251,20 @@ export async function jaImportados(numeros: string[]): Promise<Set<string>> {
 // invalida o token na hora, entao reautorizar em seguida em
 // `/api/fabrica-bling/autorizar` — senao o sync da manha seguinte cai.
 
-async function escreverPedido<T>(caminho: string, corpo: unknown): Promise<T> {
+async function escreverPedido<T>(
+  caminho: string,
+  corpo: unknown,
+  metodo: "post" | "put" = "post"
+): Promise<T> {
   let espera = 2000;
   for (let tentativa = 1; ; tentativa++) {
     await vez();
     const token = await tokenValido();
     try {
-      const resp = await axios.post<T>(`${BASE}${caminho}`, corpo, {
+      const resp = await axios.request<T>({
+        method: metodo,
+        url: `${BASE}${caminho}`,
+        data: corpo,
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: "application/json",
@@ -385,4 +392,147 @@ export async function criarPedidoVenda(p: NovoPedidoVenda): Promise<PedidoCriado
     itens: linhas.length,
     conferido: linhas.length === p.itens.length && Math.abs(total - esperado) <= 0.02,
   };
+}
+
+export interface AjustePreco {
+  /** Codigo do produto na linha do pedido. */
+  codigo: string;
+  /** Novo valor UNITARIO. */
+  valor: number;
+}
+
+export interface LinhaPrecoAjustada {
+  codigo: string;
+  quantidade: number;
+  de: number;
+  para: number;
+  diferenca: number;
+}
+
+export interface PrecoDoPedidoAjustado {
+  simulacao: boolean;
+  pedidoId: number;
+  numero: string;
+  totalAntes: number;
+  totalDepois: number;
+  diferenca: number;
+  linhas: LinhaPrecoAjustada[];
+  naoAchei: string[];
+  conferido: boolean;
+}
+
+/**
+ * Corrige o valor unitario de itens de um pedido JA criado.
+ *
+ * Existe porque pedido lancado errado nao tem conserto pela API de outro jeito:
+ * o Bling nao apaga pedido e nao tem rota de "mudar so esta linha". O PUT de
+ * `/pedidos/vendas/{id}` **reescreve o pedido inteiro** — item que nao for no
+ * corpo some. Entao aqui a lista sai da leitura do proprio pedido, com todas as
+ * linhas, e so o valor das que foram pedidas muda.
+ *
+ * Cada item vai com o `id` da linha e o `produto.id` originais. Sem o `id` o
+ * Bling trata como linha nova e refaz a saida de estoque; sem `produto.id` ele
+ * aceita o codigo como item solto e o CMV vira zero — a mesma armadilha que
+ * `criarPedidoVenda` ja desvia na criacao.
+ *
+ * `situacao` e `categoria` voltam como estavam: pedido que perde a categoria
+ * sai do DRE, e pedido que perde a situacao volta pra "em aberto" e reaparece
+ * na cobranca.
+ *
+ * Como em todo lugar que escreve no Bling, o 200 nao prova nada: le de volta e
+ * so devolve `conferido: true` quando o total bate com o esperado.
+ */
+export async function ajustarPrecoDoPedido(
+  id: number,
+  ajustes: AjustePreco[],
+  simulacao = true
+): Promise<PrecoDoPedidoAjustado> {
+  if (!Number.isInteger(id) || id <= 0) throw new Error("Id do pedido invalido.");
+  if (!ajustes.length) throw new Error("Informe ao menos um ajuste.");
+  for (const a of ajustes) {
+    if (!a.codigo.trim()) throw new Error("Ajuste sem codigo.");
+    if (!(a.valor > 0)) throw new Error(`Valor invalido em ${a.codigo}.`);
+  }
+
+  const chave = (s: string) => s.trim().toUpperCase();
+  const novoPor = new Map(ajustes.map((a) => [chave(a.codigo), a.valor]));
+
+  const { data: p } = await get<{ data: Record<string, unknown> }>(
+    `/pedidos/vendas/${id}`
+  );
+  const itens = (p.itens as Array<Record<string, unknown>> | undefined) ?? [];
+  if (!itens.length) throw new Error("O pedido veio sem itens.");
+
+  const linhas: LinhaPrecoAjustada[] = [];
+  const usados = new Set<string>();
+  const corpoItens = itens.map((i) => {
+    const codigo = String(i.codigo ?? "").trim();
+    const qt = Number(i.quantidade ?? 0);
+    const de = Number(i.valor ?? 0);
+    const novo = novoPor.get(chave(codigo));
+    const para = novo === undefined ? de : novo;
+    if (novo !== undefined) {
+      usados.add(chave(codigo));
+      if (Math.abs(para - de) > 0.005) {
+        linhas.push({ codigo, quantidade: qt, de, para, diferenca: Number(((para - de) * qt).toFixed(2)) });
+      }
+    }
+    return {
+      id: i.id,
+      produto: i.produto,
+      codigo,
+      descricao: i.descricao,
+      unidade: i.unidade,
+      quantidade: qt,
+      valor: para,
+      desconto: i.desconto ?? 0,
+    };
+  });
+
+  const naoAchei = ajustes.map((a) => a.codigo).filter((c) => !usados.has(chave(c)));
+  const totalAntes = Number(
+    itens.reduce((s, i) => s + Number(i.quantidade ?? 0) * Number(i.valor ?? 0), 0).toFixed(2)
+  );
+  const totalDepois = Number(
+    corpoItens.reduce((s, i) => s + i.quantidade * i.valor, 0).toFixed(2)
+  );
+
+  const resposta: PrecoDoPedidoAjustado = {
+    simulacao,
+    pedidoId: id,
+    numero: String(p.numero ?? ""),
+    totalAntes,
+    totalDepois,
+    diferenca: Number((totalDepois - totalAntes).toFixed(2)),
+    linhas,
+    naoAchei,
+    conferido: false,
+  };
+  if (simulacao || !linhas.length) return resposta;
+
+  const contato = p.contato as { id?: number } | undefined;
+  await escreverPedido(
+    `/pedidos/vendas/${id}`,
+    {
+      data: p.data,
+      numeroLoja: p.numeroLoja,
+      observacoes: p.observacoes,
+      contato: { id: contato?.id },
+      situacao: p.situacao,
+      categoria: p.categoria,
+      itens: corpoItens,
+    },
+    "put"
+  );
+
+  const { data: d } = await get<RespostaDetalhe>(`/pedidos/vendas/${id}`);
+  const depois = d.itens ?? [];
+  const conferir = Number(
+    depois.reduce((s, i) => s + Number(i.quantidade ?? 0) * Number(i.valor ?? 0), 0).toFixed(2)
+  );
+  resposta.conferido =
+    depois.length === itens.length && Math.abs(conferir - totalDepois) <= 0.02;
+  resposta.totalDepois = conferir;
+  resposta.diferenca = Number((conferir - totalAntes).toFixed(2));
+  return resposta;
 }
