@@ -73,6 +73,16 @@ const MAPA_CATEGORIA: Record<number, string> = {
   14734532192: "SEGURANÇA E MONITORAMENTO", // (2x)
   14745621724: "COMBUSTÍVEL", // (1x)
   14734532207: "IMPOSTO", // Impostos e Taxas (1x)
+  // As duas abaixo entraram em 30/10/2026, das 6 categorias que apareciam em
+  // paraRevisar. Sao as unicas com destino unico: as outras 4 ficam de fora de
+  // proposito, porque um de-para 1-pra-1 estaria errado. "Servicos de Producao"
+  // junta o corte de manta (REVENDA, embutido no CMV de 0,338/m) com diarista
+  // (DIARIAS); "Licencas e Taxas" junta assessoria de marcas (JURIDICO E
+  // MARCAS) com taxa de licenca de funcionamento (ADMINISTRATIVO); "Materiais
+  // Promocionais" veio com compra de ferramenta, que nao e brinde; e um titulo
+  // chegou sem categoria nenhuma no Bling. Esses continuam pedindo revisao.
+  14748005480: "BENEFÍCIOS", // Alimentacao / Refeicoes — marmita de funcionario
+  14747774271: "ADMINISTRATIVO", // Consultoria de Licitacao — recorrente
   14734532200: "ENCARGOS", // FGTS — tautologico, irmao do INSS
   14734532204: "RESCISÕES", // tautologico
   14734532191: "LIMPEZA", // Limpeza e Conservacao — tautologico
