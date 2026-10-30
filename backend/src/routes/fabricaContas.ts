@@ -12,6 +12,7 @@ import {
   excluirConta,
   resumoContas,
   aplicarValorDoBling,
+  definirBlingIdConta,
   type ContaEntrada,
   type TipoConta,
   type StatusConta,
@@ -281,6 +282,24 @@ fabricaContasRouter.put("/:id/status", async (req, res) => {
     res.status(204).end();
   } catch (err) {
     erro(res, err, "Falha ao mudar o status.");
+  }
+});
+
+// Conserta vinculo trocado com o Bling. Ver o comentario de
+// definirBlingIdConta: a divergencia de "valor" do espelho muitas vezes e
+// ponteiro errado, nao dado errado.
+fabricaContasRouter.put("/:id/bling-id", async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Id inválido." });
+  const b = req.body?.blingId;
+  const blingId = b === null || b === undefined || b === "" ? null : Number(b);
+  if (blingId !== null && (!Number.isInteger(blingId) || blingId <= 0)) {
+    return res.status(400).json({ error: "blingId inválido." });
+  }
+  try {
+    res.json({ id, blingId, ...(await definirBlingIdConta(id, blingId)) });
+  } catch (err) {
+    erro(res, err, "Falha ao mudar o vínculo com o Bling.");
   }
 });
 
