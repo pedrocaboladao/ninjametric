@@ -485,12 +485,7 @@ export function FabricaContas() {
       setReceb(null);
       setRecebValor("");
       setRecebObs("");
-      setAviso(
-        `Recebimento lançado. Saldo agora ${formatCurrency(r.saldo)}` +
-          (r.bonificacao
-            ? ` · bonificação de ${formatCurrency(r.bonificacao)}${r.provisorio ? " (provisória)" : ""}`
-            : "")
-      );
+      setAviso(`Recebimento lançado. Saldo agora ${formatCurrency(r.saldo)}`);
       setErro(null);
       await carregar();
     } catch (e) {

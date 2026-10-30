@@ -1,7 +1,6 @@
 import { pool } from "../db/pool";
 import { dataIso, dataIsoOuNulo } from "./fabricaData";
 import { creditoPorCliente } from "./fabricaDevolucoesService";
-import { bonificarPagamento } from "./fabricaCreditosService";
 
 // Conta corrente das lojas com a fábrica.
 //
@@ -295,49 +294,18 @@ export async function registrarPagamento(
   valor: number,
   data: string | null,
   observacao: string | null
-): Promise<{
-  id: number;
-  saldo: number;
-  bonificacao: number;
-  // pagou parte: o credito saiu, mas so vira dela quitando
-  provisorio: boolean;
-  // provisorios de pagamentos anteriores que este PIX confirmou
-  confirmados: number;
-}> {
-  // saldo antes do pagamento, do GRUPO que paga junto — não só da loja. A
-  // Truck 3 não tem dívida própria (soma na Truck 4), e olhando só ela o PIX
-  // dela saía sem os 3,5%: em setembro/2026 foram R$ 2.076,52 lançados à mão.
-  const contasAntes = await listarContaCorrente();
-  const grupo = contasAntes.find((c) => c.clienteId === clienteId)?.paganteId ?? clienteId;
-  const saldoAntes = contasAntes
-    .filter((c) => c.paganteId === grupo)
-    .reduce((s, c) => s + c.saldo, 0);
-
+): Promise<{ id: number; saldo: number }> {
   const cliente = await pool.connect();
   let id: number;
-  let bonificacao = 0;
-  let provisorio = false;
-  let confirmados = 0;
   try {
     await cliente.query("BEGIN");
     const { rows } = await cliente.query(
       `INSERT INTO fabrica_pagamentos (cliente_id, data, valor, observacao)
        VALUES ($1, COALESCE($2::date, CURRENT_DATE), $3, $4)
-       RETURNING id, data::text AS data`,
+       RETURNING id`,
       [clienteId, data, valor, observacao]
     );
     id = Number(rows[0].id);
-    const b = await bonificarPagamento(
-      cliente,
-      clienteId,
-      id,
-      valor,
-      String(rows[0].data),
-      saldoAntes
-    );
-    bonificacao = b.bonus;
-    provisorio = b.provisorio;
-    confirmados = b.confirmados;
     await cliente.query("COMMIT");
   } catch (err) {
     await cliente.query("ROLLBACK");
@@ -349,7 +317,7 @@ export async function registrarPagamento(
   // devolve o saldo que sobrou: pagou 90 de 100, ficam 10 pra próxima semana
   const contas = await listarContaCorrente();
   const conta = contas.find((c) => c.clienteId === clienteId);
-  return { id, saldo: conta?.saldo ?? 0, bonificacao, provisorio, confirmados };
+  return { id, saldo: conta?.saldo ?? 0 };
 }
 
 // Adiantamento ou pagamento do ciclo. O extrato do Sicoob já diz qual é na

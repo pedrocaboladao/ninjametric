@@ -951,22 +951,10 @@ export function FabricaPedidos() {
       });
       setAviso(
         r.saldo > 0.005
-          ? `PIX registrado. Sobrou ${formatCurrency(r.saldo)} — carrega pra próxima semana. ${formatCurrency(
-              r.bonificacao
-            )} de bonificação guardada como PROVISÓRIA: não abate nada até ela quitar.`
-          : r.confirmados > 0
-            ? `PIX registrado, loja zerada. ${formatCurrency(
-                r.bonificacao
-              )} de bonificação mais ${r.confirmados} crédito${
-                r.confirmados > 1 ? "s" : ""
-              } provisório${r.confirmados > 1 ? "s" : ""} que agora é${
-                r.confirmados > 1 ? "" : ""
-              } dela de vez.`
-            : r.bonificacao > 0
-              ? `PIX registrado, loja zerada. Bonificação de ${formatCurrency(
-                  r.bonificacao
-                )} (${percentual}%) creditada pra próxima compra.`
-              : "PIX registrado. A loja está zerada."
+          ? `PIX registrado. Sobrou ${formatCurrency(
+              r.saldo
+            )} — carrega pra próxima semana. Os ${percentual}% entram no fechamento do mês.`
+          : `PIX registrado, loja zerada. Os ${percentual}% entram no fechamento do mês.`
       );
       setPagValor("");
       setPagObs("");
@@ -1553,9 +1541,6 @@ export function FabricaPedidos() {
         `${r.pagamentosCriados} pagamento(s) lançado(s), ${formatCurrency(r.valorLancado)}.` +
           (r.pagamentosAdotados
             ? ` ${r.pagamentosAdotados} já estavam lançados na mão e foram amarrados ao PIX em vez de duplicar.`
-            : "") +
-          (r.bonificacoes
-            ? ` ${r.bonificacoes} bonificação(ões) de 3,5% geradas, ${formatCurrency(r.valorBonificado)}.`
             : "") +
           (r.pendentes ? ` ${r.pendentes} continuam sem origem apontada.` : "")
       );
