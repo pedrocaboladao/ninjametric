@@ -1,4 +1,3 @@
-import type { PoolClient } from "pg";
 import { pool } from "../db/pool";
 import { dataIso } from "./fabricaData";
 
@@ -248,64 +247,9 @@ export async function lancarAntecipacao(
   return { antecipacao: Math.abs(valor), bonificacao: bonus, percentual };
 }
 
-// Bonificação: 3,5% sobre o que a loja pagou, em qualquer pagamento.
-//
-// **O prêmio é por pagar, não por quitar.** Pagou 90 de 100, leva os 3,5% dos
-// 90, definitivo. Não existe mais crédito provisório.
-//
-// Era o contrário até 04/09/2026: o crédito ficava provisório e só virava dela
-// zerando a conta, o que dava à loja um motivo pra fechar a dívida em vez de
-// pagar sempre um pedaço. O Hudson trocou a regra sabendo do custo — no período
-// de 27/07 a 06/09 a diferença era R$ 127.065,13 contra R$ 10.500,00. A escolha
-// foi premiar o fluxo de caixa.
-//
-// Roda dentro da transação do pagamento: bonificar e depois falhar deixaria
-// crédito de um pagamento que não existe.
-export async function bonificarPagamento(
-  cliente: PoolClient,
-  clienteId: number,
-  pagamentoId: number,
-  valorPago: number,
-  data: string,
-  saldoAntes: number
-): Promise<{ bonus: number; provisorio: boolean; confirmados: number }> {
-  // não havia dívida: isso é antecipação, e a bonificação dela já sai por
-  // lancarAntecipacao. Bonificar aqui pagaria o prêmio duas vezes.
-  if (saldoAntes <= 0.01) return { bonus: 0, provisorio: false, confirmados: 0 };
-
-
-  const cfg = await cliente.query<{ percentual: string }>(
-    "SELECT percentual FROM fabrica_bonificacao WHERE id = 1"
-  );
-  const percentual = cfg.rows[0] ? Number(cfg.rows[0].percentual) : 3.5;
-  const bonus = Number(((valorPago * percentual) / 100).toFixed(2));
-
-  // Provisório de antes da mudança de regra vira definitivo no primeiro
-  // pagamento seguinte. Não faz sentido manter parado um crédito que a regra
-  // nova já teria liberado no dia em que foi gerado.
-  const r = await cliente.query(
-    "UPDATE fabrica_creditos SET provisorio = FALSE WHERE cliente_id = $1 AND provisorio",
-    [clienteId]
-  );
-  const confirmados = r.rowCount ?? 0;
-
-  if (bonus <= 0) return { bonus: 0, provisorio: false, confirmados };
-
-  await cliente.query(
-    `INSERT INTO fabrica_creditos
-       (cliente_id, data, origem, valor, pagamento_id, observacao, provisorio)
-     VALUES ($1, $2::date, 'BONIFICACAO', $3, $4, $5, $6)`,
-    [
-      clienteId,
-      data,
-      bonus,
-      pagamentoId,
-      `${percentual}% sobre o pagamento`,
-      false,
-    ]
-  );
-  return { bonus, provisorio: false, confirmados };
-}
+// Aqui havia `bonificarPagamento`, que gravava os 3,5% dentro da transação de
+// cada pagamento. Saiu em 30/10/2026, três dias depois da regra que a tornou
+// desnecessária — o fechamento do mês, mais abaixo, conta por quê.
 
 // Lojas com crédito provisório pendurado e conta ainda aberta.
 //
@@ -374,11 +318,17 @@ export async function excluirProvisorios(clienteId: number): Promise<number> {
 //
 // Isso derruba duas coisas que o código fazia:
 //
-//   - a trava de saldo em bonificarPagamento ("não devia nada, então não
-//     bonifica"). Pagar mais do que devia passou a valer prêmio igual.
+//   - a trava de saldo que havia no caminho do pagamento ("não devia nada,
+//     então não bonifica"). Pagar mais do que devia passou a valer prêmio igual.
 //   - o crédito nascendo colado em cada pagamento. Espalhado em 69 linhas no
 //     mês, ninguém confere; e quem entrou pelo extrato ficava de fora sem que
 //     a loja tivesse como saber por qual porta o dinheiro dela passou.
+//
+// O código acompanhou a regra em 30/10/2026: os dois caminhos que ainda
+// geravam o crédito na hora — o lançamento pela tela e a importação do extrato
+// Pix — deixaram de gerar. O total nunca dobrou, porque o fechamento apaga a
+// BONIFICACAO do mês antes de gravar; o que incomodava era o extrato da loja
+// mostrando, até o dia 31, linhas que iam ser substituídas.
 //
 // A base soma os dois jeitos de o dinheiro entrar, e só esses dois: pagamento
 // e antecipação. Não existe dupla contagem entre eles — a antecipação lançada

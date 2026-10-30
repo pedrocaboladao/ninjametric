@@ -405,8 +405,6 @@ export interface ResultadoPix {
   registrados: number;
   jaImportados: number;
   pendentes: number;
-  bonificacoes: number;
-  valorBonificado: number;
 }
 
 // --- entrada de mercadoria comprada ---

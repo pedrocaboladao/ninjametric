@@ -211,9 +211,6 @@ export async function registrarPagamento(entrada: {
 }): Promise<{
   id: number;
   saldo: number;
-  bonificacao: number;
-  provisorio: boolean;
-  confirmados: number;
 }> {
   const res = await fetch(`${API_BASE}/api/fabrica-pedidos/pagamentos`, {
     method: "POST",
@@ -224,9 +221,6 @@ export async function registrarPagamento(entrada: {
   return tratarResposta<{
     id: number;
     saldo: number;
-    bonificacao: number;
-    provisorio: boolean;
-    confirmados: number;
   }>(res);
 }
 
