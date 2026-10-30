@@ -6514,9 +6514,10 @@ button.contas-cartao:hover {
   font-size: 12px;
 }
 
-/* Alerta de bonificacao provisoria: a loja levou os 3,5% e nao quitou. Fica
-   com borda quente porque a acao dele e destrutiva de proposito — apagar um
-   credito que a loja ja viu na conta dela. */
+/* Caixa de aviso dentro de uma aba, com borda quente: um numero que nao fecha,
+   um cadastro que falta, uma acao destrutiva de proposito. Nasceu no alerta de
+   bonificacao provisoria, que saiu em 30/10/2026; a classe ficou porque sete
+   outros avisos do Financeiro e dos Produtos usam ela. */
 .credito-alerta {
   border: 1px solid #b45309;
   border-left-width: 4px;

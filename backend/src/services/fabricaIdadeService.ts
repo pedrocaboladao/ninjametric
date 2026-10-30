@@ -86,9 +86,8 @@ export async function idadeDoSaldo(): Promise<IdadeSaldo> {
        WHERE p.status <> 'CANCELADO'
        GROUP BY p.id, p.cliente_id, p.data`
     ),
-    // provisório fica de fora: ele não abate nada enquanto a loja não quitar
     pool.query<{ cliente_id: number; data: string; valor: string }>(
-      "SELECT cliente_id, data, valor FROM fabrica_creditos WHERE NOT provisorio"
+      "SELECT cliente_id, data, valor FROM fabrica_creditos"
     ),
     pool.query<{ cliente_id: number; total: string }>(
       "SELECT cliente_id, SUM(valor) AS total FROM fabrica_pagamentos GROUP BY cliente_id"

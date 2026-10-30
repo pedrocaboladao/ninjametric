@@ -249,14 +249,14 @@ export async function montarDre(deEntrada?: string, ateEntrada?: string): Promis
     aliquotaDoMes(de),
     totaisDoPeriodo(de, ate),
     depreciacaoDoMes(de),
-    // so BONIFICACAO confirmada: a antecipacao e forma de pagamento e nao
-    // custo, e a provisoria ainda pode ser apagada no fim do mes — tirar da
-    // receita agora seria dar por perdido um dinheiro que talvez volte
+    // so BONIFICACAO: a antecipacao e forma de pagamento, nao custo. E uma
+    // linha por loja, gravada pelo fechamento do mes — ate 30/10/2026 havia
+    // tambem o credito provisorio, que ficava de fora porque podia cair
     pool.query<{ total: string; percentual: string }>(
       `SELECT COALESCE(SUM(cr.valor), 0) AS total,
               (SELECT percentual FROM fabrica_bonificacao WHERE id = 1) AS percentual
        FROM fabrica_creditos cr
-       WHERE cr.origem = 'BONIFICACAO' AND NOT cr.provisorio
+       WHERE cr.origem = 'BONIFICACAO'
          AND cr.data BETWEEN $1::date AND $2::date`,
       [de, ate]
     ),
