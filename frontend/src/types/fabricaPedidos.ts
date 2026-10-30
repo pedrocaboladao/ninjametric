@@ -195,20 +195,6 @@ export interface Credito {
   valor: number;
   pagamentoId: number | null;
   observacao: string | null;
-  // pagou parte e já levou os 3,5%, mas ainda não quitou. Vira definitivo no
-  // pagamento que zerar a conta, ou some se ela virar o mês devendo.
-  provisorio: boolean;
-}
-
-// Loja com crédito provisório pendurado e conta ainda aberta.
-export interface AlertaProvisorio {
-  clienteId: number;
-  clienteNome: string;
-  provisorio: number;
-  devendo: number;
-  mesMaisAntigo: string;
-  // virou o mês e ela não quitou o anterior: o crédito deveria cair
-  venceu: boolean;
 }
 
 // Uma linha da prévia dos 3,5% do mês. `jaLancado` é o que já existe de
@@ -247,9 +233,6 @@ export interface SaldoCredito {
   // dívida trazida de antes do sistema. Sempre negativo.
   anterior: number;
   usado: number;
-  // bonificação pendurada: aparece, mas não abate até a loja quitar
-  provisorio: number;
-  // o que de fato abate hoje — só o que já está confirmado
   saldo: number;
 }
 

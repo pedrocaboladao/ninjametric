@@ -36,23 +36,6 @@ export interface Credito {
   valor: number;
   pagamentoId: number | null;
   observacao: string | null;
-  // pagou parte e já levou os 3,5%, mas ainda não quitou. Vira definitivo no
-  // pagamento que zerar a conta, ou some se ela virar o mês devendo.
-  provisorio: boolean;
-}
-
-// Loja que está com crédito provisório e ainda deve. É a lista que aparece no
-// alerta pra decidir se o crédito fica ou sai.
-export interface AlertaProvisorio {
-  clienteId: number;
-  clienteNome: string;
-  provisorio: number;
-  // quanto ela ainda deve — vem do saldo da conta corrente
-  devendo: number;
-  // mês do crédito mais antigo ainda pendurado, "AAAA-MM"
-  mesMaisAntigo: string;
-  // o mês do crédito já virou e a dívida continua: é este que o Hudson quer ver
-  venceu: boolean;
 }
 
 export interface SaldoCliente {
@@ -67,9 +50,6 @@ export interface SaldoCliente {
   // dívida que a loja trouxe de antes do sistema. Sempre negativo.
   anterior: number;
   usado: number;
-  // bonificação pendurada: aparece, mas não abate até a loja quitar
-  provisorio: number;
-  // o que de fato abate hoje — só o que já está confirmado
   saldo: number;
 }
 
@@ -82,7 +62,6 @@ interface Linha {
   valor: string;
   pagamento_id: number | null;
   observacao: string | null;
-  provisorio: boolean;
 }
 
 export interface CreditoEntrada {
@@ -113,7 +92,7 @@ export async function definirPercentualBonificacao(percentual: number): Promise<
 export async function listarCreditos(clienteId?: number): Promise<Credito[]> {
   const { rows } = await pool.query<Linha>(
     `SELECT cr.id, cr.cliente_id, c.nome AS cliente_nome, cr.data, cr.origem, cr.valor,
-            cr.pagamento_id, cr.observacao, cr.provisorio
+            cr.pagamento_id, cr.observacao
      FROM fabrica_creditos cr
      JOIN fabrica_clientes c ON c.id = cr.cliente_id
      ${clienteId ? "WHERE cr.cliente_id = $1" : ""}
@@ -129,7 +108,6 @@ export async function listarCreditos(clienteId?: number): Promise<Credito[]> {
     valor: Number(r.valor),
     pagamentoId: r.pagamento_id,
     observacao: r.observacao,
-    provisorio: r.provisorio,
   }));
 }
 
@@ -144,7 +122,6 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
     ajuste: string;
     anterior: string;
     usado: string;
-    provisorio: string;
     saldo: string;
   }>(
     `SELECT c.id AS cliente_id, c.nome AS cliente_nome,
@@ -154,15 +131,14 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'AJUSTE'), 0)      AS ajuste,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'SALDO_ANTERIOR'), 0) AS anterior,
             COALESCE(SUM(cr.valor) FILTER (WHERE cr.origem = 'USO'), 0)         AS usado,
-            COALESCE(SUM(cr.valor) FILTER (WHERE cr.provisorio), 0)             AS provisorio,
-            COALESCE(SUM(cr.valor) FILTER (WHERE NOT cr.provisorio), 0)         AS saldo
+            COALESCE(SUM(cr.valor), 0)                                          AS saldo
      FROM fabrica_clientes c
      LEFT JOIN fabrica_clientes p ON p.id = c.cliente_pai_id
      LEFT JOIN fabrica_creditos cr ON cr.cliente_id = c.id
      GROUP BY c.id, c.nome, c.cliente_pai_id, p.nome
      HAVING COALESCE(SUM(cr.valor), 0) <> 0
          OR COUNT(cr.id) FILTER (WHERE cr.origem = 'SALDO_ANTERIOR') > 0
-     ORDER BY COALESCE(SUM(cr.valor) FILTER (WHERE NOT cr.provisorio), 0) DESC`
+     ORDER BY COALESCE(SUM(cr.valor), 0) DESC`
   );
   return rows.map((r) => ({
     clienteId: r.cliente_id,
@@ -174,7 +150,6 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
     ajuste: Number(r.ajuste),
     anterior: Number(r.anterior),
     usado: Number(r.usado),
-    provisorio: Number(r.provisorio),
     saldo: Number(r.saldo),
   }));
 }
@@ -182,7 +157,7 @@ export async function saldosPorCliente(): Promise<SaldoCliente[]> {
 export async function saldoDoCliente(clienteId: number): Promise<number> {
   const { rows } = await pool.query<{ saldo: string }>(
     `SELECT COALESCE(SUM(valor), 0) AS saldo
-     FROM fabrica_creditos WHERE cliente_id = $1 AND NOT provisorio`,
+     FROM fabrica_creditos WHERE cliente_id = $1`,
     [clienteId]
   );
   return Number(rows[0]?.saldo ?? 0);
@@ -251,61 +226,18 @@ export async function lancarAntecipacao(
 // cada pagamento. Saiu em 30/10/2026, três dias depois da regra que a tornou
 // desnecessária — o fechamento do mês, mais abaixo, conta por quê.
 
-// Lojas com crédito provisório pendurado e conta ainda aberta.
+// Aqui havia o alerta de crédito provisório e o botão que o derrubava.
 //
-// `venceu` é a regra que o Hudson pediu: o mês do crédito já virou e ela não
-// quitou o anterior. Aí o alerta acende e o botão de excluir aparece.
-export async function alertasProvisorios(
-  devendoPorCliente: Map<number, number>
-): Promise<AlertaProvisorio[]> {
-  const { rows } = await pool.query<{
-    cliente_id: number;
-    cliente_nome: string;
-    total: string;
-    mais_antigo: string;
-  }>(
-    `SELECT cr.cliente_id, c.nome AS cliente_nome,
-            SUM(cr.valor) AS total,
-            to_char(MIN(cr.data), 'YYYY-MM') AS mais_antigo
-     FROM fabrica_creditos cr
-     JOIN fabrica_clientes c ON c.id = cr.cliente_id
-     WHERE cr.provisorio
-     GROUP BY cr.cliente_id, c.nome
-     ORDER BY SUM(cr.valor) DESC`
-  );
-
-  // "agora" no fuso da fábrica, não em UTC: no começo da noite o UTC já virou o
-  // dia e o mês, e o alerta acenderia um dia antes da hora
-  const mesAtual = new Date()
-    .toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" })
-    .slice(0, 7);
-
-  return rows
-    .map((r) => {
-      const devendo = devendoPorCliente.get(r.cliente_id) ?? 0;
-      return {
-        clienteId: r.cliente_id,
-        clienteNome: r.cliente_nome,
-        provisorio: Number(r.total),
-        devendo,
-        mesMaisAntigo: r.mais_antigo,
-        venceu: devendo > 0.005 && r.mais_antigo < mesAtual,
-      };
-    })
-    // quem já quitou não deveria ter provisório nenhum, mas se sobrar um por
-    // exclusão de pagamento ele não precisa virar alerta
-    .filter((a) => a.devendo > 0.005);
-}
-
-// Tira os provisórios de uma loja. É o botão do alerta: ela não fechou o mês,
-// então não leva o prêmio.
-export async function excluirProvisorios(clienteId: number): Promise<number> {
-  const r = await pool.query(
-    "DELETE FROM fabrica_creditos WHERE cliente_id = $1 AND provisorio",
-    [clienteId]
-  );
-  return r.rowCount ?? 0;
-}
+// Nada disso tinha mais o que mostrar. O provisório existia pra uma regra que
+// vigorou até 04/09/2026: a loja levava os 3,5% ao pagar, mas o crédito só
+// virava dela zerando a conta. Depois disso o único lugar que gravava
+// `provisorio = TRUE` era `bonificarPagamento`, que saiu em 30/10/2026.
+// Conferido no banco antes de tirar: zero linhas provisórias. O alerta ficava
+// aceso em branco e o botão não tinha o que apagar.
+//
+// A coluna continua no schema, sem ninguém filtrando por ela. Saiu do código,
+// não do banco: está toda FALSE, não carrega informação nenhuma, e um DROP em
+// produção pra arrumar código morto não se paga.
 
 // ---------------------------------------------------------------------------
 // Fechamento do mês: os 3,5% de uma vez só, no último dia.
@@ -479,8 +411,8 @@ export async function fecharBonificacaoMes(
       if (l.bonus <= 0) continue;
       await cliente.query(
         `INSERT INTO fabrica_creditos
-           (cliente_id, data, origem, valor, observacao, provisorio)
-         VALUES ($1, $2::date, 'BONIFICACAO', $3, $4, FALSE)`,
+           (cliente_id, data, origem, valor, observacao)
+         VALUES ($1, $2::date, 'BONIFICACAO', $3, $4)`,
         [
           l.clienteId,
           ultimo,

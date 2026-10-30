@@ -1644,6 +1644,10 @@ INSERT INTO fabrica_bonificacao (id, percentual) VALUES (1, 3.5)
 -- Guardado como flag em vez de tabela à parte: é o mesmo crédito, só ainda não
 -- confirmado. Duas tabelas obrigariam a somar as duas em todo lugar que hoje
 -- soma uma.
+-- provisorio: historico. Era o credito que a loja levava ao pagar mas so
+-- virava dela quitando, regra que vigorou ate 04/09/2026. Desde 30/10/2026
+-- nada grava TRUE e nenhuma consulta filtra por ela -- esta toda FALSE. Fica
+-- no banco porque nao carrega informacao e um DROP nao se paga.
 ALTER TABLE fabrica_creditos ADD COLUMN IF NOT EXISTS provisorio BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_fabrica_creditos_provisorio
   ON fabrica_creditos (cliente_id) WHERE provisorio;

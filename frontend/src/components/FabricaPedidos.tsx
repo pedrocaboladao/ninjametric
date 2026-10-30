@@ -21,7 +21,6 @@ import {
   fetchBonificacaoMes,
   fecharBonificacaoMes,
   excluirCredito,
-  excluirProvisorios,
   fetchExtrato,
   fetchPagamentos,
   fetchOrigensPix,
@@ -74,7 +73,6 @@ import type {
   SkuFaltando,
   Credito,
   SaldoCredito,
-  AlertaProvisorio,
   BonificacaoMes,
   Pagamento,
   LinhaExtrato,
@@ -207,7 +205,6 @@ export function FabricaPedidos() {
   // credito da loja: antecipacao paga adiantado e bonificacao de 3,5%
   const [creditos, setCreditos] = useState<Credito[]>([]);
   const [saldosCredito, setSaldosCredito] = useState<SaldoCredito[]>([]);
-  const [alertasCredito, setAlertasCredito] = useState<AlertaProvisorio[]>([]);
   const [percentual, setPercentual] = useState(3.5);
   const [percentualEdit, setPercentualEdit] = useState("");
   const [antCliente, setAntCliente] = useState("");
@@ -308,7 +305,6 @@ export function FabricaPedidos() {
       setIdade(id);
       setCreditos(cr.creditos);
       setSaldosCredito(cr.saldos);
-      setAlertasCredito(cr.alertas);
       setPercentual(cr.percentual);
       setPagamentos(pg.pagamentos);
       setTotalPagamentos(pg.total);
@@ -593,14 +589,9 @@ export function FabricaPedidos() {
     );
   }
 
-  // credito parado nas lojas: e desconto ja prometido, nao dinheiro da fabrica.
-  // So o confirmado entra: o provisorio ainda pode cair no fim do mes.
+  // credito parado nas lojas: e desconto ja prometido, nao dinheiro da fabrica
   const totalCredito = useMemo(
     () => saldosCredito.reduce((t, c) => t + Math.max(0, c.saldo), 0),
-    [saldosCredito]
-  );
-  const totalProvisorio = useMemo(
-    () => saldosCredito.reduce((t, c) => t + c.provisorio, 0),
     [saldosCredito]
   );
 
@@ -832,29 +823,6 @@ export function FabricaPedidos() {
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao lan\u00e7ar a d\u00edvida.");
-    }
-  }
-
-  async function derrubarProvisorio(a: AlertaProvisorio) {
-    if (
-      !window.confirm(
-        `Excluir ${formatCurrency(a.provisorio)} de bonifica\u00e7\u00e3o provis\u00f3ria de ${
-          a.clienteNome
-        }? Ela ainda deve ${formatCurrency(a.devendo)} do m\u00eas ${a.mesMaisAntigo}.`
-      )
-    )
-      return;
-    try {
-      const r = await excluirProvisorios(a.clienteId);
-      setErro(null);
-      setAviso(
-        `${r.excluidos} cr\u00e9dito${r.excluidos > 1 ? "s" : ""} provis\u00f3rio${
-          r.excluidos > 1 ? "s" : ""
-        } de ${a.clienteNome} exclu\u00edd${r.excluidos > 1 ? "os" : "o"}.`
-      );
-      await carregar();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao excluir o cr\u00e9dito provis\u00f3rio.");
     }
   }
 
@@ -3159,11 +3127,6 @@ export function FabricaPedidos() {
             <div>
               <div className="financeiro-stat-label">CRÉDITO QUE ABATE</div>
               <div className="financeiro-stat-valor">{formatCurrency(totalCredito)}</div>
-              {totalProvisorio > 0 && (
-                <div className="financeiro-td-mudo">
-                  + {formatCurrency(totalProvisorio)} provisório, parado
-                </div>
-              )}
             </div>
           </div>
 
@@ -3303,57 +3266,6 @@ export function FabricaPedidos() {
             </>
           )}
 
-          {alertasCredito.length > 0 && (
-            <div className="credito-alerta">
-              <p>
-                <strong>
-                  {alertasCredito.filter((a) => a.venceu).length > 0
-                    ? "Bonificação provisória vencida"
-                    : "Bonificação provisória em aberto"}
-                </strong>{" "}
-                — estas lojas levaram os {percentual}% sobre o que pagaram, mas ainda não
-                quitaram. <strong>Nada disso está abatendo</strong> — o provisório fica parado
-                até ela quitar. Quem virou o mês devendo não fechou o anterior: aí o crédito
-                pode cair de vez. Se você não clicar, ele só continua parado.
-              </p>
-              <table className="financeiro-tabela">
-                <thead>
-                  <tr>
-                    <th>LOJA</th>
-                    <th>DESDE</th>
-                    <th className="financeiro-th-numero">PROVISÓRIO</th>
-                    <th className="financeiro-th-numero">AINDA DEVE</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {alertasCredito.map((a) => (
-                    <tr key={a.clienteId}>
-                      <td>{a.clienteNome}</td>
-                      <td className="financeiro-td-mudo">
-                        {a.mesMaisAntigo}
-                        {a.venceu && <strong> · virou o mês</strong>}
-                      </td>
-                      <td className="financeiro-th-numero">{formatCurrency(a.provisorio)}</td>
-                      <td className="financeiro-th-numero financeiro-td-mudo">
-                        {formatCurrency(a.devendo)}
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className={a.venceu ? "btn-responder" : "btn-excluir"}
-                          onClick={() => void derrubarProvisorio(a)}
-                        >
-                          Excluir crédito
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
           <div className="financeiro-filtros">
             <BuscaSelecao
               itens={itensCliente}
@@ -3452,7 +3364,6 @@ export function FabricaPedidos() {
                   <th className="financeiro-th-numero">DÍVIDA ANTERIOR</th>
                   <th className="financeiro-th-numero">AJUSTES</th>
                   <th className="financeiro-th-numero">USADO</th>
-                  <th className="financeiro-th-numero">PROVISÓRIO</th>
                   <th className="financeiro-th-numero">SALDO QUE ABATE</th>
                   <th />
                 </tr>
@@ -3460,7 +3371,7 @@ export function FabricaPedidos() {
               <tbody>
                 {!saldosCredito.length && (
                   <tr>
-                    <td colSpan={10}>
+                    <td colSpan={9}>
                       Nenhuma loja com crédito ou dívida carregada. Aparece aqui quando alguém
                       antecipar, pagar, ou receber o saldo de abertura.
                     </td>
@@ -3484,9 +3395,6 @@ export function FabricaPedidos() {
                     </td>
                     <td className="financeiro-th-numero financeiro-td-mudo">
                       {sc.usado ? formatCurrency(sc.usado) : "\u2014"}
-                    </td>
-                    <td className="financeiro-th-numero financeiro-td-mudo">
-                      {sc.provisorio ? formatCurrency(sc.provisorio) : "—"}
                     </td>
                     <td className="financeiro-th-numero">{formatCurrency(sc.saldo)}</td>
                     <td>
@@ -3538,7 +3446,6 @@ export function FabricaPedidos() {
                             : c.origem === "SALDO_ANTERIOR"
                               ? "Dívida carregada"
                               : "Ajuste"}
-                      {c.provisorio && <strong> · provisório</strong>}
                     </td>
                     <td className="financeiro-th-numero">{formatCurrency(c.valor)}</td>
                     <td className="financeiro-td-mudo">{c.observacao ?? "\u2014"}</td>

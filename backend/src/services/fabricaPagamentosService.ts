@@ -144,15 +144,9 @@ export async function listarContaCorrente(): Promise<ContaCorrente[]> {
 // foi usado. Consulta direta em vez de importar o service de créditos: aquele
 // importa este de volta pro cálculo do saldo, e o ciclo trava o build.
 async function saldosEmConta(): Promise<Map<number, number>> {
-  // NOT provisorio de proposito: a bonificacao provisoria aparece na lista e
-  // no total da aba, mas nao abate dívida nenhuma enquanto a loja não quitar.
-  //
-  // Se abatesse, esquecer de clicar em "excluir crédito" no fim do mês daria
-  // o desconto de graça pra sempre — e o botão viraria obrigatório. Assim ele
-  // é só faxina da lista, e esquecer nao custa dinheiro.
   const { rows } = await pool.query<{ cliente_id: number; saldo: string }>(
     `SELECT cliente_id, SUM(valor) AS saldo
-     FROM fabrica_creditos WHERE NOT provisorio GROUP BY cliente_id`
+     FROM fabrica_creditos GROUP BY cliente_id`
   );
   return new Map(rows.map((r) => [r.cliente_id, Number(r.saldo)]));
 }
@@ -334,14 +328,6 @@ export async function excluirPagamento(id: number): Promise<void> {
   await pool.query("DELETE FROM fabrica_pagamentos WHERE id = $1", [id]);
 }
 
-// Quanto cada loja deve, pro alerta de crédito provisório saber quem ainda não
-// fechou. Fica aqui e não no service de créditos porque o saldo sai da conta
-// corrente, e o caminho contrário criaria import circular.
-export async function devendoPorCliente(): Promise<Map<number, number>> {
-  const contas = await listarContaCorrente();
-  return new Map(contas.map((c) => [c.clienteId, c.saldo]));
-}
-
 // ---------------------------------------------------------------------------
 // Fechamento semanal de cobrança.
 //
@@ -478,7 +464,7 @@ export async function montarFechamento(de: string, ate: string): Promise<Fechame
                 COALESCE(SUM(k.valor) FILTER (WHERE k.valor > 0), 0) AS total
            FROM fabrica_creditos k
            JOIN fabrica_clientes c ON c.id = k.cliente_id
-          WHERE NOT k.provisorio AND k.data >= $1::date AND k.data <= $2::date
+          WHERE k.data >= $1::date AND k.data <= $2::date
           GROUP BY 1, 2
          UNION ALL
          SELECT ${PAGANTE("d")} AS pagante_id, c.id AS cliente_id, SUM(d.credito) AS total
