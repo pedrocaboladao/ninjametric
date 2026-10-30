@@ -32,6 +32,10 @@ export interface Conta {
   provisao: boolean;
   // mes que causou a despesa. O DRE agrupa por ele; o caixa, pelo vencimento.
   competencia: string;
+  // id do titulo no Bling, quando a conta veio ou foi adotada pelo espelho.
+  // Aparece na listagem de proposito: e o unico jeito de conferir um vinculo
+  // sem adivinhar.
+  blingId: number | null;
   // derivados
   atrasada: boolean;
   diasParaVencer: number;
@@ -84,6 +88,7 @@ interface Linha {
   documento: string | null;
   provisao: boolean;
   competencia: string | null;
+  bling_id: string | null;
 }
 
 function montar(r: Linha): Conta {
@@ -106,6 +111,8 @@ function montar(r: Linha): Conta {
     documento: r.documento,
     provisao: r.provisao,
     competencia: dataIsoOuNulo(r.competencia) ?? vencimento,
+    // bigint volta como string do pg
+    blingId: r.bling_id ? Number(r.bling_id) : null,
     // conta paga ou cancelada não atrasa, por mais antiga que seja.
     //
     // Provisão também não: ninguém vai pagar um boleto de 13º. A linha de
@@ -122,7 +129,7 @@ function montar(r: Linha): Conta {
 const SELECT_BASE = `
   SELECT c.id, c.tipo, c.descricao, c.categoria, c.contraparte, c.valor, c.vencimento,
          c.status, c.data_pagamento, c.custo_fixo, c.observacao,
-         c.forma_pagamento, c.documento, c.provisao, c.competencia
+         c.forma_pagamento, c.documento, c.provisao, c.competencia, c.bling_id
   FROM fabrica_contas c
 `;
 
@@ -432,3 +439,55 @@ export async function aplicarValorDoBling(
 
 const brl = (n: number) =>
   n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Troca ou tira o vinculo de uma conta com o titulo do Bling.
+//
+// Existe por causa de um par cruzado: o espelho adota por valor + documento e,
+// quando dois titulos do mesmo vencimento tem valores que se espelham, pode
+// amarrar cada conta no titulo do outro. A divergencia sai como "valor" e os
+// dados dos dois lados estao certos — quem esta errado e o ponteiro. Em
+// 30/10/2026 isso aconteceu com RICARDO GOMES TAVARES (2.300,00) e RODRIGO
+// TREVISI GOMES (2.765,93), as duas contas do dia 5 da folha, e eu "corrigi"
+// os valores antes de olhar o nome da conta no site. Estragou os dois.
+//
+// Nao deixa roubar o vinculo de outra conta: pra trocar dois, desvincule um
+// com blingId null e vincule depois. O indice unico de bling_id barraria de
+// qualquer forma, mas o erro dele nao diz de quem era o vinculo.
+export async function definirBlingIdConta(
+  id: number,
+  blingId: number | null
+): Promise<{ antes: number | null }> {
+  const cliente = await pool.connect();
+  try {
+    await cliente.query("BEGIN");
+    const atual = await cliente.query<{ bling_id: string | null }>(
+      "SELECT bling_id FROM fabrica_contas WHERE id = $1 FOR UPDATE",
+      [id]
+    );
+    if (!atual.rows.length) throw new Error("Conta nao encontrada.");
+    if (blingId !== null) {
+      const dono = await cliente.query<{ id: number }>(
+        "SELECT id FROM fabrica_contas WHERE bling_id = $1 AND id <> $2",
+        [blingId, id]
+      );
+      if (dono.rows.length) {
+        throw new Error(
+          `O titulo ${blingId} do Bling ja esta vinculado a conta ${dono.rows[0].id}. ` +
+            "Desvincule ela primeiro (blingId: null)."
+        );
+      }
+    }
+    await cliente.query("UPDATE fabrica_contas SET bling_id = $2 WHERE id = $1", [
+      id,
+      blingId,
+    ]);
+    await cliente.query("COMMIT");
+    const antes = atual.rows[0].bling_id;
+    return { antes: antes ? Number(antes) : null };
+  } catch (err) {
+    await cliente.query("ROLLBACK");
+    throw err;
+  } finally {
+    cliente.release();
+  }
+}
