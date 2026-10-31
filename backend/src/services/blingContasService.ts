@@ -1057,6 +1057,15 @@ async function baixarReceberDoBling(de: string, ate: string): Promise<ContaBling
         ...c,
         historico: det.historico ?? c.historico,
         numeroDocumento: det.numeroDocumento ?? c.numeroDocumento,
+        // `saldo` e `situacao` so sao confiaveis no DETALHE. A listagem do
+        // Bling nao manda saldo, e o `...c` sozinho deixava todo titulo com
+        // saldo undefined — por isso o parcialmente recebido sumia da conta de
+        // "em aberto" ou vinha pela face. Que o detalhe traz saldo e o que
+        // `baixarContaReceber` prova: a trava dela compara saldo antes e depois
+        // lendo este mesmo GET, e so dispara quando a baixa sai errada — se o
+        // campo nao viesse, ela dispararia em toda baixa.
+        saldo: det.saldo ?? c.saldo,
+        situacao: det.situacao ?? c.situacao,
         contato: { id: idContato, nome: nome || undefined },
       });
     } catch {

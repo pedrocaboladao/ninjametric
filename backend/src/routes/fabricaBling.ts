@@ -414,11 +414,24 @@ fabricaBlingRouter.get("/contas/receber/listar", async (req, res) => {
       // null quando o Bling nao mandou: nunca cair na face do titulo
       saldo: c.saldo === undefined || c.saldo === null ? null : Number(c.saldo),
       situacao: c.situacao,
-      aberto: Number(c.situacao) === 1,
+      // 1 = em aberto, 3 = PARCIALMENTE recebido — e o 3 tambem e divida viva.
+      // Visto em 31/10/2026: uma baixa parcial de R$ 9.500 num titulo de
+      // R$ 11.627,11 levou a situacao de 1 para 3, e os R$ 2.127,11 que
+      // sobraram sumiam desta rota, que so olhava o 1. Baixa parcial so se faz
+      // pela tela do Bling, entao situacao 3 so aparece aqui — nunca sai de uma
+      // chamada nossa.
+      aberto: Number(c.situacao) === 1 || Number(c.situacao) === 3,
       historico: c.historico ?? "",
       numeroDocumento: c.numeroDocumento ?? "",
     }));
     const abertos = linhas.filter((l) => l.aberto);
+    // Parcialmente recebido sem saldo conhecido nao pode entrar pela face: a
+    // face e a divida ANTES da baixa, e somar ela devolveria de volta o que ja
+    // foi pago. Fica fora da soma e e contado a parte, pra quem le saber que o
+    // total e um piso — numero honesto com aviso, nao numero inventado.
+    const semSaldo = abertos.filter(
+      (l) => Number(l.situacao) === 3 && l.saldo === null
+    );
     res.json({
       de,
       ate,
@@ -426,8 +439,17 @@ fabricaBlingRouter.get("/contas/receber/listar", async (req, res) => {
       abertos: abertos.length,
       // soma so do que esta em aberto, e pelo saldo quando ele existe
       emAberto: Number(
-        abertos.reduce((s, l) => s + (l.saldo ?? l.valor), 0).toFixed(2)
+        abertos
+          .filter((l) => !semSaldo.includes(l))
+          .reduce((s, l) => s + (l.saldo ?? l.valor), 0)
+          .toFixed(2)
       ),
+      // > 0 significa que `emAberto` esta incompleto, e por quais titulos
+      parciaisSemSaldo: semSaldo.map((l) => ({
+        id: l.id,
+        contato: l.contato,
+        valorDeFace: l.valor,
+      })),
       linhas,
     });
   } catch (err) {
