@@ -89,7 +89,11 @@ const MAPA_CATEGORIA: Record<number, string> = {
   14734532222: "JUROS E MULTAS POR ATRASO", // Multas Pagas — tautologico
   14734532223: "TARIFAS BANCÁRIAS", // Tarifas de Boleto/PIX — tautologico
   14734532215: "TARIFAS BANCÁRIAS", // Tarifa cheque — tautologico
-  14745638161: "CONSUMO", // tautologico
+  // "Consumo" no Bling. O nome no site e "USO E CONSUMO" — escrever so
+  // "CONSUMO" criaria uma categoria irma no DRE, com o mesmo significado e
+  // outro nome, e o espelho nao avisaria: ele compara baixa, valor e
+  // vencimento, nunca categoria.
+  14745638161: "USO E CONSUMO",
   14734532226: "CONFRATERNIZAÇÃO E PATROCÍNIO", // Doacoes/Patrocinios — tautologico
   14734532181: "CONSULTORIA DE SÓCIO", // Servicos Terceirizados — confirmado 01/10
   14734532228: "SEGURANÇA DO TRABALHO", // Despesas Eventuais — confirmado 01/10
