@@ -22,6 +22,8 @@ export interface Campanha {
   itensOk: number;
   falhasItens: { itemId: string; erro: string }[];
   erroProcessamento: string | null;
+  erroRenovacao: string | null;
+  renovacaoTentadaEm: string | null;
   itens: CampanhaItem[];
 }
 

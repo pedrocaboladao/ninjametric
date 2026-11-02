@@ -539,6 +539,13 @@ function LinhaCampanha({
       </div>
 
       {erro && <div className="state-message state-error">{erro}</div>}
+      {campanha.erroRenovacao && (
+        <div className="state-message state-error">
+          A renovação automática falhou
+          {campanha.renovacaoTentadaEm ? ` (${new Date(campanha.renovacaoTentadaEm).toLocaleString("pt-BR")})` : ""}:{" "}
+          {campanha.erroRenovacao} — ela tenta de novo sozinha a cada 4 horas, ou você pode clicar em Recriar.
+        </div>
+      )}
       {resultado && <ResultadoCriacao resultado={resultado} />}
 
       {confirmando && (

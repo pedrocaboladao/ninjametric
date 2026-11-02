@@ -2112,6 +2112,10 @@ ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_processados INTEG
 ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS itens_ok INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS falhas_itens JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS erro_processamento TEXT;
+-- Última falha da RENOVAÇÃO AUTOMÁTICA desta campanha (antes só ia pro log do
+-- servidor e ninguém via). Aparece no card da campanha na tela de Promoções.
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS erro_renovacao TEXT;
+ALTER TABLE promocoes_campanhas ADD COLUMN IF NOT EXISTS renovacao_tentada_em TIMESTAMPTZ;
 
 -- Mural de avisos da Agenda: recados curtos entre os usuários com acesso.
 CREATE TABLE IF NOT EXISTS agenda_avisos (

@@ -56,6 +56,9 @@ export interface Campanha {
   itensOk: number;
   falhasItens: { itemId: string; erro: string }[];
   erroProcessamento: string | null;
+  // Falha da renovação automática (null se nunca falhou ou se já renovou).
+  erroRenovacao: string | null;
+  renovacaoTentadaEm: string | null;
   itens: CampanhaItem[];
 }
 
@@ -70,6 +73,11 @@ function arredondarCentavos(valor: number): number {
 function dataISO(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+// O Mercado Livre não aceita duas promoções com o mesmo nome na mesma loja.
+// Erro tipado pra renovação poder tentar de novo com outro nome em vez de
+// repetir o mesmo nome até o dia virar.
+export class ErroNomeJaExiste extends Error {}
 
 export interface ItemComPercentual {
   itemId: string;
@@ -128,6 +136,11 @@ export async function criarCampanha(
       // getPromocaoStatus (mercadoLivreApi.ts): "Preços e promoções" precisa
       // estar habilitada no app E a conta reautorizada depois disso — mudar
       // a permissão não atualiza tokens já emitidos.
+      if (status === 400 && /already exists/i.test(detalhes)) {
+        throw new ErroNomeJaExiste(
+          `Falha ao criar campanha no Mercado Livre (HTTP 400: ${detalhes}) — nome enviado: "${nome}" (${nome.length} caracteres).`
+        );
+      }
       if (status === 403) {
         throw new Error(
           `Mercado Livre recusou (403${detalhes ? `: ${detalhes}` : ""}) — provavelmente a permissão "Preços e promoções" não está habilitada/reautorizada pra essa loja no app do Mercado Livre.`
@@ -481,12 +494,48 @@ export async function recriarCampanha(campanhaAntigaId: number): Promise<Resulta
   // um número no meio que a gente não testou de verdade.
   const MAX_NOME_CAMPANHA = 22;
   const sufixo = ` ${dataISO(new Date()).split("-").reverse().slice(0, 2).join("")}`;
-  const nomeBase = rows[0].nome.slice(0, Math.max(0, MAX_NOME_CAMPANHA - sufixo.length)).trimEnd();
+  // Tira o sufixo de data da renovação anterior (" DDMM", com letra opcional) antes de
+  // truncar, senão o nome vai perdendo caracteres a cada renovação.
+  const nomeSemSufixo = rows[0].nome.replace(/ \d{4}[B-F]?$/, "");
   // Placeholder de campanha registrada manualmente sem ID real (ver
   // registrarCampanhaExistente) — não existe no Mercado Livre, não adianta
   // tentar desbloquear item nela.
   const promotionIdAntiga = rows[0].promotion_id.startsWith("EXTERNA-") ? null : rows[0].promotion_id;
-  return criarCampanha(rows[0].loja_id, nomeBase + sufixo, itens, campanhaAntigaId, promotionIdAntiga);
+
+  // Não duplica: se esta campanha já tem uma renovação viva (em andamento, ou
+  // concluída com itens), recriar de novo criaria uma promoção repetida.
+  const { rows: filhas } = await pool.query<{ id: number; nome: string }>(
+    `SELECT id, nome FROM promocoes_campanhas
+     WHERE campanha_anterior_id = $1
+       AND (processamento = 'em_andamento' OR (processamento = 'concluido' AND itens_ok > 0))
+     LIMIT 1`,
+    [campanhaAntigaId]
+  );
+  if (filhas.length > 0) {
+    throw new Error(
+      `Esta campanha já foi renovada: "${filhas[0].nome}" (id ${filhas[0].id}). Confira essa antes de recriar de novo.`
+    );
+  }
+
+  // Nome já usado no Mercado Livre (ex.: tentativa anterior que criou lá mas
+  // não chegou a gravar aqui, ou promoção criada na mão): tenta de novo com
+  // uma letra no fim do sufixo (B, C, D...), sempre dentro do limite de
+  // caracteres. Letra e não "/", que o ML recusa.
+  const LETRAS = ["", "B", "C", "D", "E", "F"];
+  let ultimoErro: unknown = null;
+  for (const letra of LETRAS) {
+    const sufixoTentativa = sufixo + letra;
+    const base = nomeSemSufixo.slice(0, Math.max(0, MAX_NOME_CAMPANHA - sufixoTentativa.length)).trimEnd();
+    try {
+      const resultado = await criarCampanha(rows[0].loja_id, base + sufixoTentativa, itens, campanhaAntigaId, promotionIdAntiga);
+      await pool.query("UPDATE promocoes_campanhas SET erro_renovacao = NULL WHERE id = $1", [campanhaAntigaId]);
+      return resultado;
+    } catch (err) {
+      if (!(err instanceof ErroNomeJaExiste)) throw err;
+      ultimoErro = err;
+    }
+  }
+  throw ultimoErro;
 }
 
 export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: number[]): Promise<Campanha[]> {
@@ -513,10 +562,13 @@ export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
     itens_ok: number;
     falhas_itens: { itemId: string; erro: string }[];
     erro_processamento: string | null;
+    erro_renovacao: string | null;
+    renovacao_tentada_em: string | null;
   }>(
     `SELECT c.id, c.loja_id, l.nome AS loja_nome, c.promotion_id, c.nome, c.percentual_desconto,
             c.data_inicio::text AS data_inicio, c.data_fim::text AS data_fim, c.status, c.campanha_anterior_id,
-            c.processamento, c.itens_total, c.itens_processados, c.itens_ok, c.falhas_itens, c.erro_processamento
+            c.processamento, c.itens_total, c.itens_processados, c.itens_ok, c.falhas_itens, c.erro_processamento,
+            c.erro_renovacao, c.renovacao_tentada_em::text AS renovacao_tentada_em
      FROM promocoes_campanhas c
      JOIN lojas l ON l.id = c.loja_id
      WHERE c.loja_id = ANY($1)
@@ -564,6 +616,8 @@ export async function listarCampanhas(lojaIdFiltro?: number, lojasPermitidas?: n
     itensOk: r.itens_ok,
     falhasItens: r.falhas_itens,
     erroProcessamento: r.erro_processamento,
+    erroRenovacao: r.erro_renovacao,
+    renovacaoTentadaEm: r.renovacao_tentada_em,
     itens: itensPorCampanha.get(r.id) ?? [],
   }));
 }
@@ -937,6 +991,13 @@ async function renovarCampanhasProximasDoFim(): Promise<void> {
       console.log(`Promoção "${r.nome}" (loja ${r.loja_id}) renovada automaticamente — vencia em ${r.data_fim}.`);
     } catch (err) {
       console.error(`Falha ao renovar automaticamente a campanha ${r.id} (${r.nome}):`, err);
+      // Fica visível no card da campanha — antes só ia pro log do servidor.
+      await pool
+        .query("UPDATE promocoes_campanhas SET erro_renovacao = $2, renovacao_tentada_em = now() WHERE id = $1", [
+          r.id,
+          err instanceof Error ? err.message : "Erro desconhecido.",
+        ])
+        .catch(() => undefined);
     }
   }
 }
