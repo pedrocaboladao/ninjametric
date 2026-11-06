@@ -56,6 +56,12 @@ const MAPA_CATEGORIA: Record<number, string> = {
   14734532203: "ADIANTAMENTO", // Ferias/13o/Adiantamentos (6x)
   14734532186: "MANUTENÇÃO PREDIAL", // Condominio e Manutencao Predial (4x)
   14734532231: "RETIRADA DE LUCROS", // Retirada de Socios (4x)
+  // Dinheiro que sai da conta da fabrica e VOLTA — nao e despesa nem retirada.
+  // Primeiro caso em 05/11/2026: a parcela de um financiamento pessoal saiu
+  // pela conta da fabrica por engano e o socio devolve por PIX. Irma da
+  // Retirada de Socios no Bling (mesma mae, grupo "Nao exibir no DRE"), e
+  // EMPRESTIMO no site ja fica fora do resultado — o principal e caixa.
+  14734532230: "EMPRÉSTIMO", // Emprestimos Concedidos
   14745620157: "SEGURANÇA DO TRABALHO", // (4x)
   14745621238: "RATEIO MARINGÁ FULL", // (4x)
   14734532221: "JUROS E MULTAS POR ATRASO", // Juros Pagos (3x)
