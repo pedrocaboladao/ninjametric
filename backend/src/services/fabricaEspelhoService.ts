@@ -66,6 +66,12 @@ const MAPA_CATEGORIA: Record<number, string> = {
   14734532187: "ÁGUA", // (2x)
   14745620451: "MATERIAL DE EXPEDIÇÃO", // (2x)
   14745620945: "SEGURO E TAXAS DE FINANCIAMENTO", // (2x)
+  // Criada no Bling em 05/11/2026, dentro de Despesas Administrativas. E o
+  // seguro do carro contra roubo e batida — nao se confunde com a de cima,
+  // que e a taxa embutida na parcela do financiamento. Sem este par, os 10
+  // titulos do Tokio Marine caem em `paraRevisar` todo dia, com categoria no
+  // Bling e sem categoria no site.
+  14749740942: "SEGURO DE VEÍCULO",
   14743617389: "EMPRÉSTIMO", // Pagamento de emprestimos (2x)
   14734532179: "SISTEMAS E ASSINATURAS", // Plataformas e Assinaturas (2x)
   14734532185: "ALUGUEL", // (2x)
