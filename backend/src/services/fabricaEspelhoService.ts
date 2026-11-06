@@ -127,6 +127,13 @@ const NAO_E_CUSTO_FIXO = new Set([
   "CONFRATERNIZAÇÃO E PATROCÍNIO",
   "MATERIAL DE EXPEDIÇÃO",
   "CONSUMO",
+  // O mesmo descuido do MAPA_CATEGORIA logo acima, agora deste lado: a
+  // categoria do Bling 14745638161 entra aqui como "USO E CONSUMO", que e o
+  // nome do site, e so "CONSUMO" nao casa com ela. Faltando, o conjunto diz
+  // "nao esta na lista, logo e custo fixo" — e compra de cartao de debito no
+  // atacado virava custo fixo, inflando a despesa fixa e o ponto de
+  // equilibrio. Nao da erro: o valor certo, na linha errada.
+  "USO E CONSUMO",
 ]);
 
 export interface TituloEspelhado {
