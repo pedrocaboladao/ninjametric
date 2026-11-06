@@ -72,6 +72,12 @@ const MAPA_CATEGORIA: Record<number, string> = {
   // titulos do Tokio Marine caem em `paraRevisar` todo dia, com categoria no
   // Bling e sem categoria no site.
   14749740942: "SEGURO DE VEÍCULO",
+  // Tambem criada em 05/11/2026, e pelo mesmo motivo. A assessoria mensal de
+  // propriedade industrial caía em "Licencas, Registros e Taxas Empresariais",
+  // que e justamente o par que este mapa recusa de proposito la em cima — a
+  // evidencia dele se divide entre IMOBILIZADO, JURIDICO E MARCAS e IMPOSTO.
+  // Com categoria propria no Bling o par deixa de ser palpite.
+  14749741533: "JURÍDICO E MARCAS",
   14743617389: "EMPRÉSTIMO", // Pagamento de emprestimos (2x)
   14734532179: "SISTEMAS E ASSINATURAS", // Plataformas e Assinaturas (2x)
   14734532185: "ALUGUEL", // (2x)
