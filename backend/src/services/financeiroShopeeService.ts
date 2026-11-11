@@ -149,7 +149,7 @@ export async function listarVendasFinanceirasShopee(
   const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
 
   const [produtos, pedidosPorLoja, gastoAdsTotal] = await Promise.all([
-    listarProdutos(),
+    listarProdutos(forcarAtualizacao),
     Promise.all(
       lojas.map(async (loja) => ({
         lojaId: loja.id,
