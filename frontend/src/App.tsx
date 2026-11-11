@@ -34,6 +34,7 @@ import { MarketIntelligence } from "./components/MarketIntelligence";
 import { Discrepancias } from "./components/Discrepancias";
 import { Mensagens } from "./components/Mensagens";
 import { Agenda } from "./components/Agenda";
+import { Pauta } from "./components/Pauta";
 import { Login } from "./components/Login";
 import { usePerguntas } from "./hooks/usePerguntas";
 import { useMensagensNaoLidas } from "./hooks/useMensagensNaoLidas";
@@ -77,6 +78,7 @@ const VIEWS_VALIDAS: View[] = [
   "discrepancias",
   "mensagens",
   "agenda",
+  "pauta",
 ];
 
 // Quase toda view tem o mesmo nome da permissao que a protege, e o resto do
@@ -140,6 +142,7 @@ function primeiraViewPermitida(usuario: Usuario): View {
   if (temPermissao(usuario, "discrepancias")) return "discrepancias";
   if (temPermissao(usuario, "mensagens")) return "mensagens";
   if (temPermissao(usuario, "agenda")) return "agenda";
+  if (temPermissao(usuario, "pauta")) return "pauta";
   if (usuario.admin) return "usuarios";
   return "dashboard";
 }
@@ -262,6 +265,7 @@ function AppAutenticado({ usuario, onSair }: { usuario: Usuario; onSair: () => v
         {view === "agenda" && temPermissao(usuario, "agenda") && (
           <Agenda onOcorrenciaAlterada={agendaPendentes.atualizar} />
         )}
+        {view === "pauta" && temPermissao(usuario, "pauta") && <Pauta usuario={usuario} />}
         {view === "usuarios" && usuario.admin && <Usuarios />}
         {view === "agentes" && usuario.admin && <AgenciaAgentesIA />}
         {view === "market_intelligence" && usuario.admin && <MarketIntelligence />}

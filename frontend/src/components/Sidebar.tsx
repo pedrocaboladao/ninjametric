@@ -63,7 +63,8 @@ export type View =
   | "market_intelligence"
   | "discrepancias"
   | "mensagens"
-  | "agenda";
+  | "agenda"
+  | "pauta";
 
 interface Props {
   view: View;
@@ -103,6 +104,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
   const podeJogo = temPermissao(usuario, "jogo");
   const podeTarefas = temPermissao(usuario, "tarefas");
   const podeAgenda = temPermissao(usuario, "agenda");
+  const podePauta = temPermissao(usuario, "pauta");
   const podeFuncionarios = temPermissao(usuario, "funcionarios");
   const podeCorrecoes = temPermissao(usuario, "correcoes");
   const podeFabricacao = temPermissao(usuario, "fabricacao");
@@ -184,6 +186,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
               <IconCalendar size={16} />
               <span>Agenda</span>
               {agendaPendentes > 0 && <span className="sidebar-badge">{agendaPendentes}</span>}
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podePauta && (
+          <>
+            <button
+              className={`sidebar-item ${view === "pauta" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("pauta")}
+            >
+              <IconMegaphone size={16} />
+              <span>Pauta de Reunião</span>
             </button>
             <div className="sidebar-divider" />
           </>

@@ -7440,3 +7440,155 @@ button.contas-cartao:hover {
   padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
 }
+
+/* Pauta de Reunião */
+.pauta-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.pauta-page h1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 24px;
+  margin-top: 4px;
+}
+
+.pauta-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.pauta-input,
+.pauta-textarea {
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text-primary);
+  font-family: var(--sans);
+  font-size: 14px;
+  resize: vertical;
+}
+
+.pauta-form-linha {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pauta-input-area {
+  flex: 1;
+  min-width: 160px;
+}
+
+.pauta-lista {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pauta-item {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pauta-item-topo {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pauta-item-titulo {
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.pauta-item-descricao {
+  margin-top: 4px;
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.pauta-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.pauta-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.pauta-tag-area {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.pauta-item-meta {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pauta-apoio {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pauta-apoio-ativo {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121a;
+}
+
+.pauta-decisao {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  background: var(--bg-panel-alt);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.pauta-acoes {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.pauta-acoes-coluna {
+  flex-direction: column;
+  align-items: stretch;
+}

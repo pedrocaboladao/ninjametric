@@ -14,6 +14,7 @@ import { tarefasRouter } from "./routes/tarefas";
 import { agendaRouter } from "./routes/agenda";
 import { adsPainelRouter } from "./routes/adsPainel";
 import { jogoRouter } from "./routes/jogo";
+import { pautaRouter } from "./routes/pauta";
 import { empacotadoresRouter } from "./routes/empacotadores";
 import { usuariosRouter } from "./routes/usuarios";
 import { youtubeRouter } from "./routes/youtube";
@@ -97,6 +98,7 @@ app.use("/api/financeiro-shopee", requireAuth, requirePermissao("financeiro_shop
 app.use("/api/ads", requireAuth, requirePermissao("ads"), adsRouter);
 app.use("/api/controle-ads", requireAuth, requirePermissao("controle_ads"), adsPainelRouter);
 app.use("/api/jogo", requireAuth, requirePermissao("jogo"), jogoRouter);
+app.use("/api/pauta", requireAuth, requirePermissao("pauta"), pautaRouter);
 app.use("/api/ads-shopee", requireAuth, requirePermissao("ads_shopee"), adsShopeeRouter);
 app.use("/api/contas", requireAuth, requirePermissao("contas"), contasRouter);
 app.use("/api/dre", requireAuth, requirePermissao("dre"), dreRouter);

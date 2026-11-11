@@ -2200,3 +2200,33 @@ CREATE TABLE IF NOT EXISTS jogo_tentativas (
 );
 CREATE INDEX IF NOT EXISTS idx_jogo_tentativas_usuario_dia ON jogo_tentativas (usuario_id, dia);
 CREATE INDEX IF NOT EXISTS idx_jogo_tentativas_dia ON jogo_tentativas (dia);
+
+-- Pauta de reuniao: qualquer gestor sugere um assunto (opcionalmente ligado a
+-- uma loja/area), outros podem apoiar (upvote) pra sinalizar que tambem
+-- importa pra eles. O diretor (usuario admin) seleciona o que entra na pauta
+-- de uma data de reuniao especifica e, depois da reuniao, marca como
+-- discutido registrando a decisao — a pauta vira ata por tabela. `adiado` e
+-- usado quando um item selecionado nao coube na reuniao e volta pra fila.
+CREATE TABLE IF NOT EXISTS pauta_itens (
+  id SERIAL PRIMARY KEY,
+  titulo TEXT NOT NULL,
+  descricao TEXT,
+  loja_id INTEGER REFERENCES lojas(id) ON DELETE SET NULL,
+  area TEXT,
+  status TEXT NOT NULL DEFAULT 'sugerido' CHECK (status IN ('sugerido', 'selecionado', 'discutido', 'adiado')),
+  reuniao_data DATE,
+  decisao TEXT,
+  criado_por INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_pauta_itens_status ON pauta_itens (status);
+CREATE INDEX IF NOT EXISTS idx_pauta_itens_reuniao_data ON pauta_itens (reuniao_data);
+
+CREATE TABLE IF NOT EXISTS pauta_apoios (
+  id SERIAL PRIMARY KEY,
+  item_id INTEGER NOT NULL REFERENCES pauta_itens(id) ON DELETE CASCADE,
+  usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (item_id, usuario_id)
+);

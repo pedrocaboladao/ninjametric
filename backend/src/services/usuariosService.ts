@@ -31,6 +31,7 @@ export const MODULOS_VALIDOS = [
   "agenda",
   "controle_ads",
   "jogo",
+  "pauta",
 ] as const;
 
 export interface Usuario {
