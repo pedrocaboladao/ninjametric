@@ -25,10 +25,16 @@ export interface ResumoPedidos {
   pedidosCancelados: number;
 }
 
+export interface LojaComFalha {
+  lojaId: number;
+  lojaNome: string;
+}
+
 export interface ResultadoFinanceiro {
   vendas: VendaFinanceira[];
   resumoPedidos: ResumoPedidos;
   gastoAdsTotal: number;
+  lojasComFalha: LojaComFalha[];
 }
 
 export interface DetalheEquilibrio {

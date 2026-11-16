@@ -732,6 +732,13 @@ export function Financeiro({ usuario }: Props) {
 
       <PontoEquilibrioCard dados={pontoEquilibrio} erro={erroPontoEquilibrio} />
 
+      {resultado && resultado.lojasComFalha.length > 0 && (
+        <div className="state-message state-error">
+          Não foi possível carregar as vendas de: {resultado.lojasComFalha.map((l) => l.lojaNome).join(", ")}. O
+          total acima não inclui essa(s) loja(s) — clique em "Atualizar" pra tentar de novo.
+        </div>
+      )}
+
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}
 

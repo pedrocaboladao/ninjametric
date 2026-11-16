@@ -104,10 +104,19 @@ export interface ResumoPedidos {
   valorCancelado: number;
 }
 
+export interface LojaComFalha {
+  lojaId: number;
+  lojaNome: string;
+}
+
 export interface ResultadoFinanceiro {
   vendas: VendaFinanceira[];
   resumoPedidos: ResumoPedidos;
   gastoAdsTotal: number;
+  // Lojas cujo pedido de vendas falhou (token vencido, rate limit do ML
+  // etc.) e por isso ficaram de fora do resumo/total — sem isso, o número
+  // final parece completo mas pode estar faltando loja, em silencio.
+  lojasComFalha: LojaComFalha[];
 }
 
 async function comConcorrenciaLimitada<T, R>(itens: T[], limite: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -154,6 +163,8 @@ export async function listarVendasFinanceiras(
 
   const janela = dataInicio && dataFim ? janelaEntre(dataInicio, dataFim) : janelaUltimosDias(DIAS_JANELA);
 
+  const lojasComFalha: LojaComFalha[] = [];
+
   const [produtos, ordersPorLoja, gastoAdsTotal] = await Promise.all([
     listarProdutos(forcarAtualizacao),
     Promise.all(
@@ -161,11 +172,14 @@ export async function listarVendasFinanceiras(
         // Uma loja com erro (token vencido, rate limit do ML, item
         // descontinuado etc.) nao pode derrubar o feed financeiro das
         // outras — mesmo principio ja aplicado na descoberta de promocoes.
+        // Mas o numero final nao pode parecer completo quando faltou loja:
+        // registra em lojasComFalha pra aparecer um aviso na tela.
         let orders: MlOrder[] = [];
         try {
           orders = await searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora);
         } catch (err) {
           console.error(`Falha ao buscar pedidos da loja ${loja.nome} (${loja.id}), seguindo sem ela:`, err);
+          lojasComFalha.push({ lojaId: loja.id, lojaNome: loja.nome });
         }
         return {
           lojaId: loja.id,
@@ -327,7 +341,7 @@ export async function listarVendasFinanceiras(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  const resultado: ResultadoFinanceiro = { vendas, resumoPedidos, gastoAdsTotal };
+  const resultado: ResultadoFinanceiro = { vendas, resumoPedidos, gastoAdsTotal, lojasComFalha };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
 }
