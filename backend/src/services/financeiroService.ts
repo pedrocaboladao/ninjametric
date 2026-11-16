@@ -157,12 +157,23 @@ export async function listarVendasFinanceiras(
   const [produtos, ordersPorLoja, gastoAdsTotal] = await Promise.all([
     listarProdutos(forcarAtualizacao),
     Promise.all(
-      lojas.map(async (loja) => ({
-        lojaId: loja.id,
-        lojaNome: loja.nome,
-        impostoPercentual: loja.imposto_percentual,
-        orders: await searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora),
-      }))
+      lojas.map(async (loja) => {
+        // Uma loja com erro (token vencido, rate limit do ML, item
+        // descontinuado etc.) nao pode derrubar o feed financeiro das
+        // outras — mesmo principio ja aplicado na descoberta de promocoes.
+        let orders: MlOrder[] = [];
+        try {
+          orders = await searchOrders(loja.id, loja.ml_user_id as number, janela.inicioDia, janela.agora);
+        } catch (err) {
+          console.error(`Falha ao buscar pedidos da loja ${loja.nome} (${loja.id}), seguindo sem ela:`, err);
+        }
+        return {
+          lojaId: loja.id,
+          lojaNome: loja.nome,
+          impostoPercentual: loja.imposto_percentual,
+          orders,
+        };
+      })
     ),
     // Gasto de Ads não é por venda (é por campanha/dia), por isso não entra
     // na margem de cada linha da tabela — só no total da janela, pra dar uma

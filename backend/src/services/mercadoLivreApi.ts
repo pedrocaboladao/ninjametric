@@ -673,6 +673,24 @@ export interface MlItemBasicInfo {
   }>;
 }
 
+async function buscarLoteDeItens(
+  batch: string[],
+  accessToken: string
+): Promise<Array<{ code: number; body: MlItemBasicInfo }>> {
+  const { data } = await axios.get<Array<{ code: number; body: MlItemBasicInfo }>>(`${ML_API_BASE}/items`, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: { ids: batch.join(",") },
+  });
+  return data;
+}
+
+// Achado ao vivo: com "todas as lojas" + periodo maior, um unico item
+// descontinuado pelo ML (403 ResourceDeprecated) ou um rate limit (429)
+// derrubava a chamada do lote inteiro (ate 20 ids de uma vez), o que por sua
+// vez derrubava o feed financeiro inteiro em vez de so aquele item. Isola o
+// lote problematico: espera e tenta de novo uma vez (cobre 429 passageiro)
+// e, se persistir, busca item por item pra salvar os 19 bons e so pular o
+// que realmente ta com erro.
 export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Promise<Map<string, MlItemBasicInfo>> {
   const result = new Map<string, MlItemBasicInfo>();
   if (itemIds.length === 0) return result;
@@ -682,10 +700,25 @@ export async function getItemsBasicInfo(lojaId: number, itemIds: string[]): Prom
 
   for (let i = 0; i < uniqueIds.length; i += 20) {
     const batch = uniqueIds.slice(i, i + 20);
-    const { data } = await axios.get<Array<{ code: number; body: MlItemBasicInfo }>>(`${ML_API_BASE}/items`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      params: { ids: batch.join(",") },
-    });
+    let data: Array<{ code: number; body: MlItemBasicInfo }>;
+    try {
+      data = await buscarLoteDeItens(batch, accessToken);
+    } catch (err) {
+      try {
+        await esperarMs(1500);
+        data = await buscarLoteDeItens(batch, accessToken);
+      } catch {
+        data = [];
+        for (const itemId of batch) {
+          try {
+            const [entrada] = await buscarLoteDeItens([itemId], accessToken);
+            if (entrada) data.push(entrada);
+          } catch (errItem) {
+            console.error(`Falha ao buscar item ${itemId} (loja ${lojaId}), pulando:`, errItem);
+          }
+        }
+      }
+    }
     for (const entry of data) {
       if (entry.code === 200) {
         result.set(entry.body.id, entry.body);
