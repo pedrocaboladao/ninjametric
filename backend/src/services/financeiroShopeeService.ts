@@ -76,10 +76,16 @@ export interface VendaFinanceiraShopee {
   custoTotal: number | null;
   impostoTotal: number;
   taxaShopeeTotal: number;
+  comissaoAfiliadoTotal: number;
   cupomVendedorTotal: number;
   freteVendedorTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
+  // true quando a propria Shopee zerou o preco desse item (promocao tipo
+  // "leve X por Y"/kit — o item de verdade saiu, custo de verdade existe,
+  // mas o faturamento dele é R$0 por desenho da promoção, não erro de
+  // cadastro). Ver model_original_price > 0 com preco de venda zerado.
+  itemBrinde: boolean;
 }
 
 export interface ResumoPedidosShopee {
@@ -204,12 +210,32 @@ export async function listarVendasFinanceirasShopee(
         const sku = item.model_sku || item.item_sku || null;
         const quantidade = item.model_quantity_purchased ?? 1;
         const valorUnitario = item.model_discounted_price ?? 0;
-        return { item, sku, quantidade, valorUnitario, receitaTotal: valorUnitario * quantidade };
+        // Base do rateio: preço ORIGINAL (de tabela), não o preço com
+        // desconto. Achado ao vivo: em promoção tipo "leve X por Y"/kit, a
+        // Shopee zera o preço de um dos itens (valorUnitario = 0) — se o
+        // rateio usasse receita real, esse item ficaria com 0% da taxa do
+        // pedido e o OUTRO item do mesmo pedido levaria 100% sozinho,
+        // inflando a taxa dele bem acima do normal pra aquele SKU. Usando o
+        // preço de tabela, o item "de graça" carrega sua fatia justa mesmo
+        // sem ter faturado nada.
+        const valorOriginalUnitario = item.model_original_price ?? valorUnitario;
+        const itemBrinde = valorUnitario === 0 && valorOriginalUnitario > 0;
+        return {
+          item,
+          sku,
+          quantidade,
+          valorUnitario,
+          receitaTotal: valorUnitario * quantidade,
+          valorOriginalTotal: valorOriginalUnitario * quantidade,
+          itemBrinde,
+        };
       });
 
       const receitaTotalPedido = linhas.reduce((soma, l) => soma + l.receitaTotal, 0);
+      const valorOriginalTotalPedido = linhas.reduce((soma, l) => soma + l.valorOriginalTotal, 0);
       const taxaPedido = loja.taxas.get(pedido.order_sn);
       const taxaTotalPedido = (taxaPedido?.comissao ?? 0) + (taxaPedido?.taxaServico ?? 0);
+      const comissaoAfiliadoPedido = taxaPedido?.comissaoAfiliado ?? 0;
       const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
       const freteVendedorPedido = taxaPedido?.freteVendedor ?? 0;
 
@@ -217,31 +243,33 @@ export async function listarVendasFinanceirasShopee(
         const custoUnitario = linha.sku !== null ? custoPorSku.get(normalizarSku(linha.sku)) ?? null : null;
         const custoTotal = custoUnitario !== null ? custoUnitario * linha.quantidade : null;
         const impostoTotal = arredondarCentavos(linha.receitaTotal * (loja.impostoPercentual / 100));
+        const fatia = valorOriginalTotalPedido > 0 ? linha.valorOriginalTotal / valorOriginalTotalPedido : 0;
         // Comissão + taxa de serviço vêm só no total do pedido (get_escrow_
-        // detail), não por item — rateia proporcional à receita de cada
-        // linha dentro do pedido, mesma lógica de rateio de frete do ML.
-        const taxaShopeeTotal =
-          receitaTotalPedido > 0
-            ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * taxaTotalPedido)
-            : 0;
+        // detail), não por item — rateia pela fatia de preço de tabela de
+        // cada linha dentro do pedido (ver comentário acima).
+        const taxaShopeeTotal = arredondarCentavos(fatia * taxaTotalPedido);
+        // Comissão do programa de afiliados da Shopee (AMS) — mesmo rateio,
+        // exibida separada da Taxa Shopee pra ficar explícito quando uma
+        // venda veio de link de afiliado/creator. Normalmente 0.
+        const comissaoAfiliadoTotal = arredondarCentavos(fatia * comissaoAfiliadoPedido);
         // Cupom custeado pelo vendedor — igual à taxa, só vem no total do
-        // pedido, rateado proporcional à receita da linha. É custo real
-        // (sai do bolso do vendedor), então entra na margem igual imposto/taxa.
-        const cupomVendedorTotal =
-          receitaTotalPedido > 0
-            ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * cupomVendedorPedido)
-            : 0;
+        // pedido, rateado pela mesma fatia. É custo real (sai do bolso do
+        // vendedor), então entra na margem igual imposto/taxa.
+        const cupomVendedorTotal = arredondarCentavos(fatia * cupomVendedorPedido);
         // Frete real do vendedor (ver buscarTaxasPedidos em shopeeApi.ts) —
         // mesmo rateio de taxa/cupom. Na prática costuma sair 0 (a Shopee
         // reembolsa o frete integralmente via programa de frete grátis),
         // mas fica pronto pro caso de não reembolsar.
-        const freteVendedorTotal =
-          receitaTotalPedido > 0
-            ? arredondarCentavos((linha.receitaTotal / receitaTotalPedido) * freteVendedorPedido)
-            : 0;
+        const freteVendedorTotal = arredondarCentavos(fatia * freteVendedorPedido);
         const margemContribuicao =
           custoTotal !== null
-            ? linha.receitaTotal - custoTotal - impostoTotal - taxaShopeeTotal - cupomVendedorTotal - freteVendedorTotal
+            ? linha.receitaTotal -
+              custoTotal -
+              impostoTotal -
+              taxaShopeeTotal -
+              comissaoAfiliadoTotal -
+              cupomVendedorTotal -
+              freteVendedorTotal
             : null;
 
         vendas.push({
@@ -258,6 +286,7 @@ export async function listarVendasFinanceirasShopee(
           custoTotal,
           impostoTotal,
           taxaShopeeTotal,
+          comissaoAfiliadoTotal,
           cupomVendedorTotal,
           freteVendedorTotal,
           margemContribuicao,
@@ -265,6 +294,7 @@ export async function listarVendasFinanceirasShopee(
             margemContribuicao !== null && linha.receitaTotal > 0
               ? (margemContribuicao / linha.receitaTotal) * 100
               : null,
+          itemBrinde: linha.itemBrinde,
         });
       }
     }

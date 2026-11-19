@@ -38,6 +38,7 @@ type ChaveOrdenacao =
   | "custoTotal"
   | "impostoTotal"
   | "taxaShopeeTotal"
+  | "comissaoAfiliadoTotal"
   | "cupomVendedorTotal"
   | "freteVendedorTotal"
   | "margemContribuicao"
@@ -61,6 +62,7 @@ const COLUNAS: Coluna[] = [
   { chave: "custoTotal", label: "Custo (-)", numerica: true },
   { chave: "impostoTotal", label: "Imposto (-)", numerica: true },
   { chave: "taxaShopeeTotal", label: "Taxa Shopee (-)", numerica: true },
+  { chave: "comissaoAfiliadoTotal", label: "Comissão Afiliado (-)", numerica: true },
   { chave: "cupomVendedorTotal", label: "Cupom (-)", numerica: true },
   { chave: "freteVendedorTotal", label: "Frete (-)", numerica: true },
   { chave: "margemContribuicao", label: "Margem Contrib. (=)", numerica: true },
@@ -127,6 +129,7 @@ export function FinanceiroShopee() {
   const custoTotalGeral = vendas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
   const impostoTotalGeral = vendas?.reduce((s, v) => s + v.impostoTotal, 0) ?? 0;
   const taxaShopeeTotalGeral = vendas?.reduce((s, v) => s + v.taxaShopeeTotal, 0) ?? 0;
+  const comissaoAfiliadoTotalGeral = vendas?.reduce((s, v) => s + v.comissaoAfiliadoTotal, 0) ?? 0;
   const cupomVendedorTotalGeral = vendas?.reduce((s, v) => s + v.cupomVendedorTotal, 0) ?? 0;
   const freteVendedorTotalGeral = vendas?.reduce((s, v) => s + v.freteVendedorTotal, 0) ?? 0;
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
@@ -247,7 +250,12 @@ export function FinanceiroShopee() {
                 <div className="financeiro-card-cor-corpo">
                   <span className="financeiro-card-cor-valor">
                     {formatCurrency(
-                      custoTotalGeral + impostoTotalGeral + taxaShopeeTotalGeral + cupomVendedorTotalGeral + freteVendedorTotalGeral
+                      custoTotalGeral +
+                        impostoTotalGeral +
+                        taxaShopeeTotalGeral +
+                        comissaoAfiliadoTotalGeral +
+                        cupomVendedorTotalGeral +
+                        freteVendedorTotalGeral
                     )}
                   </span>
                   <div className="financeiro-card-cor-linha">
@@ -261,6 +269,10 @@ export function FinanceiroShopee() {
                   <div className="financeiro-card-cor-linha">
                     <span>Taxa Shopee</span>
                     <b>{formatCurrency(taxaShopeeTotalGeral)}</b>
+                  </div>
+                  <div className="financeiro-card-cor-linha" title="Comissão do programa de afiliados da Shopee (AMS) — só vem diferente de zero quando a venda veio de link de afiliado/creator.">
+                    <span>Comissão afiliado</span>
+                    <b>{formatCurrency(comissaoAfiliadoTotalGeral)}</b>
                   </div>
                   <div className="financeiro-card-cor-linha">
                     <span>Cupom vendedor</span>
@@ -341,6 +353,14 @@ export function FinanceiroShopee() {
                     <tr key={`${v.orderSn}-${v.itemId}-${v.sku}`}>
                       <td className="financeiro-td-titulo" title={v.titulo}>
                         {v.titulo}
+                        {v.itemBrinde && (
+                          <span
+                            className="financeiro-tag-brinde"
+                            title="A própria Shopee zerou o preço desse item — é o 'brinde' de uma promoção tipo kit/combo. O custo é real, o faturamento é R$0 por desenho da promoção."
+                          >
+                            Brinde (preço zerado pela Shopee)
+                          </span>
+                        )}
                       </td>
                       <td>{v.lojaNome}</td>
                       <td className="financeiro-td-sku">{v.sku ?? "—"}</td>
@@ -354,6 +374,7 @@ export function FinanceiroShopee() {
                       </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.impostoTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.taxaShopeeTotal)}</td>
+                      <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.comissaoAfiliadoTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.cupomVendedorTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.freteVendedorTotal)}</td>
                       <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>

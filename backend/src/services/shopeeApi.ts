@@ -136,6 +136,14 @@ export interface ShopeeTaxaPedido {
   orderSn: string;
   comissao: number;
   taxaServico: number;
+  // Comissao do programa de afiliados da propria Shopee (AMS = Affiliate
+  // Marketing Solution) — campo separado de commission_fee/service_fee.
+  // Confirmado nos pedidos reais checados ao vivo que existe e vem 0 pra
+  // venda sem afiliado; nao foi possivel confirmar contra um pedido com
+  // valor > 0 (nenhum nos dois conferidos), entao o rateio assume que e um
+  // desconto ADICIONAL do escrow, nao already-incluido no commission_fee —
+  // conferir de novo no primeiro pedido real onde isso vier != 0.
+  comissaoAfiliado: number;
   cupomVendedor: number;
   freteVendedor: number;
 }
@@ -155,6 +163,11 @@ interface RespostaEscrow {
       // não uma redução da taxa deste pedido. Não usar net_*.
       commission_fee?: number;
       service_fee?: number;
+      // AMS = Affiliate Marketing Solution — comissao extra cobrada quando a
+      // venda veio de link de afiliado/creator. So existe no nivel do
+      // pedido (order_ams_commission_fee); cada item tambem tem o seu
+      // proprio ams_commission_fee, mas o do pedido ja e o total.
+      order_ams_commission_fee?: number;
       // Valor do cupom aplicado na compra que fica por conta do vendedor
       // (não é a Shopee quem banca) — confirmado contra um pedido real
       // devolvido (260829MD7RM383, Catedral, cupom "CATE3OFFF"): o total do
@@ -202,6 +215,7 @@ export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Pr
         orderSn,
         comissao: income.commission_fee ?? 0,
         taxaServico: income.service_fee ?? 0,
+        comissaoAfiliado: income.order_ams_commission_fee ?? 0,
         cupomVendedor: income.voucher_from_seller ?? 0,
         freteVendedor,
       };

@@ -12,10 +12,12 @@ export interface VendaFinanceiraShopee {
   custoTotal: number | null;
   impostoTotal: number;
   taxaShopeeTotal: number;
+  comissaoAfiliadoTotal: number;
   cupomVendedorTotal: number;
   freteVendedorTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
+  itemBrinde: boolean;
 }
 
 export interface ResumoPedidosShopee {
