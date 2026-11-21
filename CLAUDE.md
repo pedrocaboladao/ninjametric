@@ -69,6 +69,24 @@ These are deliberately separate and non-overlapping:
 - **Financeiro** (`financeiroService.ts`) is 100% automatic — it re-derives revenue/cost/margin from live Mercado Livre order data on every request (with a 15-min cache), never manually entered.
 - **Contas a pagar/receber** (`contasService.ts`) is a manual ledger for money that does *not* flow through ML — supplier bills, rent, salaries. It intentionally does **not** auto-create entries from ML sales (that would double-count against Financeiro). Supports parcelamento (installments) and rateio (splitting one shared cost like rent across a chosen subset of lojas in equal parts) — both use the same "first row is the anchor" grouping pattern (`grupo_parcelamento_id` / `grupo_rateio_id` self-referencing the first inserted row's own id) rather than a separate group table.
 
+### Repricing (precificação automática)
+
+Módulo `repricing` (`repricingService.ts` + `routes/repricing.ts` + `Repricing.tsx`/`RepricingPromocoes.tsx`), inspirado no PriceBot. **É o único lugar do sistema que muda preço de anúncio e aceita promoção sem clique do dono** — tudo desligado por padrão (robô por anúncio, promoções por loja) e com uma pausa geral (`repricing_config.robo_pausado`). Três peças:
+
+- **Espelho** (a cada 30 min): lê todos os anúncios ativos e calcula margem e `preco_piso` — o menor preço que ainda deixa a margem mínima do dono depois de custo (planilha de produtos), taxa do ML, **frete** e imposto.
+- **Robô de catálogo** (a cada 10 min, só anúncios de catálogo com `robo_ligado`): segue o `price_to_win` do ML pra ganhar o "Comprar". Toda a regra está em `decidirPreco`, função pura — o preço que sai dela fica sempre entre `preco_piso` e `preco_maximo`. Quando não dá pra ganhar dentro da margem, volta pro máximo; de madrugada tenta subir o preço de quem está ganhando (senão o preço só desceria pra sempre).
+- **Promoções automáticas** (`promocoes_automaticas`): aceita as pendentes de `promocoes_oportunidades` (a varredura diária que já existia) cuja margem fica na mínima ou acima, via `aprovarOportunidade`.
+
+Coisas que não são óbvias:
+
+- A automatização de preços **nativa** do ML (`/pricing-automation`) não serve aqui: testado ao vivo na Inga Collors, o ML devolve `rules: []` pra todos os anúncios, inclusive os de catálogo. Por isso o robô é próprio. `mercadoLivreAutomacaoPrecos.ts` só lista quem tem a nativa ligada, porque nesses o ML recusa `PUT /items` com `price` (`item.price.not_modifiable`).
+- Fora de catálogo não existe preço-alvo: o ML não informa concorrente (e `/suggestions/items/{id}/details` dá 404 mesmo pros itens que ele lista como tendo referência). Esses anúncios só têm monitoramento de margem.
+- A margem daqui inclui frete estimado; `calcularMargem` do Agente de Catálogo não inclui. São números diferentes de propósito (o piso erra pro lado seguro). Anúncio com frete grátis fora do Mercado Envios (`shipping.mode` ≠ `me2`, ex.: tinta inflamável) entra com frete zero — o ML não cobra e não tem cotação.
+- `LOJAS_REPRICING` limita o módulo às lojas em teste — hoje só a Inga Collors (id 3). O servidor recusa qualquer outra loja.
+- Em `repricing_itens`, a sincronização só grava as colunas-espelho (`COLUNAS_ESPELHO`); margem mínima, preço máximo, `robo_ligado` e última ação são do dono/robô e nunca são sobrescritas por ela.
+- A tela usa tema claro próprio, isolado em `.rp` (`Repricing.css`), diferente do resto do painel — é intencional.
+- **Não rode o backend local com o robô ligado em anúncio real**: o banco local tem token válido do Mercado Livre, então um clique no toggle muda preço de verdade.
+
 ### Caching
 
 No single caching strategy — each service picks a TTL matching how "live" that data needs to feel:

@@ -32,6 +32,7 @@ export const MODULOS_VALIDOS = [
   "controle_ads",
   "jogo",
   "pauta",
+  "repricing",
 ] as const;
 
 export interface Usuario {

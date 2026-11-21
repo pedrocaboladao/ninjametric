@@ -667,6 +667,23 @@ export async function ativarEnviosFlex(lojaId: number, siteId: string, itemId: s
   throw erroFinalFlex(elegivelVisto, ultimoErro);
 }
 
+// Muda o preço de venda do anúncio — usado só pelo robô do Repricing
+// (repricingService.ts), que valida o preço mínimo antes de chamar. O ML
+// atualiza só o campo enviado. Anúncio com a automatização de preços nativa
+// do ML ligada recusa com item.price.not_modifiable.
+export async function atualizarPrecoItem(lojaId: number, itemId: string, novoPreco: number): Promise<void> {
+  const accessToken = await getValidAccessToken(lojaId);
+  try {
+    await axios.put(
+      `${ML_API_BASE}/items/${itemId}`,
+      { price: novoPreco },
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+  } catch (err) {
+    throw mensagemErroMl(err, "Falha ao atualizar o preço do anúncio");
+  }
+}
+
 // Grava o SKU do item. O que vale pra tela e pras buscas é o ATRIBUTO
 // SELLER_SKU ("só a informação carregada no atributo SELLER_SKU é levada em
 // conta", segundo a documentação) — o seller_custom_field vai junto só por

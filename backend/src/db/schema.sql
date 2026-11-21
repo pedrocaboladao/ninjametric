@@ -2230,3 +2230,93 @@ CREATE TABLE IF NOT EXISTS pauta_apoios (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (item_id, usuario_id)
 );
+
+-- Repricing automático (robô de preço da disputa de catálogo). O painel
+-- espelha aqui o estado de cada anúncio ativo (preço, disputa, custos, margem
+-- e o preço mínimo que ainda respeita a margem mínima do dono); nos anúncios
+-- com o robô ligado, ele ajusta o preço entre esse mínimo e o máximo.
+CREATE TABLE IF NOT EXISTS repricing_config (
+  loja_id INTEGER PRIMARY KEY REFERENCES lojas(id) ON DELETE CASCADE,
+  margem_minima_percentual NUMERIC(6, 2) NOT NULL DEFAULT 10,
+  -- Chave geral: pausado, o robô não muda preço de nenhum anúncio da loja
+  -- (os "ligados" continuam marcados, só ficam parados).
+  robo_pausado BOOLEAN NOT NULL DEFAULT false,
+  -- Ligado, o robô entra sozinho nas promoções do Mercado Livre (as de
+  -- promocoes_oportunidades) cuja margem fica igual ou acima da mínima.
+  promocoes_automaticas BOOLEAN NOT NULL DEFAULT false,
+  ultima_sincronizacao TIMESTAMPTZ,
+  ultimo_erro TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS repricing_itens (
+  loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL,
+  -- false = saiu da lista de anúncios ativos. A linha fica (em vez de ser
+  -- apagada) quando guarda decisão do dono, pra margem mínima/preço máximo
+  -- não sumirem só porque o anúncio pausou por falta de estoque.
+  ativo BOOLEAN NOT NULL DEFAULT true,
+  titulo TEXT NOT NULL,
+  thumbnail TEXT,
+  permalink TEXT,
+  sku TEXT,
+  catalogo BOOLEAN NOT NULL DEFAULT false,
+  catalog_product_id TEXT,
+  preco_atual NUMERIC(12, 2) NOT NULL,
+  em_promocao BOOLEAN NOT NULL DEFAULT false,
+  catalogo_status TEXT,
+  price_to_win NUMERIC(12, 2),
+  vencedor_preco NUMERIC(12, 2),
+  catalogo_motivos TEXT,
+  custo_unitario NUMERIC(12, 2),
+  taxa_ml NUMERIC(12, 2),
+  frete_estimado NUMERIC(12, 2),
+  -- Preço em que taxa e frete foram consultados: enquanto o preço não muda (e
+  -- a consulta tem menos de 24h) a sincronização reaproveita em vez de gastar
+  -- duas chamadas por anúncio a cada rodada.
+  custos_preco_ref NUMERIC(12, 2),
+  custos_atualizados_em TIMESTAMPTZ,
+  margem_valor NUMERIC(12, 2),
+  margem_percentual NUMERIC(7, 2),
+  preco_piso NUMERIC(12, 2),
+  -- Resumo das entradas do cálculo do piso: só recalcula quando alguma muda.
+  piso_chave TEXT,
+  -- true = o anúncio tem a automatização de preços NATIVA do Mercado Livre
+  -- ligada (criada pelo dono direto no ML). Nesses o ML recusa mudança de
+  -- preço por API, então o robô fica de fora.
+  automacao_ml BOOLEAN NOT NULL DEFAULT false,
+  -- Daqui pra baixo são colunas do dono e do robô: a sincronização nunca as
+  -- sobrescreve (ver gravarLinha em repricingService.ts).
+  -- NULL = usa a margem mínima padrão da loja (repricing_config).
+  margem_minima_percentual NUMERIC(6, 2),
+  preco_maximo NUMERIC(12, 2),
+  robo_ligado BOOLEAN NOT NULL DEFAULT false,
+  -- Última decisão do robô em texto ("baixou pra ganhar", "manteve porque…").
+  ultima_acao TEXT,
+  ultima_acao_em TIMESTAMPTZ,
+  -- Última tentativa diária de subir o preço de um anúncio que está ganhando.
+  sondagem_em TIMESTAMPTZ,
+  -- Erro da última tentativa de mudar o preço (ex.: recusa do ML).
+  aviso TEXT,
+  atualizado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (loja_id, item_id)
+);
+
+CREATE TABLE IF NOT EXISTS repricing_historico (
+  id SERIAL PRIMARY KEY,
+  loja_id INTEGER NOT NULL REFERENCES lojas(id) ON DELETE CASCADE,
+  item_id TEXT NOT NULL,
+  titulo TEXT NOT NULL,
+  -- preco | robo_ligado | robo_desligado | promocao_entrou
+  tipo TEXT NOT NULL,
+  -- Só pra tipo = preco: 'robo' (mudança feita pelo robô) ou 'externo'
+  -- (preço mudou por fora: manual, promoção, outra ferramenta).
+  origem TEXT,
+  preco_anterior NUMERIC(12, 2),
+  preco_novo NUMERIC(12, 2),
+  margem_percentual NUMERIC(7, 2),
+  detalhe TEXT,
+  usuario_id INTEGER REFERENCES usuarios(id) ON DELETE SET NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_repricing_historico_loja ON repricing_historico (loja_id, criado_em DESC);

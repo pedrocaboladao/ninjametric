@@ -465,7 +465,10 @@ export async function simularMargem(
 }
 
 // Ação real no Mercado Livre — muda preço/participação de um anúncio ativo.
-// Só chamada quando o dono clica em "Aprovar" na tela, nunca automaticamente.
+// Chamada quando o dono clica em "Aprovar" na tela e, se ele ligou as
+// "promoções automáticas" no Repricing, também por
+// entrarNasPromocoesComMargem (repricingService.ts) — só pras que ficam com
+// margem igual ou acima da mínima.
 // precoEscolhidoOverride: preço que o usuário editou na tela (só se aplica a
 // tipos com faixa min/max — SMART usa sempre o preço fixo da proposta, ver
 // comentário em buscarOportunidadesNaLoja).

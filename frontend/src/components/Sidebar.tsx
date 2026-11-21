@@ -27,6 +27,7 @@ import {
   IconMessage,
   IconCalendar,
   IconCrown,
+  IconRefresh,
 } from "./icons";
 import type { Usuario } from "../types/usuarios";
 import { temPermissao } from "../constants/modulos";
@@ -58,6 +59,7 @@ export type View =
   | "fabrica_ordem"
   | "ean"
   | "promocoes"
+  | "repricing"
   | "pesquisa"
   | "agentes"
   | "market_intelligence"
@@ -127,6 +129,7 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
   const mostrarFinanceiroLojas = podeFinanceiro || podeFinanceiroShopee || podeContas || podeDre;
   const podeEan = temPermissao(usuario, "ean");
   const podePromocoes = temPermissao(usuario, "promocoes");
+  const podeRepricing = temPermissao(usuario, "repricing");
   const podePesquisa = temPermissao(usuario, "pesquisa");
   const podeDiscrepancias = temPermissao(usuario, "discrepancias");
   const podeMensagens = temPermissao(usuario, "mensagens");
@@ -400,6 +403,19 @@ export function Sidebar({ view, onChangeView, perguntasPendentes, mensagensNaoLi
             >
               <IconTag size={16} />
               <span>Promoções</span>
+            </button>
+            <div className="sidebar-divider" />
+          </>
+        )}
+
+        {podeRepricing && (
+          <>
+            <button
+              className={`sidebar-item ${view === "repricing" ? "sidebar-item-ativo" : ""}`}
+              onClick={() => trocarView("repricing")}
+            >
+              <IconRefresh size={16} />
+              <span>Repricing</span>
             </button>
             <div className="sidebar-divider" />
           </>

@@ -671,6 +671,13 @@ export interface MlItemBasicInfo {
     seller_custom_field?: string | null;
     attributes?: Array<{ id: string; value_name?: string | null }>;
   }>;
+  // Usados pelo Repricing (repricingService): preço cheio quando o anúncio
+  // está em promoção, se o frete é por conta do vendedor, a página de
+  // catálogo e o SKU gravado como atributo.
+  original_price?: number | null;
+  shipping?: { mode?: string; free_shipping?: boolean };
+  catalog_product_id?: string | null;
+  attributes?: Array<{ id: string; value_name?: string | null }>;
 }
 
 async function buscarLoteDeItens(
@@ -734,6 +741,13 @@ export interface MlPriceToWin {
   currentPrice: number;
   priceToWin: number | null;
   status: string; // "winning" | "competing" | "sharing_first_place" | "listed"
+  // Preço de quem está ganhando a página agora (o próprio anúncio, se winning).
+  precoVencedor: number | null;
+  // Só vem preenchido em "listed": por que o anúncio nem entra na disputa.
+  motivos: string[];
+  // false = o ML ainda está recalculando a disputa (ex.: logo depois de uma
+  // mudança de preço) — status e price_to_win podem estar defasados.
+  consistente: boolean;
 }
 
 // Detalhe da concorrência de catálogo (ver
@@ -748,11 +762,22 @@ export async function getPriceToWin(lojaId: number, itemId: string): Promise<MlP
       current_price: number;
       price_to_win: number | null;
       status: string;
+      reason?: string[] | null;
+      consistent?: boolean;
+      winner?: { price?: number | null } | null;
     }>(`${ML_API_BASE}/items/${itemId}/price_to_win`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       params: { version: "v2" },
     });
-    return { itemId: data.item_id, currentPrice: data.current_price, priceToWin: data.price_to_win, status: data.status };
+    return {
+      itemId: data.item_id,
+      currentPrice: data.current_price,
+      priceToWin: data.price_to_win,
+      status: data.status,
+      precoVencedor: data.winner?.price ?? null,
+      motivos: data.reason ?? [],
+      consistente: data.consistent !== false,
+    };
   } catch {
     return null;
   }

@@ -44,6 +44,7 @@ import { fabricaCreditosRouter } from "./routes/fabricaCreditos";
 import { fabricaOrdemRouter } from "./routes/fabricaOrdem";
 import { promocoesRouter } from "./routes/promocoes";
 import { pesquisaRouter } from "./routes/pesquisa";
+import { repricingRouter } from "./routes/repricing";
 import { agentesRouter } from "./routes/agentes";
 import { whatsappRouter } from "./routes/whatsapp";
 import { marketIntelligenceRouter } from "./routes/marketIntelligence";
@@ -69,6 +70,7 @@ import { iniciarVerificacaoPlanoDiario } from "./services/agentePlanoDiarioServi
 import { iniciarSnapshotAnunciosNegativos } from "./services/anunciosNegativosService";
 import { iniciarSnapshotExperienciaCompra } from "./services/experienciaCompraService";
 import { iniciarWhatsApp } from "./services/whatsappService";
+import { iniciarRepricing } from "./services/repricingService";
 
 const app = express();
 
@@ -146,6 +148,7 @@ app.use(
 app.use("/api/fabrica-ordem", requireAuth, requirePermissao("fabricacao"), fabricaOrdemRouter);
 app.use("/api/promocoes", requireAuth, requirePermissao("promocoes"), promocoesRouter);
 app.use("/api/pesquisa", requireAuth, requirePermissao("pesquisa"), pesquisaRouter);
+app.use("/api/repricing", requireAuth, requirePermissao("repricing"), repricingRouter);
 // Admin-only (mesmo padrão de /api/usuarios) — não é módulo comum, não
 // aparece como checkbox liberável pra equipe.
 app.use("/api/agentes", requireAuth, requireAdmin, agentesRouter);
@@ -200,5 +203,6 @@ iniciarVerificacaoAgenteCriacaoAds();
 iniciarVerificacaoPlanoDiario();
 iniciarSnapshotAnunciosNegativos();
 iniciarSnapshotExperienciaCompra();
+iniciarRepricing();
 iniciarWhatsApp();
 iniciarAutoRespostaChatShopee();

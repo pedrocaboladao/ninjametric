@@ -26,6 +26,7 @@ export const MODULOS: Modulo[] = [
   { chave: "fabrica_pedidos", label: "Fábrica — Pedidos de venda" },
   { chave: "fabrica_financeiro", label: "Fábrica — Contas a pagar e DRE" },
   { chave: "promocoes", label: "Promoções" },
+  { chave: "repricing", label: "Repricing (precificação automática)" },
   { chave: "pesquisa", label: "Pesquisa de Mercado" },
   { chave: "market_intelligence", label: "Inteligência de Mercado" },
   { chave: "tarefas", label: "Tarefas" },
