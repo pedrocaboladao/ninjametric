@@ -333,29 +333,36 @@ export async function diagnosticarAfiliadoShopee(
   dias: number,
   termo: string | null,
   limite: number,
-  status: string | null = null
+  status: string | null = null,
+  orderSns: string[] | null = null
 ): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
-  const janela = janelaUltimosDias(dias);
-  const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
-  const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
-  const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter(
-    (p) => pedidoValido(p.order_status) && (status === null || p.order_status === status)
-  );
   const prazo = Date.now() + 40_000; // devolve o que tiver até aqui, em vez de ficar carregando
-  const detalhes = await buscarDetalhesPedidos(
-    lojaId,
-    lista.slice(0, 150).map((p) => p.order_sn)
-  );
-  const termoNorm = termo ? termo.toLowerCase() : null;
-  const escolhidos = detalhes
-    .filter(
-      (d) =>
-        termoNorm === null ||
-        d.item_list.some((i) =>
-          `${i.item_name} ${i.model_sku ?? ""} ${i.item_sku ?? ""}`.toLowerCase().includes(termoNorm)
-        )
-    )
-    .slice(0, limite);
+  let escolhidos: Awaited<ReturnType<typeof buscarDetalhesPedidos>>;
+  if (orderSns && orderSns.length > 0) {
+    // Pedidos pedidos pelo número: não precisa listar a janela inteira.
+    escolhidos = await buscarDetalhesPedidos(lojaId, orderSns.slice(0, 20));
+  } else {
+    const janela = janelaUltimosDias(dias);
+    const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
+    const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
+    const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter(
+      (p) => pedidoValido(p.order_status) && (status === null || p.order_status === status)
+    );
+    const detalhes = await buscarDetalhesPedidos(
+      lojaId,
+      lista.slice(0, 150).map((p) => p.order_sn)
+    );
+    const termoNorm = termo ? termo.toLowerCase() : null;
+    escolhidos = detalhes
+      .filter(
+        (d) =>
+          termoNorm === null ||
+          d.item_list.some((i) =>
+            `${i.item_name} ${i.model_sku ?? ""} ${i.item_sku ?? ""}`.toLowerCase().includes(termoNorm)
+          )
+      )
+      .slice(0, limite);
+  }
 
   const pedidos: DiagnosticoAfiliadoPedido[] = [];
   let parcial = false;
