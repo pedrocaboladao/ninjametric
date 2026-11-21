@@ -381,7 +381,17 @@ export function FinanceiroShopee() {
                       </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.impostoTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.taxaShopeeTotal)}</td>
-                      <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.comissaoAfiliadoTotal)}</td>
+                      <td
+                        className="financeiro-th-numero financeiro-td-custo"
+                        title={
+                          v.comissaoAfiliadoEstimada
+                            ? "Estimativa: a Shopee só informa o afiliado depois de liberar o pagamento. Usa a taxa média de afiliado dos pedidos já liberados desta loja/anúncio."
+                            : undefined
+                        }
+                      >
+                        {v.comissaoAfiliadoEstimada ? "~" : ""}
+                        {formatCurrency(v.comissaoAfiliadoTotal)}
+                      </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.cupomVendedorTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.freteVendedorTotal)}</td>
                       <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>

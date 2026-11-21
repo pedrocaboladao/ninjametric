@@ -4,6 +4,7 @@ import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 import { obterGastoAdsShopee } from "./shopeeAdsService";
 import { chamarApiAssinada } from "./shopeeAuth";
+import { taxaAfiliadoDoItem, DIAS_ATE_LIBERAR } from "./shopeeAfiliadoEstimativaService";
 
 const DIAS_JANELA = 7;
 
@@ -78,6 +79,10 @@ export interface VendaFinanceiraShopee {
   impostoTotal: number;
   taxaShopeeTotal: number;
   comissaoAfiliadoTotal: number;
+  // true quando o pedido ainda não teve o pagamento liberado e a Shopee ainda
+  // não informa o afiliado: o valor é uma estimativa pela taxa média de afiliado
+  // da loja/anúncio nos pedidos já liberados (ver shopeeAfiliadoEstimativaService).
+  comissaoAfiliadoEstimada: boolean;
   cupomVendedorTotal: number;
   freteVendedorTotal: number;
   margemContribuicao: number | null;
@@ -243,6 +248,7 @@ export async function listarVendasFinanceirasShopee(
       const taxaPedido = loja.taxas.get(pedido.order_sn);
       const taxaTotalPedido = (taxaPedido?.comissao ?? 0) + (taxaPedido?.taxaServico ?? 0);
       const comissaoAfiliadoPedido = taxaPedido?.comissaoAfiliado ?? 0;
+      const pedidoAindaNaoLiberado = pedido.create_time * 1000 > Date.now() - DIAS_ATE_LIBERAR * 24 * 60 * 60 * 1000;
       const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
       const freteVendedorPedido = taxaPedido?.freteVendedor ?? 0;
 
@@ -258,7 +264,17 @@ export async function listarVendasFinanceirasShopee(
         // Comissão do programa de afiliados da Shopee (AMS) — mesmo rateio,
         // exibida separada da Taxa Shopee pra ficar explícito quando uma
         // venda veio de link de afiliado/creator. Normalmente 0.
-        const comissaoAfiliadoTotal = arredondarCentavos(fatia * comissaoAfiliadoPedido);
+        let comissaoAfiliadoTotal = arredondarCentavos(fatia * comissaoAfiliadoPedido);
+        // A Shopee só informa o afiliado depois que o pagamento é liberado. Pedido
+        // recente com extrato mas afiliado 0 usa a taxa média histórica (estimativa).
+        let comissaoAfiliadoEstimada = false;
+        if (taxaPedido && comissaoAfiliadoPedido === 0 && pedidoAindaNaoLiberado) {
+          const taxaEstimada = taxaAfiliadoDoItem(loja.lojaId, linha.item.item_id);
+          if (taxaEstimada > 0) {
+            comissaoAfiliadoTotal = arredondarCentavos(linha.receitaTotal * taxaEstimada);
+            comissaoAfiliadoEstimada = true;
+          }
+        }
         // Cupom custeado pelo vendedor — igual à taxa, só vem no total do
         // pedido, rateado pela mesma fatia. É custo real (sai do bolso do
         // vendedor), então entra na margem igual imposto/taxa.
@@ -294,6 +310,7 @@ export async function listarVendasFinanceirasShopee(
           impostoTotal,
           taxaShopeeTotal,
           comissaoAfiliadoTotal,
+          comissaoAfiliadoEstimada,
           cupomVendedorTotal,
           freteVendedorTotal,
           margemContribuicao,
