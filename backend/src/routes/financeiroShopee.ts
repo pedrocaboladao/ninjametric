@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { chamarApiAssinada } from "../services/shopeeAuth";
+import { listarTaxasAfiliado, recalcularTaxaAfiliado } from "../services/shopeeAfiliadoEstimativaService";
 import { listarVendasFinanceirasShopee, diagnosticarAfiliadoShopee } from "../services/financeiroShopeeService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
@@ -135,5 +136,33 @@ financeiroShopeeRouter.get("/diagnostico-ams", async (req, res) => {
       status: corpo?.status ?? null,
       resposta: corpo?.data ?? (err instanceof Error ? err.message : "erro"),
     });
+  }
+});
+
+// Estado da estimativa de afiliado (só admin). Mostra a taxa média que o sistema
+// está usando por loja/anúncio. Com ?recalcular=pinta recalcula essa loja agora
+// (pode levar ~1 minuto).
+financeiroShopeeRouter.get("/taxas-afiliado", async (req, res) => {
+  if (!req.usuario?.admin) {
+    res.status(403).json({ error: "Só admin." });
+    return;
+  }
+  try {
+    if (typeof req.query.recalcular === "string" && req.query.recalcular.trim()) {
+      const nome = req.query.recalcular.toLowerCase();
+      const achada = (await listLojas()).find((l) => l.nome.toLowerCase().includes(nome));
+      if (!achada) {
+        res.status(400).json({ error: "Loja não encontrada." });
+        return;
+      }
+      await recalcularTaxaAfiliado(achada.id);
+    }
+    const lojas = await listLojas();
+    res.json(
+      listarTaxasAfiliado().map((t) => ({ ...t, lojaNome: lojas.find((l) => l.id === t.lojaId)?.nome ?? null }))
+    );
+  } catch (err) {
+    console.error("Erro ao consultar as taxas de afiliado:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Falha." });
   }
 });

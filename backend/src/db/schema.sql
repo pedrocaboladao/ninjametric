@@ -2320,3 +2320,15 @@ CREATE TABLE IF NOT EXISTS repricing_historico (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_repricing_historico_loja ON repricing_historico (loja_id, criado_em DESC);
+
+-- Taxa média de comissão de afiliado (AMS) por loja/anúncio da Shopee, calculada
+-- em segundo plano sobre pedidos já liberados e usada pra ESTIMAR o afiliado
+-- dos pedidos recentes (ver shopeeAfiliadoEstimativaService). Fica no banco pra
+-- sobreviver a reinício/deploy — só em memória, ficava vazia depois de cada um.
+CREATE TABLE IF NOT EXISTS shopee_afiliado_taxas (
+  loja_id INTEGER PRIMARY KEY REFERENCES lojas(id) ON DELETE CASCADE,
+  geral NUMERIC(8,6) NOT NULL DEFAULT 0,
+  itens JSONB NOT NULL DEFAULT '{}'::jsonb,
+  pedidos_amostra INTEGER NOT NULL DEFAULT 0,
+  calculado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);

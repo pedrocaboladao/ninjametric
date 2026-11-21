@@ -45,6 +45,57 @@ export function taxaAfiliadoDoItem(lojaId: number, itemId: number): number {
   return taxasPorLoja.get(lojaId)?.porItem.get(itemId) ?? 0;
 }
 
+async function salvarNoBanco(lojaId: number, t: TaxaAfiliado): Promise<void> {
+  try {
+    await pool.query(
+      `INSERT INTO shopee_afiliado_taxas (loja_id, geral, itens, pedidos_amostra, calculado_em)
+       VALUES ($1, $2, $3::jsonb, $4, now())
+       ON CONFLICT (loja_id) DO UPDATE
+         SET geral = $2, itens = $3::jsonb, pedidos_amostra = $4, calculado_em = now()`,
+      [lojaId, t.geral, JSON.stringify(Object.fromEntries(t.porItem)), t.pedidosNaAmostra]
+    );
+  } catch (err) {
+    console.error(`Falha ao salvar a taxa de afiliado da loja ${lojaId}:`, err);
+  }
+}
+
+async function carregarDoBanco(): Promise<void> {
+  try {
+    const { rows } = await pool.query<{
+      loja_id: number;
+      geral: string;
+      itens: Record<string, number>;
+      pedidos_amostra: number;
+      calculado_em: Date;
+    }>("SELECT loja_id, geral, itens, pedidos_amostra, calculado_em FROM shopee_afiliado_taxas");
+    for (const r of rows) {
+      taxasPorLoja.set(r.loja_id, {
+        geral: Number(r.geral),
+        porItem: new Map(Object.entries(r.itens ?? {}).map(([k, v]) => [Number(k), Number(v)])),
+        pedidosNaAmostra: r.pedidos_amostra,
+        calculadoEm: new Date(r.calculado_em).getTime(),
+      });
+    }
+    console.log(`Afiliado Shopee: ${rows.length} loja(s) carregada(s) do banco.`);
+  } catch (err) {
+    console.error("Falha ao carregar as taxas de afiliado do banco:", err);
+  }
+}
+
+// Pro diagnóstico (rota de admin): o que está em memória agora.
+export function listarTaxasAfiliado() {
+  return [...taxasPorLoja.entries()].map(([lojaId, t]) => ({
+    lojaId,
+    geralPercentual: Math.round(t.geral * 10000) / 100,
+    pedidosNaAmostra: t.pedidosNaAmostra,
+    calculadoEm: new Date(t.calculadoEm).toISOString(),
+    anunciosComTaxaPropria: [...t.porItem.entries()].map(([itemId, taxa]) => ({
+      itemId,
+      percentual: Math.round(taxa * 10000) / 100,
+    })),
+  }));
+}
+
 export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
   const agora = Math.floor(Date.now() / 1000);
   const de = agora - AMOSTRA_DE_DIAS_ATRAS * 86400;
@@ -52,7 +103,9 @@ export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
   const lista = (await listarPedidos(lojaId, de, ate)).filter((p) => p.order_status === "COMPLETED");
   const escolhidos = lista.slice(0, AMOSTRA_MAX_PEDIDOS).map((p) => p.order_sn);
   if (escolhidos.length === 0) {
-    taxasPorLoja.set(lojaId, { geral: 0, porItem: new Map(), pedidosNaAmostra: 0, calculadoEm: Date.now() });
+    const vazia: TaxaAfiliado = { geral: 0, porItem: new Map(), pedidosNaAmostra: 0, calculadoEm: Date.now() };
+    taxasPorLoja.set(lojaId, vazia);
+    await salvarNoBanco(lojaId, vazia);
     return;
   }
   const [detalhes, taxas] = await Promise.all([
@@ -97,7 +150,9 @@ export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
       if (acc.pedidos >= MIN_PEDIDOS_ITEM && acc.receita > 0) taxaPorItem.set(itemId, acc.afiliado / acc.receita);
     }
   }
-  taxasPorLoja.set(lojaId, { geral, porItem: taxaPorItem, pedidosNaAmostra: pedidosGeral, calculadoEm: Date.now() });
+  const nova: TaxaAfiliado = { geral, porItem: taxaPorItem, pedidosNaAmostra: pedidosGeral, calculadoEm: Date.now() };
+  taxasPorLoja.set(lojaId, nova);
+  await salvarNoBanco(lojaId, nova);
   console.log(
     `Afiliado Shopee (loja ${lojaId}): amostra de ${pedidosGeral} pedidos liberados, taxa geral ${(geral * 100).toFixed(2)}%, ${taxaPorItem.size} anúncios com taxa própria.`
   );
@@ -112,6 +167,9 @@ export function iniciarEstimativaAfiliadoShopee(): void {
         "SELECT l.id FROM lojas l JOIN contas_shopee c ON c.loja_id = l.id ORDER BY l.id"
       );
       for (const loja of lojas) {
+        // Já calculada há pouco (vinda do banco depois de um deploy): não gasta API à toa.
+        const atual = taxasPorLoja.get(loja.id);
+        if (atual && Date.now() - atual.calculadoEm < TTL_MS * 0.9) continue;
         try {
           await recalcularTaxaAfiliado(loja.id);
         } catch (err) {
@@ -122,7 +180,8 @@ export function iniciarEstimativaAfiliadoShopee(): void {
       console.error("Falha ao estimar afiliado Shopee:", err);
     }
   }
-  // Pequeno atraso no start pra não competir com o resto da inicialização.
-  setTimeout(ciclo, 60_000);
+  // Carrega o que já estava salvo ANTES de qualquer coisa (a tela já usa na hora),
+  // depois recalcula em segundo plano só o que estiver velho ou faltando.
+  carregarDoBanco().then(() => setTimeout(ciclo, 20_000));
   setInterval(ciclo, TTL_MS);
 }
