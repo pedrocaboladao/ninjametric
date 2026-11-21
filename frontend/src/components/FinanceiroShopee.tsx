@@ -41,6 +41,7 @@ type ChaveOrdenacao =
   | "comissaoAfiliadoTotal"
   | "cupomVendedorTotal"
   | "freteVendedorTotal"
+  | "outrasTaxasTotal"
   | "margemContribuicao"
   | "margemPercentual";
 
@@ -65,6 +66,7 @@ const COLUNAS: Coluna[] = [
   { chave: "comissaoAfiliadoTotal", label: "Comissão Afiliado (-)", numerica: true },
   { chave: "cupomVendedorTotal", label: "Cupom (-)", numerica: true },
   { chave: "freteVendedorTotal", label: "Frete (-)", numerica: true },
+  { chave: "outrasTaxasTotal", label: "Outras Taxas (-)", numerica: true },
   { chave: "margemContribuicao", label: "Margem Contrib. (=)", numerica: true },
   { chave: "margemPercentual", label: "MC em %", numerica: true },
 ];
@@ -132,6 +134,7 @@ export function FinanceiroShopee() {
   const comissaoAfiliadoTotalGeral = vendas?.reduce((s, v) => s + v.comissaoAfiliadoTotal, 0) ?? 0;
   const cupomVendedorTotalGeral = vendas?.reduce((s, v) => s + v.cupomVendedorTotal, 0) ?? 0;
   const freteVendedorTotalGeral = vendas?.reduce((s, v) => s + v.freteVendedorTotal, 0) ?? 0;
+  const outrasTaxasTotalGeral = vendas?.reduce((s, v) => s + v.outrasTaxasTotal, 0) ?? 0;
   const margemTotal = comMargem.reduce((s, v) => s + (v.margemContribuicao ?? 0), 0);
   const margemPercentualMedia = receitaTotal > 0 ? (margemTotal / receitaTotal) * 100 : null;
   const semCustoCadastrado = (vendas?.length ?? 0) - comMargem.length;
@@ -229,6 +232,12 @@ export function FinanceiroShopee() {
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}
+      {resultado && resultado.pedidosNaoConciliados > 0 && (
+        <div className="state-message">
+          {resultado.pedidosNaoConciliados} pedido{resultado.pedidosNaoConciliados > 1 ? "s" : ""} com diferença grande
+          (mais de 10%) entre a conta e o valor que a Shopee repassa. A diferença não entrou na margem desses.
+        </div>
+      )}
       {resultado && resultado.pedidosReembolsados > 0 && (
         <div className="state-message">
           {resultado.pedidosReembolsados} pedido{resultado.pedidosReembolsados > 1 ? "s" : ""} concluído
@@ -269,7 +278,8 @@ export function FinanceiroShopee() {
                         taxaShopeeTotalGeral +
                         comissaoAfiliadoTotalGeral +
                         cupomVendedorTotalGeral +
-                        freteVendedorTotalGeral
+                        freteVendedorTotalGeral +
+                        outrasTaxasTotalGeral
                     )}
                   </span>
                   <div className="financeiro-card-cor-linha">
@@ -295,6 +305,13 @@ export function FinanceiroShopee() {
                   <div className="financeiro-card-cor-linha">
                     <span>Frete vendedor</span>
                     <b>{formatCurrency(freteVendedorTotalGeral)}</b>
+                  </div>
+                  <div
+                    className="financeiro-card-cor-linha"
+                    title="Taxa de Devolução Fácil e qualquer outro desconto do extrato da Shopee que as demais linhas não explicam. Faz a margem bater com o valor que a Shopee de fato repassa."
+                  >
+                    <span>Outras taxas</span>
+                    <b>{formatCurrency(outrasTaxasTotalGeral)}</b>
                   </div>
                 </div>
               </div>
@@ -401,6 +418,12 @@ export function FinanceiroShopee() {
                       </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.cupomVendedorTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.freteVendedorTotal)}</td>
+                      <td
+                        className="financeiro-th-numero financeiro-td-custo"
+                        title="Taxa de Devolução Fácil e outros descontos do extrato da Shopee que as outras colunas não explicam."
+                      >
+                        {formatCurrency(v.outrasTaxasTotal)}
+                      </td>
                       <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
                         {v.margemContribuicao !== null ? formatCurrency(v.margemContribuicao) : "não cadastrado"}
                       </td>

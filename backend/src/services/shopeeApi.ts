@@ -150,6 +150,11 @@ export interface ShopeeTaxaPedido {
   // comprador: extrato com valor a receber 0 e reembolso preenchido. Não é
   // venda de verdade, e sem esse sinal entrava como receita com margem cheia.
   reembolsado: boolean;
+  // Valor que a Shopee de fato repassa pelo pedido (escrow_amount) — usado pra
+  // conferir se a conta de taxas do sistema fecha com o dinheiro real.
+  escrow: number | null;
+  // "Taxa de Devolução Fácil Shopee" (seguro de devolução cobrado do vendedor).
+  devolucaoFacil: number;
 }
 
 interface RespostaEscrow {
@@ -175,6 +180,7 @@ interface RespostaEscrow {
       escrow_amount?: number;
       seller_return_refund?: number;
       drc_adjustable_refund?: number;
+      shipping_seller_protection_fee_amount?: number;
       // Valor do cupom aplicado na compra que fica por conta do vendedor
       // (não é a Shopee quem banca) — confirmado contra um pedido real
       // devolvido (260829MD7RM383, Catedral, cupom "CATE3OFFF"): o total do
@@ -232,6 +238,8 @@ export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Pr
           comissaoAfiliado: income.order_ams_commission_fee ?? 0,
           cupomVendedor: income.voucher_from_seller ?? 0,
           freteVendedor,
+          escrow: typeof income.escrow_amount === "number" ? income.escrow_amount : null,
+          devolucaoFacil: income.shipping_seller_protection_fee_amount ?? 0,
           reembolsado:
             income.escrow_amount === 0 &&
             ((income.seller_return_refund ?? 0) < 0 || (income.drc_adjustable_refund ?? 0) > 0),

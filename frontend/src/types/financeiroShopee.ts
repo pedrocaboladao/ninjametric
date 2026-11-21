@@ -16,6 +16,7 @@ export interface VendaFinanceiraShopee {
   comissaoAfiliadoEstimada: boolean;
   cupomVendedorTotal: number;
   freteVendedorTotal: number;
+  outrasTaxasTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
   itemBrinde: boolean;
@@ -34,4 +35,5 @@ export interface ResultadoFinanceiroShopee {
   gastoAdsTotal: number;
   pedidosSemTaxa: number;
   pedidosReembolsados: number;
+  pedidosNaoConciliados: number;
 }

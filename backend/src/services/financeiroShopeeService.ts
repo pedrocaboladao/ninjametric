@@ -85,6 +85,10 @@ export interface VendaFinanceiraShopee {
   comissaoAfiliadoEstimada: boolean;
   cupomVendedorTotal: number;
   freteVendedorTotal: number;
+  // Taxa de Devolução Fácil + qualquer outro desconto do extrato da Shopee que
+  // as demais colunas não explicam (a diferença entre a conta e o valor que a
+  // Shopee de fato repassa). Pode ser negativo (crédito/ajuste a favor).
+  outrasTaxasTotal: number;
   margemContribuicao: number | null;
   margemPercentual: number | null;
   // true quando a propria Shopee zerou o preco desse item (promocao tipo
@@ -114,6 +118,9 @@ export interface ResultadoFinanceiroShopee {
   pedidosSemTaxa: number;
   // Pedidos concluídos que foram reembolsados ao comprador: ficam fora das vendas.
   pedidosReembolsados: number;
+  // Pedidos em que a conta do sistema difere do valor repassado pela Shopee em
+  // mais de 10% — a diferença NÃO entra na margem (pode ser kit, ajuste raro...).
+  pedidosNaoConciliados: number;
 }
 
 interface LojaShopee {
@@ -214,6 +221,7 @@ export async function listarVendasFinanceirasShopee(
   const vendas: VendaFinanceiraShopee[] = [];
   let pedidosSemTaxa = 0;
   let pedidosReembolsados = 0;
+  let pedidosNaoConciliados = 0;
   for (const loja of detalhesPorLoja) {
     for (const pedido of loja.detalhes) {
       if (!loja.taxas.has(pedido.order_sn)) pedidosSemTaxa++;
@@ -258,6 +266,24 @@ export async function listarVendasFinanceirasShopee(
       const pedidoAindaNaoLiberado = pedido.create_time * 1000 > Date.now() - DIAS_ATE_LIBERAR * 24 * 60 * 60 * 1000;
       const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
       const freteVendedorPedido = taxaPedido?.freteVendedor ?? 0;
+      const devolucaoFacilPedido = taxaPedido?.devolucaoFacil ?? 0;
+      // Confere a conta do pedido com o que a Shopee de fato repassa (escrow).
+      // O que sobrar é desconto que nenhuma coluna explica — entra como "outras
+      // taxas" pra a margem bater com o dinheiro real. Só vale até 10% da venda;
+      // acima disso é situação fora do comum (não mascara, só avisa).
+      let outrasPedido = 0;
+      if (taxaPedido && taxaPedido.escrow !== null) {
+        const esperado =
+          receitaTotalPedido -
+          taxaTotalPedido -
+          comissaoAfiliadoPedido -
+          cupomVendedorPedido -
+          freteVendedorPedido -
+          devolucaoFacilPedido;
+        const diferenca = esperado - taxaPedido.escrow;
+        if (Math.abs(diferenca) <= Math.max(1, receitaTotalPedido * 0.1)) outrasPedido = diferenca;
+        else pedidosNaoConciliados++;
+      }
 
       for (const linha of linhas) {
         const custoUnitario = linha.sku !== null ? custoPorSku.get(normalizarSku(linha.sku)) ?? null : null;
@@ -291,6 +317,7 @@ export async function listarVendasFinanceirasShopee(
         // reembolsa o frete integralmente via programa de frete grátis),
         // mas fica pronto pro caso de não reembolsar.
         const freteVendedorTotal = arredondarCentavos(fatia * freteVendedorPedido);
+        const outrasTaxasTotal = arredondarCentavos(fatia * (devolucaoFacilPedido + outrasPedido));
         const margemContribuicao =
           custoTotal !== null
             ? linha.receitaTotal -
@@ -299,7 +326,8 @@ export async function listarVendasFinanceirasShopee(
               taxaShopeeTotal -
               comissaoAfiliadoTotal -
               cupomVendedorTotal -
-              freteVendedorTotal
+              freteVendedorTotal -
+              outrasTaxasTotal
             : null;
 
         vendas.push({
@@ -320,6 +348,7 @@ export async function listarVendasFinanceirasShopee(
           comissaoAfiliadoEstimada,
           cupomVendedorTotal,
           freteVendedorTotal,
+          outrasTaxasTotal,
           margemContribuicao,
           margemPercentual:
             margemContribuicao !== null && linha.receitaTotal > 0
@@ -333,7 +362,7 @@ export async function listarVendasFinanceirasShopee(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal, pedidosSemTaxa, pedidosReembolsados };
+  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal, pedidosSemTaxa, pedidosReembolsados, pedidosNaoConciliados };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
 }
