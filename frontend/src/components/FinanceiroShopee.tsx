@@ -5,6 +5,18 @@ import type { VendaFinanceiraShopee, ResultadoFinanceiroShopee } from "../types/
 import { formatCurrency, formatDataHora } from "../utils/format";
 import { useBuscaComCancelamento } from "../hooks/useBuscaComCancelamento";
 
+// Margem da LINHA: se o afiliado ainda está pendente (estimado), a linha mostra a margem
+// antes dele — nenhuma venda isolada leva um custo de afiliado inventado.
+function margemLinha(v: VendaFinanceiraShopee): number | null {
+  if (v.margemContribuicao === null) return null;
+  return v.comissaoAfiliadoEstimada ? v.margemContribuicao + v.comissaoAfiliadoTotal : v.margemContribuicao;
+}
+
+function margemLinhaPercentual(v: VendaFinanceiraShopee): number | null {
+  const m = margemLinha(v);
+  return m !== null && v.receitaTotal > 0 ? (m / v.receitaTotal) * 100 : null;
+}
+
 function classeMargem(margemPercentual: number | null): string {
   if (margemPercentual === null) return "financeiro-margem-neutra";
   if (margemPercentual < 0) return "financeiro-margem-negativa";
@@ -131,7 +143,13 @@ export function FinanceiroShopee() {
   const custoTotalGeral = vendas?.reduce((s, v) => s + (v.custoTotal ?? 0), 0) ?? 0;
   const impostoTotalGeral = vendas?.reduce((s, v) => s + v.impostoTotal, 0) ?? 0;
   const taxaShopeeTotalGeral = vendas?.reduce((s, v) => s + v.taxaShopeeTotal, 0) ?? 0;
-  const comissaoAfiliadoTotalGeral = vendas?.reduce((s, v) => s + v.comissaoAfiliadoTotal, 0) ?? 0;
+  const comissaoAfiliadoTotalGeral =
+    vendas?.reduce((s, v) => s + (v.comissaoAfiliadoEstimada ? 0 : v.comissaoAfiliadoTotal), 0) ?? 0;
+  // Afiliado ainda não informado pela Shopee: o total considera uma estimativa (média do
+  // anúncio), mas a linha de cada venda mostra "pendente" em vez de um valor inventado.
+  const afiliadoPendenteEstimadoGeral =
+    vendas?.reduce((s, v) => s + (v.comissaoAfiliadoEstimada ? v.comissaoAfiliadoTotal : 0), 0) ?? 0;
+  const vendasAfiliadoPendente = vendas?.filter((v) => v.comissaoAfiliadoEstimada).length ?? 0;
   const cupomVendedorTotalGeral = vendas?.reduce((s, v) => s + v.cupomVendedorTotal, 0) ?? 0;
   const freteVendedorTotalGeral = vendas?.reduce((s, v) => s + v.freteVendedorTotal, 0) ?? 0;
   const outrasTaxasTotalGeral = vendas?.reduce((s, v) => s + v.outrasTaxasTotal, 0) ?? 0;
@@ -277,6 +295,7 @@ export function FinanceiroShopee() {
                         impostoTotalGeral +
                         taxaShopeeTotalGeral +
                         comissaoAfiliadoTotalGeral +
+                        afiliadoPendenteEstimadoGeral +
                         cupomVendedorTotalGeral +
                         freteVendedorTotalGeral +
                         outrasTaxasTotalGeral
@@ -297,6 +316,13 @@ export function FinanceiroShopee() {
                   <div className="financeiro-card-cor-linha" title="Comissão do programa de afiliados da Shopee (AMS) — só vem diferente de zero quando a venda veio de link de afiliado/creator.">
                     <span>Comissão afiliado</span>
                     <b>{formatCurrency(comissaoAfiliadoTotalGeral)}</b>
+                  </div>
+                  <div
+                    className="financeiro-card-cor-linha"
+                    title={`Afiliado ainda não informado pela Shopee em ${vendasAfiliadoPendente} venda(s) recente(s). É uma estimativa pela taxa média de afiliado de cada anúncio nos pedidos já pagos, e já está descontada da margem total. Cada linha mostra "pendente".`}
+                  >
+                    <span>Afiliado pendente (estim.)</span>
+                    <b>~{formatCurrency(afiliadoPendenteEstimadoGeral)}</b>
                   </div>
                   <div className="financeiro-card-cor-linha">
                     <span>Cupom vendedor</span>
@@ -409,12 +435,11 @@ export function FinanceiroShopee() {
                         className="financeiro-th-numero financeiro-td-custo"
                         title={
                           v.comissaoAfiliadoEstimada
-                            ? "Estimativa: a Shopee só informa o afiliado depois de liberar o pagamento. Usa a taxa média de afiliado dos pedidos já liberados desta loja/anúncio."
+                            ? "A Shopee ainda não informou o afiliado desta venda (só informa depois de liberar o pagamento). A margem desta linha NÃO desconta o afiliado; o total no topo já considera uma estimativa."
                             : undefined
                         }
                       >
-                        {v.comissaoAfiliadoEstimada ? "~" : ""}
-                        {formatCurrency(v.comissaoAfiliadoTotal)}
+                        {v.comissaoAfiliadoEstimada ? <i>pendente</i> : formatCurrency(v.comissaoAfiliadoTotal)}
                       </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.cupomVendedorTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.freteVendedorTotal)}</td>
@@ -424,11 +449,20 @@ export function FinanceiroShopee() {
                       >
                         {formatCurrency(v.outrasTaxasTotal)}
                       </td>
-                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
-                        {v.margemContribuicao !== null ? formatCurrency(v.margemContribuicao) : "não cadastrado"}
+                      <td
+                        className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(margemLinhaPercentual(v))}`}
+                        title={
+                          v.comissaoAfiliadoEstimada
+                            ? "Margem ANTES do afiliado (pendente). Se esta venda for de afiliado, a margem real será menor."
+                            : undefined
+                        }
+                      >
+                        {v.margemContribuicao !== null
+                          ? `${formatCurrency(margemLinha(v) ?? 0)}${v.comissaoAfiliadoEstimada ? "*" : ""}`
+                          : "não cadastrado"}
                       </td>
-                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(v.margemPercentual)}`}>
-                        {v.margemPercentual !== null ? `${v.margemPercentual.toFixed(2)}%` : "—"}
+                      <td className={`financeiro-th-numero financeiro-linha-margem ${classeMargem(margemLinhaPercentual(v))}`}>
+                        {margemLinhaPercentual(v) !== null ? `${margemLinhaPercentual(v)!.toFixed(2)}%` : "—"}
                       </td>
                     </tr>
                   ))}
