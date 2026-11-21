@@ -112,6 +112,8 @@ export interface ResultadoFinanceiroShopee {
   // nem com tentativas repetidas: entram com taxa zero, então a margem deles
   // fica inflada. A tela avisa em vez de mostrar sem dizer nada.
   pedidosSemTaxa: number;
+  // Pedidos concluídos que foram reembolsados ao comprador: ficam fora das vendas.
+  pedidosReembolsados: number;
 }
 
 interface LojaShopee {
@@ -211,9 +213,14 @@ export async function listarVendasFinanceirasShopee(
 
   const vendas: VendaFinanceiraShopee[] = [];
   let pedidosSemTaxa = 0;
+  let pedidosReembolsados = 0;
   for (const loja of detalhesPorLoja) {
     for (const pedido of loja.detalhes) {
       if (!loja.taxas.has(pedido.order_sn)) pedidosSemTaxa++;
+      if (loja.taxas.get(pedido.order_sn)?.reembolsado) {
+        pedidosReembolsados++;
+        continue;
+      }
       // Cada entrada de item_list já é uma linha vendida (um line_item_id) —
       // monta a lista primeiro porque a taxa (comissão + serviço) só vem no
       // nível do PEDIDO inteiro, precisa do total do pedido pra ratear por
@@ -326,7 +333,7 @@ export async function listarVendasFinanceirasShopee(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal, pedidosSemTaxa };
+  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal, pedidosSemTaxa, pedidosReembolsados };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
 }

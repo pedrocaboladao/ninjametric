@@ -33,4 +33,5 @@ export interface ResultadoFinanceiroShopee {
   resumoPedidos: ResumoPedidosShopee;
   gastoAdsTotal: number;
   pedidosSemTaxa: number;
+  pedidosReembolsados: number;
 }

@@ -229,6 +229,13 @@ export function FinanceiroShopee() {
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}
+      {resultado && resultado.pedidosReembolsados > 0 && (
+        <div className="state-message">
+          {resultado.pedidosReembolsados} pedido{resultado.pedidosReembolsados > 1 ? "s" : ""} concluído
+          {resultado.pedidosReembolsados > 1 ? "s" : ""} e depois reembolsado{resultado.pedidosReembolsados > 1 ? "s" : ""} ao
+          comprador ficaram fora das vendas e da margem.
+        </div>
+      )}
       {resultado && resultado.pedidosSemTaxa > 0 && (
         <div className="state-message state-error">
           A Shopee não devolveu o extrato de {resultado.pedidosSemTaxa} pedido{resultado.pedidosSemTaxa > 1 ? "s" : ""} deste

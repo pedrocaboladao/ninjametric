@@ -146,6 +146,10 @@ export interface ShopeeTaxaPedido {
   comissaoAfiliado: number;
   cupomVendedor: number;
   freteVendedor: number;
+  // Pedido que a Shopee marca COMPLETED mas que foi devolvido/reembolsado ao
+  // comprador: extrato com valor a receber 0 e reembolso preenchido. Não é
+  // venda de verdade, e sem esse sinal entrava como receita com margem cheia.
+  reembolsado: boolean;
 }
 
 interface RespostaEscrow {
@@ -168,6 +172,9 @@ interface RespostaEscrow {
       // pedido (order_ams_commission_fee); cada item tambem tem o seu
       // proprio ams_commission_fee, mas o do pedido ja e o total.
       order_ams_commission_fee?: number;
+      escrow_amount?: number;
+      seller_return_refund?: number;
+      drc_adjustable_refund?: number;
       // Valor do cupom aplicado na compra que fica por conta do vendedor
       // (não é a Shopee quem banca) — confirmado contra um pedido real
       // devolvido (260829MD7RM383, Catedral, cupom "CATE3OFFF"): o total do
@@ -225,6 +232,9 @@ export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Pr
           comissaoAfiliado: income.order_ams_commission_fee ?? 0,
           cupomVendedor: income.voucher_from_seller ?? 0,
           freteVendedor,
+          reembolsado:
+            income.escrow_amount === 0 &&
+            ((income.seller_return_refund ?? 0) < 0 || (income.drc_adjustable_refund ?? 0) > 0),
         };
       } catch {
         // tenta de novo
