@@ -59,7 +59,7 @@ financeiroShopeeRouter.get("/", async (req, res) => {
 
 // Diagnóstico da comissão de afiliado (AMS) — só admin. Abra no navegador
 // logado: /api/financeiro-shopee/diagnostico-afiliado?loja=pinta&termo=pedra
-// (dias, limite, status=COMPLETED e pedido=NUMERO,NUMERO opcionais; padrão 2 dias, 8 pedidos).
+// (dias, limite, status=COMPLETED e pedido=NUMERO,NUMERO, de=AAAA-MM-DD e ate=AAAA-MM-DD opcionais; padrão 2 dias, 8 pedidos).
 financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
   if (!req.usuario?.admin) {
     res.status(403).json({ error: "Só admin." });
@@ -84,8 +84,11 @@ financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
     typeof req.query.pedido === "string"
       ? req.query.pedido.split(",").map((x) => x.trim()).filter((x) => /^[A-Za-z0-9]{8,20}$/.test(x))
       : null;
+  const de = typeof req.query.de === "string" && DATA_REGEX.test(req.query.de) ? req.query.de : null;
+  const ate = typeof req.query.ate === "string" && DATA_REGEX.test(req.query.ate) ? req.query.ate : de;
+  const intervalo = de && ate ? { de, ate } : null;
   try {
-    res.json(await diagnosticarAfiliadoShopee(lojaId, dias, termo, limite, status, orderSns));
+    res.json(await diagnosticarAfiliadoShopee(lojaId, dias, termo, limite, status, orderSns, intervalo));
   } catch (err) {
     console.error("Erro no diagnóstico de afiliado Shopee:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });

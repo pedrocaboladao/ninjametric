@@ -340,14 +340,15 @@ export async function diagnosticarAfiliadoShopee(
   termo: string | null,
   limite: number,
   status: string | null = null,
-  orderSns: string[] | null = null
-): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
+  orderSns: string[] | null = null,
+  intervalo: { de: string; ate: string } | null = null
+): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; porStatus: Record<string, number>; pedidos: DiagnosticoAfiliadoPedido[] }> {
   let escolhidos: Awaited<ReturnType<typeof buscarDetalhesPedidos>>;
   if (orderSns && orderSns.length > 0) {
     // Pedidos pedidos pelo número: não precisa listar a janela inteira.
     escolhidos = await buscarDetalhesPedidos(lojaId, orderSns.slice(0, 20));
   } else {
-    const janela = janelaUltimosDias(dias);
+    const janela = intervalo ? janelaEntre(intervalo.de, intervalo.ate) : janelaUltimosDias(dias);
     const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
     const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
     const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter(
@@ -432,6 +433,10 @@ export async function diagnosticarAfiliadoShopee(
     erros,
     pedidosAnalisados: pedidos.length,
     comAfiliado: pedidos.filter((p) => (p.campos.order_ams_commission_fee ?? 0) > 0).length,
+    porStatus: pedidos.reduce<Record<string, number>>((acc, p) => {
+      acc[p.status] = (acc[p.status] ?? 0) + 1;
+      return acc;
+    }, {}),
     pedidos,
   };
 }
