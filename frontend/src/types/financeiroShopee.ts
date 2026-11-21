@@ -31,4 +31,5 @@ export interface ResultadoFinanceiroShopee {
   vendas: VendaFinanceiraShopee[];
   resumoPedidos: ResumoPedidosShopee;
   gastoAdsTotal: number;
+  pedidosSemTaxa: number;
 }

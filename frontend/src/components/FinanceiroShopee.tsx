@@ -229,6 +229,13 @@ export function FinanceiroShopee() {
 
       {erro && <div className="state-message state-error">{erro}</div>}
       {!erro && vendasOrdenadas === null && <div className="state-message">Carregando vendas...</div>}
+      {resultado && resultado.pedidosSemTaxa > 0 && (
+        <div className="state-message state-error">
+          A Shopee não devolveu o extrato de {resultado.pedidosSemTaxa} pedido{resultado.pedidosSemTaxa > 1 ? "s" : ""} deste
+          período (taxas, comissão de afiliado, cupom e frete). Nesses, esses custos aparecem como zero e a margem fica
+          maior que a real. Clique em Atualizar para tentar de novo.
+        </div>
+      )}
 
       {vendasOrdenadas !== null && (
         <>

@@ -200,28 +200,37 @@ interface RespostaEscrow {
 // quem chama.
 export async function buscarTaxasPedidos(lojaId: number, orderSns: string[]): Promise<Map<string, ShopeeTaxaPedido>> {
   const resultados = await comConcorrenciaLimitada(orderSns, 10, async (orderSn) => {
-    try {
-      const data = await chamarApiAssinada<RespostaEscrow>(lojaId, "/api/v2/payment/get_escrow_detail", {
-        order_sn: orderSn,
-      });
-      if (data.error) return null;
-      const income = data.response?.order_income;
-      if (!income) return null;
-      const freteVendedor = Math.max(
-        0,
-        (income.actual_shipping_fee ?? 0) - (income.buyer_paid_shipping_fee ?? 0) - (income.shopee_shipping_rebate ?? 0)
-      );
-      return {
-        orderSn,
-        comissao: income.commission_fee ?? 0,
-        taxaServico: income.service_fee ?? 0,
-        comissaoAfiliado: income.order_ams_commission_fee ?? 0,
-        cupomVendedor: income.voucher_from_seller ?? 0,
-        freteVendedor,
-      };
-    } catch {
-      return null;
+    // Até 3 tentativas: loja grande (centenas de pedidos na janela) esbarra em
+    // limite de requisições/timeout da Shopee, e um pedido sem extrato era
+    // tratado como taxa ZERO sem ninguém perceber (margem inflada).
+    for (let tentativa = 0; tentativa < 3; tentativa++) {
+      if (tentativa > 0) await new Promise((r) => setTimeout(r, tentativa * 800));
+      try {
+        const data = await chamarApiAssinada<RespostaEscrow>(lojaId, "/api/v2/payment/get_escrow_detail", {
+          order_sn: orderSn,
+        });
+        if (data.error) continue;
+        const income = data.response?.order_income;
+        if (!income) continue;
+        const freteVendedor = Math.max(
+          0,
+          (income.actual_shipping_fee ?? 0) -
+            (income.buyer_paid_shipping_fee ?? 0) -
+            (income.shopee_shipping_rebate ?? 0)
+        );
+        return {
+          orderSn,
+          comissao: income.commission_fee ?? 0,
+          taxaServico: income.service_fee ?? 0,
+          comissaoAfiliado: income.order_ams_commission_fee ?? 0,
+          cupomVendedor: income.voucher_from_seller ?? 0,
+          freteVendedor,
+        };
+      } catch {
+        // tenta de novo
+      }
     }
+    return null;
   });
 
   const mapa = new Map<string, ShopeeTaxaPedido>();

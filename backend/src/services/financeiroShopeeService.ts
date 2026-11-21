@@ -103,6 +103,10 @@ export interface ResultadoFinanceiroShopee {
   vendas: VendaFinanceiraShopee[];
   resumoPedidos: ResumoPedidosShopee;
   gastoAdsTotal: number;
+  // Pedidos cujo extrato (taxas, afiliado, cupom, frete) a Shopee não devolveu
+  // nem com tentativas repetidas: entram com taxa zero, então a margem deles
+  // fica inflada. A tela avisa em vez de mostrar sem dizer nada.
+  pedidosSemTaxa: number;
 }
 
 interface LojaShopee {
@@ -201,8 +205,10 @@ export async function listarVendasFinanceirasShopee(
   );
 
   const vendas: VendaFinanceiraShopee[] = [];
+  let pedidosSemTaxa = 0;
   for (const loja of detalhesPorLoja) {
     for (const pedido of loja.detalhes) {
+      if (!loja.taxas.has(pedido.order_sn)) pedidosSemTaxa++;
       // Cada entrada de item_list já é uma linha vendida (um line_item_id) —
       // monta a lista primeiro porque a taxa (comissão + serviço) só vem no
       // nível do PEDIDO inteiro, precisa do total do pedido pra ratear por
@@ -303,7 +309,7 @@ export async function listarVendasFinanceirasShopee(
 
   vendas.sort((a, b) => new Date(b.dataCriacao).getTime() - new Date(a.dataCriacao).getTime());
 
-  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal };
+  const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal, pedidosSemTaxa };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
 }
