@@ -317,6 +317,7 @@ export function FinanceiroShopee() {
                     <span>Comissão afiliado</span>
                     <b>{formatCurrency(comissaoAfiliadoTotalGeral)}</b>
                   </div>
+                  {vendasAfiliadoPendente > 0 && (
                   <div
                     className="financeiro-card-cor-linha"
                     title={`Afiliado ainda não informado pela Shopee em ${vendasAfiliadoPendente} venda(s) recente(s). É uma estimativa pela taxa média de afiliado de cada anúncio nos pedidos já pagos, e já está descontada da margem total. Cada linha mostra "pendente".`}
@@ -324,6 +325,7 @@ export function FinanceiroShopee() {
                     <span>Afiliado pendente (estim.)</span>
                     <b>~{formatCurrency(afiliadoPendenteEstimadoGeral)}</b>
                   </div>
+                  )}
                   <div className="financeiro-card-cor-linha">
                     <span>Cupom vendedor</span>
                     <b>{formatCurrency(cupomVendedorTotalGeral)}</b>
