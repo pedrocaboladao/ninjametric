@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
-import { listarVendasFinanceirasShopee } from "../services/financeiroShopeeService";
+import { listarVendasFinanceirasShopee, diagnosticarAfiliadoShopee } from "../services/financeiroShopeeService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
+import { listLojas } from "../services/tokenStore";
 
 export const financeiroShopeeRouter = Router();
 
@@ -53,5 +54,35 @@ financeiroShopeeRouter.get("/", async (req, res) => {
   } catch (err) {
     console.error("Erro ao montar feed financeiro Shopee:", err);
     res.status(500).json({ error: "Falha ao carregar vendas da Shopee." });
+  }
+});
+
+// Diagnóstico da comissão de afiliado (AMS) — só admin. Abra no navegador
+// logado: /api/financeiro-shopee/diagnostico-afiliado?loja=pinta&termo=pedra
+// (dias e limite opcionais; padrão 7 dias, 12 pedidos).
+financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
+  if (!req.usuario?.admin) {
+    res.status(403).json({ error: "Só admin." });
+    return;
+  }
+  // lojaId numérico, ou "loja=pinta" (pedaço do nome) pra não precisar saber o id.
+  let lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId) && typeof req.query.loja === "string") {
+    const nome = req.query.loja.toLowerCase();
+    const achada = (await listLojas()).find((l) => l.nome.toLowerCase().includes(nome));
+    if (achada) lojaId = achada.id;
+  }
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe lojaId ou loja (parte do nome)." });
+    return;
+  }
+  const dias = Math.min(Math.max(Number(req.query.dias) || 7, 1), 30);
+  const limite = Math.min(Math.max(Number(req.query.limite) || 12, 1), 30);
+  const termo = typeof req.query.termo === "string" && req.query.termo.trim() ? req.query.termo.trim() : null;
+  try {
+    res.json(await diagnosticarAfiliadoShopee(lojaId, dias, termo, limite));
+  } catch (err) {
+    console.error("Erro no diagnóstico de afiliado Shopee:", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });
   }
 });

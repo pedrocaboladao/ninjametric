@@ -3,6 +3,7 @@ import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos } from "./shop
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 import { obterGastoAdsShopee } from "./shopeeAdsService";
+import { chamarApiAssinada } from "./shopeeAuth";
 
 const DIAS_JANELA = 7;
 
@@ -305,4 +306,92 @@ export async function listarVendasFinanceirasShopee(
   const resultado: ResultadoFinanceiroShopee = { vendas, resumoPedidos, gastoAdsTotal };
   cache.set(chaveCache, { data: resultado, expiraEm: Date.now() + CACHE_TTL_MS });
   return resultado;
+}
+
+export interface DiagnosticoAfiliadoPedido {
+  orderSn: string;
+  status: string;
+  itens: { itemId: number; sku: string | null; amsDoItem: number | null }[];
+  // Todos os campos NUMÉRICOS do order_income devolvido pela Shopee, como
+  // vieram — pra achar onde a comissão de afiliado aparece de verdade.
+  campos: Record<string, number>;
+  // preço de venda − cupom do vendedor − comissão − taxa de serviço − afiliado
+  // (a conta que o Financeiro Shopee faz) e quanto ela erra contra o
+  // escrow_amount, o que a Shopee de fato repassa. Perto de 0 = a conta fecha.
+  contaDoSistema: number | null;
+  escrowAmount: number | null;
+  diferenca: number | null;
+}
+
+// Diagnóstico (só admin): olha o extrato real (get_escrow_detail) de pedidos
+// recentes de uma loja, opcionalmente só os que têm `termo` no nome/SKU do
+// item, e confere se a conta de taxas do Financeiro fecha com o valor que a
+// Shopee repassa. Serve pra confirmar se a comissão de afiliado (AMS) vem
+// preenchida e se está sendo descontada na medida certa.
+export async function diagnosticarAfiliadoShopee(
+  lojaId: number,
+  dias: number,
+  termo: string | null,
+  limite: number
+): Promise<{ pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
+  const janela = janelaUltimosDias(dias);
+  const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
+  const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
+  const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter((p) => pedidoValido(p.order_status));
+  const detalhes = await buscarDetalhesPedidos(
+    lojaId,
+    lista.slice(0, 300).map((p) => p.order_sn)
+  );
+  const termoNorm = termo ? termo.toLowerCase() : null;
+  const escolhidos = detalhes
+    .filter(
+      (d) =>
+        termoNorm === null ||
+        d.item_list.some((i) =>
+          `${i.item_name} ${i.model_sku ?? ""} ${i.item_sku ?? ""}`.toLowerCase().includes(termoNorm)
+        )
+    )
+    .slice(0, limite);
+
+  const pedidos: DiagnosticoAfiliadoPedido[] = [];
+  for (const d of escolhidos) {
+    const data = await chamarApiAssinada<{
+      error?: string;
+      response?: { order_income?: Record<string, unknown> & { items?: Record<string, unknown>[] } };
+    }>(lojaId, "/api/v2/payment/get_escrow_detail", { order_sn: d.order_sn });
+    const income = data.response?.order_income;
+    const campos: Record<string, number> = {};
+    for (const [k, v] of Object.entries(income ?? {})) {
+      if (typeof v === "number") campos[k] = v;
+    }
+    const itensEscrow = (income?.items ?? []) as { item_id?: number; model_sku?: string; item_sku?: string; ams_commission_fee?: number }[];
+    const preco = campos.order_selling_price;
+    const escrow = campos.escrow_amount;
+    const conta =
+      preco === undefined
+        ? null
+        : preco -
+          (campos.voucher_from_seller ?? 0) -
+          (campos.commission_fee ?? 0) -
+          (campos.service_fee ?? 0) -
+          (campos.order_ams_commission_fee ?? 0);
+    pedidos.push({
+      orderSn: d.order_sn,
+      status: d.order_status,
+      itens: itensEscrow.map((i) => ({
+        itemId: i.item_id ?? 0,
+        sku: i.model_sku || i.item_sku || null,
+        amsDoItem: typeof i.ams_commission_fee === "number" ? i.ams_commission_fee : null,
+      })),
+      campos,
+      contaDoSistema: conta === null ? null : Math.round(conta * 100) / 100,
+      escrowAmount: escrow ?? null,
+      diferenca: conta === null || escrow === undefined ? null : Math.round((conta - escrow) * 100) / 100,
+    });
+  }
+  return {
+    pedidosAnalisados: pedidos.length,
+    comAfiliado: pedidos.filter((p) => (p.campos.order_ams_commission_fee ?? 0) > 0).length,
+    pedidos,
+  };
 }
