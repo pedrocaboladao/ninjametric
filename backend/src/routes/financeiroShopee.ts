@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { chamarApiAssinada } from "../services/shopeeAuth";
 import { listarVendasFinanceirasShopee, diagnosticarAfiliadoShopee } from "../services/financeiroShopeeService";
 import { temAcessoLoja, lojasEfetivas } from "../services/usuariosService";
 import { listLojas } from "../services/tokenStore";
@@ -92,5 +93,47 @@ financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
   } catch (err) {
     console.error("Erro no diagnóstico de afiliado Shopee:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });
+  }
+});
+
+// Sonda da API de afiliados da Shopee (AMS) — só admin, só leitura (GET).
+// Serve pra descobrir se o app tem permissão e quais parâmetros o relatório de
+// conversões aceita. Ex.:
+// /api/financeiro-shopee/diagnostico-ams?loja=catedral&caminho=get_conversion_report&start_time=1763000000&end_time=1763600000&page_no=1&page_size=20
+// Devolve a resposta crua da Shopee (inclusive o erro, que diz o que falta).
+financeiroShopeeRouter.get("/diagnostico-ams", async (req, res) => {
+  if (!req.usuario?.admin) {
+    res.status(403).json({ error: "Só admin." });
+    return;
+  }
+  const caminho = typeof req.query.caminho === "string" ? req.query.caminho : "";
+  if (!/^[a-z_]{3,60}$/.test(caminho)) {
+    res.status(400).json({ error: "Informe caminho (ex.: get_conversion_report)." });
+    return;
+  }
+  let lojaId = Number(req.query.lojaId);
+  if (!Number.isInteger(lojaId) && typeof req.query.loja === "string") {
+    const nome = req.query.loja.toLowerCase();
+    const achada = (await listLojas()).find((l) => l.nome.toLowerCase().includes(nome));
+    if (achada) lojaId = achada.id;
+  }
+  if (!Number.isInteger(lojaId)) {
+    res.status(400).json({ error: "Informe lojaId ou loja (parte do nome)." });
+    return;
+  }
+  const params: Record<string, string> = {};
+  for (const [k, v] of Object.entries(req.query)) {
+    if (k === "caminho" || k === "loja" || k === "lojaId") continue;
+    if (typeof v === "string") params[k] = v;
+  }
+  try {
+    res.json(await chamarApiAssinada<unknown>(lojaId, `/api/v2/ams/${caminho}`, params));
+  } catch (err) {
+    const corpo = (err as { response?: { status?: number; data?: unknown } })?.response;
+    res.status(200).json({
+      falhou: true,
+      status: corpo?.status ?? null,
+      resposta: corpo?.data ?? (err instanceof Error ? err.message : "erro"),
+    });
   }
 });
