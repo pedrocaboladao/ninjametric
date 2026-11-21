@@ -59,7 +59,7 @@ financeiroShopeeRouter.get("/", async (req, res) => {
 
 // Diagnóstico da comissão de afiliado (AMS) — só admin. Abra no navegador
 // logado: /api/financeiro-shopee/diagnostico-afiliado?loja=pinta&termo=pedra
-// (dias e limite opcionais; padrão 7 dias, 12 pedidos).
+// (dias e limite opcionais; padrão 2 dias, 8 pedidos).
 financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
   if (!req.usuario?.admin) {
     res.status(403).json({ error: "Só admin." });
@@ -76,8 +76,8 @@ financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
     res.status(400).json({ error: "Informe lojaId ou loja (parte do nome)." });
     return;
   }
-  const dias = Math.min(Math.max(Number(req.query.dias) || 7, 1), 30);
-  const limite = Math.min(Math.max(Number(req.query.limite) || 12, 1), 30);
+  const dias = Math.min(Math.max(Number(req.query.dias) || 2, 1), 30);
+  const limite = Math.min(Math.max(Number(req.query.limite) || 8, 1), 30);
   const termo = typeof req.query.termo === "string" && req.query.termo.trim() ? req.query.termo.trim() : null;
   try {
     res.json(await diagnosticarAfiliadoShopee(lojaId, dias, termo, limite));

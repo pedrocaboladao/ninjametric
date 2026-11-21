@@ -333,14 +333,15 @@ export async function diagnosticarAfiliadoShopee(
   dias: number,
   termo: string | null,
   limite: number
-): Promise<{ pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
+): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
   const janela = janelaUltimosDias(dias);
   const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
   const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
   const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter((p) => pedidoValido(p.order_status));
+  const prazo = Date.now() + 40_000; // devolve o que tiver até aqui, em vez de ficar carregando
   const detalhes = await buscarDetalhesPedidos(
     lojaId,
-    lista.slice(0, 300).map((p) => p.order_sn)
+    lista.slice(0, 150).map((p) => p.order_sn)
   );
   const termoNorm = termo ? termo.toLowerCase() : null;
   const escolhidos = detalhes
@@ -354,7 +355,13 @@ export async function diagnosticarAfiliadoShopee(
     .slice(0, limite);
 
   const pedidos: DiagnosticoAfiliadoPedido[] = [];
-  for (const d of escolhidos) {
+  let parcial = false;
+  const erros: string[] = [];
+  async function analisar(d: (typeof escolhidos)[number]) {
+    if (Date.now() > prazo) {
+      parcial = true;
+      return;
+    }
     const data = await chamarApiAssinada<{
       error?: string;
       response?: { order_income?: Record<string, unknown> & { items?: Record<string, unknown>[] } };
@@ -389,7 +396,22 @@ export async function diagnosticarAfiliadoShopee(
       diferenca: conta === null || escrow === undefined ? null : Math.round((conta - escrow) * 100) / 100,
     });
   }
+  let proximo = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(4, escolhidos.length) }, async () => {
+      while (proximo < escolhidos.length) {
+        const d = escolhidos[proximo++];
+        try {
+          await analisar(d);
+        } catch (err) {
+          erros.push(`${d.order_sn}: ${err instanceof Error ? err.message : "falhou"}`);
+        }
+      }
+    })
+  );
   return {
+    parcial,
+    erros,
     pedidosAnalisados: pedidos.length,
     comAfiliado: pedidos.filter((p) => (p.campos.order_ams_commission_fee ?? 0) > 0).length,
     pedidos,
