@@ -14,6 +14,9 @@ import { pool } from "../db/pool";
 
 // Pedido criado há menos que isso ainda não teve o pagamento liberado.
 export const DIAS_ATE_LIBERAR = 14;
+// Pedido concluído há menos que isso ainda não teve o pagamento liberado (7 dias
+// depois da conclusão, mais uma folga).
+export const DIAS_CONCLUIDO_ATE_LIBERAR = 9;
 
 // Janela de pedidos JÁ liberados usada como amostra: de 19 a 15 dias atrás.
 const AMOSTRA_DE_DIAS_ATRAS = 19;
@@ -119,6 +122,9 @@ export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
   const porItem = new Map<number, { afiliado: number; receita: number; pedidos: number }>();
 
   for (const pedido of detalhes) {
+    // Só pedido cujo pagamento já foi liberado (concluído há mais de 10 dias):
+    // entrega lenta deixa pedido "antigo" ainda sem afiliado no extrato.
+    if (pedido.update_time && pedido.update_time * 1000 > Date.now() - 10 * 24 * 60 * 60 * 1000) continue;
     const taxa = taxas.get(pedido.order_sn);
     // Sem extrato, ou extrato zerado (pedido devolvido/estornado): não diz nada
     // sobre afiliado, fica fora da amostra.

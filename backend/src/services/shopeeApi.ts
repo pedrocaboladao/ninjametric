@@ -20,6 +20,8 @@ export interface ShopeeOrder {
   order_sn: string;
   order_status: string;
   create_time: number;
+  // Última mudança de status (pra COMPLETED, ~o dia da conclusão). Vem por padrão no detalhe.
+  update_time?: number;
   item_list: ShopeeOrderItem[];
 }
 

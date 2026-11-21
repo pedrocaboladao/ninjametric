@@ -4,7 +4,7 @@ import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 import { obterGastoAdsShopee } from "./shopeeAdsService";
 import { chamarApiAssinada } from "./shopeeAuth";
-import { taxaAfiliadoDoItem, DIAS_ATE_LIBERAR } from "./shopeeAfiliadoEstimativaService";
+import { taxaAfiliadoDoItem, DIAS_ATE_LIBERAR, DIAS_CONCLUIDO_ATE_LIBERAR } from "./shopeeAfiliadoEstimativaService";
 
 const DIAS_JANELA = 7;
 
@@ -263,7 +263,17 @@ export async function listarVendasFinanceirasShopee(
       const taxaPedido = loja.taxas.get(pedido.order_sn);
       const taxaTotalPedido = (taxaPedido?.comissao ?? 0) + (taxaPedido?.taxaServico ?? 0);
       const comissaoAfiliadoPedido = taxaPedido?.comissaoAfiliado ?? 0;
-      const pedidoAindaNaoLiberado = pedido.create_time * 1000 > Date.now() - DIAS_ATE_LIBERAR * 24 * 60 * 60 * 1000;
+      // O afiliado só entra no extrato depois que o pagamento é liberado (~7 dias
+      // depois da conclusão do pedido). Pedido ainda em andamento (enviado, a
+      // caminho...) nunca foi liberado, não importa a idade — entrega lenta já
+      // passou de 20 dias. Concluído: conta desde a conclusão (update_time); sem
+      // essa data, cai na idade do pedido.
+      const diaMs = 24 * 60 * 60 * 1000;
+      const pedidoAindaNaoLiberado =
+        pedido.order_status !== "COMPLETED" ||
+        (pedido.update_time
+          ? pedido.update_time * 1000 > Date.now() - DIAS_CONCLUIDO_ATE_LIBERAR * diaMs
+          : pedido.create_time * 1000 > Date.now() - DIAS_ATE_LIBERAR * diaMs);
       const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
       const freteVendedorPedido = taxaPedido?.freteVendedor ?? 0;
       const devolucaoFacilPedido = taxaPedido?.devolucaoFacil ?? 0;
