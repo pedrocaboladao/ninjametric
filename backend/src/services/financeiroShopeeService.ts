@@ -336,7 +336,6 @@ export async function diagnosticarAfiliadoShopee(
   status: string | null = null,
   orderSns: string[] | null = null
 ): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
-  const prazo = Date.now() + 40_000; // devolve o que tiver até aqui, em vez de ficar carregando
   let escolhidos: Awaited<ReturnType<typeof buscarDetalhesPedidos>>;
   if (orderSns && orderSns.length > 0) {
     // Pedidos pedidos pelo número: não precisa listar a janela inteira.
@@ -364,6 +363,9 @@ export async function diagnosticarAfiliadoShopee(
       .slice(0, limite);
   }
 
+  // O prazo só conta a partir daqui (listar e buscar detalhes pode demorar
+  // bastante numa loja grande); devolve o que analisou até lá, em vez de ficar carregando.
+  const prazo = Date.now() + 45_000;
   const pedidos: DiagnosticoAfiliadoPedido[] = [];
   let parcial = false;
   const erros: string[] = [];
