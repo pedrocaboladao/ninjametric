@@ -332,12 +332,15 @@ export async function diagnosticarAfiliadoShopee(
   lojaId: number,
   dias: number,
   termo: string | null,
-  limite: number
+  limite: number,
+  status: string | null = null
 ): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; pedidos: DiagnosticoAfiliadoPedido[] }> {
   const janela = janelaUltimosDias(dias);
   const timeFrom = Math.floor(new Date(janela.inicioDia).getTime() / 1000);
   const timeTo = Math.floor(new Date(janela.agora).getTime() / 1000);
-  const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter((p) => pedidoValido(p.order_status));
+  const lista = (await listarPedidos(lojaId, timeFrom, timeTo)).filter(
+    (p) => pedidoValido(p.order_status) && (status === null || p.order_status === status)
+  );
   const prazo = Date.now() + 40_000; // devolve o que tiver até aqui, em vez de ficar carregando
   const detalhes = await buscarDetalhesPedidos(
     lojaId,
