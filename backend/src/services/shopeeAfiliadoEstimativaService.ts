@@ -18,10 +18,14 @@ export const DIAS_ATE_LIBERAR = 14;
 // depois da conclusão, mais uma folga).
 export const DIAS_CONCLUIDO_ATE_LIBERAR = 9;
 
-// Janela de pedidos JÁ liberados usada como amostra: de 19 a 15 dias atrás.
-const AMOSTRA_DE_DIAS_ATRAS = 19;
-const AMOSTRA_ATE_DIAS_ATRAS = 15;
-const AMOSTRA_MAX_PEDIDOS = 150;
+// Janela de pedidos JÁ liberados usada como amostra: criados de 35 a 21 dias
+// atrás. Um pedido leva ~10 dias pra ser concluído e o afiliado só entra no
+// extrato ~7 dias depois disso — a janela antiga (19 a 15 dias) quase não tinha
+// pedido que passasse no filtro de "concluído há mais de 10 dias" (em produção
+// a Pinta e Constrói ficou com amostra 0 e nenhuma loja com taxa por anúncio).
+const AMOSTRA_DE_DIAS_ATRAS = 35;
+const AMOSTRA_ATE_DIAS_ATRAS = 21;
+const AMOSTRA_MAX_PEDIDOS = 400;
 const MIN_PEDIDOS_LOJA = 20;
 const MIN_PEDIDOS_ITEM = 8;
 const TTL_MS = 12 * 60 * 60 * 1000;
@@ -104,7 +108,11 @@ export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
   const de = agora - AMOSTRA_DE_DIAS_ATRAS * 86400;
   const ate = agora - AMOSTRA_ATE_DIAS_ATRAS * 86400;
   const lista = (await listarPedidos(lojaId, de, ate)).filter((p) => p.order_status === "COMPLETED");
-  const escolhidos = lista.slice(0, AMOSTRA_MAX_PEDIDOS).map((p) => p.order_sn);
+  // Loja grande tem milhares de pedidos na janela: pega um a cada N, espalhado
+  // pelos 14 dias. Os primeiros da lista seriam todos das mesmas horas, e um
+  // afiliado que vende em dias específicos ficaria de fora.
+  const passo = Math.max(1, Math.ceil(lista.length / AMOSTRA_MAX_PEDIDOS));
+  const escolhidos = lista.filter((_, i) => i % passo === 0).map((p) => p.order_sn);
   if (escolhidos.length === 0) {
     const vazia: TaxaAfiliado = { geral: 0, porItem: new Map(), pedidosNaAmostra: 0, calculadoEm: Date.now() };
     taxasPorLoja.set(lojaId, vazia);
@@ -157,6 +165,15 @@ export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
     }
   }
   const nova: TaxaAfiliado = { geral, porItem: taxaPorItem, pedidosNaAmostra: pedidosGeral, calculadoEm: Date.now() };
+  // Amostra fraca (a Shopee falhou em devolver extratos, por exemplo) não apaga
+  // uma taxa boa que já existia: a estimativa sumiria da tela até o próximo ciclo.
+  const anterior = taxasPorLoja.get(lojaId);
+  if (pedidosGeral < MIN_PEDIDOS_LOJA && anterior && anterior.porItem.size > 0) {
+    console.log(
+      `Afiliado Shopee (loja ${lojaId}): amostra de só ${pedidosGeral} pedidos — mantida a taxa anterior (${anterior.porItem.size} anúncios).`
+    );
+    return;
+  }
   taxasPorLoja.set(lojaId, nova);
   await salvarNoBanco(lojaId, nova);
   console.log(
@@ -173,9 +190,11 @@ export function iniciarEstimativaAfiliadoShopee(): void {
         "SELECT l.id FROM lojas l JOIN contas_shopee c ON c.loja_id = l.id ORDER BY l.id"
       );
       for (const loja of lojas) {
-        // Já calculada há pouco (vinda do banco depois de um deploy): não gasta API à toa.
+        // Já calculada há pouco (vinda do banco depois de um deploy): não gasta API
+        // à toa. Só vale pra quem tem taxa por anúncio — resultado vazio é refeito,
+        // senão um cálculo que saiu vazio por defeito ficaria valendo por 12h.
         const atual = taxasPorLoja.get(loja.id);
-        if (atual && Date.now() - atual.calculadoEm < TTL_MS * 0.9) continue;
+        if (atual && atual.porItem.size > 0 && Date.now() - atual.calculadoEm < TTL_MS * 0.9) continue;
         try {
           await recalcularTaxaAfiliado(loja.id);
         } catch (err) {
