@@ -146,7 +146,8 @@ export function FinanceiroShopee() {
   const comissaoAfiliadoTotalGeral =
     vendas?.reduce((s, v) => s + (v.comissaoAfiliadoEstimada ? 0 : v.comissaoAfiliadoTotal), 0) ?? 0;
   // Afiliado ainda não informado pela Shopee: o total considera uma estimativa (média do
-  // anúncio), mas a linha de cada venda mostra "pendente" em vez de um valor inventado.
+  // anúncio). A linha de cada venda mostra esse valor marcado como "pendente (estim.)",
+  // mas a margem da linha continua antes dele (ver margemLinha).
   const afiliadoPendenteEstimadoGeral =
     vendas?.reduce((s, v) => s + (v.comissaoAfiliadoEstimada ? v.comissaoAfiliadoTotal : 0), 0) ?? 0;
   const vendasAfiliadoPendente = vendas?.filter((v) => v.comissaoAfiliadoEstimada).length ?? 0;
@@ -320,7 +321,7 @@ export function FinanceiroShopee() {
                   {vendasAfiliadoPendente > 0 && (
                   <div
                     className="financeiro-card-cor-linha"
-                    title={`Afiliado ainda não informado pela Shopee em ${vendasAfiliadoPendente} venda(s) recente(s). É uma estimativa pela taxa média de afiliado de cada anúncio nos pedidos já pagos, e já está descontada da margem total. Cada linha mostra "pendente".`}
+                    title={`Afiliado ainda não informado pela Shopee em ${vendasAfiliadoPendente} venda(s) recente(s). É uma estimativa pela taxa média de afiliado de cada anúncio nos pedidos já pagos, e já está descontada da margem total. Cada linha mostra o valor estimado dela, marcado como pendente.`}
                   >
                     <span>Afiliado pendente (estim.)</span>
                     <b>~{formatCurrency(afiliadoPendenteEstimadoGeral)}</b>
@@ -437,11 +438,21 @@ export function FinanceiroShopee() {
                         className="financeiro-th-numero financeiro-td-custo"
                         title={
                           v.comissaoAfiliadoEstimada
-                            ? "A Shopee ainda não informou o afiliado desta venda (só informa depois de liberar o pagamento). A margem desta linha NÃO desconta o afiliado; o total no topo já considera uma estimativa."
+                            ? "Estimativa: a Shopee ainda não informou o afiliado desta venda (só informa depois de liberar o pagamento). O valor é a taxa média de afiliado deste anúncio nos pedidos já pagos aplicada a esta venda. A margem desta linha NÃO desconta esse valor; o total no topo desconta."
                             : undefined
                         }
                       >
-                        {v.comissaoAfiliadoEstimada ? <i>pendente</i> : formatCurrency(v.comissaoAfiliadoTotal)}
+                        {v.comissaoAfiliadoEstimada ? (
+                          <>
+                            ~{formatCurrency(v.comissaoAfiliadoTotal)}
+                            <br />
+                            <small>
+                              <i>pendente (estim.)</i>
+                            </small>
+                          </>
+                        ) : (
+                          formatCurrency(v.comissaoAfiliadoTotal)
+                        )}
                       </td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.cupomVendedorTotal)}</td>
                       <td className="financeiro-th-numero financeiro-td-custo">{formatCurrency(v.freteVendedorTotal)}</td>
