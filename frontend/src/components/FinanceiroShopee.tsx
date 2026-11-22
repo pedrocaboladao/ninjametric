@@ -438,7 +438,7 @@ export function FinanceiroShopee() {
                         className="financeiro-th-numero financeiro-td-custo"
                         title={
                           v.comissaoAfiliadoEstimada
-                            ? "Estimativa: a Shopee ainda não informou o afiliado desta venda (só informa depois de liberar o pagamento). O valor é a taxa média de afiliado deste anúncio nos pedidos já pagos aplicada a esta venda. A margem desta linha NÃO desconta esse valor; o total no topo desconta."
+                            ? "Estimativa: a Shopee ainda não informou o afiliado desta venda (só informa quando o pedido é concluído). O valor é a taxa média de afiliado deste anúncio nos pedidos já pagos aplicada a esta venda. A margem desta linha NÃO desconta esse valor; o total no topo desconta."
                             : undefined
                         }
                       >

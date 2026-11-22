@@ -1,8 +1,8 @@
 import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos } from "./shopeeApi";
 import { pool } from "../db/pool";
 
-// A Shopee só põe a comissão de afiliado (AMS) no extrato do pedido DEPOIS que
-// o pagamento é liberado (~11-12 dias após a venda). Até lá o extrato vem com
+// A Shopee só põe a comissão de afiliado (AMS) no extrato do pedido quando ele é
+// CONCLUÍDO (~8 a 17 dias após a venda). Até lá o extrato vem com
 // afiliado 0, e a margem do pedido recente aparece maior que a real (confirmado
 // ao vivo na Pinta e Constrói: a pedra 5kg passa de +R$ 8,81 pra prejuízo
 // quando o afiliado entra). Pra não mostrar margem inflada, os pedidos ainda
@@ -14,17 +14,21 @@ import { pool } from "../db/pool";
 
 // Pedido criado há menos que isso ainda não teve o pagamento liberado.
 export const DIAS_ATE_LIBERAR = 14;
-// Pedido concluído há menos que isso ainda não teve o pagamento liberado (7 dias
-// depois da conclusão, mais uma folga).
-export const DIAS_CONCLUIDO_ATE_LIBERAR = 9;
+// Pedido concluído há menos que isso ainda pode estar sem o afiliado no extrato.
+// Já foi 9 dias ("7 dias depois da conclusão, mais uma folga"), mas medido em
+// 120 pedidos concluídos da Pinta e Constrói (22/11/2026) o afiliado já estava
+// lá com 0,2 dia da última atualização — e a regra de 9 dias chamava de
+// "pendente" 53 dos 54 pedidos que já tinham o valor fechado. Os únicos sem
+// afiliado bem no começo tinham menos de 3 horas; 1 dia cobre isso com folga.
+export const DIAS_CONCLUIDO_ATE_LIBERAR = 1;
 
-// Janela de pedidos JÁ liberados usada como amostra: criados de 35 a 21 dias
-// atrás. Um pedido leva ~10 dias pra ser concluído e o afiliado só entra no
-// extrato ~7 dias depois disso — a janela antiga (19 a 15 dias) quase não tinha
-// pedido que passasse no filtro de "concluído há mais de 10 dias" (em produção
-// a Pinta e Constrói ficou com amostra 0 e nenhuma loja com taxa por anúncio).
-const AMOSTRA_DE_DIAS_ATRAS = 35;
-const AMOSTRA_ATE_DIAS_ATRAS = 21;
+// Janela de pedidos já concluídos usada como amostra: criados de 28 a 14 dias
+// atrás — o mais recente que ainda tem a grande maioria concluída (um pedido
+// leva de 8 a 17 dias). A primeira janela (19 a 15 dias, exigindo concluído há
+// mais de 10) quase não deixava pedido passar: em produção a Pinta e Constrói
+// ficou com amostra 0 e nenhuma loja com taxa por anúncio.
+const AMOSTRA_DE_DIAS_ATRAS = 28;
+const AMOSTRA_ATE_DIAS_ATRAS = 14;
 const AMOSTRA_MAX_PEDIDOS = 400;
 const MIN_PEDIDOS_LOJA = 20;
 const MIN_PEDIDOS_ITEM = 8;
@@ -130,9 +134,8 @@ export async function recalcularTaxaAfiliado(lojaId: number): Promise<void> {
   const porItem = new Map<number, { afiliado: number; receita: number; pedidos: number }>();
 
   for (const pedido of detalhes) {
-    // Só pedido cujo pagamento já foi liberado (concluído há mais de 10 dias):
-    // entrega lenta deixa pedido "antigo" ainda sem afiliado no extrato.
-    if (pedido.update_time && pedido.update_time * 1000 > Date.now() - 10 * 24 * 60 * 60 * 1000) continue;
+    // Concluído agora há pouco ainda pode estar sem o afiliado no extrato.
+    if (pedido.update_time && pedido.update_time * 1000 > Date.now() - DIAS_CONCLUIDO_ATE_LIBERAR * 24 * 60 * 60 * 1000) continue;
     const taxa = taxas.get(pedido.order_sn);
     // Sem extrato, ou extrato zerado (pedido devolvido/estornado): não diz nada
     // sobre afiliado, fica fora da amostra.

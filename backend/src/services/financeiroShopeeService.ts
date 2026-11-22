@@ -123,11 +123,11 @@ export interface ResultadoFinanceiroShopee {
   pedidosNaoConciliados: number;
 }
 
-// O afiliado só entra no extrato depois que o pagamento é liberado (~7 dias
-// depois da conclusão do pedido). Pedido ainda em andamento (enviado, a
-// caminho...) nunca foi liberado, não importa a idade — entrega lenta já
-// passou de 20 dias. Concluído: conta desde a conclusão (update_time); sem
-// essa data, cai na idade do pedido.
+// O afiliado só entra no extrato quando o pedido é concluído. Pedido ainda em
+// andamento (enviado, a caminho...) segue pendente, não importa a idade —
+// entrega lenta já passou de 20 dias. Concluído: só fica pendente nas
+// primeiras horas (ver DIAS_CONCLUIDO_ATE_LIBERAR, medido com pedidos reais);
+// sem a data de atualização, cai na idade do pedido.
 function afiliadoAindaPendente(pedido: Pick<ShopeeOrder, "order_status" | "update_time" | "create_time">): boolean {
   const diaMs = 24 * 60 * 60 * 1000;
   return (
@@ -313,7 +313,7 @@ export async function listarVendasFinanceirasShopee(
         // exibida separada da Taxa Shopee pra ficar explícito quando uma
         // venda veio de link de afiliado/creator. Normalmente 0.
         let comissaoAfiliadoTotal = arredondarCentavos(fatia * comissaoAfiliadoPedido);
-        // A Shopee só informa o afiliado depois que o pagamento é liberado. Pedido
+        // A Shopee só informa o afiliado quando o pedido é concluído. Pedido
         // recente com extrato mas afiliado 0 usa a taxa média histórica (estimativa).
         let comissaoAfiliadoEstimada = false;
         if (taxaPedido && comissaoAfiliadoPedido === 0 && pedidoAindaNaoLiberado) {
