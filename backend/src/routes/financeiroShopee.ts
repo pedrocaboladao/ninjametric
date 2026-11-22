@@ -79,7 +79,11 @@ financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
     return;
   }
   const dias = Math.min(Math.max(Number(req.query.dias) || 2, 1), 30);
-  const limite = Math.min(Math.max(Number(req.query.limite) || 8, 1), 30);
+  // resumo=1: uma linha curta por pedido (datas, afiliado, se a regra ainda o
+  // trata como pendente) e até 120 pedidos — pra medir a regra sem colar um
+  // extrato inteiro por pedido.
+  const resumo = req.query.resumo === "1";
+  const limite = Math.min(Math.max(Number(req.query.limite) || 8, 1), resumo ? 120 : 30);
   const termo = typeof req.query.termo === "string" && req.query.termo.trim() ? req.query.termo.trim() : null;
   const status = typeof req.query.status === "string" && req.query.status.trim() ? req.query.status.trim().toUpperCase() : null;
   const orderSns =
@@ -90,7 +94,36 @@ financeiroShopeeRouter.get("/diagnostico-afiliado", async (req, res) => {
   const ate = typeof req.query.ate === "string" && DATA_REGEX.test(req.query.ate) ? req.query.ate : de;
   const intervalo = de && ate ? { de, ate } : null;
   try {
-    res.json(await diagnosticarAfiliadoShopee(lojaId, dias, termo, limite, status, orderSns, intervalo));
+    const d = await diagnosticarAfiliadoShopee(lojaId, dias, termo, limite, status, orderSns, intervalo);
+    if (!resumo) {
+      res.json(d);
+      return;
+    }
+    const comAfiliado = d.pedidos.filter((p) => (p.campos.order_ams_commission_fee ?? 0) > 0);
+    const diasDosComAfiliado = comAfiliado.map((p) => p.diasDesdeAtualizacao).filter((x): x is number => x !== null);
+    res.json({
+      parcial: d.parcial,
+      erros: d.erros.length,
+      pedidosAnalisados: d.pedidosAnalisados,
+      porStatus: d.porStatus,
+      comAfiliado: comAfiliado.length,
+      pendentesPelaRegra: d.pedidos.filter((p) => p.pendentePelaRegra).length,
+      // Afiliado JÁ informado em pedido que a regra ainda chama de pendente:
+      // prova de que a regra espera mais do que a Shopee precisa.
+      comAfiliadoMasPendentePelaRegra: comAfiliado.filter((p) => p.pendentePelaRegra).length,
+      menorDiasDesdeAtualizacaoComAfiliado: diasDosComAfiliado.length > 0 ? Math.min(...diasDosComAfiliado) : null,
+      camposDeTempoVistos: Array.from(new Set(d.pedidos.flatMap((p) => Object.keys(p.camposDeTempo)))),
+      pedidos: d.pedidos.map((p) => ({
+        sn: p.orderSn,
+        st: p.status,
+        criado: p.criadoEm.slice(0, 10),
+        atualizado: p.atualizadoEm?.slice(0, 10) ?? null,
+        dias: p.diasDesdeAtualizacao,
+        ams: p.campos.order_ams_commission_fee ?? 0,
+        pend: p.pendentePelaRegra,
+        tempo: p.camposDeTempo,
+      })),
+    });
   } catch (err) {
     console.error("Erro no diagnóstico de afiliado Shopee:", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Falha no diagnóstico." });

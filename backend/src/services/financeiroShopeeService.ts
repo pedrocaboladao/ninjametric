@@ -1,5 +1,5 @@
 import { pool } from "../db/pool";
-import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos } from "./shopeeApi";
+import { listarPedidos, buscarDetalhesPedidos, buscarTaxasPedidos, type ShopeeOrder } from "./shopeeApi";
 import { listarProdutos } from "./produtosService";
 import { janelaUltimosDias, janelaEntre } from "./dateUtils";
 import { obterGastoAdsShopee } from "./shopeeAdsService";
@@ -121,6 +121,21 @@ export interface ResultadoFinanceiroShopee {
   // Pedidos em que a conta do sistema difere do valor repassado pela Shopee em
   // mais de 10% — a diferença NÃO entra na margem (pode ser kit, ajuste raro...).
   pedidosNaoConciliados: number;
+}
+
+// O afiliado só entra no extrato depois que o pagamento é liberado (~7 dias
+// depois da conclusão do pedido). Pedido ainda em andamento (enviado, a
+// caminho...) nunca foi liberado, não importa a idade — entrega lenta já
+// passou de 20 dias. Concluído: conta desde a conclusão (update_time); sem
+// essa data, cai na idade do pedido.
+function afiliadoAindaPendente(pedido: Pick<ShopeeOrder, "order_status" | "update_time" | "create_time">): boolean {
+  const diaMs = 24 * 60 * 60 * 1000;
+  return (
+    pedido.order_status !== "COMPLETED" ||
+    (pedido.update_time
+      ? pedido.update_time * 1000 > Date.now() - DIAS_CONCLUIDO_ATE_LIBERAR * diaMs
+      : pedido.create_time * 1000 > Date.now() - DIAS_ATE_LIBERAR * diaMs)
+  );
 }
 
 interface LojaShopee {
@@ -263,17 +278,7 @@ export async function listarVendasFinanceirasShopee(
       const taxaPedido = loja.taxas.get(pedido.order_sn);
       const taxaTotalPedido = (taxaPedido?.comissao ?? 0) + (taxaPedido?.taxaServico ?? 0);
       const comissaoAfiliadoPedido = taxaPedido?.comissaoAfiliado ?? 0;
-      // O afiliado só entra no extrato depois que o pagamento é liberado (~7 dias
-      // depois da conclusão do pedido). Pedido ainda em andamento (enviado, a
-      // caminho...) nunca foi liberado, não importa a idade — entrega lenta já
-      // passou de 20 dias. Concluído: conta desde a conclusão (update_time); sem
-      // essa data, cai na idade do pedido.
-      const diaMs = 24 * 60 * 60 * 1000;
-      const pedidoAindaNaoLiberado =
-        pedido.order_status !== "COMPLETED" ||
-        (pedido.update_time
-          ? pedido.update_time * 1000 > Date.now() - DIAS_CONCLUIDO_ATE_LIBERAR * diaMs
-          : pedido.create_time * 1000 > Date.now() - DIAS_ATE_LIBERAR * diaMs);
+      const pedidoAindaNaoLiberado = afiliadoAindaPendente(pedido);
       const cupomVendedorPedido = taxaPedido?.cupomVendedor ?? 0;
       const freteVendedorPedido = taxaPedido?.freteVendedor ?? 0;
       const devolucaoFacilPedido = taxaPedido?.devolucaoFacil ?? 0;
@@ -390,6 +395,15 @@ export interface DiagnosticoAfiliadoPedido {
   contaDoSistema: number | null;
   escrowAmount: number | null;
   diferenca: number | null;
+  // Datas do pedido e se a regra do Financeiro ainda o trata como "afiliado
+  // pendente" — pra medir quanto tempo a Shopee leva pra informar o afiliado.
+  criadoEm: string;
+  atualizadoEm: string | null;
+  diasDesdeAtualizacao: number | null;
+  pendentePelaRegra: boolean;
+  // Qualquer campo do extrato com "time"/"date" no nome (procura uma data de
+  // liberação do pagamento que sirva de sinal melhor que a idade do pedido).
+  camposDeTempo: Record<string, string | number>;
 }
 
 // Diagnóstico (só admin): olha o extrato real (get_escrow_detail) de pedidos
@@ -446,9 +460,13 @@ export async function diagnosticarAfiliadoShopee(
     }
     const data = await chamarApiAssinada<{
       error?: string;
-      response?: { order_income?: Record<string, unknown> & { items?: Record<string, unknown>[] } };
+      response?: Record<string, unknown> & { order_income?: Record<string, unknown> & { items?: Record<string, unknown>[] } };
     }>(lojaId, "/api/v2/payment/get_escrow_detail", { order_sn: d.order_sn });
     const income = data.response?.order_income;
+    const camposDeTempo: Record<string, string | number> = {};
+    for (const [k, v] of [...Object.entries(data.response ?? {}), ...Object.entries(income ?? {})]) {
+      if (/time|date/i.test(k) && (typeof v === "number" || typeof v === "string")) camposDeTempo[k] = v;
+    }
     const campos: Record<string, number> = {};
     for (const [k, v] of Object.entries(income ?? {})) {
       if (typeof v === "number") campos[k] = v;
@@ -476,6 +494,11 @@ export async function diagnosticarAfiliadoShopee(
       contaDoSistema: conta === null ? null : Math.round(conta * 100) / 100,
       escrowAmount: escrow ?? null,
       diferenca: conta === null || escrow === undefined ? null : Math.round((conta - escrow) * 100) / 100,
+      criadoEm: new Date(d.create_time * 1000).toISOString(),
+      atualizadoEm: d.update_time ? new Date(d.update_time * 1000).toISOString() : null,
+      diasDesdeAtualizacao: d.update_time ? Math.round(((Date.now() - d.update_time * 1000) / 86_400_000) * 10) / 10 : null,
+      pendentePelaRegra: afiliadoAindaPendente(d),
+      camposDeTempo,
     });
   }
   let proximo = 0;
