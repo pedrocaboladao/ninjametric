@@ -404,6 +404,12 @@ export interface DiagnosticoAfiliadoPedido {
   // Qualquer campo do extrato com "time"/"date" no nome (procura uma data de
   // liberação do pagamento que sirva de sinal melhor que a idade do pedido).
   camposDeTempo: Record<string, string | number>;
+  // Itens como a Shopee devolveu, sem tradução: do detalhe do pedido
+  // (get_order_detail) e do extrato (get_escrow_detail). Só vêm preenchidos
+  // quando o diagnóstico é pedido por número de pedido — servem pra entender
+  // pedido com linha repetida ou preço zerado.
+  linhasDoPedido: unknown[];
+  itensDoExtrato: unknown[];
 }
 
 // Diagnóstico (só admin): olha o extrato real (get_escrow_detail) de pedidos
@@ -421,6 +427,7 @@ export async function diagnosticarAfiliadoShopee(
   intervalo: { de: string; ate: string } | null = null
 ): Promise<{ parcial: boolean; erros: string[]; pedidosAnalisados: number; comAfiliado: number; porStatus: Record<string, number>; pedidos: DiagnosticoAfiliadoPedido[] }> {
   let escolhidos: Awaited<ReturnType<typeof buscarDetalhesPedidos>>;
+  const porNumero = !!orderSns && orderSns.length > 0;
   if (orderSns && orderSns.length > 0) {
     // Pedidos pedidos pelo número: não precisa listar a janela inteira.
     escolhidos = await buscarDetalhesPedidos(lojaId, orderSns.slice(0, 20));
@@ -499,6 +506,8 @@ export async function diagnosticarAfiliadoShopee(
       diasDesdeAtualizacao: d.update_time ? Math.round(((Date.now() - d.update_time * 1000) / 86_400_000) * 10) / 10 : null,
       pendentePelaRegra: afiliadoAindaPendente(d),
       camposDeTempo,
+      linhasDoPedido: porNumero ? (d.item_list ?? []) : [],
+      itensDoExtrato: porNumero ? (income?.items ?? []) : [],
     });
   }
   let proximo = 0;
